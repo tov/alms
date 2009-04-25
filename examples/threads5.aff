@@ -1,0 +1,35 @@
+(* A semi-bad example with threads. (Possible contract error!)
+   This is like the previous example (threads4.aff), but it allows
+   wrapped (opaque) thread values themselves into C-world, rather
+   than just functions.
+*)
+
+module[A] printer : unit -> unit =
+  \_: unit.
+    threadDelay 100000;
+    putStr "x";
+    flush ();
+    printer ()
+
+module[A] start : unit -> thread =
+  \_: unit. threadFork printer
+
+module[A] stop : thread -> unit = threadKill
+
+module[A] after : int -> (unit -o unit) -> unit =
+  \delay: int.
+    \stop: unit -o unit.
+      threadFork (\_:unit . threadDelay delay; stop ());
+      ()
+
+(* {thread} is an "opaque" type *)
+module[C] main : {thread} -> unit =
+  \id: {thread}.
+    after 4000000 (\_:unit. stop id);
+    getLine ();
+    stop id   (* second stop -- maybe contract error. *)
+
+in
+  putStrLn "Press <ENTER> to exit.";
+  main (start ())
+

@@ -1,0 +1,31 @@
+(* A bad example with threads.  (type error!) *)
+
+module[A] printer : unit -> unit =
+  \_: unit.
+    threadDelay 100000;
+    putStr "x";
+    flush ();
+    printer ()
+
+module[A] startStop : unit -> unit -o unit =
+  \_: unit.
+    let id = threadFork printer in
+    let id = printThread id in
+      \_: unit.
+        threadKill id
+
+module[A] after : int -> (unit -o unit) -> unit =
+  \delay: int.
+    \stop: unit -o unit.
+      threadFork (\_:unit . threadDelay delay; stop ());
+      ()
+
+module[A] main : unit -> unit =
+  \_: unit.
+    let stop = startStop () in
+      after 2000000 stop;
+      getLine ();
+      stop ()    (* stop used twice! *)
+
+in main ()
+

@@ -1,0 +1,16 @@
+(* An example with threads. *)
+
+module[A] printer : unit -> unit =
+  \_: unit.
+    threadDelay 100000;
+    putStr "x";
+    flush ();
+    printer ()
+
+module[A] timer : unit -> unit =
+  \_: unit.
+    let id = threadFork printer in
+      threadDelay 2000000;
+      threadKill id
+
+in timer ()

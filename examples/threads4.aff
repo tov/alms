@@ -1,0 +1,46 @@
+(* A semi-bad example with threads. (Possible contract error!)
+    We start a thread printing 'x's, and then two threads, each
+    of which can kill it:
+
+      1. counts 4 second
+      2. waits for user input
+
+    If 2 happens first (press enter), then the program exits
+    without error!  But if 1 happens first, then 2 will wait
+    for input, and when it tries to kill the printer thread,
+    that's a contract violation.
+
+    We're able to duplicate the kill function because we do in
+    in language C.
+*)
+
+module[A] printer : unit -> unit =
+  \_: unit.
+    threadDelay 100000;
+    putStr "x";
+    flush ();
+    printer ()
+
+module[A] startStop : unit -> unit -o unit =
+  \_: unit.
+    let id = threadFork printer in
+    let id = printThread id in
+      \_: unit.
+        threadKill id
+
+module[A] after : int -> (unit -o unit) -> unit =
+  \delay: int.
+    \stop: unit -o unit.
+      threadFork (\_:unit . threadDelay delay; stop ());
+      ()
+
+module[C] main : unit -> unit =
+  \_: unit.
+    putStrLn "Press <ENTER> to exit.";
+    let stop = startStop () in
+      after 4000000 stop;
+      getLine ();
+      stop ()
+
+in main ()
+
