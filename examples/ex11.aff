@@ -1,4 +1,4 @@
-(* Affine opaque objects (contract violation: blame double) *)
+(* Affine opaque objects (contract violation: blame "*main*") *)
 
 module[A] makePair : (int -> int) -> int -> (int -o int) * int =
   \f: int -> int.
@@ -18,9 +18,9 @@ module[A] doPair : (int -o int) * int -> int =
 module[C] double : int -> {(int -o int) * int} =
   \z: int.
     makePair (mul 2) z
-(* returns an affine object, which it then allows main to use
-   twice. *)
+(* returns an affine object, but doesn't break affinity itself. *)
 
 in let pair = double 4 in
      doPair pair;
      printInt (doPair pair)
+(* mis-uses the affine object returned by double *)

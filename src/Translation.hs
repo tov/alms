@@ -59,6 +59,7 @@ reifyLang1 _ = reifyLang
 transVar :: LangRep w -> MEnv -> Party -> Var -> Expr C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
+    (C, Just (MdC _ t _))   -> cc neg (Party x) x t
     (C, Just (MdA _ t _))   -> ca neg (Party x) x t
     (C, Just (MdInt _ t _)) -> ca neg (Party x) x t
     (A, Just (MdC _ t _))   -> ac neg (Party x) x (ctype2atype t)
@@ -92,7 +93,6 @@ transCast neg e t' ta =
 -- This wrapper protects the positive party and may blame the
 -- negative party.
 ca :: Party -> Party -> Var -> Type A -> Expr C
-ca _   _   x (TyApp n []) | n `elem` transparent = exVar x
 ca neg pos x (TyApp "->" [s1, s2]) =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ac pos neg y s1)) $
@@ -124,7 +124,6 @@ ca neg _   x ta | qualifier ta <: Qu = exVar x
 -- This wrapper protects the negative party and may blame the
 -- positive party.
 ac :: Party -> Party -> Var -> Type A -> Expr C
-ac _   _   x (TyApp n [])       | n `elem` transparent = exVar x
 ac neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ca pos neg y s1)) $
@@ -133,6 +132,32 @@ ac neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
         z = x /./ "z"
 ac _   _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise = exApp (exVar x) exUnit
+
+-- Given negative and positive blame labels, the name of a C
+-- language variable we wish to protect, and the C type the variable
+-- should have, generates an expression that projects that C modules
+-- from each other.  This only generates coercions when the C type
+-- has an A type embedded in it.
+--
+-- This isn't necessary for soundness, but is necessary to place
+-- the blame on the correct C module.
+--
+-- This wrapper protects either party and may blame either party.
+cc :: Party -> Party -> Var -> Type C -> Expr C
+cc neg pos x (TyApp "->" [s1, s2]) =
+  exAbs' y s1 $
+    exLet' z (exApp (exVar x) (cc pos neg y s1)) $
+      cc neg pos z s2
+  where y = x /./ "y"
+        z = x /./ "z"
+cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
+  exLet' u createContract $
+    exAbs' y tyUnit $
+      exSeq (checkContract u neg "passed one-shot value twice") $
+        exApp (exVar x) exUnit
+  where y = x /./ "y"
+        u = x /./ "u"
+cc _   _   x _ = exVar x
 
 -- Generate an expression to create an initial (blessed) cell
 createContract :: Expr C
