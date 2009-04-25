@@ -1,0 +1,32 @@
+#!/bin/sh
+
+host=frogger.ccs.neu.edu
+remote=public_html/pubs/affine-contracts
+
+if [ -z "$1" ]; then
+  set send edit
+fi
+
+while [ -n "$1" ]; do
+  cmd="$1"
+  shift
+  case "$cmd" in
+    send)
+      scp -p affine-contracts*.tar.gz $host:$remote/
+      ;;
+    edit)
+      ssh $host -t vim $remote/index.html
+      ;;
+    version)
+      version="$1"
+      shift
+      ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
+      ex -c "/^Version: /s/\\(: *\\).*/\\1$version/|:wq" affine.cabal
+      grep -i '^version' Makefile affine.cabal
+      ;;
+    *)
+      echo "What does '$cmd' mean?" >&2
+      exit 1
+      ;;
+  esac
+done

@@ -1,0 +1,11 @@
+*.hi
+*.o
+stamp
+.DS_Store
+.svn
+.*.sw?
+Setup
+affine
+*.tar.gz
+dist
+affine-6.*

@@ -1,0 +1,13 @@
+(* An Ill-Typed A-to-C Call (type error) *)
+
+module[C] ap : (int -> int) -> int -> int =
+  \f: int -> int.
+    \x: int.
+      f x
+
+module[A] inc : int -> int =
+  \y: int.
+    let g = (\z:int . add z 1 :> int -o int) in
+      ap g y         (* g: (int -o int) is used as an (int -> int) *)
+
+in printInt (inc 5)

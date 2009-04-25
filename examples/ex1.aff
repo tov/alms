@@ -1,0 +1,11 @@
+(* A Type-Correct, Blame-Free Program *)
+
+module[A] ap : (int -o int) -> int -o int =
+  \f: int -o int.
+    \x: int.
+      f x
+
+module[A] inc : int -> int =
+  \y: int. ap (\z:int. add z 1) y
+
+in printInt (inc 5)

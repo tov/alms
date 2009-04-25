@@ -1,0 +1,16 @@
+(* An Interface Module Intervenes *)
+
+module[C] ap : (int -> int) -> int -> int =
+  \f: int -> int.
+    \x: int.
+      f x
+
+interface iap :> (int -o int) -> int -o int = ap
+
+module[A] inc : int -> int =
+  \y: int.
+    (\g: int -o int.
+       iap g y)
+    (\z: int. add z 1)
+
+in printInt (inc 5)

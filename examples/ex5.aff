@@ -1,0 +1,11 @@
+(* A Call from A into C *)
+
+module[C] ap : (int -> int) -> int -> int =
+  \f: int -> int.
+    \x: int.
+      f x
+
+module[A] inc : int -> int =
+  \y: int. ap (\z: int. add z 1) y
+
+in printInt (inc 5)

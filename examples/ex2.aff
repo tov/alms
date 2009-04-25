@@ -1,0 +1,13 @@
+(* An Ill-Typed A Module (type error) *)
+
+module[A] ap : (int -o int) -> int -o int =
+  \f: int -o int.
+    \x: int.
+      f x
+
+module[A] inc2 : int -> int =
+  \y: int.
+    let g = ap (\z: int. add z 1) in
+      g (g y)   (* g: (int -o int) is used twice here *)
+
+in printInt (inc2 5)

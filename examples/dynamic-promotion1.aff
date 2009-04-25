@@ -1,0 +1,14 @@
+(* A Dynamic Promotion Intervenes (like ex7.aff) *)
+
+module[C] ap : (int -> int) -> int -> int =
+  \f: int -> int.
+    \x: int.
+      f x
+
+module[A] inc : int -> int =
+  \y: int.
+    (\g: int -o int.
+       (ap :> (int -o int) -> int -o int) g y)
+    (\z: int. add z 1)
+
+in printInt (inc 5)

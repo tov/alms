@@ -1,0 +1,96 @@
+This is a prototype implementation of the language in "Affine Contracts
+for Affine Types" by Jesse Tov and Riccardo Pucella.
+
+Please see http://www.ccs.neu.edu/home/tov/pubs/affinecontracts09/ for
+more information about the paper and other software artifacts.
+
+CONTENTS
+
+ * GETTING STARTED
+ * USAGE
+ * THE LANGUAGE
+ * WHAT'S INTERESTING?
+
+GETTING STARTED
+
+  We require GHC to build.  It is known to work with GHC 6.10.1,
+  6.8.2, and 6.8.1.
+
+  Provided ghc is in your path, to build on UNIX it should be sufficient
+  to type:
+
+    % make
+
+  This will produce an executable "affine" in the current directory.
+
+  On Windows, build with Cabal:
+
+    > runghc Setup.hs configure
+    > runghc Setup.hs build
+
+  This produces an executable in "dist\build\affine\affine".
+
+USAGE
+
+  Examples from the paper, and several more, are in the examples/
+  directory.  To try the first example (which should print "6"),
+  run:
+
+    % ./affine examples/ex1.aff
+
+  Several of the examples have type or contract errors -- the comment at
+  the top of each example says what to expect.  Run all the examples
+  with:
+
+    % make examples
+
+  We can also run the interpreter in interactive mode:
+
+    % ./affine
+
+  The language is not currently very suitable for a REPL.  The prompt
+  will read an entire program, run that program, print the result and
+  type, and repeat.
+
+  The program also accepts several flags:
+
+    -t   Don't type check
+    -x   Don't execute
+    -c   Don't add contracts
+    -v   Verbose (show translation, results, types)
+
+THE LANGUAGE
+
+  We follow the paper rather closely, and the examples should give a
+  reasonable idea as to the concrete syntax.
+
+  See Basis.hs for an idea what other primitives are available.  Adding
+  new primitives, to get an idea what else is possible, should be easy.
+
+  In the A language, we use -o for affine function types and -> for
+  unlimited function types, rather than \multimap^1 and
+  \multimap^\infty.
+
+WHAT'S INTERESTING?
+
+  We used the implementation strategy sketched in Figure 12 (p. 10) of
+  the paper.  In particular, after type checking but before running a
+  program, we translate the mixed program to a program in the
+  conventional language only, with contract checks expressed in the
+  conventional language directly.  Thus, the run-time need not know
+  about contracts, other than providing a function for raising blame.
+
+  See Translate.hs for how this is done.  In short, it rewrites
+  inter-language module references by wrapping them with checks.  The
+  functions "a" and "c" in that file are the wrapping functions in
+  Figure 12, extended to handle a few more types.
+
+  This implementation includes dynamic promotions (and derelictions,
+  actually), which are coercions that insert dynamic checks.  It
+  currently works only for function types, not for pairs nor references.
+  The syntax is (e :> t) where e is an expression and t is an A type.
+  In the A sublanguage, the type of the expression is t, and a contract
+  ensures that e actually conforms to t.  In the C sublanguage, note
+  that t is still an A type; the type of the expression is just the type
+  of e, but it inserts a dynamic check.
+
