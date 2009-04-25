@@ -151,8 +151,12 @@ exprp = expr0 where
          e  <- expr0
          return (exAbs x t e),
       expr1 ]
-  expr1 = chainl1 expr2 (semi tok  >> return exSeq)
-  expr2 = chainl1 expr9 (comma tok >> return exPair)
+  expr1 = do e1 <- expr9
+             choice
+               [ do semi tok
+                    e2 <- expr0
+                    return (exSeq e1 e2),
+                 return e1 ]
   expr9 = chainl1 exprA (return exApp)
   exprA = choice
     [ identp,
@@ -161,12 +165,15 @@ exprp = expr0 where
       parens tok (exprN1 <|> return (exCon "()"))
     ]
   exprN1 = do
-    e <- expr0
+    e1 <- expr0
     choice
       [ do reservedOp tok ":>"
            t <- typep
-           return (exCast e t),
-        return e]
+           return (exCast e1 t),
+        do comma tok
+           e2 <- expr0
+           return (exPair e1 e2),
+        return e1]
 
 finish :: CharParser st a -> CharParser st a
 finish p = do

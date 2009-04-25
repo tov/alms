@@ -14,11 +14,11 @@ class Ppr p where
 
   ppr = pprPrec 0
 
-precCast, precDot, precSemi, precCom, precArr, precStar, precApp :: Int
+precCast, precCom, precDot, precSemi, precArr, precStar, precApp :: Int
 precCast  = -1 -- :>
+precCom   = -1 -- ,
 precDot   =  0 -- in, else, .
 precSemi  =  1 -- ;
-precCom   =  2 -- ,
 precArr   =  5 -- ->
 precStar  =  6 -- *
 precApp   =  9 -- f x
@@ -69,17 +69,17 @@ instance Ppr Mod where
   pprPrec _ (MdC x t e) = sep
     [ text "module[C]" <+>
         pprPrec 0 x,
-      nest 2 $ char ':' <+> pprPrec 0 t,
-      nest 4 $ char '=' <+> pprPrec 0 e ]
+      nest 2 $ colon <+> pprPrec 0 t,
+      nest 4 $ equals <+> pprPrec 0 e ]
   pprPrec _ (MdA x t e) = sep
     [ text "module[A]" <+>
         pprPrec 0 x,
-      nest 2 $ char ':' <+> pprPrec 0 t,
-      nest 4 $ char '=' <+> pprPrec 0 e ]
+      nest 2 $ colon <+> pprPrec 0 t,
+      nest 4 $ equals <+> pprPrec 0 e ]
   pprPrec _ (MdInt x t y)      = sep
     [ text "interface" <+> pprPrec 0 x,
       nest 2 $ text ":>" <+> pprPrec 0 t,
-      nest 4 $ char '=' <+> pprPrec 0 y ]
+      nest 4 $ equals <+> pprPrec 0 y ]
 
 instance Ppr (Expr w) where
   pprPrec p e0 = case expr' e0 of
@@ -96,10 +96,10 @@ instance Ppr (Expr w) where
     ExVar x -> pprPrec 0 x
     ExPair e1 e2 ->
       parensIf (p > precCom) $
-        sep [ pprPrec precCom e1 <> char ',',
+        sep [ pprPrec (precCom + 1) e1 <> comma,
               pprPrec (precCom + 1) e2 ]
     ExLetPair (x, y) e1 e2 ->
-      pprLet p (parens (pprPrec 0 x <> char ',' <+> pprPrec 0 y)) e1 e2
+      pprLet p (parens (pprPrec 0 x <> comma <+> pprPrec 0 y)) e1 e2
     ExAbs x t e ->
       parensIf (p > precDot) $
         sep [ char '\\' <> pprPrec 0 x <+>
@@ -111,8 +111,8 @@ instance Ppr (Expr w) where
               pprPrec (precApp + 1) e2 ]
     ExSeq e1 e2 ->
       parensIf (p > precSemi) $
-        sep [ pprPrec precSemi e1 <> char ';',
-              pprPrec (precSemi + 1) e2 ]
+        sep [ pprPrec (precSemi + 1) e1 <> semi,
+              pprPrec 0 e2 ]
     ExCast e t  ->
       parensIf (p > precCast) $
         sep [ pprPrec (precCast + 1) e,
@@ -121,7 +121,7 @@ instance Ppr (Expr w) where
 
 pprLet :: Int -> Doc -> Expr w -> Expr w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
-  sep [ text "let" <+> pat <+> char '=' <+> pprPrec 0 e1 <+> text "in",
+  sep [ text "let" <+> pat <+> equals <+> pprPrec 0 e1 <+> text "in",
         nest (if isLet (expr' e2)
                 then 0
                 else 2)
