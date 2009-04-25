@@ -15,7 +15,8 @@ $(EXE): default
 
 
 examples: $(EXE)
-	for i in examples/*.aff; do \
+	for i in examples/ex*.aff; do \
+	  echo "$$i"; \
 	  head -1 $$i; \
 	  ./$(EXE) $$i; \
 	  echo; \

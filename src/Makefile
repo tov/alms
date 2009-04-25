@@ -17,9 +17,10 @@ clean:
 	$(RM) *.hi *.o $(EXE) $(EXE)-6.*
 
 examples: $(EXE)
-	for i in ../examples/*.aff; do \
-	  head -1 $$i; \
-	  ./$(EXE) $$i; \
+	for i in ../examples/ex*.aff; do \
+	  echo "$$i"; \
+	  head -1 "$$i"; \
+	  ./$(EXE) "$$i"; \
 	  echo; \
 	done
 
