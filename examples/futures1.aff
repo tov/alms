@@ -1,0 +1,25 @@
+(* An example with futures *)
+
+module[A] prompt : unit -> string future =
+  \_:unit. newFuture getLine
+
+module[C] printDots : int -> int -> unit =
+  \count:int.
+    \delay:int.
+      if le count 0
+        then ()
+        else
+          putStr ".";
+          flush ();
+          threadDelay (mul 1000 delay);
+          printDots (sub count 1) delay
+
+module[A] main : string -> unit =
+  \message: string.
+    putStrLn message;
+    let future = prompt () in
+      printDots 80 20;
+      putStrLn "";
+      putStrLn (getFuture future)
+
+in main "whadday say? "
