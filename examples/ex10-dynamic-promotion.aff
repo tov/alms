@@ -1,4 +1,4 @@
-(* A Lying Dynamic Promotion (like ex8.aff -- blame inc) *)
+(* A Lying Dynamic Promotion (like ex8.aff -- blame inc(:>)) *)
 
 module[C] ap : (int -> int) -> int -> int =
   \f: int -> int.
@@ -9,7 +9,7 @@ module[A] inc : int -> int =
   \y: int.
     (\g: int -o int.
        (ap : (int -> int) -> int -> int
-           :> (int -o int) -> int -o int) g y)
+           :> (int -o int) -> int -o int) g y)   (* This cast goes bad *)
     (\z: int. add z 1)
 
 in printInt (inc 5)

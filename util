@@ -29,6 +29,9 @@ while [ -n "$1" ]; do
       shift
       ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
       ex -c "/^Version: /s/\\(: *\\).*/\\1$version/|:wq" affine.cabal
+      $0 showVersion
+      ;;
+    showVersion)
       grep -i '^version' Makefile affine.cabal
       ;;
     *)

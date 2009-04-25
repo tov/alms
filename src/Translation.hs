@@ -7,26 +7,30 @@ import Env
 
 type MEnv = Env Var Mod
 
+-- Parties to contracts are module names, but it's worth
+-- keeping them separate from regular variables.
+newtype Party = Party { unParty :: Var }
+
 -- Translate a program by adding contracts.
 -- Also performs some *trivial* optimizations.
 translate :: Prog -> Prog
 translate (Prog ms e) =
   Prog (map (transMod menv) ms)
-       (transExpr menv (Var "*main*") e)
+       (transExpr menv (Party (Var "*main*")) e)
   where menv = fromList [ (modName m, m) | m <- ms ]
 
 transMod :: MEnv -> Mod -> Mod
 transMod menv (MdC x t e) =
-  MdC x t (transExpr menv x e)
+  MdC x t (transExpr menv (Party x) e)
 transMod menv (MdA x t e) =
-  MdC x (atype2ctype t) (transExpr menv x e)
+  MdC x (atype2ctype t) (transExpr menv (Party x) e)
 transMod menv (MdInt x t y)   =
   MdC x (atype2ctype t) $
-    exLet' z (transExpr menv x (exVar y :: Expr C)) $
-      a y x z t
+    exLet' z (transExpr menv (Party x) (exVar y :: Expr C)) $
+      a (Party y) (Party x) z t
     where z = y /./ "z"
 
-transExpr :: Language w => MEnv -> Var -> Expr w -> Expr C
+transExpr :: Language w => MEnv -> Party -> Expr w -> Expr C
 transExpr menv neg = te where
   tem menv' = transExpr menv' neg
   te e0 = case expr' e0 of
@@ -52,12 +56,12 @@ reifyLang1 :: Language w => f w -> LangRep w
 reifyLang1 _ = reifyLang
 
 -- How do we refer to a variable from a given language?
-transVar :: LangRep w -> MEnv -> Var -> Var -> Expr C
+transVar :: LangRep w -> MEnv -> Party -> Var -> Expr C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
-    (C, Just (MdA _ t _))   -> c neg x x t
-    (C, Just (MdInt _ t _)) -> c neg x x t
-    (A, Just (MdC _ t _))   -> a neg x x (ctype2atype t)
+    (C, Just (MdA _ t _))   -> c neg (Party x) x t
+    (C, Just (MdInt _ t _)) -> c neg (Party x) x t
+    (A, Just (MdC _ t _))   -> a neg (Party x) x (ctype2atype t)
     _                       -> exVar x
 
 -- Translate a cast ("dynamic promotion")
@@ -70,22 +74,23 @@ transVar lang menv neg x =
 --    follows t and the context follows ta.  Thus, we need ensure that
 --    e follows ta and that the context follows t.
 --
-transCast :: Language w => Var -> Expr C -> Type w -> Type A -> Expr C
+transCast :: Language w => Party -> Expr C -> Type w -> Type A -> Expr C
 transCast neg e t' ta =
   exLet' y e $
-    exLet' z (a neg neg y ta) $   -- protect the value
+    exLet' z (a neg pos y ta) $   -- protect the value
       langCase t'
-        (\_ -> c neg neg z ta)    -- protect the context, or
-        (\t -> c neg neg z t)     -- protect the context
-  where y = neg /./ "y"
-        z = neg /./ "z"
+        (\_ -> c neg pos z ta)    -- protect the context, or
+        (\t -> c neg pos z t)     -- protect the context
+  where y = unParty neg /./ "y"
+        z = unParty neg /./ "z"
+        pos = neg /^/ "(:>)"
 
 -- Given negative and positive blame labels, the name of an A
 -- language variable we wish to protect, and the A type the variable
 -- should have, generates an expression that projects that variable.
 --
 -- This wrapper protects the positive party.
-c :: Var -> Var -> Var -> Type A -> Expr C
+c :: Party -> Party -> Var -> Type A -> Expr C
 c _   _   x (TyApp n []) | n `elem` transparent = exVar x
 c neg pos x (TyApp "->" [s1, s2]) =
   exAbs' y (atype2ctype s1) $
@@ -115,7 +120,7 @@ c neg _   x _ =
 -- should have, generates an expression that projects that variable.
 --
 -- This wrapper protects the negative party.
-a :: Var -> Var -> Var -> Type A -> Expr C
+a :: Party -> Party -> Var -> Type A -> Expr C
 a _   _   x (TyApp n [])       | n `elem` transparent = exVar x
 a neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
   exAbs' y (atype2ctype s1) $
@@ -132,8 +137,8 @@ createContract = exApp (exCon "ref")
 
 -- Given a variable containing a reference cell, generate code
 -- to check it
-checkContract :: Var -> Var -> String -> Expr C
-checkContract x who what =
+checkContract :: Var -> Party -> String -> Expr C
+checkContract x (Party who) what =
   exLetPair (d, f) (exApp (exCon "swap")
                           (exPair (exVar x)
                                   (blameFun (show who) what))) $
@@ -152,6 +157,9 @@ blameFun who what =
 -- Sort of a gensym -- safe in the context where we use it.
 (/./)      :: Var -> String -> Var
 Var v /./ s = Var (v ++ '#' : s)
+
+(/^/)      :: Party -> String -> Party
+Party (Var v) /^/ s = Party (Var (v ++ s))
 
 tyUnit :: Type C
 tyUnit  = tyGround "unit"
