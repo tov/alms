@@ -42,7 +42,7 @@ transExpr menv neg = te where
     ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =-= x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExSeq e1 e2 -> exSeq (te e1) (te e2)
-    ExCast e1 t ta -> transCast (reifyLang1 e0) neg (te e1) t ta
+    ExCast e1 t ta -> transCast neg (te e1) t ta
 
 type2ctype :: Language w => Type w -> Type C
 type2ctype t = langCase t id atype2ctype
@@ -61,19 +61,24 @@ transVar lang menv neg x =
     _                       -> exVar x
 
 -- Translate a cast ("dynamic promotion")
-transCast :: LangRep w -> Var -> Expr C -> Type w -> Type A -> Expr C
-transCast C neg e _ ta =
+--
+--  - In C, given (e : t :> ta), we know that e follows t, but we have
+--    no reason to believe it follows ta, nor does its context.  Thus,
+--    we protect in both directions by ta.
+--
+--  - In A, given (e : t :> ta), we know from A's type system that e
+--    follows t and the context follows ta.  Thus, we need ensure that
+--    e follows ta and that the context follows t.
+--
+transCast :: Language w => Var -> Expr C -> Type w -> Type A -> Expr C
+transCast neg e t' ta =
   exLet' y e $
-    exLet' z (a neg neg y ta) $
-      c neg neg z ta
-    where y = neg /./ "y"
-          z = neg /./ "z"
-transCast A neg e t ta =
-  exLet' y e $
-    exLet' z (a neg neg y ta) $
-      c neg neg z t
-    where y = neg /./ "y"
-          z = neg /./ "z"
+    exLet' z (a neg neg y ta) $   -- protect the value
+      langCase t'
+        (\_ -> c neg neg z ta)    -- protect the context, or
+        (\t -> c neg neg z t)     -- protect the context
+  where y = neg /./ "y"
+        z = neg /./ "z"
 
 -- Given negative and positive blame labels, the name of an A
 -- language variable we wish to protect, and the A type the variable
