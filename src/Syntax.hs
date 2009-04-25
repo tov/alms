@@ -17,7 +17,6 @@ module Syntax (
 
   PO(..),
 
-  tiNothing, tiArr, tiLol, tiPair,
   tyNothing, tyArr, tyLol, tyPair, tyGround,
   tienv, tcinfo, qualifier,
   transparent, funtypes, ctype2atype, atype2ctype,
@@ -324,21 +323,23 @@ instance Language A where
 --- Syntax Utils
 ---
 
-tiNothing, tiArr, tiLol, tiRef, tiPair :: TyInfo
-
-tiNothing = TyInfo  (repeat Invariant) (const Qu)
-tiArr     = TyInfo  [-1, 1] (const Qu)
-tiLol     = TyInfo  [-1, 1] (const Qa)
-tiRef     = TyInfo  [Invariant] (const Qa)
-tiPair    = TyInfo  [1, 1] (\[q1, q2] -> q1 \/ q2)
-
 tienv         :: Env String TyInfo
 tienv          = fromList [
-                   ("*",   tiPair),
-                   ("->",  tiArr),
-                   ("-o",  tiLol),
-                   ("ref", tiRef)
+                   ("*",      pair),
+                   ("->",     arr),
+                   ("-o",     lol),
+                   ("ref",    ref),
+                   ("thread", thread)
                 ]
+  where
+  arr     = TyInfo [-1, 1] (const Qu)
+  lol     = TyInfo [-1, 1] (const Qa)
+  ref     = TyInfo [Invariant] (const Qa)
+  pair    = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
+  thread  = TyInfo [] (const Qa)
+
+tiNothing :: TyInfo
+tiNothing = TyInfo (repeat Invariant) (const Qu)
 
 tcinfo :: String -> TyInfo
 tcinfo s = case tienv =.= s of

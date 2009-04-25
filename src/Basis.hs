@@ -13,6 +13,7 @@ import Ppr (text)
 import IO (hFlush, stdout)
 import Data.IORef (IORef, newIORef, atomicModifyIORef)
 import Data.Typeable
+import qualified Control.Concurrent as CC
 
 -- For references (and printing them)
 newtype Ref = Ref { unRef :: IORef Value }
@@ -21,6 +22,11 @@ newtype Ref = Ref { unRef :: IORef Value }
 instance Valuable Ref where
   veq = (==)
   vpprPrec _ _ = text "#<ref>"
+
+newtype Thread = Thread { unThread :: CC.ThreadId }
+  deriving (Eq, Typeable)
+instance Valuable Thread where
+  vpprPrec _ = text . show . unThread
 
 basis :: [Entry]
 basis  = [
@@ -74,12 +80,8 @@ basis  = [
     fun "flush"    -:: "unit -> unit"
       -= \() -> hFlush stdout,
 
-    fun "#blame" -: "string -> string -> unit"
-                 -: ""
-      -= \who what -> fail $ "Contract violation: " ++
-                             who ++ ": " ++
-                             what :: IO (),
-
+    fun "eqStr"    -:: "string -> string -> bool"
+      -= ((==) :: String -> String -> Bool),
     fun "putStr"   -:: "string -> unit"
       -= putStr,
     fun "putStrLn" -:: "string -> unit"
@@ -89,6 +91,24 @@ basis  = [
     fun "explode"  -:: "string -> int list"
       -= map (vinj . char2integer),
     fun "implode"  -:: "int list -> string"
-      -= vinj . map (integer2char . vprj)
+      -= vinj . map (integer2char . vprj),
+
+    fun "threadFork" -: ""
+                     -: "(unit -o unit) -> thread"
+      -= \(VaFun _ f) -> Thread `fmap` CC.forkIO (f vaUnit >> return ()),
+    fun "threadKill" -: ""
+                     -: "thread -> unit"
+      -= CC.killThread . unThread,
+    fun "threadDelay" -:: "int -> unit"
+      -= CC.threadDelay . (fromIntegral :: Integer -> Int),
+    fun "printThread" -: ""
+                      -: "thread -> thread"
+      -= \(Thread t) -> do print t; return (Thread t),
+
+    fun "#blame" -: "string -> string -> unit"
+                 -: ""
+      -= \who what -> fail $ "Contract violation: " ++
+                             who ++ ": " ++
+                             what :: IO ()
   ]
 

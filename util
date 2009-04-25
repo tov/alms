@@ -17,6 +17,13 @@ while [ -n "$1" ]; do
     edit)
       ssh $host -t vim $remote/index.html
       ;;
+    mv)
+      src="$1"; shift
+      dst="$1"; shift
+      git mv "$src" "$dst" &&
+      mv "$dst" "$src" &&
+      svn mv "$src" "$dst"
+      ;;
     version)
       version="$1"
       shift
