@@ -88,9 +88,14 @@ WHAT'S INTERESTING?
   This implementation includes dynamic promotions (and derelictions,
   actually), which are coercions that insert dynamic checks.  It
   currently works only for function types, not for pairs nor references.
-  The syntax is (e :> t) where e is an expression and t is an A type.
-  In the A sublanguage, the type of the expression is t, and a contract
-  ensures that e actually conforms to t.  In the C sublanguage, note
-  that t is still an A type; the type of the expression is just the type
-  of e, but it inserts a dynamic check.
+  The syntax is (e :> t1 : t2) where e is an expression, t1 is its
+  actual type, and t2 is an A type to coerce it to.
+
+   - In the A sublanguage, the type of the expression is t2, and a
+     contract ensures that e and its context both actually conform to
+     t2.
+
+   - In the C sublanguage, note that t2 is still an A type; the type of
+     the expression is still t1, but it inserts a dynamic check that e
+     and its context both conform to t2.
 
