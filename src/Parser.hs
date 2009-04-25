@@ -167,9 +167,11 @@ exprp = expr0 where
   exprN1 = do
     e1 <- expr0
     choice
-      [ do reservedOp tok ":>"
-           t <- typep
-           return (exCast e1 t),
+      [ do colon tok
+           t1 <- typep
+           reservedOp tok ":>"
+           t2 <- typep
+           return (exCast e1 t1 t2),
         do comma tok
            e2 <- expr0
            return (exPair e1 e2),

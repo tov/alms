@@ -22,7 +22,9 @@ transMod menv (MdA x t e) =
   MdC x (atype2ctype t) (transExpr menv x e)
 transMod menv (MdInt x t y)   =
   MdC x (atype2ctype t) $
-    transCast A x (transExpr menv x (exVar y :: Expr C)) t
+    exLet' z (transExpr menv x (exVar y :: Expr C)) $
+      a y x z t
+    where z = y /./ "z"
 
 transExpr :: Language w => MEnv -> Var -> Expr w -> Expr C
 transExpr menv neg = te where
@@ -40,7 +42,7 @@ transExpr menv neg = te where
     ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =-= x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExSeq e1 e2 -> exSeq (te e1) (te e2)
-    ExCast e1 t -> transCast (reifyLang1 e0) neg (te e1) t
+    ExCast e1 t ta -> transCast (reifyLang1 e0) neg (te e1) t ta
 
 type2ctype :: Language w => Type w -> Type C
 type2ctype t = langCase t id atype2ctype
@@ -59,17 +61,25 @@ transVar lang menv neg x =
     _                       -> exVar x
 
 -- Translate a cast ("dynamic promotion")
-transCast :: LangRep w -> Var -> Expr C -> Type A -> Expr C
-transCast C neg e t =
-  transCast A neg (exLet' z e $ c neg neg z t) t
-    where z = neg /./ "c"
-transCast A neg e t =
-  exLet' z e $ a neg neg z t
-    where z = neg /./ "a"
+transCast :: LangRep w -> Var -> Expr C -> Type w -> Type A -> Expr C
+transCast C neg e _ ta =
+  exLet' y e $
+    exLet' z (a neg neg y ta) $
+      c neg neg z ta
+    where y = neg /./ "y"
+          z = neg /./ "z"
+transCast A neg e t ta =
+  exLet' y e $
+    exLet' z (a neg neg y ta) $
+      c neg neg z t
+    where y = neg /./ "y"
+          z = neg /./ "z"
 
 -- Given negative and positive blame labels, the name of an A
 -- language variable we wish to protect, and the A type the variable
 -- should have, generates an expression that projects that variable.
+--
+-- This wrapper protects the positive party.
 c :: Var -> Var -> Var -> Type A -> Expr C
 c _   _   x (TyApp n []) | n `elem` transparent = exVar x
 c neg pos x (TyApp "->" [s1, s2]) =
@@ -98,6 +108,8 @@ c neg _   x _ =
 -- Given negative and positive blame labels, the name of a C
 -- language variable we wish to protect, and the A type the variable
 -- should have, generates an expression that projects that variable.
+--
+-- This wrapper protects the negative party.
 a :: Var -> Var -> Var -> Type A -> Expr C
 a _   _   x (TyApp n [])       | n `elem` transparent = exVar x
 a neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =

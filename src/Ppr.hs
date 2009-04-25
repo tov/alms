@@ -113,11 +113,13 @@ instance Ppr (Expr w) where
       parensIf (p > precSemi) $
         sep [ pprPrec (precSemi + 1) e1 <> semi,
               pprPrec 0 e2 ]
-    ExCast e t  ->
+    ExCast e t1 t2 ->
       parensIf (p > precCast) $
         sep [ pprPrec (precCast + 1) e,
+              colon,
+              pprPrec (precCast + 1) t1,
               text ":>",
-              pprPrec (precCast + 1) t ]
+              pprPrec (precCast + 1) t2 ]
 
 pprLet :: Int -> Doc -> Expr w -> Expr w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $

@@ -8,7 +8,8 @@ module[C] ap : (int -> int) -> int -> int =
 module[A] inc : int -> int =
   \y: int.
     (\g: int -o int.
-       (ap :> (int -o int) -> int -o int) g y)
+       (ap : (int -> int) -> int -> int
+           :> (int -o int) -> int -o int) g y)
     (\z: int. add z 1)
 
 in printInt (inc 5)

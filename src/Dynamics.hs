@@ -156,7 +156,7 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
     ExSeq e1 e2            -> do
       valOf e1 m env
       valOf e2 m env
-    ExCast e1 _            ->
+    ExCast e1 _ _          ->
       valOf e1 m env
 
 instance Valuable a => Valuable [a] where

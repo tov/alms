@@ -86,7 +86,7 @@ data Expr' w = ExCon String
              | ExAbs Var (Type w) (Expr w)
              | ExApp (Expr w) (Expr w)
              | ExSeq (Expr w) (Expr w)
-             | ExCast (Expr w) (Type A)
+             | ExCast (Expr w) (Type w) (Type A)
 
 fv :: Expr w -> FV
 fv  = fv_
@@ -151,10 +151,10 @@ exSeq e1 e2 = Expr {
   expr'_ = ExSeq e1 e2
 }
 
-exCast :: Expr w -> Type A -> Expr w
-exCast e t = Expr {
+exCast :: Expr w -> Type w -> Type A -> Expr w
+exCast e t1 t2 = Expr {
   fv_    = fv e,
-  expr'_ = ExCast e t
+  expr'_ = ExCast e t1 t2
 }
 
 (|*|), (|+|) :: FV -> FV -> FV
@@ -325,18 +325,22 @@ instance Language A where
 
 tienv         :: Env String TyInfo
 tienv          = fromList [
-                   ("*",      pair),
-                   ("->",     arr),
-                   ("-o",     lol),
-                   ("ref",    ref),
-                   ("thread", thread)
+                   ("*",        pair),
+                   ("->",       arr),
+                   ("-o",       lol),
+                   ("ref",      ref),
+                   ("thread",   thread),
+                   ("future",   future),
+                   ("cofuture", cofuture)
                 ]
   where
-  arr     = TyInfo [-1, 1] (const Qu)
-  lol     = TyInfo [-1, 1] (const Qa)
-  ref     = TyInfo [Invariant] (const Qa)
-  pair    = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
-  thread  = TyInfo [] (const Qa)
+  arr      = TyInfo [-1, 1] (const Qu)
+  lol      = TyInfo [-1, 1] (const Qa)
+  ref      = TyInfo [Invariant] (const Qa)
+  pair     = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
+  thread   = TyInfo [] (const Qa)
+  future   = TyInfo [1] (const Qa)
+  cofuture = TyInfo [-1] (const Qa)
 
 tiNothing :: TyInfo
 tiNothing = TyInfo (repeat Invariant) (const Qu)
@@ -400,7 +404,9 @@ syntacticValue e = case expr' e of
   _            -> False
 
 constants :: [String]
-constants  = [ "()", "ref", "swap" ]
+constants  = [ "()", "ref", "swap", "readRef",
+               "newFuture", "getFuture",
+               "newCofuture", "putCofuture", "coroutine" ]
 
 modName :: Mod -> Var
 modName (MdA x _ _)   = x

@@ -29,6 +29,11 @@ tassert :: Monad m => Bool -> String -> m ()
 tassert True  _ = return ()
 tassert False s = terr s
 
+-- A common form of type error
+tgot :: Monad m => String -> Type w -> String -> m a
+tgot who got expected = terr $ who ++ " got " ++ show got ++
+                               " where " ++ expected ++ " expected"
+
 -- Run a partial computation, and if it fails, substitute
 -- the given failure message.
 (|!) :: Monad m => Maybe a -> String -> m a
@@ -72,7 +77,7 @@ tcExprC g0 = tc g0 where
       case t1 of
         TyApp "*" [tx, ty]
           -> tc (g =+= x =:= tx =+= y =:= ty) e2
-        _ -> terr $ "Let pair got non-pair type: " ++ show t1
+        _ -> tgot "let" t1 "pair type"
     ExAbs x t e     -> do
       te <- tc (g =+= x =:= t) e
       return (tyArr t te)
@@ -92,22 +97,28 @@ tcExprC g0 = tc g0 where
     ExSeq e1 e2   -> do
       tc g e1
       tc g e2
-    ExCast e1 t   -> do
+    ExCast e1 t ta -> do
       case t of
         TyApp n [_, _] | n `elem` funtypes -> return ()
-        _ -> terr $ "Cast requires a function type, but got" ++ show t
+        _ -> tgot "cast (:>)" t "function type"
       t1 <- tc g e1
-      tassert (t1 == atype2ctype t) $
+      tassert (t1 == t) $
+        "Mismatch in cast: declared type " ++ show t ++
+        " doesn't match actual type " ++ show t1
+      tassert (t1 == atype2ctype ta) $
         "Mismatch in cast: C type " ++ show t1 ++
         " is incompatible with A contract " ++ show t
-      return t1
+      return t
 
   tcCon "ref"  t = return (TyApp "ref" [t])
   tcCon "swap" t = case t of
                      TyApp "*" [TyApp "ref" [t0], t1] | t0 == t1
                        -> return t
-                     _ -> terr $ "swap got " ++ show t ++
-                                 " where (A ref * A) expected"
+                     _ -> tgot "swap" t "'a ref * 'a"
+  tcCon "readRef" t =
+    case t of
+      TyApp "ref" [t'] -> return t'
+      _                -> tgot "readRef" t "'a ref"
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
 
@@ -180,15 +191,18 @@ tcExprA g0 = tc g0 where
     ExSeq e1 e2   -> do
       tc g e1
       tc g e2
-    ExCast e1 t   -> do
+    ExCast e1 t ta -> do
       case t of
         TyApp n [_, _] | n `elem` funtypes -> return ()
         _ -> terr $ "Cast requires a function type, but got" ++ show t
       t1 <- tc g e1
-      t1 \/? t |!
+      tassert (t1 <: t) $
+        "Mismatch in cast: got " ++ show t1 ++
+        " where " ++ show t ++ " expected"
+      t1 \/? ta |!
         "Mismatch in cast: types " ++ show t1 ++
         " and " ++ show t ++ " are incompatible"
-      return t
+      return ta
 
   unworthy g e =
     any (\x -> case g =.= x of
@@ -201,8 +215,37 @@ tcExprA g0 = tc g0 where
                      TyApp "*" [TyApp "ref" [t0], t1]
                        -> return (TyApp "*"
                                         [TyApp "ref" [t1], t0])
-                     _ -> terr $ "swap got " ++ show t ++
-                                 " where (A ref * A) expected"
+                     _ -> tgot "swap" t "'a ref * 'b"
+  tcCon "readRef" t =
+    case t of
+      TyApp "ref" [t'] | qualifier t' <: Qu
+        -> return t'
+      _ -> tgot "readRef" t "'a ref [unlimited 'a]"
+  tcCon "newFuture" t =
+    case t of
+      TyApp n [TyApp "unit" [], t'] | n `elem` funtypes
+        -> return (TyApp "future" [t'])
+      _ -> tgot "newFuture" t "unit -o 'a"
+  tcCon "getFuture" t =
+    case t of
+      TyApp "future" [t'] -> return t'
+      _                   -> tgot "getFuture" t "'a future"
+  tcCon "newCofuture" t =
+    case t of
+      TyApp n [TyApp "future" [t'], TyApp "unit" []] | n `elem` funtypes
+        -> return (TyApp "cofuture" [t'])
+      _ -> tgot "newCofuture" t "'a future -o unit"
+  tcCon "putCofuture" t =
+    case t of
+      TyApp "cofuture" [t'] -> return (tyLol t' (tyGround "unit"))
+      _                     -> tgot "putCofuture" t "'a cofuture"
+  tcCon "coroutine" t =
+    case t of
+      TyApp n [TyApp "*" [TyApp "future" [ta],
+                          TyApp "cofuture" [tb]],
+               TyApp "unit" []] | n `elem` funtypes
+        -> return $ TyApp "*" [TyApp "future" [tb], TyApp "cofuture" [ta]]
+      _ -> tgot "coroutine" t "'a future * 'b cofuture -o unit"
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
 

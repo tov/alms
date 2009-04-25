@@ -1,4 +1,7 @@
 {-#
+  OPTIONS_GHC -fno-warn-orphans
+  #-}
+{-#
   LANGUAGE DeriveDataTypeable
   #-}
 module Basis (
@@ -11,22 +14,10 @@ import Dynamics
 import Ppr (text)
 
 import IO (hFlush, stdout)
-import Data.IORef (IORef, newIORef, atomicModifyIORef)
+import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
 import qualified Control.Concurrent as CC
-
--- For references (and printing them)
-newtype Ref = Ref { unRef :: IORef Value }
-  deriving (Eq, Typeable)
-
-instance Valuable Ref where
-  veq = (==)
-  vpprPrec _ _ = text "#<ref>"
-
-newtype Thread = Thread { unThread :: CC.ThreadId }
-  deriving (Eq, Typeable)
-instance Valuable Thread where
-  vpprPrec _ = text . show . unThread
+import qualified Control.Concurrent.MVar as MV
 
 basis :: [Entry]
 basis  = [
@@ -41,6 +32,30 @@ basis  = [
       -= (\(vr, v1) -> do
             v0 <- atomicModifyIORef (unRef (vprj vr)) (\v0 -> (v1, v0))
             return (vr, v0)),
+    fun "readRef" -:: ""
+      -= readIORef . unRef,
+
+    fun "newFuture" -:: ""    -- (unit -o 'a) -> 'a future
+      -= \f -> do
+            future <- MV.newEmptyMVar
+            CC.forkIO (vapp f () >>= MV.putMVar future)
+            return (MVar future),
+    fun "getFuture" -:: ""    -- 'a future -> 'a
+      -= MV.takeMVar . unMVar,
+    fun "newCofuture" -:: ""  -- ('a future -o unit) -> 'a cofuture
+      -= \f -> do
+            future <- MV.newEmptyMVar
+            CC.forkIO (vapp f (MVar future) >> return ())
+            return (MVar future),
+    fun "putCofuture" -:: ""  -- 'a cofuture -> 'a -o unit
+      -= \future value -> MV.putMVar (unMVar future) value,
+    fun "coroutine"   -:: ""  -- ('a future * 'b cofuture -o unit)
+                              -- -> 'b future * 'a cofuture
+      -= \f -> do
+           a <- MV.newEmptyMVar
+           b <- MV.newEmptyMVar
+           CC.forkIO (vapp f (MVar a, MVar b) >> return ())
+           return (MVar b, MVar a),
 
     ---
     --- Ordinary constants:
@@ -95,15 +110,15 @@ basis  = [
 
     fun "threadFork" -: ""
                      -: "(unit -o unit) -> thread"
-      -= \(VaFun _ f) -> Thread `fmap` CC.forkIO (f vaUnit >> return ()),
+      -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
     fun "threadKill" -: ""
                      -: "thread -> unit"
-      -= CC.killThread . unThread,
+      -= CC.killThread . unVinj,
     fun "threadDelay" -:: "int -> unit"
       -= CC.threadDelay . (fromIntegral :: Integer -> Int),
     fun "printThread" -: ""
                       -: "thread -> thread"
-      -= \(Thread t) -> do print t; return (Thread t),
+      -= \t -> do print (t :: Vinj CC.ThreadId); return t,
 
     fun "#blame" -: "string -> string -> unit"
                  -: ""
@@ -111,4 +126,19 @@ basis  = [
                              who ++ ": " ++
                              what :: IO ()
   ]
+
+-- For references (and printing them)
+newtype Ref = Ref { unRef :: IORef Value }
+  deriving (Eq, Typeable)
+
+instance Valuable Ref where
+  veq = (==)
+  vpprPrec _ _ = text "#<ref>"
+
+newtype MVar = MVar { unMVar :: MV.MVar Value }
+  deriving (Eq, Typeable)
+
+instance Valuable MVar where
+  veq = (==)
+  vpprPrec _ _ = text "#<(co)future>"
 

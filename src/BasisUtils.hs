@@ -1,8 +1,9 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module BasisUtils (
-  Entry(..), Nonce(..),
+  Entry(..), Nonce(..), Vinj(..),
   MkFun(..),
   fun, binArith, val,
+  vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
 ) where
@@ -73,16 +74,31 @@ infixl 5 -:, -::
 infixr 0 -=
 
 -- For nonce values (and printing them)
-data Nonce = Nonce String
+newtype Nonce = Nonce String
   deriving (Eq, Typeable)
 
 instance Valuable Nonce where
   veq                  = (==)
   vpprPrec _ (Nonce s) = text ("#<" ++ s ++ ">")
 
+-- For other arbitrary values:
+newtype Vinj a = Vinj { unVinj :: a }
+  deriving (Eq, Typeable)
+
+instance (Eq a, Show a, Typeable a) => Valuable (Vinj a) where
+  veq        = (==)
+  vpprPrec _ = text . show
+
+instance Show a => Show (Vinj a) where
+  showsPrec p = showsPrec p . unVinj
+
 -- Make binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry
 binArith name = fun name "int -> int -> int" "int -> int -> int"
+
+vapp :: Valuable a => Value -> a -> IO Value
+vapp  = \(VaFun _ f) x -> f (vinj x)
+infixr 0 `vapp`
 
 basis2venv :: [Entry] -> Env Var Value
 basis2venv es =
