@@ -107,7 +107,8 @@ c neg pos x (TyApp "-o" [s1, s2]) =
   where u = x /./ "u"
         y = x /./ "y"
         z = x /./ "z"
-c neg _   x _ =
+c neg _   x ta | qualifier ta <: Qu = exVar x
+               | otherwise =
   exLet' u createContract $
     exAbs' y tyUnit $
       exSeq (checkContract u neg "passed one-shot value twice") $
@@ -128,7 +129,8 @@ a neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
       a neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-a _   _   x _ = exApp (exVar x) exUnit
+a _   _   x ta | qualifier ta <: Qu = exVar x
+               | otherwise = exApp (exVar x) exUnit
 
 -- Generate an expression to create an initial (blessed) cell
 createContract :: Expr C

@@ -84,6 +84,8 @@ basis  = [
     fun "tl"   -:: "int list -> int list"
       -= (tail :: [Value] -> [Value]),
 
+    fun "showInt"  -:: "int -> string"
+      -= (return . show :: Integer -> IO String),
     fun "printInt" -:: "int -> unit"
       -= (print :: Integer -> IO ()),
     fun "printStr" -:: "string -> unit"

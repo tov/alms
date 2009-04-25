@@ -1,0 +1,26 @@
+(* Affine opaque objects (contract violation: blame double) *)
+
+module[A] makePair : (int -> int) -> int -> (int -o int) * int =
+  \f: int -> int.
+    \x: int.
+      (f, x)
+
+module[A] doPair : (int -o int) * int -> int =
+  \pair: (int -o int) * int.
+    let (f, x) = pair in
+    let result = f x in
+      putStr "f(";
+      putStr (showInt x);
+      putStr ") = ";
+      putStrLn (showInt result);
+      result
+
+module[C] double : int -> {(int -o int) * int} =
+  \z: int.
+    makePair (mul 2) z
+(* returns an affine object, which it then allows main to use
+   twice. *)
+
+in let pair = double 4 in
+     doPair pair;
+     printInt (doPair pair)
