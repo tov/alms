@@ -82,8 +82,8 @@ WHAT'S INTERESTING?
 
   See Translate.hs for how this is done.  In short, it rewrites
   inter-language module references by wrapping them with checks.  The
-  functions "a" and "c" in that file are the wrapping functions in
-  Figure 12, extended to handle a few more types.
+  functions "ac" and "ca" in that file are the wrapping functions
+  "A" and "C" in Figure 12, extended to handle a few more types.
 
   This implementation includes dynamic promotions (and derelictions,
   actually), which are coercions that insert dynamic checks.  It

@@ -27,7 +27,7 @@ transMod menv (MdA x t e) =
 transMod menv (MdInt x t y)   =
   MdC x (atype2ctype t) $
     exLet' z (transExpr menv (Party x) (exVar y :: Expr C)) $
-      a (Party y) (Party x) z t
+      ac (Party y) (Party x) z t
     where z = y /./ "z"
 
 transExpr :: Language w => MEnv -> Party -> Expr w -> Expr C
@@ -59,9 +59,9 @@ reifyLang1 _ = reifyLang
 transVar :: LangRep w -> MEnv -> Party -> Var -> Expr C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
-    (C, Just (MdA _ t _))   -> c neg (Party x) x t
-    (C, Just (MdInt _ t _)) -> c neg (Party x) x t
-    (A, Just (MdC _ t _))   -> a neg (Party x) x (ctype2atype t)
+    (C, Just (MdA _ t _))   -> ca neg (Party x) x t
+    (C, Just (MdInt _ t _)) -> ca neg (Party x) x t
+    (A, Just (MdC _ t _))   -> ac neg (Party x) x (ctype2atype t)
     _                       -> exVar x
 
 -- Translate a cast ("dynamic promotion")
@@ -77,10 +77,10 @@ transVar lang menv neg x =
 transCast :: Language w => Party -> Expr C -> Type w -> Type A -> Expr C
 transCast neg e t' ta =
   exLet' y e $
-    exLet' z (a neg pos y ta) $   -- protect the value
+    exLet' z (ac neg pos y ta) $   -- protect the value
       langCase t'
-        (\_ -> c neg pos z ta)    -- protect the context, or
-        (\t -> c neg pos z t)     -- protect the context
+        (\_ -> ca neg pos z ta)    -- protect the context, or
+        (\t -> ca neg pos z t)     -- protect the context
   where y = unParty neg /./ "y"
         z = unParty neg /./ "z"
         pos = neg /^/ "(:>)"
@@ -89,26 +89,27 @@ transCast neg e t' ta =
 -- language variable we wish to protect, and the A type the variable
 -- should have, generates an expression that projects that variable.
 --
--- This wrapper protects the positive party.
-c :: Party -> Party -> Var -> Type A -> Expr C
-c _   _   x (TyApp n []) | n `elem` transparent = exVar x
-c neg pos x (TyApp "->" [s1, s2]) =
+-- This wrapper protects the positive party and may blame the
+-- negative party.
+ca :: Party -> Party -> Var -> Type A -> Expr C
+ca _   _   x (TyApp n []) | n `elem` transparent = exVar x
+ca neg pos x (TyApp "->" [s1, s2]) =
   exAbs' y (atype2ctype s1) $
-    exLet' z (exApp (exVar x) (a pos neg y s1)) $
-      c neg pos z s2
+    exLet' z (exApp (exVar x) (ac pos neg y s1)) $
+      ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-c neg pos x (TyApp "-o" [s1, s2]) =
+ca neg pos x (TyApp "-o" [s1, s2]) =
   exLet u createContract $
     exAbs y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
-        exLet' z (exApp (exVar x) (a pos neg y s1)) $
-          c neg pos z s2
+        exLet' z (exApp (exVar x) (ac pos neg y s1)) $
+          ca neg pos z s2
   where u = x /./ "u"
         y = x /./ "y"
         z = x /./ "z"
-c neg _   x ta | qualifier ta <: Qu = exVar x
-               | otherwise =
+ca neg _   x ta | qualifier ta <: Qu = exVar x
+                | otherwise =
   exLet' u createContract $
     exAbs' y tyUnit $
       exSeq (checkContract u neg "passed one-shot value twice") $
@@ -120,17 +121,18 @@ c neg _   x ta | qualifier ta <: Qu = exVar x
 -- language variable we wish to protect, and the A type the variable
 -- should have, generates an expression that projects that variable.
 --
--- This wrapper protects the negative party.
-a :: Party -> Party -> Var -> Type A -> Expr C
-a _   _   x (TyApp n [])       | n `elem` transparent = exVar x
-a neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
+-- This wrapper protects the negative party and may blame the
+-- positive party.
+ac :: Party -> Party -> Var -> Type A -> Expr C
+ac _   _   x (TyApp n [])       | n `elem` transparent = exVar x
+ac neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
   exAbs' y (atype2ctype s1) $
-    exLet' z (exApp (exVar x) (c pos neg y s1)) $
-      a neg pos z s2
+    exLet' z (exApp (exVar x) (ca pos neg y s1)) $
+      ac neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-a _   _   x ta | qualifier ta <: Qu = exVar x
-               | otherwise = exApp (exVar x) exUnit
+ac _   _   x ta | qualifier ta <: Qu = exVar x
+                | otherwise = exApp (exVar x) exUnit
 
 -- Generate an expression to create an initial (blessed) cell
 createContract :: Expr C
