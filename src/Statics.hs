@@ -89,12 +89,16 @@ tcExprC = tc S.empty where
       _             -> do
         t1 <- tc d g e1
         t2 <- tc d g e2
-        case t1 of
+        let (tvs, body) = unfoldTyAll t1
+        case body of
           TyCon "->" [ta, tr] -> do
-            tassert (ta == t2) $
+            subst <- tryUnify tvs ta t2
+            let ta' = subst ta
+                tr' = subst tr
+            tassert (ta' == t2) $
               "Mismatch in application: got " ++
-              show t2 ++ " where " ++ show ta ++ " expected"
-            return tr
+              show t2 ++ " where " ++ show ta' ++ " expected"
+            return tr'
           _ -> terr $ "Mismatch in application: got " ++
                        show t1 ++ " where function type expected"
     ExTAbs tv e   -> do
@@ -234,6 +238,42 @@ tcExprA = tc S.empty where
   -- that's okay . . . for now.
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
+
+-- Given a list of type variables tvs, an type t in which tvs
+-- may be free, and a type t', tries to substitute for tvs in t
+-- to produce a type that *might* unify with t'
+tryUnify :: (Monad m, Language w) =>
+             [TyVar] -> Type w -> Type w -> m (Type w -> Type w)
+tryUnify [] _ _        = return id
+tryUnify (tv:tvs) t t' =
+  case findSubst tv t t' of
+    tguess:_ -> do
+                  let subst' = tysubst tv tguess
+                  subst <- tryUnify tvs (subst' t) t'
+                  return (subst . subst')
+    _        -> terr $
+                  "Cannot guess type application to unify " ++
+                  show t ++ " and " ++ show t'
+
+-- Given a type variable tv, type t in which tv may be free,
+-- and a second type t', finds a plausible candidate to substitute
+-- for tv to make t and t' unify.  (The answer it finds doesn't
+-- have to be correct.
+findSubst :: Language w => TyVar -> Type w -> Type w -> [Type w]
+findSubst tv = fs where
+  fs :: Language w => Type w -> Type w -> [Type w]
+  fs (TyVar tv') t' | tv == tv'
+    = [t']
+  fs (TyCon _ ts) (TyCon _ ts')
+    = concat (zipWith fs ts ts')
+  fs (TyAll tv0 t) (TyAll tv0' t') | tv /= tv0
+    = [ tr | tr <- fs t t', tr /= TyVar tv0' ]
+  fs (TyC t) (TyC t')
+    = concat (zipWith fs (cgetas t) (cgetas t'))
+  fs (TyA t) (TyA t')
+    = concat (zipWith fs (agetcs t) (agetcs t'))
+  fs _ _
+    = []
 
 -- Check type for closed-ness
 tcType :: Monad m => D -> Type w -> m ()

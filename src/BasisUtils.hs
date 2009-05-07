@@ -2,7 +2,7 @@
 module BasisUtils (
   Entry(..), Nonce(..), Vinj(..),
   MkFun(..),
-  fun, binArith, val, tabs,
+  fun, binArith, val, pval, pfun,
   vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
@@ -15,7 +15,7 @@ import Syntax (Var(..))
 import Parser (pt)
 
 import Data.Typeable (Typeable)
-import Ppr (ppr, text)
+import Ppr (ppr, text, hang, char, (<>))
 
 -- Basis entries are either values with names and types, or
 -- abstract type constructors.
@@ -65,8 +65,21 @@ fun name cty aty f = Entry name cty aty (mkFun (FNNamed [text name]) f)
 val :: Valuable v => String -> String -> String -> v -> Entry
 val name cty aty v = Entry name cty aty (vinj v)
 
-tabs :: a -> () -> a
-tabs  = const
+pval :: Valuable v => Int -> String -> String -> String -> v -> Entry
+pval 0 name cty aty v = val name cty aty v
+pval n name cty aty v = mkTyAbs (pval (n - 1) name cty aty v)
+
+pfun :: (MkFun r, Valuable v) =>
+        Int -> String -> String -> String -> (v -> r) -> Entry
+pfun 0 name cty aty f = fun name cty aty f
+pfun n name cty aty f = mkTyAbs (pfun (n - 1) name cty aty f)
+
+mkTyAbs :: Entry -> Entry
+mkTyAbs entry =
+  let v     = enValue entry in
+  entry { enValue =
+            VaSus (hang (text "#<sus") 4 $ vppr v <> char '>')
+                  (return v) }
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)

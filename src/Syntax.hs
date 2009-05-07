@@ -22,7 +22,8 @@ module Syntax (
 
   tyNothing, tyArr, tyLol, tyPair, tyGround,
   tysubst, tienv, tcinfo, qualifier,
-  transparent, funtypes, ctype2atype, atype2ctype,
+  transparent, funtypes,
+  ctype2atype, atype2ctype, cgetas, agetcs,
 
   syntacticValue, constants, modName,
   unfoldExAbs, unfoldTyAll, unfoldExTApp
@@ -454,6 +455,20 @@ transparent  = ["string", "int", "bool", "unit"]
 -- Funtional types
 funtypes    :: [String]
 funtypes     = ["->", "-o"]
+
+cgetas :: Type C -> [Type A]
+cgetas (TyCon _ ts) = concatMap cgetas ts
+cgetas (TyVar _)    = []
+cgetas (TyAll _ t)  = cgetas t
+cgetas (TyA t)      = [t]
+cgetas _            = [] -- can't happen
+
+agetcs :: Type A -> [Type C]
+agetcs (TyCon _ ts) = concatMap agetcs ts
+agetcs (TyVar _)    = []
+agetcs (TyAll _ t)  = agetcs t
+agetcs (TyC t)      = [t]
+agetcs _            = [] -- can't happen
 
 ctype2atype :: Type C -> Type A
 ctype2atype (TyCon n ps) | n `elem` transparent

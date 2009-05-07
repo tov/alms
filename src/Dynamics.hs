@@ -12,7 +12,7 @@ import Util
 import Syntax
 import Env
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
-            parensIf, precDot, precApp)
+            parensIf, precCom, precApp)
 
 -- import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Typeable (Typeable, cast)
@@ -64,6 +64,7 @@ vcast a = case cast a of
 -- A Value is either a function (with a name), or a Haskell
 -- dynamic value with some typeclass operations
 data Value = VaFun FunName (Value -> Result)
+           | VaSus Doc Result
            | forall a. Valuable a => VaDyn a
   deriving Typeable
 
@@ -148,25 +149,30 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
       return (VaFun (FNAnonymous (ppr e))
                     (\v -> valOf e' m (env =+= x =:= v)))
     ExApp e1 e2            -> do
-      v1 <- valOf e1 m env
-      v2 <- valOf e2 m env
-      case v1 of
+      v1  <- valOf e1 m env
+      v2  <- valOf e2 m env
+      v1' <- force v1  -- Magic type application
+      case v1' of
         VaFun _ f -> f v2
         _         -> fail $ "BUG! applied non-function " ++ show v1
-                            ++ " to argument " ++ show v2
+                             ++ " to argument " ++ show v2
     ExTAbs _ e'            ->
-      return (VaFun (FNAnonymous (ppr e))
-                    (\_ -> valOf e' m env))
+      return (VaSus (hang (text "#<sus") 4 $ ppr e <> char '>')
+                    (valOf e' m env))
     ExTApp e' _            -> do
       v' <- valOf e' m env
       case v' of
-        VaFun _ f -> f (vinj ())
-        _         -> fail $ "BUG! type-applied non-function: " ++ show v'
+        VaSus _ f -> f
+        _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
     ExSeq e1 e2            -> do
       valOf e1 m env
       valOf e2 m env
     ExCast e1 _ _          ->
       valOf e1 m env
+
+force :: Value -> IO Value
+force (VaSus _ v) = v >>= force
+force v           = return v
 
 instance Valuable a => Valuable [a] where
   veq a b  = length a == length b && all2 veq a b
@@ -189,6 +195,7 @@ instance Valuable Value where
   veq (VaDyn a) b = veqDyn a b
   veq _         _ = False
   vpprPrec p (VaFun n _) = pprPrec p n
+  vpprPrec _ (VaSus n _) = n
   vpprPrec p (VaDyn v)   = vpprPrec p v
 
 instance Valuable Char where
@@ -198,7 +205,7 @@ instance Valuable Char where
 
 instance (Valuable a, Valuable b) => Valuable (a, b) where
   veq (a, b) (a', b') = veq a a' && veq b b'
-  vpprPrec p (a, b)   = parensIf (p > precDot) $
-                          sep [vpprPrec precDot a <> char ',',
-                               vpprPrec (precDot + 1) b]
+  vpprPrec p (a, b)   = parensIf (p > precCom) $
+                          sep [vpprPrec (precCom + 1) a <> char ',',
+                               vpprPrec (precCom + 1) b]
 
