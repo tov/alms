@@ -18,6 +18,7 @@ import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
 import qualified Control.Concurrent as CC
 import qualified Control.Concurrent.MVar as MV
+import Control.Monad
 
 basis :: [Entry]
 basis  = [
@@ -26,36 +27,6 @@ basis  = [
     ---
 
     val "()"  -:: "" -= (),
-    fun "ref" -:: ""
-      -= (\v -> Ref `fmap` newIORef v),
-    fun "swap" -:: ""
-      -= (\(vr, v1) -> do
-            v0 <- atomicModifyIORef (unRef (vprj vr)) (\v0 -> (v1, v0))
-            return (vr, v0)),
-    fun "readRef" -:: ""
-      -= readIORef . unRef,
-
-    fun "newFuture" -:: ""    -- (unit -o 'a) -> 'a future
-      -= \f -> do
-            future <- MV.newEmptyMVar
-            CC.forkIO (vapp f () >>= MV.putMVar future)
-            return (MVar future),
-    fun "getFuture" -:: ""    -- 'a future -> 'a
-      -= MV.takeMVar . unMVar,
-    fun "newCofuture" -:: ""  -- ('a future -o unit) -> 'a cofuture
-      -= \f -> do
-            future <- MV.newEmptyMVar
-            CC.forkIO (vapp f (MVar future) >> return ())
-            return (MVar future),
-    fun "putCofuture" -:: ""  -- 'a cofuture -> 'a -o unit
-      -= \future value -> MV.putMVar (unMVar future) value,
-    fun "coroutine"   -:: ""  -- ('a future * 'b cofuture -o unit)
-                              -- -> 'b future * 'a cofuture
-      -= \f -> do
-           a <- MV.newEmptyMVar
-           b <- MV.newEmptyMVar
-           CC.forkIO (vapp f (MVar a, MVar b) >> return ())
-           return (MVar b, MVar a),
 
     ---
     --- Ordinary constants:
@@ -63,53 +34,84 @@ basis  = [
 
     --- name    -:  ctype  -: atype   -= value
     --- name    -:: *type            -= value
+
+    -- Booleans
     val "true"  -:: "bool" -= True,
     val "false" -:: "bool" -= False,
 
+    -- "Magic" equality and print:
+    fun "eq" -:: "all 'a. 'a -> 'a -> bool"
+      -= tabs ((==) :: Value -> Value -> Bool),
+    fun "print" -:: "all 'a. 'a -> unit"
+      -= tabs (print :: Value -> IO ()),
+
+    -- Arithmetic
     binArith "add" (+),
     binArith "sub" (-),
     binArith "mul" (*),
     binArith "div" div,
-    fun "le" -: "int -> int -> bool"
-             -: "int -> int -> bool"
+    fun "le" -:: "int -> int -> bool"
       -= ((<=) :: Integer -> Integer -> Bool),
 
-    val "nil"  -:: "int list" -= ([] :: [Value]),
-    fun "cons" -:: "int -> int list -> int list"
-      -= ((:) :: Value -> [Value] -> [Value]),
-    fun "null" -:: "int list -> bool"
-      -= (null :: [Value] -> Bool),
-    fun "hd"   -:: "int list -> int"
-      -= (head :: [Value] -> Value),
-    fun "tl"   -:: "int list -> int list"
-      -= (tail :: [Value] -> [Value]),
+    fun "nil"  -: "all 'a. 'a list"
+               -: "all '<a. '<a list"
+      -= tabs ([] :: [Value]),
+    fun "cons" -: "all 'a. 'a -> 'a list -> 'a list"
+               -: "all '<a. '<a -> '<a list -> '<a list"
+      -= tabs ((:) :: Value -> [Value] -> [Value]),
+    fun "null" -:: "all 'a. 'a list -> bool"
+      -= tabs (null :: [Value] -> Bool),
+    fun "hd"   -:: "all 'a. 'a list -> 'a"
+      -= tabs (head :: [Value] -> Value),
+    fun "tl"   -:: "all 'a. 'a list -> 'a list"
+      -= tabs (tail :: [Value] -> [Value]),
+    fun "uncons" -: "all 'a. 'a list -> 'a * 'a list"
+                 -: "all '<a. '<a list -> '<a * '<a list"
+      -= tabs (liftM2 (,) head tail :: [Value] -> (Value, [Value])),
+    fun "anull" -: ""
+                -: "all '<a. '<a list -> '<a list * bool"
+      -= tabs (liftM2 (,) id null :: [Value] -> ([Value], Bool)),
 
-    fun "showInt"  -:: "int -> string"
-      -= (return . show :: Integer -> IO String),
-    fun "printInt" -:: "int -> unit"
-      -= (print :: Integer -> IO ()),
-    fun "printStr" -:: "string -> unit"
-      -= (print :: Value -> IO ()),
+    -- Strings
+    fun "explode"  -:: "string -> int list"
+      -= map (vinj . char2integer),
+    fun "implode"  -:: "int list -> string"
+      -= vinj . map (integer2char . vprj),
+    fun "toString" -:: "all 'a. 'a -> string"
+      -= tabs (return . show :: Value -> IO String),
+
+    -- I/O
     fun "putChar"  -:: "int -> unit"
       -= putChar . integer2char,
     fun "getChar"  -:: "unit -> int"
       -= \() -> fmap char2integer getChar,
     fun "flush"    -:: "unit -> unit"
       -= \() -> hFlush stdout,
-
-    fun "eqStr"    -:: "string -> string -> bool"
-      -= ((==) :: String -> String -> Bool),
     fun "putStr"   -:: "string -> unit"
       -= putStr,
     fun "putStrLn" -:: "string -> unit"
       -= putStrLn,
     fun "getLine"  -:: "unit -> string"
       -= \() -> getLine,
-    fun "explode"  -:: "string -> int list"
-      -= map (vinj . char2integer),
-    fun "implode"  -:: "int list -> string"
-      -= vinj . map (integer2char . vprj),
 
+    -- References
+    fun "ref" -: "all 'a. 'a -> 'a ref"
+              -: "all '<a. '<a -> '<a ref"
+      -= (\() v -> Ref `fmap` newIORef v),
+    fun "swap" -: ""
+               -: "all '<a '<b. '<a ref * '<b -> '<b ref * '<a"
+      -= (\() () (vr, v1) -> do
+            v0 <- atomicModifyIORef (unRef (vprj vr)) (\v0 -> (v1, v0))
+            return (vr, v0)),
+    fun "takeRef" -: "all 'a. 'a ref -> 'a"
+                  -: "all '<a. '<a ref -> '<a"
+      -= (\() r -> readIORef (unRef r)),
+    fun "readRef" -:: "all 'a. 'a ref -> 'a ref * 'a"
+      -= (\() r -> do
+            v <- readIORef (unRef r)
+            return (r, v)),
+
+    -- Threads
     fun "threadFork" -: ""
                      -: "(unit -o unit) -> thread"
       -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
@@ -122,6 +124,27 @@ basis  = [
                       -: "thread -> thread"
       -= \t -> do print (t :: Vinj CC.ThreadId); return t,
 
+    -- Futures
+    fun "newFuture" -: ""
+                    -: "all '<a. (unit -o '<a) -> '<a future"
+      -= \() f -> do
+            future <- MV.newEmptyMVar
+            CC.forkIO (vapp f () >>= MV.putMVar future)
+            return (MVar future),
+    fun "getFuture" -: ""
+                    -: "all '<a. '<a future -> '<a"
+      -= (\() m -> MV.takeMVar (unMVar m)),
+    fun "newCofuture" -: ""
+                      -: "all '<a. ('<a future -o unit) -> '<a cofuture"
+      -= \() f -> do
+            future <- MV.newEmptyMVar
+            CC.forkIO (vapp f (MVar future) >> return ())
+            return (MVar future),
+    fun "putCofuture" -: ""
+                      -: "all '<a. '<a cofuture -> '<a -o unit"
+      -= \() future value -> MV.putMVar (unMVar future) value,
+
+    -- Blame (generated by translation)
     fun "#blame" -: "string -> string -> unit"
                  -: ""
       -= \who what -> fail $ "Contract violation: " ++

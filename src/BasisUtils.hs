@@ -2,7 +2,7 @@
 module BasisUtils (
   Entry(..), Nonce(..), Vinj(..),
   MkFun(..),
-  fun, binArith, val,
+  fun, binArith, val, tabs,
   vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
@@ -64,6 +64,9 @@ fun name cty aty f = Entry name cty aty (mkFun (FNNamed [text name]) f)
 
 val :: Valuable v => String -> String -> String -> v -> Entry
 val name cty aty v = Entry name cty aty (vinj v)
+
+tabs :: a -> () -> a
+tabs  = const
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
