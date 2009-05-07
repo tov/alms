@@ -1,0 +1,17 @@
+(* Polymorphic version: An Interface Module Intervenes *)
+
+module[C] ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
+  \'a 'b.
+    \f: 'a -> 'b.
+      \x: 'a.
+        f x
+
+interface iap :> all 'a 'b. ('a -o 'b) -> 'a -o 'b = ap
+
+module[A] inc : int -> int =
+  \y: int.
+    (\g: int -o int.
+       iap[int,int] g y)
+    (\z: int. add z 1)
+
+in print[int] (inc 5)

@@ -1,0 +1,11 @@
+(* Polymorphic version: A Blameworthy C Module (blame inc2) *)
+
+module[A] ap : all 'a 'b. ('a -o 'b) -> 'a -o 'b =
+  \'a 'b (f: 'a -o 'b) (x: 'a). f x
+
+module[C] inc2 : int -> int =
+  \y: int.
+    let g = ap[int,int] (\z: int. add z 1) in
+      g (g y)   (* g is used twice here *)
+
+in print[int] (inc2 5)

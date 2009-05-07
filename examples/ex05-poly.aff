@@ -1,0 +1,12 @@
+(* Polymorphic version: A Call from A into C *)
+
+module[C] ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
+  \'a 'b.
+    \f: 'a -> 'b.
+      \x: 'a.
+        f x
+
+module[A] inc : int -> int =
+  \y: int. ap[int,int] (\z: int. add z 1) y
+
+in print[int] (inc 5)

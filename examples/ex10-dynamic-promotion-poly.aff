@@ -1,0 +1,16 @@
+(* Polymorphic: A Lying Dynamic Promotion (like ex8.aff -- blame inc(:>)) *)
+
+module[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
+  \'a.
+    \f: 'a -> 'a.
+      \x: 'a.
+        f (f x)    (* f is used twice here, despite what iap2 claims *)
+
+module[A] inc : int -> int =
+  \y: int.
+    (\g: int -o int.
+       (ap[int] :  (int -> int) -> int -> int   (* This cast goes bad *)
+                :> (int -o int) -> int -o int) g y)
+    (\z: int. add z 1)
+
+in print[int] (inc 5)
