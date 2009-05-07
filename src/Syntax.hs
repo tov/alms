@@ -371,7 +371,7 @@ tysubst :: (Language w, Language w') =>
            TyVar -> Type w' -> Type w -> Type w
 tysubst a t = langCase t
                 (\_ -> ts)
-                (\ta -> if tvqual a == qualifier ta
+                (\ta -> if qualifier ta <: tvqual a
                           then ts
                           else id)
     where
@@ -489,9 +489,10 @@ syntacticValue e = case expr' e of
   _            -> False
 
 constants :: [String]
-constants  = [ "()", "ref", "swap",
-               "newFuture", "getFuture",
-               "newCofuture", "putCofuture", "coroutine" ]
+constants  = [ "()" ]
+-- , "ref", "swap",
+               -- "newFuture", "getFuture",
+               -- "newCofuture", "putCofuture", "coroutine" ]
 
 modName :: Mod -> Var
 modName (MdA x _ _)   = x
