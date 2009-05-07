@@ -164,7 +164,7 @@ exprp = expr0 where
          return (exIf ec et ef),
       do reservedOp tok "\\" <|> reservedOp tok "^"
          build <- choice
-           [ argsp,
+           [ argsp1,
              do x  <- varp
                 colon tok
                 t  <- typep
@@ -202,8 +202,11 @@ exprp = expr0 where
            return (exPair e1 e2),
         return e1]
 
+argsp1 :: Language w => P (Expr w -> Expr w)
+argsp1  = foldr (.) id `fmap` many1 argp
+
 argsp :: Language w => P (Expr w -> Expr w)
-argsp  = foldr (.) id `fmap` many1 argp
+argsp  = foldr (.) id `fmap` many argp
 
 argp :: Language w => P (Expr w -> Expr w)
 argp  = choice
