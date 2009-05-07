@@ -461,9 +461,8 @@ ctype2atype (TyCon n ps) | n `elem` transparent
 ctype2atype (TyCon "->" [td, tr])
   = tyArr (ctype2atype td) (ctype2atype tr)
 ctype2atype (TyAll tv t)
-                      = TyAll tv' (ctype2atype t')
-                        where tv' = tv { tvqual = Qu }
-                              t'  = tysubst tv (TyA (TyVar tv')) t
+                      = TyAll tv (ctype2atype t')
+                        where t'  = tysubst tv (TyA (TyVar tv)) t
 ctype2atype (TyA t)   = t
 ctype2atype t         = TyC t
 
@@ -472,7 +471,7 @@ atype2ctype (TyCon n ps) | n `elem` transparent
   = TyCon n (map atype2ctype ps)
 atype2ctype (TyCon n [td, tr]) | n `elem` funtypes
   = tyArr (atype2ctype td) (atype2ctype tr)
-atype2ctype (TyAll tv t)
+atype2ctype (TyAll tv t) | tvqual tv == Qu
                       = TyAll tv (atype2ctype t')
                         where t' = tysubst tv (TyC (TyVar tv)) t
 atype2ctype (TyC t)   = t

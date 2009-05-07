@@ -111,8 +111,11 @@ ca neg pos x (TyCon "-o" [s1, s2]) =
         y = x /./ "y"
         z = x /./ "z"
 ca neg pos x (TyAll tv t) =
-  exTAbs' tv' (exTApp (ca neg pos x t) (TyVar tv'))
-  where tv' = TV (tvname tv /./ "u") Qu
+  exTAbs' tv' $
+    exLet' u (exTApp (exVar x) (TyVar tv')) $
+      ca neg pos u t
+  where tv' = TV (tvname tv /./ "v") Qu
+        u   = tvname tv /./ "u"
 ca neg _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise =
   exLet' u createContract $
@@ -136,8 +139,11 @@ ac neg pos x (TyCon n [s1, s2]) | n `elem` funtypes =
   where y = x /./ "y"
         z = x /./ "z"
 ac neg pos x (TyAll tv t) =
-  exTAbs' tv' (exTApp (ac neg pos x t) (TyVar tv'))
-  where tv' = TV (tvname tv /./ "u") Qu
+  exTAbs' tv' $
+    exLet' u (exTApp (exVar x) (TyVar tv')) $
+      ac neg pos u t
+  where tv' = TV (tvname tv /./ "v") Qu
+        u   = tvname tv /./ "u"
 ac _   _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise = exApp (exVar x) exUnit
 
@@ -166,8 +172,11 @@ cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
   where y = x /./ "y"
         u = x /./ "u"
 cc neg pos x (TyAll tv t) =
-  exTAbs' tv' (exTApp (cc neg pos x t) (TyVar tv'))
-  where tv' = TV (tvname tv /./ "u") Qu
+  exTAbs' tv' $
+    exLet' u (exTApp (exVar x) (TyVar tv')) $
+      cc neg pos u t
+  where tv' = TV (tvname tv /./ "v") Qu
+        u   = tvname tv /./ "u"
 cc _   _   x _ = exVar x
 
 -- Generate an expression to create an initial (blessed) cell

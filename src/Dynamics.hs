@@ -152,7 +152,8 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
       v2 <- valOf e2 m env
       case v1 of
         VaFun _ f -> f v2
-        _         -> fail $ "BUG! applied non-function: " ++ show v1
+        _         -> fail $ "BUG! applied non-function " ++ show v1
+                            ++ " to argument " ++ show v2
     ExTAbs _ e'            ->
       return (VaFun (FNAnonymous (ppr e))
                     (\_ -> valOf e' m env))
