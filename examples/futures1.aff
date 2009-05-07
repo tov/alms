@@ -1,7 +1,7 @@
 (* An example with futures *)
 
 module[A] prompt : unit -> string future =
-  \_:unit. newFuture[string] getLine
+  \_:unit. newFuture getLine
 
 module[C] printDots : int -> int -> unit =
   \count:int.
@@ -20,6 +20,6 @@ module[A] main : string -> unit =
     let future = prompt () in
       printDots 80 20;
       putStrLn "";
-      putStrLn (getFuture[string] future)
+      putStrLn (getFuture future)
 
 in main "whadday say? "
