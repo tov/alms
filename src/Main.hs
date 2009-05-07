@@ -24,8 +24,8 @@ import IO (hFlush, stdout, getLine)
 
 data Option = Don'tExecute
             | Don'tType
-            | Don'tReType
             | Don'tCoerce
+            | ReType
             | Verbose
   deriving Eq
 
@@ -60,7 +60,7 @@ batch filename msrc opt g0 e0 = do
                       when (opt Verbose) $
                         mumble "TRANSLATION" ast'
                       return ast'
-          unless (opt Don'tType || opt Don'tReType || opt Don'tCoerce) $ do
+          when (opt ReType) $ do
             t <- tcProg True g0 ast'
             when (opt Verbose) $
               mumble "RE-TYPE" t
@@ -94,7 +94,7 @@ interactive opt g0 e0 = do
                   when (opt Verbose) $
                     mumble "TRANSLATION" ast'
                   return ast'
-      unless (opt Don'tType || opt Don'tReType || opt Don'tCoerce) $ do
+      when (opt ReType) $ do
         t' <- tcProg True g0 ast'
         when (opt Verbose) $
           mumble "RE-TYPE" t'
@@ -140,7 +140,7 @@ processArgs opts (('-':c:d:e):r)
 processArgs opts ("-t":r)    = processArgs (Don'tType:opts) r
 processArgs opts ("-x":r)    = processArgs (Don'tExecute:opts) r
 processArgs opts ("-c":r)    = processArgs (Don'tCoerce:opts) r
-processArgs opts ("-r":r)    = processArgs (Don'tReType:opts) r
+processArgs opts ("-r":r)    = processArgs (ReType:opts) r
 processArgs opts ("-v":r)    = processArgs (Verbose:opts) r
 processArgs opts (('-':_):_) = (opts, Just usage, "")
 processArgs opts [name]      = (opts, Just (readFile name), name)
@@ -154,7 +154,7 @@ usage  = do
   hPutStrLn stderr "  -t   Don't type check"
   hPutStrLn stderr "  -x   Don't execute"
   hPutStrLn stderr "  -c   Don't add contracts"
-  hPutStrLn stderr "  -r   Don't re-type check after translation"
+  hPutStrLn stderr "  -r   Re-typecheck after translation (may fail)"
   hPutStrLn stderr "  -v   Verbose (show translation, results, types)"
   exitFailure
 
