@@ -161,7 +161,6 @@ pprAbs p e = parensIf (p > precDot) $
         addArgs = case args of
           [Left (x, t)] -> (<> (pprPrec 0 x <+>
                                 char ':' <+> pprPrec 0 t))
-          Right _ : _   -> (<+> pprArgList args)
           _             -> (<>  pprArgList args)
 
 pprArgList :: [Either (Var, Type w) TyVar] -> Doc
