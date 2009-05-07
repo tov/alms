@@ -1,7 +1,7 @@
 This is a prototype implementation of the language in "Affine Contracts
 for Affine Types" by Jesse Tov and Riccardo Pucella.
 
-Please see http://www.ccs.neu.edu/home/tov/pubs/affinecontracts09/ for
+Please see http://www.ccs.neu.edu/home/tov/pubs/affine-contracts/ for
 more information about the paper and other software artifacts.
 
 CONTENTS
