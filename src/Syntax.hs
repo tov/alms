@@ -197,7 +197,8 @@ instance Language w => Eq (Type w) where
   TyA t      == TyA t'       = t == t'
   TyC t      == TyC t'       = t == t'
   TyVar x    == TyVar x'     = x == x'
-  TyAll x t  == TyAll x' t'  = t == tysubst x' (TyVar x `asTypeOf` t') t'
+  TyAll x t  == TyAll x' t'  = tvqual x == tvqual x' &&
+                               t == tysubst x' (TyVar x `asTypeOf` t') t'
   _          == _            = False
 
 instance Show Variance where
@@ -305,9 +306,15 @@ instance Language w => PO (Type w) where
            | p'  <- ps' ]
       return (TyCon tc params)
     else fail "\\/? or /\\?: Does not exist"
-  ifMJ b (TyAll x t) (TyAll x' t') = do
-    tt' <- ifMJ b t (tysubst x' (TyVar x `asTypeOf` t') t')
-    return (TyAll x tt')
+  ifMJ b (TyAll a t) (TyAll a' t') = do
+    qual <- ifMJ (not b) (tvqual a) (tvqual a')
+    if qual == tvqual a
+      then do
+        tt' <- ifMJ b t (tysubst a' (TyVar a `asTypeOf` t') t')
+        return (TyAll a tt')
+      else do
+        t't <- ifMJ b (tysubst a (TyVar a' `asTypeOf` t) t) t'
+        return (TyAll a' t't)
   ifMJ _ t t' =
     if t == t'
       then return t
@@ -369,12 +376,7 @@ sameLang x y same diff =
 
 tysubst :: (Language w, Language w') =>
            TyVar -> Type w' -> Type w -> Type w
-tysubst a t = langCase t
-                (\_ -> ts)
-                (\ta -> if qualifier ta <: tvqual a
-                          then ts
-                          else id)
-    where
+tysubst a t = ts where
   ts :: Language w => Type w -> Type w
   ts t'@(TyVar a')
                 = sameLang t' t
