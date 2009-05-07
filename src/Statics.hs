@@ -8,6 +8,7 @@ import Env as Env
 import Ppr ()
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- Get the usage (sharing) of a variable in an expression:
 usage :: Var -> Expr A -> Q
@@ -16,6 +17,7 @@ usage x e = case M.lookup x (fv e) of
   _              -> Qa
 
 -- Type environments
+type D   = S.Set TyVar
 type G w = Env Var (Type w)
 data GG  = GG { ggC :: G C, ggA :: G A }
 
@@ -44,8 +46,8 @@ infix 1 |!
 
 -- Type check an expression
 tcExprC :: Monad m => G C -> Expr C -> m (Type C)
-tcExprC g0 = tc g0 where
-  tc g e0 = case expr' e0 of
+tcExprC = tc S.empty where
+  tc d g e0 = case expr' e0 of
     ExCon "()"    -> return (tyGround "unit")
     ExCon s
       | s `elem` constants -> terr $ "Constant must be applied: " ++ s
@@ -53,55 +55,66 @@ tcExprC g0 = tc g0 where
     ExStr _       -> return (tyGround "string")
     ExInt _       -> return (tyGround "int")
     ExIf e1 e2 e3 -> do
-      t1 <- tc g e1
+      t1 <- tc d g e1
       tassert (t1 == tyGround "bool") $
         "If condition was " ++ show t1 ++ " where bool expected"
-      t2 <- tc g e2
-      t3 <- tc g e3
+      t2 <- tc d g e2
+      t3 <- tc d g e3
       tassert (t2 == t3) $
         "Mismatch in if: " ++ show t2 ++ " /= " ++ show t3
       return t2
     ExLet x e1 e2 -> do
-      t1 <- tc g e1
-      tc (g =+= x =:= t1) e2
+      t1 <- tc d g e1
+      tc d (g =+= x =:= t1) e2
     ExVar x       -> do
       g =.= x |!
         "Unbound variable: " ++ show x
     ExPair e1 e2  -> do
-      t1 <- tc g e1
-      t2 <- tc g e2
+      t1 <- tc d g e1
+      t2 <- tc d g e2
       return (tyPair t1 t2)
     ExLetPair (x, y) e1 e2 -> do
       tassert (x /= y) $ "Repeated variable in let pair: " ++ show x
-      t1 <- tc g e1
+      t1 <- tc d g e1
       case t1 of
-        TyApp "*" [tx, ty]
-          -> tc (g =+= x =:= tx =+= y =:= ty) e2
+        TyCon "*" [tx, ty]
+          -> tc d (g =+= x =:= tx =+= y =:= ty) e2
         _ -> tgot "let" t1 "pair type"
     ExAbs x t e     -> do
-      te <- tc (g =+= x =:= t) e
+      tcType d t
+      te <- tc d (g =+= x =:= t) e
       return (tyArr t te)
     ExApp e1 e2   -> case expr' e1 of
-      ExCon s       -> tc g e2 >>= tcCon s
+      ExCon s       -> tc d g e2 >>= tcCon s
       _             -> do
-        t1 <- tc g e1
-        t2 <- tc g e2
+        t1 <- tc d g e1
+        t2 <- tc d g e2
         case t1 of
-          TyApp "->" [ta, tr] -> do
+          TyCon "->" [ta, tr] -> do
             tassert (ta == t2) $
               "Mismatch in application: got " ++
               show t2 ++ " where " ++ show ta ++ " expected"
             return tr
           _ -> terr $ "Mismatch in application: got " ++
                        show t1 ++ " where function type expected"
+    ExTAbs tv e   -> do
+      t  <- tc (S.insert tv d) g e
+      return (TyAll tv t)
+    ExTApp e1 t2  -> do
+      t1 <- tc d g e1
+      case t1 of
+        TyAll tv t1' -> return (tysubst tv t2 t1')
+        _            -> tgot "type application" t1 "(for)all type"
     ExSeq e1 e2   -> do
-      tc g e1
-      tc g e2
+      tc d g e1
+      tc d g e2
     ExCast e1 t ta -> do
+      tcType d t
+      tcType S.empty ta
       case t of
-        TyApp n [_, _] | n `elem` funtypes -> return ()
+        TyCon n [_, _] | n `elem` funtypes -> return ()
         _ -> tgot "cast (:>)" t "function type"
-      t1 <- tc g e1
+      t1 <- tc d g e1
       tassert (t1 == t) $
         "Mismatch in cast: declared type " ++ show t ++
         " doesn't match actual type " ++ show t1
@@ -110,21 +123,21 @@ tcExprC g0 = tc g0 where
         " is incompatible with A contract " ++ show t
       return t
 
-  tcCon "ref"  t = return (TyApp "ref" [t])
+  tcCon "ref"  t = return (TyCon "ref" [t])
   tcCon "swap" t = case t of
-                     TyApp "*" [TyApp "ref" [t0], t1] | t0 == t1
+                     TyCon "*" [TyCon "ref" [t0], t1] | t0 == t1
                        -> return t
                      _ -> tgot "swap" t "'a ref * 'a"
   tcCon "readRef" t =
     case t of
-      TyApp "ref" [t'] -> return t'
+      TyCon "ref" [t'] -> return t'
       _                -> tgot "readRef" t "'a ref"
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
 
 tcExprA :: Monad m => G A -> Expr A -> m (Type A)
-tcExprA g0 = tc g0 where
-  tc g e0 = case expr' e0 of
+tcExprA = tc S.empty where
+  tc d g e0 = case expr' e0 of
     ExCon "()"    -> return (tyGround "unit")
     ExCon s
       | s `elem` constants -> terr $ "Constant must be applied: " ++ s
@@ -132,55 +145,56 @@ tcExprA g0 = tc g0 where
     ExStr _       -> return (tyGround "string")
     ExInt _       -> return (tyGround "int")
     ExIf e1 e2 e3 -> do
-      t1 <- tc g e1
+      t1 <- tc d g e1
       tassert (t1 <: tyGround "bool") $
         "If condition was " ++ show t1 ++ " where bool expected"
-      t2 <- tc g e2
-      t3 <- tc g e3
+      t2 <- tc d g e2
+      t3 <- tc d g e3
       t2 \/? t3
         |! "Mismatch in if: " ++ show t2 ++ " and " ++ show t3
     ExLet x e1 e2 -> do
-      t1 <- tc g e1
+      t1 <- tc d g e1
       tassert (qualifier t1 <: usage x e2) $
         "Affine variable " ++ show x ++ " : " ++
         show t1 ++ " duplicated in let body"
-      tc (g =+= x =:= t1) e2
+      tc d (g =+= x =:= t1) e2
     ExVar x       -> do
       g =.= x |!
         "Unbound variable: " ++ show x
     ExPair e1 e2  -> do
-      t1 <- tc g e1
-      t2 <- tc g e2
+      t1 <- tc d g e1
+      t2 <- tc d g e2
       return (tyPair t1 t2)
     ExLetPair (x, y) e1 e2 -> do
       tassert (x /= y) $
         "Repeated variable in let pair: " ++ show x
-      t1 <- tc g e1
+      t1 <- tc d g e1
       case t1 of
-        TyApp "*" [tx, ty] -> do
+        TyCon "*" [tx, ty] -> do
           tassert (qualifier tx <: usage x e2) $
             "Affine variable " ++ show x ++ " : " ++
             show tx ++ " duplicated in let body"
           tassert (qualifier ty <: usage y e2) $
             "Affine variable " ++ show y ++ " : " ++
             show ty ++ " duplicated in let body"
-          tc (g =+= x =:= tx =+= y =:= ty) e2
+          tc d (g =+= x =:= tx =+= y =:= ty) e2
         _ -> terr $ "Let pair got non-pair type: " ++ show t1
     ExAbs x t e     -> do
+      tcType d t
       tassert (qualifier t <: usage x e) $
         "Affine variable " ++ show x ++ " : " ++
         show t ++ " duplicated in lambda body"
-      te <- tc (g =+= x =:= t) e
+      te <- tc d (g =+= x =:= t) e
       if unworthy g e0
         then return (tyLol t te)
         else return (tyArr t te)
     ExApp e1 e2   -> case expr' e1 of
-      ExCon s       -> tc g e2 >>= tcCon s
+      ExCon s       -> tc d g e2 >>= tcCon s
       _             -> do
-        t1 <- tc g e1
-        t2 <- tc g e2
+        t1 <- tc d g e1
+        t2 <- tc d g e2
         case t1 of
-          TyApp n [ta, tr]
+          TyCon n [ta, tr]
               | n `elem` funtypes -> do
             tassert (t2 <: ta) $
               "Mismatch in application: got " ++
@@ -188,14 +202,29 @@ tcExprA g0 = tc g0 where
             return tr
           _ -> terr $ "Mismatch in application: got " ++
                        show t1 ++ " where function type expected"
+    ExTAbs tv e   -> do
+      t  <- tc (S.insert tv d) g e
+      return (TyAll tv t)
+    ExTApp e1 t2  -> do
+      t1 <- tc d g e1
+      case t1 of
+        TyAll tv t1' -> do
+          tassert (qualifier t2 == tvqual tv) $
+            "Mismatch in type application: got " ++
+            show (qualifier t2) ++
+            " type for type variable " ++ show tv
+          return (tysubst tv t2 t1')
+        _            -> tgot "type application" t1 "(for)all type"
     ExSeq e1 e2   -> do
-      tc g e1
-      tc g e2
+      tc d g e1
+      tc d g e2
     ExCast e1 t ta -> do
+      tcType d t
+      tcType d ta
       case t of
-        TyApp n [_, _] | n `elem` funtypes -> return ()
+        TyCon n [_, _] | n `elem` funtypes -> return ()
         _ -> terr $ "Cast requires a function type, but got" ++ show t
-      t1 <- tc g e1
+      t1 <- tc d g e1
       tassert (t1 <: t) $
         "Mismatch in cast: got " ++ show t1 ++
         " where " ++ show t ++ " expected"
@@ -210,44 +239,57 @@ tcExprA g0 = tc g0 where
                  Nothing -> False)
         (M.keys (fv e))
 
-  tcCon "ref"  t = return (TyApp "ref" [t])
+  -- It's a shame these all have to be special cases, but I guess
+  -- that's okay . . . for now.
+  tcCon "ref"  t = return (TyCon "ref" [t])
   tcCon "swap" t = case t of
-                     TyApp "*" [TyApp "ref" [t0], t1]
-                       -> return (TyApp "*"
-                                        [TyApp "ref" [t1], t0])
+                     TyCon "*" [TyCon "ref" [t0], t1]
+                       -> return (TyCon "*"
+                                        [TyCon "ref" [t1], t0])
                      _ -> tgot "swap" t "'a ref * 'b"
   tcCon "readRef" t =
     case t of
-      TyApp "ref" [t'] | qualifier t' <: Qu
+      TyCon "ref" [t'] | qualifier t' <: Qu
         -> return t'
       _ -> tgot "readRef" t "'a ref [unlimited 'a]"
   tcCon "newFuture" t =
     case t of
-      TyApp n [TyApp "unit" [], t'] | n `elem` funtypes
-        -> return (TyApp "future" [t'])
+      TyCon n [TyCon "unit" [], t'] | n `elem` funtypes
+        -> return (TyCon "future" [t'])
       _ -> tgot "newFuture" t "unit -o 'a"
   tcCon "getFuture" t =
     case t of
-      TyApp "future" [t'] -> return t'
+      TyCon "future" [t'] -> return t'
       _                   -> tgot "getFuture" t "'a future"
   tcCon "newCofuture" t =
     case t of
-      TyApp n [TyApp "future" [t'], TyApp "unit" []] | n `elem` funtypes
-        -> return (TyApp "cofuture" [t'])
+      TyCon n [TyCon "future" [t'], TyCon "unit" []] | n `elem` funtypes
+        -> return (TyCon "cofuture" [t'])
       _ -> tgot "newCofuture" t "'a future -o unit"
   tcCon "putCofuture" t =
     case t of
-      TyApp "cofuture" [t'] -> return (tyLol t' (tyGround "unit"))
+      TyCon "cofuture" [t'] -> return (tyLol t' (tyGround "unit"))
       _                     -> tgot "putCofuture" t "'a cofuture"
   tcCon "coroutine" t =
     case t of
-      TyApp n [TyApp "*" [TyApp "future" [ta],
-                          TyApp "cofuture" [tb]],
-               TyApp "unit" []] | n `elem` funtypes
-        -> return $ TyApp "*" [TyApp "future" [tb], TyApp "cofuture" [ta]]
+      TyCon n [TyCon "*" [TyCon "future" [ta],
+                          TyCon "cofuture" [tb]],
+               TyCon "unit" []] | n `elem` funtypes
+        -> return $ TyCon "*" [TyCon "future" [tb], TyCon "cofuture" [ta]]
       _ -> tgot "coroutine" t "'a future * 'b cofuture -o unit"
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
+
+-- Check type for closed-ness
+tcType :: Monad m => D -> Type w -> m ()
+tcType d0 = tc (d0, S.empty) where
+  tc                     :: Monad m => (D, D) -> Type w -> m ()
+  tc (d, _ ) (TyVar tv)   = tassert (S.member tv d) $
+                              "Free type variable: " ++ show tv
+  tc (d, d') (TyCon _ ts) = mapM_ (tc (d, d')) ts
+  tc (d, d') (TyAll tv t) = tc (S.insert tv d, d') t
+  tc (d, d') (TyC t)      = tc (d', d) t
+  tc (d, d') (TyA t)      = tc (d', d) t
 
 -- Build both initial environments
 makeEnv0 :: [Mod] -> GG -> GG

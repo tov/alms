@@ -45,6 +45,8 @@ transExpr menv neg = te where
                                 (tem (menv =-= x =-= y) e2)
     ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =-= x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
+    ExTAbs tv e -> exTAbs tv (te e)
+    ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
     ExSeq e1 e2 -> exSeq (te e1) (te e2)
     ExCast e1 t ta -> transCast neg (te e1) t ta
 
@@ -93,13 +95,13 @@ transCast neg e t' ta =
 -- This wrapper protects the positive party and may blame the
 -- negative party.
 ca :: Party -> Party -> Var -> Type A -> Expr C
-ca neg pos x (TyApp "->" [s1, s2]) =
+ca neg pos x (TyCon "->" [s1, s2]) =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ac pos neg y s1)) $
       ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-ca neg pos x (TyApp "-o" [s1, s2]) =
+ca neg pos x (TyCon "-o" [s1, s2]) =
   exLet u createContract $
     exAbs y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
@@ -124,7 +126,7 @@ ca neg _   x ta | qualifier ta <: Qu = exVar x
 -- This wrapper protects the negative party and may blame the
 -- positive party.
 ac :: Party -> Party -> Var -> Type A -> Expr C
-ac neg pos x (TyApp n [s1, s2]) | n `elem` funtypes =
+ac neg pos x (TyCon n [s1, s2]) | n `elem` funtypes =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ca pos neg y s1)) $
       ac neg pos z s2
@@ -144,7 +146,7 @@ ac _   _   x ta | qualifier ta <: Qu = exVar x
 --
 -- This wrapper protects either party and may blame either party.
 cc :: Party -> Party -> Var -> Type C -> Expr C
-cc neg pos x (TyApp "->" [s1, s2]) =
+cc neg pos x (TyCon "->" [s1, s2]) =
   exAbs' y s1 $
     exLet' z (exApp (exVar x) (cc pos neg y s1)) $
       cc neg pos z s2

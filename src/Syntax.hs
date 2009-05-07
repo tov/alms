@@ -1,11 +1,14 @@
 {-# LANGUAGE
       EmptyDataDecls,
+      FlexibleContexts,
       GADTs,
+      ImpredicativeTypes,
       ParallelListComp,
-      RankNTypes #-}
+      RankNTypes,
+      TypeFamilies #-}
 module Syntax (
   Language(..), A, C, LangRep(..),
-  Q(..), Var(..),
+  Q(..), Var(..), TyVar(..),
 
   TyInfo(..), Variance(..),
   Type(..), TEnv,
@@ -13,15 +16,16 @@ module Syntax (
 
   Expr(), Expr'(..), fv, expr',
   exCon, exStr, exInt, exIf, exLet, exVar, exPair, exLetPair,
-  exAbs, exApp, exSeq, exCast,
+  exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
 
   PO(..),
 
   tyNothing, tyArr, tyLol, tyPair, tyGround,
-  tienv, tcinfo, qualifier,
+  tysubst, tienv, tcinfo, qualifier,
   transparent, funtypes, ctype2atype, atype2ctype,
 
-  syntacticValue, constants, modName
+  syntacticValue, constants, modName,
+  unfoldExAbs, unfoldTyAll, unfoldExTApp
 ) where
 
 import Util
@@ -45,6 +49,10 @@ data Q = Qa | Qu
 data Var = Var { unVar :: String }
   deriving (Eq, Ord)
 
+-- Type variables
+data TyVar = TV { tvname :: Var, tvqual :: Q }
+  deriving (Eq, Ord)
+
 -- Variance
 data Variance = Invariant
               | Covariant
@@ -60,10 +68,12 @@ data TyInfo = TyInfo {
   }
 
 data Type w where
-  TyApp { tycon :: String,
+  TyCon { tycon :: String,
           tyargs :: [Type w] } :: Type w
-  TyC  :: Type C -> Type A
-  TyA  :: Type A -> Type C
+  TyVar :: TyVar -> Type w
+  TyAll :: TyVar -> Type w -> Type w
+  TyC   :: Type C -> Type A
+  TyA   :: Type A -> Type C
 
 type TEnv w = Env Var (Type w)
 
@@ -85,6 +95,8 @@ data Expr' w = ExCon String
              | ExLetPair (Var, Var) (Expr w) (Expr w)
              | ExAbs Var (Type w) (Expr w)
              | ExApp (Expr w) (Expr w)
+             | ExTAbs TyVar (Expr w)
+             | ExTApp (Expr w) (Type w)
              | ExSeq (Expr w) (Expr w)
              | ExCast (Expr w) (Type w) (Type A)
 
@@ -145,6 +157,18 @@ exApp e1 e2 = Expr {
   expr'_ = ExApp e1 e2
 }
 
+exTAbs :: TyVar -> Expr w -> Expr w
+exTAbs tv e = Expr {
+  fv_    = fv e,
+  expr'_ = ExTAbs tv e
+}
+
+exTApp :: Expr w -> Type w -> Expr w
+exTApp e1 t2 = Expr {
+  fv_    = fv e1,
+  expr'_ = ExTApp e1 t2
+}
+
 exSeq :: Expr w -> Expr w -> Expr w
 exSeq e1 e2 = Expr {
   fv_    = fv e1 |*| fv e2,
@@ -168,10 +192,12 @@ exCast e t1 t2 = Expr {
 ----- Some classes and instances
 -----
 
-instance Eq (Type w) where
-  TyApp c ps == TyApp c' ps' = c == c' && all2 (==) ps ps'
+instance Language w => Eq (Type w) where
+  TyCon c ps == TyCon c' ps' = c == c' && all2 (==) ps ps'
   TyA t      == TyA t'       = t == t'
   TyC t      == TyC t'       = t == t'
+  TyVar x    == TyVar x'     = x == x'
+  TyAll x t  == TyAll x' t'  = t == tysubst x' (TyVar x `asTypeOf` t') t'
   _          == _            = False
 
 instance Show Variance where
@@ -182,6 +208,10 @@ instance Show Variance where
 
 instance Show Var where
   show = unVar
+
+instance Show TyVar where
+  show (TV x Qu) = "'" ++ show x
+  show (TV x Qa) = "'<" ++ show x
 
 instance Ord Q where
   (<=) = (<:)
@@ -248,18 +278,18 @@ instance PO Q where
   Qa /\ Qa = Qa
   _  /\ _  = Qu
 
-instance PO (Type w) where
+instance Language w => PO (Type w) where
   -- Special cases for ->/-o subtyping:
-  ifMJ True  (TyApp "->" ps) (TyApp "-o" ps')
-      = ifMJ True (TyApp "-o" ps) (TyApp "-o" ps')
-  ifMJ True  (TyApp "-o" ps) (TyApp "->" ps')
-      = ifMJ True (TyApp "-o" ps) (TyApp "-o" ps')
-  ifMJ False (TyApp "->" ps) (TyApp "-o" ps')
-      = ifMJ True (TyApp "->" ps) (TyApp "->" ps')
-  ifMJ False (TyApp "-o" ps) (TyApp "->" ps')
-      = ifMJ True (TyApp "->" ps) (TyApp "->" ps')
+  ifMJ True  (TyCon "->" ps) (TyCon "-o" ps')
+      = ifMJ True (TyCon "-o" ps) (TyCon "-o" ps')
+  ifMJ True  (TyCon "-o" ps) (TyCon "->" ps')
+      = ifMJ True (TyCon "-o" ps) (TyCon "-o" ps')
+  ifMJ False (TyCon "->" ps) (TyCon "-o" ps')
+      = ifMJ True (TyCon "->" ps) (TyCon "->" ps')
+  ifMJ False (TyCon "-o" ps) (TyCon "->" ps')
+      = ifMJ True (TyCon "->" ps) (TyCon "->" ps')
   -- Otherwise:
-  ifMJ b (TyApp tc ps) (TyApp tc' ps') =
+  ifMJ b (TyCon tc ps) (TyCon tc' ps') =
     if tc == tc' then do
       let ti = tcinfo tc
       params <- sequence
@@ -273,8 +303,11 @@ instance PO (Type w) where
            | var <- tiArity ti
            | p   <- ps
            | p'  <- ps' ]
-      return (TyApp tc params)
+      return (TyCon tc params)
     else fail "\\/? or /\\?: Does not exist"
+  ifMJ b (TyAll x t) (TyAll x' t') = do
+    tt' <- ifMJ b t (tysubst x' (TyVar x `asTypeOf` t') t')
+    return (TyAll x tt')
   ifMJ _ t t' =
     if t == t'
       then return t
@@ -305,7 +338,7 @@ instance Num Variance where
 -- and langMapType, it seems.
 class Language w where
   reifyLang   :: LangRep w
-  langCase    :: f w -> (f C -> r) -> (f A -> r) -> r
+  langCase    :: f w -> (w ~ C => f C -> r) -> (w ~ A => f A -> r) -> r
   langMapType :: Functor f =>
                  (forall w'. Language w' => f (Type w')) -> f (Type w)
 
@@ -319,9 +352,50 @@ instance Language A where
   langCase x _ fa = fa x
   langMapType x   = fmap TyC x
 
+sameLang :: (Language w, Language w') =>
+            f w -> g w' -> (w ~ w' => f w -> g w -> r) -> r -> r
+sameLang x y same diff =
+  langCase x
+    (\xc -> langCase y
+      (\yc -> same xc yc)
+      (\_  -> diff))
+    (\xa -> langCase y
+      (\_  -> diff)
+      (\ya -> same xa ya))
+
 ---
 --- Syntax Utils
 ---
+
+tysubst :: (Language w, Language w') =>
+           TyVar -> Type w' -> Type w -> Type w
+tysubst a t = langCase t
+                (\_ -> ts)
+                (\ta -> if tvqual a == qualifier ta
+                          then ts
+                          else id)
+    where
+  ts :: Language w => Type w -> Type w
+  ts t'@(TyVar a')
+                = sameLang t' t
+                    (\_ t0 ->
+                      if a' == a
+                        then t0
+                        else TyVar a')
+                    (TyVar a')
+  ts (TyAll a' t')
+                = sameLang t' t
+                    (\_ _ ->
+                      if a' == a
+                        then TyAll a' t'
+                        else TyAll a' (ts t'))
+                    (TyAll a' (ts t'))
+  ts (TyCon c tys)
+                = TyCon c (map (ts) tys)
+  ts (TyA t')
+                = TyA (ts t')
+  ts (TyC t')
+                = TyC (ts t')
 
 tienv         :: Env String TyInfo
 tienv          = fromList [
@@ -351,23 +425,25 @@ tcinfo s = case tienv =.= s of
   Nothing -> tiNothing
 
 tyGround :: String -> Type w
-tyGround s = TyApp s []
+tyGround s = TyCon s []
 
 tyArr         :: Type w -> Type w -> Type w
-tyArr a b      = TyApp "->" [a, b]
+tyArr a b      = TyCon "->" [a, b]
 
 tyLol         :: Type w -> Type w -> Type w
-tyLol a b      = TyApp "-o" [a, b]
+tyLol a b      = TyCon "-o" [a, b]
 
 tyPair        :: Type w -> Type w -> Type w
-tyPair a b     = TyApp "*" [a, b]
+tyPair a b     = TyCon "*" [a, b]
 
 tyNothing     :: Type w
-tyNothing      = TyApp "" []
+tyNothing      = TyCon "" []
 
 qualifier     :: Type A -> Q
-qualifier (TyApp tc ps) = tiQual (tcinfo tc) (map qualifier ps)
-qualifier _             = Qu
+qualifier (TyCon tc ps)      = tiQual (tcinfo tc) (map qualifier ps)
+qualifier (TyVar (TV _ q) )  = q
+qualifier (TyAll _ t)        = qualifier t
+qualifier _                  = Qu
 
 -- Types that pass transparently through boundaries
 transparent :: [String]
@@ -378,18 +454,24 @@ funtypes    :: [String]
 funtypes     = ["->", "-o"]
 
 ctype2atype :: Type C -> Type A
-ctype2atype (TyApp n ps) | n `elem` transparent
-  = TyApp n (map ctype2atype ps)
-ctype2atype (TyApp "->" [td, tr])
+ctype2atype (TyCon n ps) | n `elem` transparent
+  = TyCon n (map ctype2atype ps)
+ctype2atype (TyCon "->" [td, tr])
   = tyArr (ctype2atype td) (ctype2atype tr)
+ctype2atype (TyAll tv t)
+                      = TyAll tv { tvqual = Qu }
+                              (ctype2atype t)
 ctype2atype (TyA t)   = t
 ctype2atype t         = TyC t
 
 atype2ctype :: Type A -> Type C
-atype2ctype (TyApp n ps) | n `elem` transparent
-  = TyApp n (map atype2ctype ps)
-atype2ctype (TyApp n [td, tr]) | n `elem` funtypes
+atype2ctype (TyCon n ps) | n `elem` transparent
+  = TyCon n (map atype2ctype ps)
+atype2ctype (TyCon n [td, tr]) | n `elem` funtypes
   = tyArr (atype2ctype td) (atype2ctype tr)
+atype2ctype (TyAll tv t) | tvqual tv == Qu
+                      = TyAll tv
+                              (atype2ctype (tysubst tv (TyC (TyVar tv)) t))
 atype2ctype (TyC t)   = t
 atype2ctype t         = TyA t
 
@@ -401,6 +483,8 @@ syntacticValue e = case expr' e of
   ExVar _      -> True
   ExPair e1 e2 -> syntacticValue e1 && syntacticValue e2
   ExAbs _ _ _  -> True
+  ExTAbs _ _   -> True
+  ExTApp e1 _  -> syntacticValue e1
   _            -> False
 
 constants :: [String]
@@ -413,3 +497,22 @@ modName (MdA x _ _)   = x
 modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
 
+-- Unfolding various sequences
+
+unfoldExAbs :: Expr w -> ([Either (Var, Type w) TyVar], Expr w)
+unfoldExAbs  = unscanr each where
+  each e = case expr' e of
+    ExAbs x t e' -> Just (Left (x, t), e')
+    ExTAbs tv e' -> Just (Right tv, e')
+    _            -> Nothing
+
+unfoldTyAll :: Type w -> ([TyVar], Type w)
+unfoldTyAll  = unscanr each where
+  each (TyAll x t) = Just (x, t)
+  each _           = Nothing
+
+unfoldExTApp :: Expr w -> ([Type w], Expr w)
+unfoldExTApp  = unscanl each where
+  each e = case expr' e of
+    ExTApp e' t  -> Just (t, e')
+    _            -> Nothing

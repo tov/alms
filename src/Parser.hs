@@ -26,7 +26,7 @@ tok = makeTokenParser LanguageDef {
     reservedNames  = ["if", "then", "else",
                       "let", "in",
                       "module", "interface",
-                      "A", "C"],
+                      "all", "A", "C"],
     reservedOpNames = ["->", "*", "=", "\\", "^", ":", ":>"],
     caseSensitive = True
   }
@@ -37,6 +37,15 @@ tok = makeTokenParser LanguageDef {
 varp :: P Var
 varp  = identifier tok >>! Var
 
+tyvarp :: P TyVar
+tyvarp  = do
+  char '\''
+  q <- choice
+       [ char '<' >> return Qa,
+         return Qu ]
+  x <- varp
+  return (TV x q)
+
 identp :: P (Expr w)
 identp  = do
   s <- identifier tok
@@ -45,7 +54,14 @@ identp  = do
     else return (exVar (Var s))
 
 typep :: Language w => P (Type w)
-typep = type5 where
+typep = type0 where
+  type0 = choice
+          [ do reserved tok "all"
+               tvs <- many tyvarp
+               dot tok
+               t   <- type0
+               return (foldr TyAll t tvs),
+            type5 ]
   type5 = typeExpr type6
   type6 = tyarg >>= tyapp'
 
@@ -65,18 +81,20 @@ typep = type5 where
   tyarg  = choice
            [ do args <- parens tok (commaSep1 tok typep)
                 return args,
+             do tv   <- tyvarp
+                return [TyVar tv],
              do tc   <- identifier tok
-                return [TyApp tc []],
+                return [TyCon tc []],
              do t <- braces tok (langMapType typep)
                 return [t] ]
 
   tyapp' :: [Type w] -> P (Type w)
   tyapp' [t] = option t $ do
                  tc <- identifier tok
-                 tyapp' [TyApp tc [t]]
+                 tyapp' [TyCon tc [t]]
   tyapp' ts  = do
                  tc <- identifier tok
-                 tyapp' [TyApp tc ts]
+                 tyapp' [TyCon tc ts]
 
 progp :: P Prog
 progp  = do
@@ -124,8 +142,9 @@ exprp = expr0 where
   expr0 = choice
     [ do reserved tok "let"
          makeLet <- choice
-           [ do x  <- varp
-                return (exLet x),
+           [ do x    <- varp
+                args <- argsp
+                return (exLet x . args),
              parens tok $ do
                 x  <- varp
                 comma tok
@@ -144,12 +163,14 @@ exprp = expr0 where
          ef <- expr0
          return (exIf ec et ef),
       do reservedOp tok "\\" <|> reservedOp tok "^"
-         x  <- varp
-         colon tok
-         t  <- typep
+         build <- choice
+           [ argsp,
+             do x  <- varp
+                colon tok
+                t  <- typep
+                return (exAbs x t) ]
          dot tok
-         e  <- expr0
-         return (exAbs x t e),
+         expr0 >>! build,
       expr1 ]
   expr1 = do e1 <- expr9
              choice
@@ -157,7 +178,11 @@ exprp = expr0 where
                     e2 <- expr0
                     return (exSeq e1 e2),
                  return e1 ]
-  expr9 = chainl1 exprA (return exApp)
+  expr9 = chainl1 expr10 (return exApp)
+  expr10 = do
+             e  <- exprA
+             ts <- many . squares tok $ commaSep1 tok typep
+             return (foldl exTApp e (concat ts))
   exprA = choice
     [ identp,
       integer tok       >>! exInt,
@@ -176,6 +201,18 @@ exprp = expr0 where
            e2 <- expr0
            return (exPair e1 e2),
         return e1]
+
+argsp :: Language w => P (Expr w -> Expr w)
+argsp  = foldr (.) id `fmap` many1 argp
+
+argp :: Language w => P (Expr w -> Expr w)
+argp  = choice
+        [ tyvarp >>! exTAbs,
+          parens tok $ do
+            x <- varp
+            reservedOp tok ":"
+            t <- typep
+            return (exAbs x t) ]
 
 finish :: CharParser st a -> CharParser st a
 finish p = do
