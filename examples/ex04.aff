@@ -11,4 +11,4 @@ module[C] inc2 : int -> int =
     let h = ap (\z: int. add z 1) in
       h (g y)
 
-in printInt (inc2 5)
+in print[int] (inc2 5)

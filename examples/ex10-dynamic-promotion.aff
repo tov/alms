@@ -12,4 +12,4 @@ module[A] inc : int -> int =
            :> (int -o int) -> int -o int) g y)   (* This cast goes bad *)
     (\z: int. add z 1)
 
-in printInt (inc 5)
+in print[int] (inc 5)

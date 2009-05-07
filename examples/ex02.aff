@@ -10,4 +10,4 @@ module[A] inc2 : int -> int =
     let g = ap (\z: int. add z 1) in
       g (g y)   (* g: (int -o int) is used twice here *)
 
-in printInt (inc2 5)
+in print[int] (inc2 5)

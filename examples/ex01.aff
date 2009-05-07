@@ -8,4 +8,4 @@ module[A] ap : (int -o int) -> int -o int =
 module[A] inc : int -> int =
   \y: int. ap (\z:int. add z 1) y
 
-in printInt (inc 5)
+in print[int] (inc 5)

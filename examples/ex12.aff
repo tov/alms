@@ -14,9 +14,9 @@ module[A] doPair : (int -> int) * int -> int =
     let (f, x) = pair in
     let result = f x in
       putStr "f(";
-      putStr (showInt x);
+      putStr (toString[int] x);
       putStr ") = ";
-      putStrLn (showInt result);
+      putStrLn (toString[int] result);
       result
 
 module[C] double : int -> {(int -> int) * int} =
@@ -25,4 +25,4 @@ module[C] double : int -> {(int -> int) * int} =
 
 in let pair = double 4 in
      doPair pair;
-     printInt (doPair pair)
+     print[int] (doPair pair)

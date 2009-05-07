@@ -13,4 +13,4 @@ module[A] inc : int -> int =
        iap g y)
     (\z: int. add z 1)
 
-in printInt (inc 5)
+in print[int] (inc 5)
