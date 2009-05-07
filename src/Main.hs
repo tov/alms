@@ -50,7 +50,7 @@ batch filename msrc opt g0 e0 = do
         Left e    -> fail $ "syntax error: " ++ show e
         Right ast -> do
           unless (opt Don'tType) $ do
-            t <- tcProg g0 ast
+            t <- tcProg False g0 ast
             when (opt Verbose) $
               mumble "TYPE" t
           ast' <- if opt Don'tCoerce
@@ -61,7 +61,7 @@ batch filename msrc opt g0 e0 = do
                         mumble "TRANSLATION" ast'
                       return ast'
           unless (opt Don'tType || opt Don'tReType || opt Don'tCoerce) $ do
-            t <- tcProg g0 ast'
+            t <- tcProg True g0 ast'
             when (opt Verbose) $
               mumble "RE-TYPE" t
           unless (opt Don'tExecute) $ do
@@ -86,7 +86,7 @@ interactive opt g0 e0 = do
     doLine ast = do
       t <- if opt Don'tType
              then return Nothing
-             else Just `fmap` tcProg g0 ast
+             else Just `fmap` tcProg False g0 ast
       ast' <- if opt Don'tCoerce
                 then return ast
                 else do
@@ -95,7 +95,7 @@ interactive opt g0 e0 = do
                     mumble "TRANSLATION" ast'
                   return ast'
       unless (opt Don'tType || opt Don'tReType || opt Don'tCoerce) $ do
-        t' <- tcProg g0 ast'
+        t' <- tcProg True g0 ast'
         when (opt Verbose) $
           mumble "RE-TYPE" t'
       v <- if opt Don'tExecute

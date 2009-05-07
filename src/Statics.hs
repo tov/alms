@@ -259,25 +259,27 @@ makeEnv0 ms gw0 =
         each (MdInt x t _) = (x, t)
    in GG { ggC = cenv, ggA = aenv }
 
--- Type check a module
-tcMod :: Monad m => GG -> Mod -> m ()
-tcMod gg (MdC x t e) = do
+-- Type check a module.  The boolean 're' tells whether to type check
+-- in "re-type mode", which doesn't require module bodies to be syntactic
+-- values.
+tcMod :: Monad m => Bool -> GG -> Mod -> m ()
+tcMod re gg (MdC x t e) = do
   te <- tcExprC (ggC gg) e
-  tassert (syntacticValue e) $
+  tassert (re || syntacticValue e) $
     "Body of module " ++ show x ++ " not a syntactic value"
   tassert (te == t) $
     "Declared type for module " ++ show x ++ " : " ++ show t ++
     " doesn't match actual type " ++ show te
-tcMod gg (MdA x t e) = do
+tcMod re gg (MdA x t e) = do
   te <- tcExprA (ggA gg) e
   tassert (qualifier t == Qu) $
     "Declared type of module " ++ show x ++ " is not unlimited"
-  tassert (syntacticValue e) $
+  tassert (re || syntacticValue e) $
     "Body of module " ++ show x ++ " not a syntactic value"
   tassert (te <: t) $
     "Declared type for module " ++ show x ++ " : " ++ show t ++
     " is not subsumed by actual type " ++ show te
-tcMod gg (MdInt x t y) = do
+tcMod _  gg (MdInt x t y) = do
   case ggC gg =.= y of
     Nothing -> terr $ "RHS of interface is unbound variable: " ++ show y
     Just ty -> do
@@ -285,17 +287,21 @@ tcMod gg (MdInt x t y) = do
         "Declared type of interface " ++ show x ++ " :> " ++
         show t ++ " not compatible with RHS type: " ++ show ty
 
-tcMods :: Monad m => GG -> [Mod] -> m ()
-tcMods gg = each [] where
+tcMods :: Monad m => Bool -> GG -> [Mod] -> m ()
+tcMods re gg = each [] where
   each _    []     = return ()
   each seen (m:ms) = do
     tassert (modName m `notElem` seen) $
       "Duplicate module name: " ++ show (modName m)
-    tcMod gg m
+    tcMod re gg m
     each (modName m : seen) ms
 
-tcProg :: Monad m => GG -> Prog -> m (Type C)
-tcProg mkBasis (Prog ms e) = do
+-- Type check a program
+--   re          -- Are we re-type checking after translation?
+--   mkBasis     -- The basis type envs
+--   (Prog ms e) -- Program to check
+tcProg :: Monad m => Bool -> GG -> Prog -> m (Type C)
+tcProg re mkBasis (Prog ms e) = do
   let gg = makeEnv0 ms mkBasis
-  tcMods gg ms
+  tcMods re gg ms
   tcExprC (ggC gg) e
