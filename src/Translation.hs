@@ -45,7 +45,7 @@ transExpr menv neg = te where
                                 (tem (menv =-= x =-= y) e2)
     ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =-= x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
-    ExTAbs tv e -> exTAbs tv (te e)
+    ExTAbs tv e -> exTAbs' tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
     ExSeq e1 e2 -> exSeq (te e1) (te e2)
     ExCast e1 t ta -> transCast neg (te e1) t ta
@@ -110,6 +110,9 @@ ca neg pos x (TyCon "-o" [s1, s2]) =
   where u = x /./ "u"
         y = x /./ "y"
         z = x /./ "z"
+ca neg pos x (TyAll tv t) =
+  exTAbs' tv' (exTApp (ca neg pos x t) (TyVar tv'))
+  where tv' = TV (tvname tv /./ "u") Qu
 ca neg _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise =
   exLet' u createContract $
@@ -132,6 +135,9 @@ ac neg pos x (TyCon n [s1, s2]) | n `elem` funtypes =
       ac neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
+ac neg pos x (TyAll tv t) =
+  exTAbs' tv' (exTApp (ac neg pos x t) (TyVar tv'))
+  where tv' = TV (tvname tv /./ "u") Qu
 ac _   _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise = exApp (exVar x) exUnit
 
@@ -159,6 +165,9 @@ cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
         exApp (exVar x) exUnit
   where y = x /./ "y"
         u = x /./ "u"
+cc neg pos x (TyAll tv t) =
+  exTAbs' tv' (exTApp (cc neg pos x t) (TyVar tv'))
+  where tv' = TV (tvname tv /./ "u") Qu
 cc _   _   x _ = exVar x
 
 -- Generate an expression to create an initial (blessed) cell
@@ -225,4 +234,17 @@ exAbs' x t e = case expr' e of
       x == x' && x /= f -> exVar f
     _                   -> exAbs x t e
   _           -> exAbs x t e
+
+-- Construct a type-lambda expression, but with a special case:
+--
+--   exTAbs' tv (exTApp (exVar f) tv)  ==  exVar f
+--
+-- This should always be safe, because f has no effect
+exTAbs' :: TyVar -> Expr w -> Expr w
+exTAbs' tv e = case expr' e of
+  ExTApp e1 t2 -> case (expr' e1, t2) of
+    (ExVar f, TyVar tv') |
+      tv == tv'  -> exVar f
+    _            -> exTAbs tv e
+  _            -> exTAbs tv e
 
