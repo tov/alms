@@ -172,19 +172,19 @@ cc _   _   x _ = exVar x
 
 -- Generate an expression to create an initial (blessed) cell
 createContract :: Expr C
-createContract = exApp (exCon "ref")
+createContract = exApp (exTApp (exVar (Var "#ref"))
+                               (tyUnit `tyArr` tyUnit))
                        (exAbs (Var "_") tyUnit exUnit)
 
 -- Given a variable containing a reference cell, generate code
 -- to check it
 checkContract :: Var -> Party -> String -> Expr C
 checkContract x (Party who) what =
-  exLetPair (d, f) (exApp (exCon "swap")
-                          (exPair (exVar x)
-                                  (blameFun (show who) what))) $
+  exLet f (exApp (exTApp (exVar (Var "#modify"))
+                         (tyUnit `tyArr` tyUnit))
+                 (exVar x `exPair` blameFun (show who) what)) $
     exApp (exVar f) exUnit
-  where d = x /./ "d"
-        f = x /./ "f"
+  where f = x /./ "f"
 
 -- Generate a function that raises blame
 blameFun :: String -> String -> Expr C

@@ -123,15 +123,6 @@ tcExprC = tc S.empty where
         " is incompatible with A contract " ++ show t
       return t
 
-  tcCon "ref"  t = return (TyCon "ref" [t])
-  tcCon "swap" t = case t of
-                     TyCon "*" [TyCon "ref" [t0], t1] | t0 == t1
-                       -> return t
-                     _ -> tgot "swap" t "'a ref * 'a"
-  tcCon "readRef" t =
-    case t of
-      TyCon "ref" [t'] -> return t'
-      _                -> tgot "readRef" t "'a ref"
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
 
@@ -241,42 +232,6 @@ tcExprA = tc S.empty where
 
   -- It's a shame these all have to be special cases, but I guess
   -- that's okay . . . for now.
-  tcCon "ref"  t = return (TyCon "ref" [t])
-  tcCon "swap" t = case t of
-                     TyCon "*" [TyCon "ref" [t0], t1]
-                       -> return (TyCon "*"
-                                        [TyCon "ref" [t1], t0])
-                     _ -> tgot "swap" t "'a ref * 'b"
-  tcCon "readRef" t =
-    case t of
-      TyCon "ref" [t'] | qualifier t' <: Qu
-        -> return t'
-      _ -> tgot "readRef" t "'a ref [unlimited 'a]"
-  tcCon "newFuture" t =
-    case t of
-      TyCon n [TyCon "unit" [], t'] | n `elem` funtypes
-        -> return (TyCon "future" [t'])
-      _ -> tgot "newFuture" t "unit -o 'a"
-  tcCon "getFuture" t =
-    case t of
-      TyCon "future" [t'] -> return t'
-      _                   -> tgot "getFuture" t "'a future"
-  tcCon "newCofuture" t =
-    case t of
-      TyCon n [TyCon "future" [t'], TyCon "unit" []] | n `elem` funtypes
-        -> return (TyCon "cofuture" [t'])
-      _ -> tgot "newCofuture" t "'a future -o unit"
-  tcCon "putCofuture" t =
-    case t of
-      TyCon "cofuture" [t'] -> return (tyLol t' (tyGround "unit"))
-      _                     -> tgot "putCofuture" t "'a cofuture"
-  tcCon "coroutine" t =
-    case t of
-      TyCon n [TyCon "*" [TyCon "future" [ta],
-                          TyCon "cofuture" [tb]],
-               TyCon "unit" []] | n `elem` funtypes
-        -> return $ TyCon "*" [TyCon "future" [tb], TyCon "cofuture" [ta]]
-      _ -> tgot "coroutine" t "'a future * 'b cofuture -o unit"
   tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
   tcCon s      _ = terr $ "Unrecognized constant: " ++ s
 

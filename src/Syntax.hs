@@ -492,9 +492,6 @@ syntacticValue e = case expr' e of
 
 constants :: [String]
 constants  = [ "()" ]
--- , "ref", "swap",
-               -- "newFuture", "getFuture",
-               -- "newCofuture", "putCofuture", "coroutine" ]
 
 modName :: Mod -> Var
 modName (MdA x _ _)   = x
