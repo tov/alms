@@ -26,7 +26,7 @@ module Syntax (
   ctype2atype, atype2ctype, cgetas, agetcs,
 
   syntacticValue, constants, modName,
-  unfoldExAbs, unfoldTyAll, unfoldExTApp
+  unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
 ) where
 
 import Util
@@ -531,3 +531,16 @@ unfoldExTApp  = unscanl each where
   each e = case expr' e of
     ExTApp e' t  -> Just (t, e')
     _            -> Nothing
+
+unfoldExApp :: Expr w -> ([Expr w], Expr w)
+unfoldExApp  = unscanl each where
+  each e = case expr' e of
+    ExApp e1 e2 -> Just (e2, e1)
+    _           -> Nothing
+
+unfoldTyFun :: Type w -> ([Type w], Type w)
+unfoldTyFun  = unscanr each where
+  each (TyCon c [ta, tr]) | c `elem` funtypes = Just (ta, tr)
+  each _                                      = Nothing
+   
+

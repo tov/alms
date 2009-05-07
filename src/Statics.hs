@@ -188,13 +188,17 @@ tcExprA = tc S.empty where
       _             -> do
         t1 <- tc d g e1
         t2 <- tc d g e2
-        case t1 of
+        let (tvs, body) = unfoldTyAll t1
+        case body of
           TyCon n [ta, tr]
               | n `elem` funtypes -> do
-            tassert (t2 <: ta) $
+            subst <- tryUnify tvs ta t2
+            let ta' = subst ta
+                tr' = subst tr
+            tassert (t2 <: ta') $
               "Mismatch in application: got " ++
-              show t2 ++ " where " ++ show ta ++ " expected"
-            return tr
+              show t2 ++ " where " ++ show ta' ++ " expected"
+            return tr'
           _ -> terr $ "Mismatch in application: got " ++
                        show t1 ++ " where function type expected"
     ExTAbs tv e   -> do
