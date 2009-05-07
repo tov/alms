@@ -209,7 +209,7 @@ tcExprA = tc S.empty where
       t1 <- tc d g e1
       case t1 of
         TyAll tv t1' -> do
-          tassert (qualifier t2 == tvqual tv) $
+          tassert (qualifier t2 <: tvqual tv) $
             "Mismatch in type application: got " ++
             show (qualifier t2) ++
             " type for type variable " ++ show tv
