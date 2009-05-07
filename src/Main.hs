@@ -22,7 +22,11 @@ import qualified USE_READLINE as RL
 import IO (hFlush, stdout, getLine)
 #endif
 
-data Option = Don'tExecute | Don'tType | Don'tCoerce | Verbose
+data Option = Don'tExecute
+            | Don'tType
+            | Don'tReType
+            | Don'tCoerce
+            | Verbose
   deriving Eq
 
 main :: IO ()
@@ -56,8 +60,10 @@ batch filename msrc opt g0 e0 = do
                       when (opt Verbose) $
                         mumble "TRANSLATION" ast'
                       return ast'
-          when (opt Don'tCoerce) $
-            mumble "TRANSLATION" ast'
+          unless (opt Don'tType || opt Don'tReType || opt Don'tCoerce) $ do
+            t <- tcProg g0 ast'
+            when (opt Verbose) $
+              mumble "RE-TYPE" t
           unless (opt Don'tExecute) $ do
             v <- eval e0 ast'
             when (opt Verbose) $
@@ -88,8 +94,10 @@ interactive opt g0 e0 = do
                   when (opt Verbose) $
                     mumble "TRANSLATION" ast'
                   return ast'
-      when (opt Don'tCoerce) $
-        mumble "TRANSLATED" ast'
+      unless (opt Don'tType || opt Don'tReType || opt Don'tCoerce) $ do
+        t' <- tcProg g0 ast'
+        when (opt Verbose) $
+          mumble "RE-TYPE" t'
       v <- if opt Don'tExecute
              then return (ppr ast)
              else ppr `fmap` eval e0 ast'
@@ -127,9 +135,12 @@ errorString e | isUserError e = ioeGetErrorString e
 processArgs :: [Option] -> [String] -> ([Option], Maybe (IO String), String)
 processArgs opts []          = (opts, Nothing, "-")
 processArgs opts ["-"]       = (opts, Just getContents, "-")
+processArgs opts (('-':c:d:e):r)
+                             = processArgs opts (['-',c]:('-':d:e):r)
 processArgs opts ("-t":r)    = processArgs (Don'tType:opts) r
 processArgs opts ("-x":r)    = processArgs (Don'tExecute:opts) r
 processArgs opts ("-c":r)    = processArgs (Don'tCoerce:opts) r
+processArgs opts ("-r":r)    = processArgs (Don'tReType:opts) r
 processArgs opts ("-v":r)    = processArgs (Verbose:opts) r
 processArgs opts (('-':_):_) = (opts, Just usage, "")
 processArgs opts [name]      = (opts, Just (readFile name), name)
@@ -143,6 +154,7 @@ usage  = do
   hPutStrLn stderr "  -t   Don't type check"
   hPutStrLn stderr "  -x   Don't execute"
   hPutStrLn stderr "  -c   Don't add contracts"
+  hPutStrLn stderr "  -r   Don't re-type check after translation"
   hPutStrLn stderr "  -v   Verbose (show translation, results, types)"
   exitFailure
 
