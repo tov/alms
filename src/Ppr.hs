@@ -69,6 +69,12 @@ instance Ppr (Type w) where
                                    2
                                    (pprPrec precDot body)
       where (tvs, body) = unfoldTyAll (TyAll x t)
+  pprPrec p (TyMu x t)    = parensIf (p > precDot) $
+                              hang (text "mu" <+>
+                                    pprPrec (precDot + 1) x <>
+                                    char '.')
+                                   2
+                                   (pprPrec precDot t)
   pprPrec _ (TyA t)       = braces (pprPrec 0 t)
   pprPrec _ (TyC t)       = braces (pprPrec 0 t)
 

@@ -62,6 +62,11 @@ typep = type0 where
                dot tok
                t   <- type0
                return (foldr TyAll t tvs),
+            do reserved tok "mu"
+               tv  <- tyvarp
+               dot tok
+               t   <- type0
+               return (TyMu tv t),
             type5 ]
   type5 = typeExpr type6
   type6 = tyarg >>= tyapp'

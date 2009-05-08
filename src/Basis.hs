@@ -29,7 +29,8 @@ basis  = [
     --- Special (untypable) constants:
     ---
 
-    val "()"  -:: "" -= (),
+    val "()"     -:: "" -= (),
+    fun "unroll" -:: "" -= (id :: Value -> Value),
 
     ---
     --- Ordinary constants:

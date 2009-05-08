@@ -73,6 +73,7 @@ data Type w where
           tyargs :: [Type w] } :: Type w
   TyVar :: TyVar -> Type w
   TyAll :: TyVar -> Type w -> Type w
+  TyMu  :: TyVar -> Type w -> Type w
   TyC   :: Type C -> Type A
   TyA   :: Type A -> Type C
 
@@ -207,6 +208,8 @@ instance Language w => Eq (Type w) where
   TyVar x    == TyVar x'     = x == x'
   TyAll x t  == TyAll x' t'  = tvqual x == tvqual x' &&
                                t == tysubst x' (TyVar x `asTypeOf` t') t'
+  TyMu x t   == TyMu x' t'   = tvqual x == tvqual x' &&
+                               t == tysubst x' (TyVar x `asTypeOf` t') t'
   _          == _             = False
 
 instance Show Variance where
@@ -314,19 +317,25 @@ instance Language w => PO (Type w) where
            | p'  <- ps' ]
       return (TyCon tc params)
     else fail "\\/? or /\\?: Does not exist"
-  ifMJ b (TyAll a t) (TyAll a' t') = do
-    qual <- ifMJ (not b) (tvqual a) (tvqual a')
-    if qual == tvqual a
-      then do
-        tt' <- ifMJ b t (tysubst a' (TyVar a `asTypeOf` t') t')
-        return (TyAll a tt')
-      else do
-        t't <- ifMJ b (tysubst a (TyVar a' `asTypeOf` t) t) t'
-        return (TyAll a' t't)
+  ifMJ b (TyAll a t) (TyAll a' t') = ifMJBind TyAll b (a, t) (a', t')
+  ifMJ b (TyMu a t)  (TyMu a' t')  = ifMJBind TyMu  b (a, t) (a', t')
   ifMJ _ t t' =
     if t == t'
       then return t
       else fail "\\/? or /\\?: Does not exist"
+
+ifMJBind :: (Monad m, Language w) =>
+            (TyVar -> Type w -> Type w) -> Bool ->
+            (TyVar, Type w) -> (TyVar, Type w) -> m (Type w)
+ifMJBind cons b (a, t) (a', t') = do
+  qual <- ifMJ (not b) (tvqual a) (tvqual a')
+  if qual == tvqual a
+    then do
+      tt' <- ifMJ b t (tysubst a' (TyVar a `asTypeOf` t') t')
+      return (cons a tt')
+    else do
+      t't <- ifMJ b (tysubst a (TyVar a' `asTypeOf` t) t) t'
+      return (cons a' t't)
 
 -- Variance has a bit more structure still -- it does sign analysis:
 instance Num Variance where
@@ -389,6 +398,7 @@ ftv (TyCon n ts)   = M.unionsWith (+)
                        | m   <- map ftv ts ]
 ftv (TyVar tv)     = M.singleton tv 1
 ftv (TyAll tv t)   = M.delete tv (ftv t)
+ftv (TyMu tv t)    = M.delete tv (ftv t)
 ftv (TyC t)        = M.map (const Invariant)
                            (M.unions (map ftv (cgetas t)))
 ftv (TyA t)        = M.map (const Invariant)
@@ -400,6 +410,7 @@ freshTyVar tv m = if tv `M.member` m
                     else tv
   where
     attach n = tv { tvname = Var (unVar (tvname tv) ++ show n) }
+    loop    :: Int -> TyVar
     loop n   =
       let tv' = attach n
       in if tv' `M.member` m
@@ -427,6 +438,16 @@ tysubst a t = ts where
                               t'' = TyVar a'' `asTypeOf` t'
                           in TyAll a'' (ts (tysubst a' t'' t')))
                     (TyAll a' (ts t'))
+  ts (TyMu a' t')
+                = sameLang t' t
+                    (\_ _ ->
+                      if a' == a
+                        then TyMu a' t'
+                        else
+                          let a'' = freshTyVar a' (ftv t)
+                              t'' = TyVar a'' `asTypeOf` t'
+                          in TyMu a'' (ts (tysubst a' t'' t')))
+                    (TyMu a' (ts t'))
   ts t'@(TyCon "dual" [TyVar a'])
                 = sameLang t' t
                     (\t0' t0 ->
@@ -453,6 +474,8 @@ dualSessionType  = d where
     = TyCon "follow" [TyCon "*" [d t1, d t2]]
   d (TyCon "follow" [TyCon "*" [t1, t2]])
     = TyCon "select" [TyCon "*" [d t1, d t2]]
+  d (TyMu tv t)
+    = TyMu tv (d t)
   d t = t
 
 tienv         :: Env String TyInfo
@@ -507,6 +530,7 @@ qualifier     :: Type A -> Q
 qualifier (TyCon tc ps)      = tiQual (tcinfo tc) (map qualifier ps)
 qualifier (TyVar (TV _ q) )  = q
 qualifier (TyAll _ t)        = qualifier t
+qualifier (TyMu _ t)         = qualifier t
 qualifier _                  = Qu
 
 -- Types that pass transparently through boundaries
@@ -521,6 +545,7 @@ cgetas :: Type C -> [Type A]
 cgetas (TyCon _ ts) = concatMap cgetas ts
 cgetas (TyVar _)    = []
 cgetas (TyAll _ t)  = cgetas t
+cgetas (TyMu _ t)   = cgetas t
 cgetas (TyA t)      = [t]
 cgetas _            = [] -- can't happen
 
@@ -528,6 +553,7 @@ agetcs :: Type A -> [Type C]
 agetcs (TyCon _ ts) = concatMap agetcs ts
 agetcs (TyVar _)    = []
 agetcs (TyAll _ t)  = agetcs t
+agetcs (TyMu _ t)   = agetcs t
 agetcs (TyC t)      = [t]
 agetcs _            = [] -- can't happen
 
@@ -539,6 +565,9 @@ ctype2atype (TyCon "->" [td, tr])
 ctype2atype (TyAll tv t)
                       = TyAll tv (ctype2atype t')
                         where t'  = tysubst tv (TyA (TyVar tv)) t
+ctype2atype (TyMu tv t)
+                      = TyMu tv (ctype2atype t')
+                        where t'  = tysubst tv (TyA (TyVar tv)) t
 ctype2atype (TyA t)   = t
 ctype2atype t         = TyC t
 
@@ -549,6 +578,9 @@ atype2ctype (TyCon n [td, tr]) | n `elem` funtypes
   = tyArr (atype2ctype td) (atype2ctype tr)
 atype2ctype (TyAll tv t) | tvqual tv == Qu
                       = TyAll tv (atype2ctype t')
+                        where t' = tysubst tv (TyC (TyVar tv)) t
+atype2ctype (TyMu tv t) | tvqual tv == Qu
+                      = TyMu tv (atype2ctype t')
                         where t' = tysubst tv (TyC (TyVar tv)) t
 atype2ctype (TyC t)   = t
 atype2ctype t         = TyA t
@@ -566,7 +598,7 @@ syntacticValue e = case expr' e of
   _            -> False
 
 constants :: [String]
-constants  = [ "()" ]
+constants  = [ "()", "unroll" ]
 
 modName :: Mod -> Var
 modName (MdA x _ _)   = x

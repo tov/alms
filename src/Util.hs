@@ -1,5 +1,7 @@
 module Util (
-  fromJust, foldl2, all2, char2integer, integer2char, (?:),
+  fromJust, (?:),
+  foldl2, foldr2, all2,
+  char2integer, integer2char,
   unscanr, unscanl
 ) where
 
@@ -9,6 +11,10 @@ import Data.Maybe (fromJust)
 foldl2 :: (c -> a -> b -> c) -> c -> [a] -> [b] -> c
 foldl2 f z (x:xs) (y:ys) = foldl2 f (f z x y) xs ys
 foldl2 _ z _      _      = z
+
+foldr2 :: (a -> b -> c -> c) -> c -> [a] -> [b] -> c
+foldr2 f z (x:xs) (y:ys) = f x y (foldr2 f z xs ys)
+foldr2 _ z _      _      = z
 
 all2 :: (a -> b -> Bool) -> [a] -> [b] -> Bool
 all2 p xs ys = and (zipWith p xs ys)

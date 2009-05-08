@@ -1,0 +1,72 @@
+(* An example with session types, including recursion.
+   Reads natural numbers (very brittle) from standard input
+   until getting a blank line, then prints the sum. *)
+
+module[C] foldl : all 'a 'b. ('a -> 'b -> 'b) -> 'b -> 'a list -> 'b =
+  \'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (as : 'a list).
+    match listcase as with
+    | Left _  -> z
+    | Right p -> let (a, as) = p in
+                   foldl f (f a z) as
+
+-- This is pretty brittle :-)
+module[C] stringToInt : string -> int =
+  \s : string.
+    let each (digit : int) (acc : int) =
+      let digit = sub digit 48 in
+      if le digit -1
+        then failwith[int] "digit out of range"
+        else if le 11 digit
+          then failwith[int] "digit out of range"
+          else add digit (mul 10 acc)
+    in foldl each 0 (explode s)
+
+module[A] server : int ->
+                   (mu 'r.
+                      ((int send -> unit) *
+                       (int recv -> 'r)) follow) channel ->
+                   unit =
+  \(acc : int)
+   (c   : (mu 'r.
+             ((int send -> unit) *
+               (int recv -> 'r)) follow) channel).
+      let c = unroll c in
+        match follow c with
+        | Left c ->
+            send c acc;
+            ()
+        | Right c ->
+            let (x, c) = recv c in
+              server (add acc x) c
+
+module[A] client : (mu 'r.
+                      ((int recv -> unit) *
+                       (int send -> 'r)) select) channel ->
+                   int =
+  \c : (mu 'r.
+          ((int recv -> unit) *
+           (int send -> 'r)) select) channel.
+    let c = unroll c in
+    let s = getLine () in
+      if eq s ""
+        then
+          let c      = sel1 c in
+          let (r, _) = recv c in
+            r
+        else
+          let c      = sel2 c in
+          let c      = send c (stringToInt s) in
+            client c
+
+module[A] main : unit -> int =
+  \_ : unit.
+    let rv = newRendezvous[
+               mu 'r.
+                 ((int recv -> unit) *
+                  (int send -> 'r)) select
+             ] () in
+      threadFork (\_:unit. server 0 (accept rv));
+      client (request rv)
+
+in print (main ())
+

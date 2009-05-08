@@ -2,7 +2,7 @@ module Statics (
   GG(..), tcProg
 ) where
 
--- import Util
+import Util
 import Syntax
 import Env as Env
 import Ppr ()
@@ -137,9 +137,6 @@ tcExprC = tc S.empty where
         " is incompatible with A contract " ++ show t
       return t
 
-  tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
-  tcCon s      _ = terr $ "Unrecognized constant: " ++ s
-
 tcExprA :: Monad m => G A -> Expr A -> m (Type A)
 tcExprA = tc S.empty where
   tc d g e0 = case expr' e0 of
@@ -263,10 +260,23 @@ tcExprA = tc S.empty where
                  Nothing -> False)
         (M.keys (fv e))
 
-  -- It's a shame these all have to be special cases, but I guess
-  -- that's okay . . . for now.
-  tcCon "()"   _ = terr $ "Applied 0 arity constant: ()"
-  tcCon s      _ = terr $ "Unrecognized constant: " ++ s
+tcCon         :: (Monad m, Language w) => String -> Type w -> m (Type w)
+tcCon "()"   _    = terr $ "Applied 0 arity constant: ()"
+tcCon "unroll" t0 = do
+  case tc t0 of
+    Nothing -> terr $ "Nothing to unroll in: " ++ show t0
+    Just tf -> return tf
+  where
+    tc (TyCon n ts0) =
+      let ts0' = map tc ts0
+          each t Nothing   (ts, Nothing)  = (t:ts, Nothing)
+          each t Nothing   (ts, Just ts') = (t:ts, Just (t:ts'))
+          each t (Just t') (ts, _)        = (t:ts, Just (t':ts))
+       in TyCon n `fmap` snd (foldr2 each ([], Nothing) ts0 ts0')
+    tc (TyAll tv t)  = TyAll tv `fmap` tc t
+    tc (TyMu tv t)   = Just (tysubst tv (TyMu tv t) t)
+    tc _             = Nothing
+tcCon s      _    = terr $ "Unrecognized constant: " ++ s
 
 -- Given a list of type variables tvs, an type t in which tvs
 -- may be free, and a type t', tries to substitute for tvs in t
@@ -312,6 +322,7 @@ tcType d0 = tc (d0, S.empty) where
                               "Free type variable: " ++ show tv
   tc (d, d') (TyCon _ ts) = mapM_ (tc (d, d')) ts
   tc (d, d') (TyAll tv t) = tc (S.insert tv d, d') t
+  tc (d, d') (TyMu tv t)  = tc (S.insert tv d, d') t
   tc (d, d') (TyC t)      = tc (d', d) t
   tc (d, d') (TyA t)      = tc (d', d) t
 
