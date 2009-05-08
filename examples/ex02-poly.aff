@@ -1,15 +1,15 @@
 (* Polymorphic version: An Ill-Typed A Module (type error) *)
 
-module[A] ap : all '<a '<b. ('<a -o '<b) -> '<a -o '<b =
+module[A] ap =
   \'<a.
     \'<b.
       \f: '<a -o '<b.
         \x: '<a.
           f x
 
-module[A] inc2 : int -> int =
+module[A] inc2 =
   \y: int.
-    let g = ap[int][int] (\z: int. add z 1) in
+    let g = ap (\z: int. add z 1) in
       g (g y)   (* g: (int -o int) is used twice here *)
 
-in print[int] (inc2 5)
+in print (inc2 5)

@@ -134,11 +134,10 @@ modp  = choice
     languagep  = choice
       [ do reserved tok "C"; return 'C',
         do reserved tok "A"; return 'A' ]
-    modbodyp :: Language w => (Var -> Type w -> Expr w -> Mod) -> P Mod
+    modbodyp :: Language w => (Var -> Maybe (Type w) -> Expr w -> Mod) -> P Mod
     modbodyp f = do
       x    <- varp
-      colon tok
-      t    <- typep
+      t    <- optionMaybe $ colon tok >> typep
       reservedOp tok "="
       e    <- exprp
       return (f x t e)

@@ -1,9 +1,6 @@
 (* An example with session types, including choice. *)
 
-module[A] server : ((int recv -> int recv -> int send -> unit)
-                    *
-                    (int recv -> int send -> unit)) follow channel ->
-                   unit =
+module[A] server =
   \c : ((int recv -> int recv -> int send -> unit)
                     *
                     (int recv -> int send -> unit)) follow channel.
@@ -18,10 +15,7 @@ module[A] server : ((int recv -> int recv -> int send -> unit)
           send c (sub 0 x);
           ()
 
-module[A] client : ((int send -> int send -> int recv -> unit)
-                    *
-                    (int send -> int recv -> unit)) select channel ->
-                   int -o int -o int =
+module[A] client =
   \c : ((int send -> int send -> int recv -> unit)
         *
         (int send -> int recv -> unit)) select channel.
@@ -32,7 +26,7 @@ module[A] client : ((int send -> int send -> int recv -> unit)
       let (r, _) = recv c in
         r
 
-module[A] main : int -> int -> int =
+module[A] main =
   \(x : int) (y : int).
     let rv = newRendezvous[((int send -> int send -> int recv -> unit)
                             *

@@ -2,7 +2,7 @@
    Reads natural numbers (very brittle) from standard input
    until getting a blank line, then prints the sum. *)
 
-module[C] foldl : all 'a 'b. ('a -> 'b -> 'b) -> 'b -> 'a list -> 'b =
+module[C] foldl =
   let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (as : 'a list) : 'b =
     match listcase as with
     | Left _  -> z
@@ -11,7 +11,7 @@ module[C] foldl : all 'a 'b. ('a -> 'b -> 'b) -> 'b -> 'a list -> 'b =
   in loop
 
 -- This is pretty brittle :-)
-module[C] stringToInt : string -> int =
+module[C] stringToInt =
   \s : string.
     let each (digit : int) (acc : int) =
       let digit = sub digit 48 in
@@ -22,10 +22,7 @@ module[C] stringToInt : string -> int =
           else add digit (mul 10 acc)
     in foldl each 0 (explode s)
 
-module[A] server : (mu 'r.
-                      ((int send -> unit) *
-                       (int recv -> 'r)) follow) channel ->
-                   unit =
+module[A] server =
   let rec loop (acc : int)
                (c   : (mu 'r.
                          ((int send -> unit) *
@@ -41,10 +38,7 @@ module[A] server : (mu 'r.
               loop (add acc x) c
    in loop 0
 
-module[A] client : (mu 'r.
-                      ((int recv -> unit) *
-                       (int send -> 'r)) select) channel ->
-                   int =
+module[A] client =
   let rec loop (c : (mu 'r.
                       ((int recv -> unit) *
                        (int send -> 'r)) select) channel) : int =
@@ -61,7 +55,7 @@ module[A] client : (mu 'r.
             loop c
    in loop
 
-module[A] main : unit -> int =
+module[A] main =
   \_ : unit.
     let rv = newRendezvous[
                mu 'r.

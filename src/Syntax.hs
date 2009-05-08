@@ -82,8 +82,8 @@ type TEnv w = Env Var (Type w)
 
 data Prog = Prog [Mod] (Expr C)
 
-data Mod  = MdA Var (Type A) (Expr A)
-          | MdC Var (Type C) (Expr C)
+data Mod  = MdA Var (Maybe (Type A)) (Expr A)
+          | MdC Var (Maybe (Type C)) (Expr C)
           | MdInt Var (Type A) Var
 
 data Expr w = Expr { fv_ :: FV, expr'_ :: Expr' w }

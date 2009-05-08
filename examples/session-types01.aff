@@ -1,15 +1,13 @@
 (* An example with session types *)
 
-module[A] server : (int recv -> int recv -> int send -> unit) channel ->
-                   unit =
+module[A] server =
   \c : (int recv -> int recv -> int send -> unit) channel.
     let (x, c) = recv c in
     let (y, c) = recv c in
       send c (add x y);
       ()
 
-module[A] client : (int send -> int send -> int recv -> unit) channel ->
-                   int -o int -o int =
+module[A] client =
   \c : (int send -> int send -> int recv -> unit) channel.
     \(x : int) (y : int).
       let c = send c x in
@@ -17,7 +15,7 @@ module[A] client : (int send -> int send -> int recv -> unit) channel ->
       let (r, _) = recv c in
         r
 
-module[A] main : int -> int -> int =
+module[A] main =
   \(x : int) (y : int).
     let rv = newRendezvous[int send -> int send -> int recv -> unit] () in
       threadFork (\_:unit. server (accept rv));

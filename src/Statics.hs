@@ -366,24 +366,35 @@ tcType d0 = tc (d0, S.empty) where
   tc (d, d') (TyA t)      = tc (d', d) t
 
 tcMod :: Monad m => GG -> Mod -> m (GG, Mod)
-tcMod gg (MdC x t e) = do
+tcMod gg (MdC x mt e) = do
   te <- tcExprC (ggC gg) e
-  tassert (te == t) $
-    "Declared type for module " ++ show x ++ " : " ++ show t ++
-    " doesn't match actual type " ++ show te
+  t  <- case mt of
+    Just t  -> do
+      tassert (te == t) $
+        "Declared type for module " ++ show x ++ " : " ++ show t ++
+        " doesn't match actual type " ++ show te
+      return t
+    Nothing -> return te
   return (gg { ggC = ggC gg =+= x =:= t,
                ggA = ggA gg =+= x =:= ctype2atype t },
-          MdC x t e)
-tcMod gg (MdA x t e) = do
+          MdC x (Just t) e)
+tcMod gg (MdA x mt e) = do
   te <- tcExprA (ggA gg) e
-  tassert (qualifier t == Qu) $
-    "Declared type of module " ++ show x ++ " is not unlimited"
-  tassert (te <: t) $
-    "Declared type for module " ++ show x ++ " : " ++ show t ++
-    " is not subsumed by actual type " ++ show te
+  t  <- case mt of
+    Just t  -> do
+      tassert (qualifier t == Qu) $
+        "Declared type of module " ++ show x ++ " is not unlimited"
+      tassert (te <: t) $
+        "Declared type for module " ++ show x ++ " : " ++ show t ++
+        " is not subsumed by actual type " ++ show te
+      return t
+    Nothing -> do
+      tassert (qualifier te == Qu) $
+        "Type of module " ++ show x ++ " is not unlimited"
+      return te
   return (gg { ggC = ggC gg =+= x =:= atype2ctype t,
                ggA = ggA gg =+= x =:= t },
-          MdA x t e)
+          MdA x (Just t) e)
 tcMod gg (MdInt x t y) = do
   case ggC gg =.= y of
     Nothing -> terr $ "RHS of interface is unbound variable: " ++ show y

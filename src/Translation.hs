@@ -20,15 +20,16 @@ translate (Prog ms e) =
   where menv = fromList [ (modName m, m) | m <- ms ]
 
 transMod :: MEnv -> Mod -> Mod
-transMod menv (MdC x t e) =
-  MdC x t (transExpr menv (Party x) e)
-transMod menv (MdA x t e) =
-  MdC x (atype2ctype t) (transExpr menv (Party x) e)
-transMod menv (MdInt x t y)   =
-  MdC x (atype2ctype t) $
+transMod menv (MdC x (Just t) e) =
+  MdC x (Just t) (transExpr menv (Party x) e)
+transMod menv (MdA x (Just t) e) =
+  MdC x (Just (atype2ctype t)) (transExpr menv (Party x) e)
+transMod menv (MdInt x t y)      =
+  MdC x (Just (atype2ctype t)) $
     exLet' z (transExpr menv (Party x) (exVar y :: Expr C)) $
       ac (Party y) (Party x) z t
     where z = y /./ "z"
+transMod _    m                  = m
 
 transExpr :: Language w => MEnv -> Party -> Expr w -> Expr C
 transExpr menv neg = te where
@@ -69,11 +70,11 @@ reifyLang1 _ = reifyLang
 transVar :: LangRep w -> MEnv -> Party -> Var -> Expr C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
-    (C, Just (MdC _ t _))   -> cc neg (Party x) x t
-    (C, Just (MdA _ t _))   -> ca neg (Party x) x t
-    (C, Just (MdInt _ t _)) -> ca neg (Party x) x t
-    (A, Just (MdC _ t _))   -> ac neg (Party x) x (ctype2atype t)
-    _                       -> exVar x
+    (C, Just (MdC _ (Just t) _)) -> cc neg (Party x) x t
+    (C, Just (MdA _ (Just t) _)) -> ca neg (Party x) x t
+    (C, Just (MdInt _ t _))      -> ca neg (Party x) x t
+    (A, Just (MdC _ (Just t) _)) -> ac neg (Party x) x (ctype2atype t)
+    _                            -> exVar x
 
 -- Translate a cast ("dynamic promotion")
 --

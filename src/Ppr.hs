@@ -83,12 +83,18 @@ instance Ppr Prog where
                           hang (text "in") 2 (pprPrec 0 e)
 
 instance Ppr Mod where
-  pprPrec _ (MdC x t e) = sep
+  pprPrec _ (MdC x Nothing e) = sep
+    [ text "module[C]" <+> pprPrec 0 x,
+      nest 2 $ equals <+> pprPrec 0 e ]
+  pprPrec _ (MdA x Nothing e) = sep
+    [ text "module[A]" <+> pprPrec 0 x,
+      nest 2 $ equals <+> pprPrec 0 e ]
+  pprPrec _ (MdC x (Just t) e) = sep
     [ text "module[C]" <+>
         pprPrec 0 x,
       nest 2 $ colon <+> pprPrec 0 t,
       nest 4 $ equals <+> pprPrec 0 e ]
-  pprPrec _ (MdA x t e) = sep
+  pprPrec _ (MdA x (Just t) e) = sep
     [ text "module[A]" <+>
         pprPrec 0 x,
       nest 2 $ colon <+> pprPrec 0 t,
