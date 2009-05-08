@@ -1,11 +1,12 @@
 (* Another example with threads. *)
 
 module[A] printer : unit -> unit =
-  \_: unit.
+  let rec loop (_ : unit) : unit =
     threadDelay 100000;
     putStr "x";
     flush ();
-    printer ()
+    loop ()
+  in loop
 
 module[A] startStop : unit -> unit -o unit =
   \_: unit.

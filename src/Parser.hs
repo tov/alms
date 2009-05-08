@@ -187,10 +187,11 @@ exprp = expr0 where
              do x    <- varp
                 args <- argsp
                 finishLet (exLet x . args),
-             parens tok $ do
-                x  <- varp
-                comma tok
-                y  <- varp
+             do (x, y) <- parens tok $ do
+                  x  <- varp
+                  comma tok
+                  y  <- varp
+                  return (x, y)
                 finishLet (exLetPair (x, y)) ],
       do reserved tok "if"
          ec <- expr0

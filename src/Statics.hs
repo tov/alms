@@ -365,62 +365,37 @@ tcType d0 = tc (d0, S.empty) where
   tc (d, d') (TyC t)      = tc (d', d) t
   tc (d, d') (TyA t)      = tc (d', d) t
 
--- Build both initial environments
-makeEnv0 :: [Mod] -> GG -> GG
-makeEnv0 ms gw0 =
-  let cenv = ggC gw0 =+= fromList (map each ms) where
-        each (MdC x t _)   = (x, t)
-        each (MdA x t _)   = (x, atype2ctype t)
-        each (MdInt x t _) = (x, atype2ctype t)
-      aenv = ggA gw0 =+= fromList (map each ms) where
-        each (MdC x t _)   = (x, ctype2atype t)
-        each (MdA x t _)   = (x, t)
-        each (MdInt x t _) = (x, t)
-   in GG { ggC = cenv, ggA = aenv }
-
--- Type check a module.  The boolean 're' tells whether to type check
--- in "re-type mode", which doesn't require module bodies to be syntactic
--- values.
-tcMod :: Monad m => Bool -> GG -> Mod -> m ()
-tcMod re gg (MdC x t e) = do
+tcMod :: Monad m => GG -> Mod -> m GG
+tcMod gg (MdC x t e) = do
   te <- tcExprC (ggC gg) e
-  tassert (re || syntacticValue e) $
-    "Body of module " ++ show x ++ " not a syntactic value"
   tassert (te == t) $
     "Declared type for module " ++ show x ++ " : " ++ show t ++
     " doesn't match actual type " ++ show te
-tcMod re gg (MdA x t e) = do
+  return gg { ggC = ggC gg =+= x =:= t,
+              ggA = ggA gg =+= x =:= ctype2atype t }
+tcMod gg (MdA x t e) = do
   te <- tcExprA (ggA gg) e
   tassert (qualifier t == Qu) $
     "Declared type of module " ++ show x ++ " is not unlimited"
-  tassert (re || syntacticValue e) $
-    "Body of module " ++ show x ++ " not a syntactic value"
   tassert (te <: t) $
     "Declared type for module " ++ show x ++ " : " ++ show t ++
     " is not subsumed by actual type " ++ show te
-tcMod _  gg (MdInt x t y) = do
+  return gg { ggC = ggC gg =+= x =:= atype2ctype t,
+              ggA = ggA gg =+= x =:= t }
+tcMod gg (MdInt x t y) = do
   case ggC gg =.= y of
     Nothing -> terr $ "RHS of interface is unbound variable: " ++ show y
     Just ty -> do
       tassert (ty == atype2ctype t) $
         "Declared type of interface " ++ show x ++ " :> " ++
         show t ++ " not compatible with RHS type: " ++ show ty
-
-tcMods :: Monad m => Bool -> GG -> [Mod] -> m ()
-tcMods re gg = each [] where
-  each _    []     = return ()
-  each seen (m:ms) = do
-    tassert (modName m `notElem` seen) $
-      "Duplicate module name: " ++ show (modName m)
-    tcMod re gg m
-    each (modName m : seen) ms
+      return gg { ggC = ggC gg =+= x =:= atype2ctype t,
+                  ggA = ggA gg =+= x =:= t }
 
 -- Type check a program
---   re          -- Are we re-type checking after translation?
 --   mkBasis     -- The basis type envs
 --   (Prog ms e) -- Program to check
-tcProg :: Monad m => Bool -> GG -> Prog -> m (Type C)
-tcProg re mkBasis (Prog ms e) = do
-  let gg = makeEnv0 ms mkBasis
-  tcMods re gg ms
+tcProg :: Monad m => GG -> Prog -> m (Type C)
+tcProg gg0 (Prog ms e) = do
+  gg <- foldM tcMod gg0 ms
   tcExprC (ggC gg) e

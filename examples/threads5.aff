@@ -5,11 +5,12 @@
 *)
 
 module[A] printer : unit -> unit =
-  \_: unit.
+  let rec loop (_ : unit) : unit =
     threadDelay 100000;
     putStr "x";
     flush ();
-    printer ()
+    loop ()
+  in loop
 
 module[A] start : unit -> thread =
   \_: unit. threadFork printer

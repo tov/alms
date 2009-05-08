@@ -4,15 +4,15 @@ module[A] prompt : unit -> string future =
   \_:unit. newFuture getLine
 
 module[C] printDots : int -> int -> unit =
-  \count:int.
-    \delay:int.
-      if le count 0
-        then ()
-        else
-          putStr ".";
-          flush ();
-          threadDelay (mul 1000 delay);
-          printDots (sub count 1) delay
+  let rec loop (count : int) (delay : int) : unit =
+    if le count 0
+      then ()
+      else
+        putStr ".";
+        flush ();
+        threadDelay (mul 1000 delay);
+        loop (sub count 1) delay
+  in loop
 
 module[A] main : string -> unit =
   \message: string.
