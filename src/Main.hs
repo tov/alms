@@ -4,7 +4,7 @@ module Main (
 ) where
 
 import Util
-import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang)
+import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
 import Parser (parse, parseProg, parseMods)
 import Statics (tcProg, tcMods, GG)
 import Translation (translate, transMods, MEnv)
@@ -120,7 +120,7 @@ interactive opt g0 e0 = do
                        else do
                          (st1, ast1) <- translation st0 ast0
                          when (opt Verbose) $
-                           mumble "TRANSLATION" ast1
+                           mumbles "TRANSLATION" ast1
                          return (st1, ast1)
       when (opt ReType) $ do
         statics st1 ast1
@@ -183,6 +183,9 @@ interactive opt g0 e0 = do
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)
+
+mumbles :: Ppr a => String -> [a] -> IO ()
+mumbles s as = print $ hang (text s <> char ':') 2 (vcat (map ppr as))
 
 errorString :: IOError -> String
 errorString e | isUserError e = ioeGetErrorString e
