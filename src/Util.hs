@@ -1,12 +1,18 @@
 module Util (
   fromJust, (?:),
-  foldl2, foldr2, all2,
+  foldrM, foldl2, foldr2, all2,
   char2integer, integer2char,
-  unscanr, unscanl
+  unscanr, unscanl,
+  module Control.Monad
 ) where
 
 import Data.Char (chr, ord)
 import Data.Maybe (fromJust)
+import Control.Monad
+
+foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a
+foldrM _ z []     = return z
+foldrM f z (b:bs) = foldrM f z bs >>= flip f b
 
 foldl2 :: (c -> a -> b -> c) -> c -> [a] -> [b] -> c
 foldl2 f z (x:xs) (y:ys) = foldl2 f (f z x y) xs ys

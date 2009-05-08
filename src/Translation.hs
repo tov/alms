@@ -42,6 +42,11 @@ transExpr menv neg = te where
                                      (xl, tem (menv =-= xl) el)
                                      (xr, tem (menv =-= xr) er)
     ExLet x e1 e2 -> exLet' x (te e1) (tem (menv =-= x) e2)
+    ExLetRec bs e2 -> let rec  = tem (foldl (=-=) menv (map bnvar bs))
+                      in exLetRec
+                           [ Binding x (type2ctype t) (rec e)
+                           | Binding x t e <- bs ]
+                           (rec e2)
     ExVar x -> transVar (reifyLang1 e0) menv neg x
     ExPair e1 e2 -> exPair (te e1) (te e2)
     ExLetPair (x, y) e1 e2 -> exLetPair (x, y) (te e1)

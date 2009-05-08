@@ -25,7 +25,7 @@ tok = makeTokenParser LanguageDef {
     opLetter       = oneOf "~!@#$%^&*-+=<>/?\\|",
     reservedNames  = ["if", "then", "else",
                       "match", "with",
-                      "let", "in",
+                      "let", "rec", "and", "in",
                       "module", "interface",
                       "all", "A", "C"],
     reservedOpNames = ["|", "->", "*", "=", "\\", "^", ":", ":>"],
@@ -147,20 +147,51 @@ exprp :: Language w => P (Expr w)
 exprp = expr0 where
   expr0 = choice
     [ do reserved tok "let"
-         makeLet <- choice
-           [ do x    <- varp
+         let finishLet makeLet = do
+               reservedOp tok "="
+               e1 <- expr0
+               reserved tok "in"
+               e2 <- expr0
+               return (makeLet e1 e2)
+         choice
+           [ do reserved tok "rec"
+                bs <- flip sepBy1 (reserved tok "and") $ do
+                  x    <- varp
+                  let argsloop :: Language w =>
+                                  (Type w -> Type w -> Type w) ->
+                                  P (Type w -> Type w, Expr w -> Expr w)
+                      argsloop arr0 = choice
+                        [ do tv <- tyvarp
+                             (ft, fe) <- argsloop arr0
+                             return (TyAll tv . ft, exTAbs tv . fe),
+                          do arr <- option arr0 $ do
+                               reservedOp tok "|"
+                               return tyLol
+                             (y, t) <- parens tok $ do
+                               y <- varp
+                               colon tok
+                               t <- typep
+                               return (y, t)
+                             (ft, fe) <- argsloop arr
+                             return (arr t . ft, exAbs y t . fe),
+                          return (id, id) ]
+                  (ft, fe) <- argsloop tyArr
+                  colon tok
+                  t    <- typep
+                  reservedOp tok "="
+                  e    <- expr0
+                  return (Binding x (ft t) (fe e))
+                reserved tok "in"
+                e2 <- expr0
+                return (exLetRec bs e2),
+             do x    <- varp
                 args <- argsp
-                return (exLet x . args),
+                finishLet (exLet x . args),
              parens tok $ do
                 x  <- varp
                 comma tok
                 y  <- varp
-                return (exLetPair (x, y)) ]
-         reservedOp tok "="
-         e1 <- expr0
-         reserved tok "in"
-         e2 <- expr0
-         return (makeLet e1 e2),
+                finishLet (exLetPair (x, y)) ],
       do reserved tok "if"
          ec <- expr0
          reserved tok "then"

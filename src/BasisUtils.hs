@@ -116,9 +116,9 @@ vapp :: Valuable a => Value -> a -> IO Value
 vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
-basis2venv :: [Entry] -> Env Var Value
+basis2venv :: [Entry] -> Env Var (IO Value)
 basis2venv es =
-  fromList [ (Var (enName entry), enValue entry)
+  fromList [ (Var (enName entry), return (enValue entry))
            | entry <- es ]
 
 basis2tenv :: [Entry] -> GG

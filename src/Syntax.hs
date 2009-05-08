@@ -14,8 +14,9 @@ module Syntax (
   Type(..), TEnv,
   Prog(..), Mod(..),
 
-  Expr(), Expr'(..), fv, expr',
-  exCon, exStr, exInt, exIf, exCase, exLet, exVar, exPair, exLetPair,
+  Expr(), Expr'(..), Binding(..), fv, expr',
+  exCon, exStr, exInt, exIf, exCase, exLet, exLetRec,
+  exVar, exPair, exLetPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
 
   PO(..),
@@ -93,6 +94,7 @@ data Expr' w = ExCon String
              | ExIf (Expr w) (Expr w) (Expr w)
              | ExCase (Expr w) (Var, Expr w) (Var, Expr w)
              | ExLet Var (Expr w) (Expr w)
+             | ExLetRec [Binding w] (Expr w)
              | ExVar Var
              | ExPair (Expr w) (Expr w)
              | ExLetPair (Var, Var) (Expr w) (Expr w)
@@ -102,6 +104,12 @@ data Expr' w = ExCon String
              | ExTApp (Expr w) (Type w)
              | ExSeq (Expr w) (Expr w)
              | ExCast (Expr w) (Type w) (Type A)
+
+data Binding w = Binding {
+  bnvar  :: Var,
+  bntype :: Type w,
+  bnexpr :: Expr w
+}
 
 fv :: Expr w -> FV
 fv  = fv_
@@ -134,6 +142,15 @@ exLet :: Var -> Expr w -> Expr w -> Expr w
 exLet x e1 e2 = Expr {
   fv_    = fv e1 |*| (fv e2 |-| x),
   expr'_ = ExLet x e1 e2
+}
+
+exLetRec :: [Binding w] -> Expr w -> Expr w
+exLetRec bs e2 = Expr {
+  fv_    = let es  = map bnexpr bs
+               vs  = map bnvar  bs
+               pot = foldr (|*|) (fv e2) (map fv es)
+           in foldl (|-|) pot vs,
+  expr'_ = ExLetRec bs e2
 }
 
 exVar :: Var -> Expr w

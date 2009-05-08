@@ -121,6 +121,18 @@ instance Ppr (Expr w) where
                   (pprPrec precDot ei)
     ExLet x e1 e2 ->
       pprLet p (pprPrec 0 x) e1 e2
+    ExLetRec bs e2 ->
+      text "let" <+>
+      vcat (zipWith each ("rec" : repeat "and") bs) $$
+      text "in" <+> pprPrec precDot e2
+        where
+          each kw (Binding x t e) =
+            -- This could be better by pulling some args out.
+            hang (hang (text kw <+> pprPrec 0 x)
+                       6
+                       (colon <+> pprPrec 0 t <+> equals))
+                 2
+                 (pprPrec 0 e)
     ExVar x -> pprPrec 0 x
     ExPair e1 e2 ->
       parensIf (p > precCom) $
@@ -155,18 +167,18 @@ instance Ppr (Expr w) where
 
 pprLet :: Int -> Doc -> Expr w -> Expr w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
-  sep [ text "let" <+> pat <+>
-        pprArgList args <+>
-        equals <+> pprPrec 0 body <+> text "in",
-        nest (if isLet (expr' e2)
-                then 0
-                else 2)
-             (pprPrec precDot e2) ]
+  hang (hang (text "let" <+> pat <+> pprArgList args <+> equals)
+             2
+             (pprPrec 0 body))
+       (if isLet (expr' e2)
+          then 0
+          else 2)
+       (pprPrec precDot e2)
   where
+    (args, body) = unfoldExAbs e1
     isLet (ExLet _ _ _)     = True
     isLet (ExLetPair _ _ _) = True
     isLet _                 = False
-    (args, body) = unfoldExAbs e1
 
 pprAbs :: Int -> Expr w -> Doc
 pprAbs p e = parensIf (p > precDot) $

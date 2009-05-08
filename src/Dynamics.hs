@@ -14,8 +14,8 @@ import Env
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             parensIf, precCom, precApp)
 
--- import Data.IORef (newIORef, readIORef, writeIORef)
 import Data.Typeable (Typeable, cast)
+import Data.IORef (newIORef, readIORef, writeIORef)
 
 -- We represent function names in a way that makes pretty-printing
 -- them nicer
@@ -96,7 +96,7 @@ instance Show Value where
 --
 
 type Result   = IO Value
-type E        = Env Var Value
+type E        = Env Var (IO Value)
 type M        = Env Var (Either (Expr C) (Expr A))
 
 type D        = M -> E -> Result
@@ -117,9 +117,10 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
   -- The meaning of an expression
   valOf :: Expr w -> D
   valOf e m env = case expr' e of
-    ExCon s                -> case env0 =.= Var s of
-      Just v  -> return v
-      Nothing -> fail $ "BUG! Unknown constant: " ++ s
+    ExCon s                -> do 
+      case env0 =.= Var s of
+        Just v  -> v
+        Nothing -> fail $ "BUG! Unknown constant: " ++ s
     ExStr s                -> return (vinj s)
     ExInt z                -> return (vinj z)
     ExIf ec et ef         -> do
@@ -130,13 +131,32 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
     ExCase e1 (xl, el) (xr, er) -> do
       v1 <- valOf e1 m env
       case vprj v1 of
-        Left vl  -> valOf el m (env =+= xl =:= vl)
-        Right vr -> valOf er m (env =+= xr =:= vr)
+        Left vl  -> valOf el m (env =+= xl =::= vl)
+        Right vr -> valOf er m (env =+= xr =::= vr)
     ExLet x e1 e2          -> do
       v1 <- valOf e1 m env
-      valOf e2 m $ env =+= x =:= nameFun x v1
+      valOf e2 m $ env =+= x =::= nameFun x v1
+    ExLetRec bs e2         -> do
+      let extend (envI, rs) b = do
+            r <- newIORef (fail "Accessed let rec binding too early")
+            return (envI =+= bnvar b =:= join (readIORef r), r : rs)
+      (env', rev_rs) <- foldM extend (env, []) bs
+      zipWithM_
+        (\r b -> do
+           v <- valOf (bnexpr b) m env'
+           writeIORef r (return v))
+        (reverse rev_rs)
+        bs
+      valOf e2 m env'
+{-
+      env' <- foldM bind env bs
+      let bind envI (Binding xI _ eI) = do
+            vI <- unsafeInterleaveIO (valOf eI m env')
+            return (envI =+= xI =:= vI)
+      valOf e2 m env'
+      -}
     ExVar x        -> case env =.= x of
-      Just v  -> return v
+      Just v  -> v
       Nothing -> case m =.= x of
         Just (Left e')  -> valOf e' m env0
         Just (Right e') -> valOf e' m env0
@@ -148,11 +168,11 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
     ExLetPair (x, y) e1 e2 -> do
       v1 <- valOf e1 m env
       let (vx, vy) = vprj v1
-      valOf e2 m $ env =+= x =:= nameFun x vx
-                       =+= y =:= nameFun y vy
+      valOf e2 m $ env =+= x =::= nameFun x vx
+                       =+= y =::= nameFun y vy
     ExAbs x _ e'           ->
       return (VaFun (FNAnonymous (ppr e))
-                    (\v -> valOf e' m (env =+= x =:= v)))
+                    (\v -> valOf e' m (env =+= x =::= v)))
     ExApp e1 e2            -> do
       v1  <- valOf e1 m env
       v2  <- valOf e2 m env

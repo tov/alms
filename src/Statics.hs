@@ -7,6 +7,7 @@ import Syntax
 import Env as Env
 import Ppr ()
 
+import Control.Monad
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -76,6 +77,24 @@ tcExprC = tc S.empty where
     ExLet x e1 e2 -> do
       t1 <- tc d g e1
       tc d (g =+= x =:= t1) e2
+    ExLetRec bs e2 -> do
+      let makeG _    []      = return g
+          makeG seen (b:bs') = do
+            tassert (bnvar b `notElem` seen) $
+              "Duplicate binding in let rec: " ++ show (bnvar b)
+            tassert (syntacticValue (bnexpr b)) $
+              "Not a syntactic value in let rec: " ++ show (bnexpr b)
+            g' <- makeG (bnvar b : seen) bs'
+            return (g' =+= bnvar b =:= bntype b)
+      g' <- makeG [] bs
+      ts <- mapM (tc d g' . bnexpr) bs
+      zipWithM_ (\b t ->
+                   tassert (t == bntype b) $
+                      "Actual type " ++ show t ++
+                      " does not agree with declared type " ++
+                      show (bntype b) ++ " in let rec")
+                bs ts
+      tc d g' e2
     ExVar x       -> do
       g =.= x |!
         "Unbound variable: " ++ show x
@@ -175,6 +194,26 @@ tcExprA = tc S.empty where
         "Affine variable " ++ show x ++ " : " ++
         show t1 ++ " duplicated in let body"
       tc d (g =+= x =:= t1) e2
+    ExLetRec bs e2 -> do
+      let makeG _    []      = return g
+          makeG seen (b:bs') = do
+            tassert (bnvar b `notElem` seen) $
+              "Duplicate binding in let rec: " ++ show (bnvar b)
+            tassert (syntacticValue (bnexpr b)) $
+              "Not a syntactic value in let rec: " ++ show (bnexpr b)
+            tassert (qualifier (bntype b) <: Qu) $
+              "Affine type in let rec binding: " ++ show (bntype b)
+            g' <- makeG (bnvar b : seen) bs'
+            return (g' =+= bnvar b =:= bntype b)
+      g' <- makeG [] bs
+      ts <- mapM (tc d g' . bnexpr) bs
+      zipWithM_ (\b t ->
+                   tassert (t <: bntype b) $
+                      "Actual type " ++ show t ++
+                      " does not agree with declared type " ++
+                      show (bntype b) ++ " in let rec")
+                bs ts
+      tc d g' e2
     ExVar x       -> do
       g =.= x |!
         "Unbound variable: " ++ show x

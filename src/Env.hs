@@ -1,6 +1,6 @@
 module Env (
   Env,
-  empty, (=:=), (=+=), (=-=), (=.=), (=|=),
+  empty, (=:=), (=::=), (=+=), (=-=), (=.=), (=|=),
   mapAccum, mapAccumM,
   toList, fromList, contents
 ) where
@@ -8,7 +8,7 @@ module Env (
 import qualified Data.Map as M
 import Data.Monoid
 
-infix 6 =:=, =.=
+infix 6 =:=, =::=, =.=
 infixr 5 =+=
 infixl 5 =-=, =|=
 
@@ -20,6 +20,10 @@ empty     = Env M.empty
 -- singleton bind
 (=:=)    :: Ord v => v -> a -> Env v a
 v =:= a   = Env (M.singleton v a)
+
+(=::=)  :: (Monad m, Ord v) => v -> a -> Env v (m a)
+x =::= v = x =:= return v
+
 
 -- union
 (=+=)    :: Ord v => Env v a -> Env v a -> Env v a
