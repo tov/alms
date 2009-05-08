@@ -148,13 +148,6 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
         (reverse rev_rs)
         bs
       valOf e2 m env'
-{-
-      env' <- foldM bind env bs
-      let bind envI (Binding xI _ eI) = do
-            vI <- unsafeInterleaveIO (valOf eI m env')
-            return (envI =+= xI =:= vI)
-      valOf e2 m env'
-      -}
     ExVar x        -> case env =.= x of
       Just v  -> v
       Nothing -> case m =.= x of
