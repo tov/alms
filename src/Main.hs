@@ -49,23 +49,26 @@ batch filename msrc opt g0 e0 = do
       case parse parseProg filename src of
         Left e    -> fail $ "syntax error: " ++ show e
         Right ast -> do
-          unless (opt Don'tType) $ do
-            t <- tcProg g0 ast
-            when (opt Verbose) $
-              mumble "TYPE" t
-          ast' <- if opt Don'tCoerce
+          ast0 <- if opt Don'tType
                     then return ast
                     else do
-                      let ast' = translate ast
+                      (t, ast0) <- tcProg g0 ast
                       when (opt Verbose) $
-                        mumble "TRANSLATION" ast'
-                      return ast'
+                        mumble "TYPE" t
+                      return ast0
+          ast1 <- if opt Don'tCoerce
+                    then return ast0
+                    else do
+                      let ast1 = translate ast0
+                      when (opt Verbose) $
+                        mumble "TRANSLATION" ast1
+                      return ast1
           when (opt ReType) $ do
-            t <- tcProg g0 ast'
+            (t, _) <- tcProg g0 ast1
             when (opt Verbose) $
               mumble "RE-TYPE" t
           unless (opt Don'tExecute) $ do
-            v <- eval e0 ast'
+            v <- eval e0 ast1
             when (opt Verbose) $
               mumble "RESULT" v
 
@@ -84,23 +87,25 @@ interactive opt g0 e0 = do
               hPutStrLn stderr (errorString err)
           repl
     doLine ast = do
-      t <- if opt Don'tType
-             then return Nothing
-             else Just `fmap` tcProg g0 ast
-      ast' <- if opt Don'tCoerce
-                then return ast
+      (t, ast0) <- if opt Don'tType
+                     then return (Nothing, ast)
+                     else do
+                       (t, ast0) <- tcProg g0 ast
+                       return (Just t, ast0)
+      ast1 <- if opt Don'tCoerce
+                then return ast0
                 else do
-                  let ast' = translate ast
+                  let ast1 = translate ast0
                   when (opt Verbose) $
-                    mumble "TRANSLATION" ast'
-                  return ast'
+                    mumble "TRANSLATION" ast1
+                  return ast1
       when (opt ReType) $ do
-        t' <- tcProg g0 ast'
+        (t', _) <- tcProg g0 ast1
         when (opt Verbose) $
           mumble "RE-TYPE" t'
       v <- if opt Don'tExecute
              then return (ppr ast)
-             else ppr `fmap` eval e0 ast'
+             else ppr `fmap` eval e0 ast1
       printResult v t
     reader = loop []
       where

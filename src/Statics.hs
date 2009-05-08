@@ -365,14 +365,15 @@ tcType d0 = tc (d0, S.empty) where
   tc (d, d') (TyC t)      = tc (d', d) t
   tc (d, d') (TyA t)      = tc (d', d) t
 
-tcMod :: Monad m => GG -> Mod -> m GG
+tcMod :: Monad m => GG -> Mod -> m (GG, Mod)
 tcMod gg (MdC x t e) = do
   te <- tcExprC (ggC gg) e
   tassert (te == t) $
     "Declared type for module " ++ show x ++ " : " ++ show t ++
     " doesn't match actual type " ++ show te
-  return gg { ggC = ggC gg =+= x =:= t,
-              ggA = ggA gg =+= x =:= ctype2atype t }
+  return (gg { ggC = ggC gg =+= x =:= t,
+               ggA = ggA gg =+= x =:= ctype2atype t },
+          MdC x t e)
 tcMod gg (MdA x t e) = do
   te <- tcExprA (ggA gg) e
   tassert (qualifier t == Qu) $
@@ -380,8 +381,9 @@ tcMod gg (MdA x t e) = do
   tassert (te <: t) $
     "Declared type for module " ++ show x ++ " : " ++ show t ++
     " is not subsumed by actual type " ++ show te
-  return gg { ggC = ggC gg =+= x =:= atype2ctype t,
-              ggA = ggA gg =+= x =:= t }
+  return (gg { ggC = ggC gg =+= x =:= atype2ctype t,
+               ggA = ggA gg =+= x =:= t },
+          MdA x t e)
 tcMod gg (MdInt x t y) = do
   case ggC gg =.= y of
     Nothing -> terr $ "RHS of interface is unbound variable: " ++ show y
@@ -389,13 +391,22 @@ tcMod gg (MdInt x t y) = do
       tassert (ty == atype2ctype t) $
         "Declared type of interface " ++ show x ++ " :> " ++
         show t ++ " not compatible with RHS type: " ++ show ty
-      return gg { ggC = ggC gg =+= x =:= atype2ctype t,
-                  ggA = ggA gg =+= x =:= t }
+      return (gg { ggC = ggC gg =+= x =:= atype2ctype t,
+                   ggA = ggA gg =+= x =:= t },
+              MdInt x t y)
+
+tcMods :: Monad m => GG -> [Mod] -> m (GG, [Mod])
+tcMods gg0 ms0 = foldM each (gg0, []) ms0 where
+  each (gg, ms) m = do
+    (gg', m') <- tcMod gg m
+    return (gg', ms ++ [m'])
 
 -- Type check a program
 --   mkBasis     -- The basis type envs
 --   (Prog ms e) -- Program to check
-tcProg :: Monad m => GG -> Prog -> m (Type C)
+tcProg :: Monad m => GG -> Prog -> m (Type C, Prog)
 tcProg gg0 (Prog ms e) = do
-  gg <- foldM tcMod gg0 ms
-  tcExprC (ggC gg) e
+  (gg, ms') <- tcMods gg0 ms
+  t         <- tcExprC (ggC gg) e
+  return (t, Prog ms' e)
+
