@@ -1,5 +1,5 @@
 module Statics (
-  GG(..), tcProg
+  GG(..), tcProg, tcMods
 ) where
 
 import Util

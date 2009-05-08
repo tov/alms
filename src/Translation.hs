@@ -1,5 +1,5 @@
 module Translation (
-  translate
+  translate, transMods, MEnv,
 ) where
 
 import Syntax
@@ -15,21 +15,29 @@ newtype Party = Party { unParty :: Var }
 -- Also performs some *trivial* optimizations.
 translate :: Prog -> Prog
 translate (Prog ms e) =
-  Prog (map (transMod menv) ms)
-       (transExpr menv (Party (Var "*main*")) e)
-  where menv = fromList [ (modName m, m) | m <- ms ]
+  Prog ms' (transExpr menv (Party (Var "*main*")) e)
+  where (menv, ms') = transMods empty ms
 
-transMod :: MEnv -> Mod -> Mod
-transMod menv (MdC x (Just t) e) =
-  MdC x (Just t) (transExpr menv (Party x) e)
-transMod menv (MdA x (Just t) e) =
-  MdC x (Just (atype2ctype t)) (transExpr menv (Party x) e)
-transMod menv (MdInt x t y)      =
-  MdC x (Just (atype2ctype t)) $
-    exLet' z (transExpr menv (Party x) (exVar y :: Expr C)) $
-      ac (Party y) (Party x) z t
+transMods :: MEnv -> [Mod] -> (MEnv, [Mod])
+transMods menv = foldl each (menv, []) where
+  each (env, ms) m = let (env', m') = transMod env m
+                      in (env', ms ++ [m'])
+
+transMod :: MEnv -> Mod -> (MEnv, Mod)
+transMod menv m@(MdC x (Just t) e) =
+  (menv =+= x =:= m,
+   MdC x (Just t) (transExpr menv (Party x) e))
+transMod menv m@(MdA x (Just t) e) =
+  (menv =+= x =:= m,
+   MdC x (Just (atype2ctype t)) (transExpr menv (Party x) e))
+transMod menv m@(MdInt x t y)      =
+  (menv =+= x =:= m,
+   MdC x (Just (atype2ctype t)) $
+     exLet' z (transExpr menv (Party x) (exVar y :: Expr C)) $
+       ac (Party y) (Party x) z t)
     where z = y /./ "z"
-transMod _    m                  = m
+transMod menv m                  =
+  (menv =+= modName m =:= m, m)
 
 transExpr :: Language w => MEnv -> Party -> Expr w -> Expr C
 transExpr menv neg = te where

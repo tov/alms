@@ -26,7 +26,7 @@ module Syntax (
   transparent, funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
-  syntacticValue, constants, modName,
+  syntacticValue, constants, modName, prog2mods,
   unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
 ) where
 
@@ -621,6 +621,9 @@ modName :: Mod -> Var
 modName (MdA x _ _)   = x
 modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
+
+prog2mods :: Prog -> [Mod]
+prog2mods (Prog ms e) = ms ++ [MdC (Var "it") Nothing e]
 
 -- Unfolding various sequences
 

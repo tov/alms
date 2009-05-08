@@ -35,6 +35,9 @@ class Separator a where
 instance Separator (Type w) where
   separator _ = comma
 
+instance Separator Mod where
+  separator _ = text "" $+$ text ""
+
 instance (Ppr a, Separator a) => Ppr [a] where
   pprPrec _ xs = hcat (intersperse (separator (head xs))
                                    (map (pprPrec precCom) xs))

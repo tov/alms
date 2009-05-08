@@ -3,7 +3,8 @@
       DeriveDataTypeable
     #-}
 module Dynamics (
-  E, Result, eval,
+  E, Result,
+  eval, evalMods,
   Valuable(..),
   FunName(..), Value(..), vaInt, vaUnit
 ) where
@@ -97,9 +98,9 @@ instance Show Value where
 
 type Result   = IO Value
 type E        = Env Var (IO Value)
-type M        = Env Var (Either (Expr C) (Expr A))
 
-type D        = M -> E -> Result
+type D        = E -> Result
+type DMod     = E -> IO E
 
 -- Add the given name to an anonymous function
 nameFun :: Var -> Value -> Value
@@ -107,86 +108,94 @@ nameFun (Var x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
 
-eval :: E -> Prog -> Result
-eval env0 (Prog ms e0) = valOf e0 menv env0 where
-  menv = fromList (map each ms)
-  each (MdC   x _ e') = (x, Left e')
-  each (MdA   x _ e') = (x, Right e')
-  each (MdInt x _ y)  = (x, Left (exVar y))
+evalMods :: [Mod] -> DMod
+evalMods  = flip (foldM (flip evalMod))
 
-  -- The meaning of an expression
-  valOf :: Expr w -> D
-  valOf e m env = case expr' e of
-    ExCon s                -> do 
-      case env0 =.= Var s of
-        Just v  -> v
-        Nothing -> fail $ "BUG! Unknown constant: " ++ s
-    ExStr s                -> return (vinj s)
-    ExInt z                -> return (vinj z)
-    ExIf ec et ef         -> do
-      c <- valOf ec m env
-      if vprj c
-        then valOf et m env
-        else valOf ef m env
-    ExCase e1 (xl, el) (xr, er) -> do
-      v1 <- valOf e1 m env
-      case vprj v1 of
-        Left vl  -> valOf el m (env =+= xl =::= vl)
-        Right vr -> valOf er m (env =+= xr =::= vr)
-    ExLet x e1 e2          -> do
-      v1 <- valOf e1 m env
-      valOf e2 m $ env =+= x =::= nameFun x v1
-    ExLetRec bs e2         -> do
-      let extend (envI, rs) b = do
-            r <- newIORef (fail "Accessed let rec binding too early")
-            return (envI =+= bnvar b =:= join (readIORef r), r : rs)
-      (env', rev_rs) <- foldM extend (env, []) bs
-      zipWithM_
-        (\r b -> do
-           v <- valOf (bnexpr b) m env'
-           writeIORef r (return v))
-        (reverse rev_rs)
-        bs
-      valOf e2 m env'
-    ExVar x        -> case env =.= x of
+evalMod :: Mod -> DMod
+evalMod (MdC x _ e)   env = do
+  v <- valOf e env
+  return (env =+= x =:= return v)
+evalMod (MdA x _ e)   env = do
+  v <- valOf e env
+  return (env =+= x =:= return v)
+evalMod (MdInt x _ y) env = do
+  case env =.= y of
+    Just v  -> return (env =+= x =:= v)
+    Nothing -> fail $ "BUG! Unknown module: " ++ show y
+
+eval :: E -> Prog -> Result
+eval env0 (Prog ms e0) = evalMods ms env0 >>= valOf e0
+
+-- The meaning of an expression
+valOf :: Expr w -> D
+valOf e env = case expr' e of
+  ExCon s                -> do 
+    case env =.= Var s of
       Just v  -> v
-      Nothing -> case m =.= x of
-        Just (Left e')  -> valOf e' m env0
-        Just (Right e') -> valOf e' m env0
-        Nothing -> fail $ "BUG! unbound variable: " ++ show x
-    ExPair e1 e2           -> do
-      v1 <- valOf e1 m env
-      v2 <- valOf e2 m env
-      return (vinj (v1, v2))
-    ExLetPair (x, y) e1 e2 -> do
-      v1 <- valOf e1 m env
-      let (vx, vy) = vprj v1
-      valOf e2 m $ env =+= x =::= nameFun x vx
-                       =+= y =::= nameFun y vy
-    ExAbs x _ e'           ->
-      return (VaFun (FNAnonymous (ppr e))
-                    (\v -> valOf e' m (env =+= x =::= v)))
-    ExApp e1 e2            -> do
-      v1  <- valOf e1 m env
-      v2  <- valOf e2 m env
-      v1' <- force v1  -- Magic type application
-      case v1' of
-        VaFun _ f -> f v2
-        _         -> fail $ "BUG! applied non-function " ++ show v1
-                             ++ " to argument " ++ show v2
-    ExTAbs _ e'            ->
-      return (VaSus (hang (text "#<sus") 4 $ ppr e <> char '>')
-                    (valOf e' m env))
-    ExTApp e' _            -> do
-      v' <- valOf e' m env
-      case v' of
-        VaSus _ f -> f
-        _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
-    ExSeq e1 e2            -> do
-      valOf e1 m env
-      valOf e2 m env
-    ExCast e1 _ _          ->
-      valOf e1 m env
+      Nothing -> fail $ "BUG! Unknown constant: " ++ s
+  ExStr s                -> return (vinj s)
+  ExInt z                -> return (vinj z)
+  ExIf ec et ef         -> do
+    c <- valOf ec env
+    if vprj c
+      then valOf et env
+      else valOf ef env
+  ExCase e1 (xl, el) (xr, er) -> do
+    v1 <- valOf e1 env
+    case vprj v1 of
+      Left vl  -> valOf el (env =+= xl =::= vl)
+      Right vr -> valOf er (env =+= xr =::= vr)
+  ExLet x e1 e2          -> do
+    v1 <- valOf e1 env
+    valOf e2 $ env =+= x =::= nameFun x v1
+  ExLetRec bs e2         -> do
+    let extend (envI, rs) b = do
+          r <- newIORef (fail "Accessed let rec binding too early")
+          return (envI =+= bnvar b =:= join (readIORef r), r : rs)
+    (env', rev_rs) <- foldM extend (env, []) bs
+    zipWithM_
+      (\r b -> do
+         v <- valOf (bnexpr b) env'
+         writeIORef r (return v))
+      (reverse rev_rs)
+      bs
+    valOf e2 env'
+  ExVar x        -> case env =.= x of
+    Just v  -> v
+    Nothing -> fail $ "BUG! unbound variable: " ++ show x
+  ExPair e1 e2           -> do
+    v1 <- valOf e1 env
+    v2 <- valOf e2 env
+    return (vinj (v1, v2))
+  ExLetPair (x, y) e1 e2 -> do
+    v1 <- valOf e1 env
+    let (vx, vy) = vprj v1
+    valOf e2 $ env =+= x =::= nameFun x vx
+                   =+= y =::= nameFun y vy
+  ExAbs x _ e'           ->
+    return (VaFun (FNAnonymous (ppr e))
+                  (\v -> valOf e' (env =+= x =::= v)))
+  ExApp e1 e2            -> do
+    v1  <- valOf e1 env
+    v2  <- valOf e2 env
+    v1' <- force v1  -- Magic type application
+    case v1' of
+      VaFun _ f -> f v2
+      _         -> fail $ "BUG! applied non-function " ++ show v1
+                           ++ " to argument " ++ show v2
+  ExTAbs _ e'            ->
+    return (VaSus (hang (text "#<sus") 4 $ ppr e <> char '>')
+                  (valOf e' env))
+  ExTApp e' _            -> do
+    v' <- valOf e' env
+    case v' of
+      VaSus _ f -> f
+      _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
+  ExSeq e1 e2            -> do
+    valOf e1 env
+    valOf e2 env
+  ExCast e1 _ _          ->
+    valOf e1 env
 
 force :: Value -> IO Value
 force (VaSus _ v) = v >>= force

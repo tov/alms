@@ -3,13 +3,16 @@ module Main (
   main
 ) where
 
-import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
-import Parser (parse, parseProg)
-import Statics (tcProg, GG)
-import Translation (translate)
-import Dynamics (eval, E)
+import Util
+import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang)
+import Parser (parse, parseProg, parseMods)
+import Statics (tcProg, tcMods, GG)
+import Translation (translate, transMods, MEnv)
+import Dynamics (eval, evalMods, E)
 import Basis (basis)
 import BasisUtils (basis2venv, basis2tenv)
+import Syntax (Mod(..), prog2mods, modName)
+import Env (empty, (=.=), (=-=))
 
 import Control.Monad (when, unless)
 import System (getArgs, getProgName, exitFailure)
@@ -72,41 +75,61 @@ batch filename msrc opt g0 e0 = do
             when (opt Verbose) $
               mumble "RESULT" v
 
+data ReplState = RS {
+  rsStatics     :: GG,
+  rsTranslation :: MEnv,
+  rsDynamics    :: E
+}
+
+statics, translation, dynamics
+  :: ReplState -> [Mod] -> IO (ReplState, [Mod])
+
+statics rs ast = do
+  (g', ast') <- tcMods (rsStatics rs) ast
+  return (rs { rsStatics = g' }, ast')
+
+translation rs ast = do
+  let (menv', ast') = transMods (rsTranslation rs) ast
+  return (rs { rsTranslation = menv' }, ast')
+
+dynamics rs ast = do
+  e' <- evalMods ast (rsDynamics rs)
+  return (rs { rsDynamics = e' }, ast)
+
 interactive :: (Option -> Bool) -> GG -> E -> IO ()
 interactive opt g0 e0 = do
   initialize
-  repl
+  repl (RS g0 empty e0)
   where
-    repl = do
+    repl st = do
       mast <- reader
       case mast of
         Nothing  -> return ()
         Just ast -> do
-          doLine ast `catch`
+          st' <- doLine st ast `catch`
             \err -> do
               hPutStrLn stderr (errorString err)
-          repl
-    doLine ast = do
-      (t, ast0) <- if opt Don'tType
-                     then return (Nothing, ast)
-                     else do
-                       (t, ast0) <- tcProg g0 ast
-                       return (Just t, ast0)
-      ast1 <- if opt Don'tCoerce
-                then return ast0
-                else do
-                  let ast1 = translate ast0
-                  when (opt Verbose) $
-                    mumble "TRANSLATION" ast1
-                  return ast1
+              return st
+          repl st'
+    doLine st ast = do
+      (st0, ast0) <- if opt Don'tType
+                       then return (st, ast)
+                       else statics st ast
+      (st1, ast1) <- if opt Don'tCoerce
+                       then return (st0, ast0)
+                       else do
+                         (st1, ast1) <- translation st0 ast0
+                         when (opt Verbose) $
+                           mumble "TRANSLATION" ast1
+                         return (st1, ast1)
       when (opt ReType) $ do
-        (t', _) <- tcProg g0 ast1
-        when (opt Verbose) $
-          mumble "RE-TYPE" t'
-      v <- if opt Don'tExecute
-             then return (ppr ast)
-             else ppr `fmap` eval e0 ast1
-      printResult v t
+        statics st1 ast1
+        return ()
+      (st2, _   ) <- if opt Don'tExecute
+                       then return (st1, ast1)
+                       else dynamics st1 ast1
+      printResult st2 ast0
+      return st2
     reader = loop []
       where
         loop acc = do
@@ -124,11 +147,39 @@ interactive opt g0 e0 = do
                 case parse parseProg "-" cmd of
                   Right ast -> do
                     addHistory cmd
-                    return (Just ast)
-                  Left derr ->
-                    loop ((line, derr) : acc)
-    printResult v Nothing  = print v
-    printResult v (Just t) = print $ hang (v <+> char ':') 2 (ppr t)
+                    return (Just (prog2mods ast))
+                  Left _ ->
+                    case parse parseMods "-" cmd of
+                      Right ast -> do
+                        addHistory cmd
+                        return (Just ast)
+                      Left derr ->
+                        loop ((line, derr) : acc)
+    printResult st ms0 = do
+      (_, ds) <- foldrM dispatch (rsDynamics st, []) ms0
+      mapM_ print ds
+        where
+      dispatch :: (E, [Doc]) -> Mod -> IO (E, [Doc])
+      dispatch (e, ds) m = do
+        mv   <- case e =.= modName m of
+                  Nothing -> return Nothing
+                  Just v  -> Just `fmap` v
+        let d = case m of
+                  MdC x t _   -> val "C" x t mv
+                  MdA x t _   -> val "A" x t mv
+                  MdInt x t _ -> val "A" x (Just t) mv
+        return (e =-= modName m, d : ds)
+      val :: (Ppr x, Ppr t, Ppr v) =>
+             String -> x -> Maybe t -> Maybe v -> Doc
+      val lang x mt mv =
+        let add c m = case m of
+                        Nothing -> id
+                        Just t  -> \d -> hang (d <+> char c)
+                                              2
+                                              (ppr t) in
+        add '=' mv $
+          add ':' mt $
+            text "val[" <> text lang <> text "]" <+> ppr x
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)
