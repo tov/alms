@@ -21,7 +21,7 @@ module Syntax (
   PO(..),
 
   tyNothing, tyArr, tyLol, tyPair, tyGround,
-  tysubst, tienv, tcinfo, qualifier,
+  ftv, tysubst, tienv, tcinfo, qualifier,
   transparent, funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
@@ -207,7 +207,7 @@ instance Language w => Eq (Type w) where
   TyVar x    == TyVar x'     = x == x'
   TyAll x t  == TyAll x' t'  = tvqual x == tvqual x' &&
                                t == tysubst x' (TyVar x `asTypeOf` t') t'
-  _          == _            = False
+  _          == _             = False
 
 instance Show Variance where
   showsPrec _ Invariant     = ('1':)
@@ -382,6 +382,30 @@ sameLang x y same diff =
 --- Syntax Utils
 ---
 
+ftv :: Type w -> M.Map TyVar Variance
+ftv (TyCon n ts)   = M.unionsWith (+)
+                       [ M.map (* var) m
+                       | var <- tiArity (tcinfo n)
+                       | m   <- map ftv ts ]
+ftv (TyVar tv)     = M.singleton tv 1
+ftv (TyAll tv t)   = M.delete tv (ftv t)
+ftv (TyC t)        = M.map (const Invariant)
+                           (M.unions (map ftv (cgetas t)))
+ftv (TyA t)        = M.map (const Invariant)
+                           (M.unions (map ftv (agetcs t)))
+
+freshTyVar :: TyVar -> M.Map TyVar a -> TyVar
+freshTyVar tv m = if tv `M.member` m
+                    then loop 0
+                    else tv
+  where
+    attach n = tv { tvname = Var (unVar (tvname tv) ++ show n) }
+    loop n   =
+      let tv' = attach n
+      in if tv' `M.member` m
+           then loop (n + 1)
+           else tv'
+
 tysubst :: (Language w, Language w') =>
            TyVar -> Type w' -> Type w -> Type w
 tysubst a t = ts where
@@ -398,7 +422,10 @@ tysubst a t = ts where
                     (\_ _ ->
                       if a' == a
                         then TyAll a' t'
-                        else TyAll a' (ts t'))
+                        else
+                          let a'' = freshTyVar a' (ftv t)
+                              t'' = TyVar a'' `asTypeOf` t'
+                          in TyAll a'' (ts (tysubst a' t'' t')))
                     (TyAll a' (ts t'))
   ts t'@(TyCon "dual" [TyVar a'])
                 = sameLang t' t
