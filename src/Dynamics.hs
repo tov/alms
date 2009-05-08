@@ -127,6 +127,11 @@ eval env0 (Prog ms e0) = valOf e0 menv env0 where
       if vprj c
         then valOf et m env
         else valOf ef m env
+    ExCase e1 (xl, el) (xr, er) -> do
+      v1 <- valOf e1 m env
+      case vprj v1 of
+        Left vl  -> valOf el m (env =+= xl =:= vl)
+        Right vr -> valOf er m (env =+= xr =:= vr)
     ExLet x e1 e2          -> do
       v1 <- valOf e1 m env
       valOf e2 m $ env =+= x =:= nameFun x v1
@@ -209,3 +214,13 @@ instance (Valuable a, Valuable b) => Valuable (a, b) where
                           sep [vpprPrec (precCom + 1) a <> char ',',
                                vpprPrec (precCom + 1) b]
 
+instance (Valuable a, Valuable b) => Valuable (Either a b) where
+  veq (Left a)  (Left a')  = veq a a'
+  veq (Right b) (Right b') = veq b b'
+  veq (Left _)  (Right _)  = False
+  veq (Right _) (Left _)   = False
+  vpprPrec p v = parensIf (p > precApp) $
+                   text cons <+> v'
+    where (cons, v') = case v of
+            Left v0  -> ("Left",  vpprPrec (precApp + 1) v0)
+            Right v0 -> ("Right", vpprPrec (precApp + 1) v0)

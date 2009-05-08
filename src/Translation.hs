@@ -38,6 +38,9 @@ transExpr menv neg = te where
     ExStr s -> exStr s
     ExInt z -> exInt z
     ExIf ec et ef -> exIf (te ec) (te et) (te ef)
+    ExCase e1 (xl, el) (xr, er) -> exCase (te e1)
+                                     (xl, tem (menv =-= xl) el)
+                                     (xr, tem (menv =-= xr) er)
     ExLet x e1 e2 -> exLet' x (te e1) (tem (menv =-= x) e2)
     ExVar x -> transVar (reifyLang1 e0) menv neg x
     ExPair e1 e2 -> exPair (te e1) (te e2)

@@ -15,7 +15,7 @@ module Syntax (
   Prog(..), Mod(..),
 
   Expr(), Expr'(..), fv, expr',
-  exCon, exStr, exInt, exIf, exLet, exVar, exPair, exLetPair,
+  exCon, exStr, exInt, exIf, exCase, exLet, exVar, exPair, exLetPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
 
   PO(..),
@@ -90,6 +90,7 @@ data Expr' w = ExCon String
              | ExStr String
              | ExInt Integer
              | ExIf (Expr w) (Expr w) (Expr w)
+             | ExCase (Expr w) (Var, Expr w) (Var, Expr w)
              | ExLet Var (Expr w) (Expr w)
              | ExVar Var
              | ExPair (Expr w) (Expr w)
@@ -120,6 +121,12 @@ exIf  :: Expr w -> Expr w -> Expr w -> Expr w
 exIf ec et ef = Expr {
   fv_    = fv ec |*| (fv et |+| fv ef),
   expr'_ = ExIf ec et ef
+}
+
+exCase  :: Expr w -> (Var, Expr w) -> (Var, Expr w) -> Expr w
+exCase e (xl, el) (xr, er) = Expr {
+  fv_    = fv e |*| ((fv el |-| xl) |+| (fv er |-| xr)),
+  expr'_ = ExCase e (xl, el) (xr, er)
 }
 
 exLet :: Var -> Expr w -> Expr w -> Expr w
@@ -393,6 +400,13 @@ tysubst a t = ts where
                         then TyAll a' t'
                         else TyAll a' (ts t'))
                     (TyAll a' (ts t'))
+  ts t'@(TyCon "dual" [TyVar a'])
+                = sameLang t' t
+                    (\t0' t0 ->
+                      if a' == a
+                        then dualSessionType t0
+                        else t0')
+                    t'
   ts (TyCon c tys)
                 = TyCon c (map (ts) tys)
   ts (TyA t')
@@ -400,24 +414,44 @@ tysubst a t = ts where
   ts (TyC t')
                 = TyC (ts t')
 
+-- Helper for finding the dual of a session type (since we can't
+-- express this direction in the type system)
+dualSessionType :: Type w -> Type w
+dualSessionType  = d where
+  d (TyCon "->" [TyCon "send" [ta], tr])
+    = TyCon "->" [TyCon "recv" [ta], d tr]
+  d (TyCon "->" [TyCon "recv" [ta], tr])
+    = TyCon "->" [TyCon "send" [ta], d tr]
+  d (TyCon "select" [TyCon "*" [t1, t2]])
+    = TyCon "follow" [TyCon "*" [d t1, d t2]]
+  d (TyCon "follow" [TyCon "*" [t1, t2]])
+    = TyCon "select" [TyCon "*" [d t1, d t2]]
+  d t = t
+
 tienv         :: Env String TyInfo
 tienv          = fromList [
-                   ("*",        pair),
-                   ("->",       arr),
-                   ("-o",       lol),
-                   ("ref",      ref),
-                   ("thread",   thread),
-                   ("future",   future),
-                   ("cofuture", cofuture)
+                   ("*",          pair),
+                   ("->",         arr),
+                   ("-o",         lol),
+                   ("ref",        ref),
+                   ("thread",     thread),
+                   ("future",     future),
+                   ("cofuture",   cofuture),
+                   ("either",     eitherTI),
+                   ("rendezvous", rendezvous),
+                   ("channel",    channel)
                 ]
   where
-  arr      = TyInfo [-1, 1] (const Qu)
-  lol      = TyInfo [-1, 1] (const Qa)
-  ref      = TyInfo [Invariant] (const Qa)
-  pair     = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
-  thread   = TyInfo [] (const Qa)
-  future   = TyInfo [1] (const Qa)
-  cofuture = TyInfo [-1] (const Qa)
+  arr        = TyInfo [-1, 1] (const Qu)
+  lol        = TyInfo [-1, 1] (const Qa)
+  ref        = TyInfo [Invariant] (const Qa)
+  pair       = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
+  thread     = TyInfo [] (const Qa)
+  future     = TyInfo [1] (const Qa)
+  cofuture   = TyInfo [-1] (const Qa)
+  eitherTI   = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
+  rendezvous = TyInfo [Invariant] (const Qu)
+  channel    = TyInfo [Invariant] (const Qa)
 
 tiNothing :: TyInfo
 tiNothing = TyInfo (repeat Invariant) (const Qu)

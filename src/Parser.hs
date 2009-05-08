@@ -24,10 +24,11 @@ tok = makeTokenParser LanguageDef {
     opStart        = oneOf "~!@#$%^&*-+=<>/?\\|",
     opLetter       = oneOf "~!@#$%^&*-+=<>/?\\|",
     reservedNames  = ["if", "then", "else",
+                      "match", "with",
                       "let", "in",
                       "module", "interface",
                       "all", "A", "C"],
-    reservedOpNames = ["->", "*", "=", "\\", "^", ":", ":>"],
+    reservedOpNames = ["|", "->", "*", "=", "\\", "^", ":", ":>"],
     caseSensitive = True
   }
 
@@ -162,6 +163,23 @@ exprp = expr0 where
          reserved tok "else"
          ef <- expr0
          return (exIf ec et ef),
+      do reserved tok "match"
+         e1 <- expr0
+         reserved tok "with"
+         optional (reservedOp tok "|")
+         c2 <- identifier tok
+         x2 <- varp
+         reservedOp tok "->"
+         e2 <- expr0
+         reservedOp tok "|"
+         c3 <- identifier tok
+         x3 <- varp
+         reservedOp tok "->"
+         e3 <- expr0
+         case (c2, c3) of
+           ("Left", "Right") -> return $ exCase e1 (x2, e2) (x3, e3)
+           ("Right", "Left") -> return $ exCase e1 (x3, e3) (x2, e2)
+           _                 -> fail "Unrecognized patterns in match",
       do reservedOp tok "\\" <|> reservedOp tok "^"
          build <- choice
            [ argsp1,

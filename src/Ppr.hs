@@ -102,6 +102,17 @@ instance Ppr (Expr w) where
         sep [ text "if" <+> pprPrec 0 ec,
               nest 2 $ text "then" <+> pprPrec 0 et,
               nest 2 $ text "else" <+> pprPrec precDot ef ]
+    ExCase e1 (xl, el) (xr, er) ->
+      parensIf (p > precDot) $
+        vcat [ sep [ text "match", nest 2 $ pprPrec 0 e1, text "with" ],
+               alt "Left" xl el,
+               alt "Right" xr er ]
+        where
+          alt cons xi ei =
+            hang (char '|' <+> text cons <+>
+                  pprPrec (precApp + 1) xi <+> text "->")
+                  4
+                  (pprPrec precDot ei)
     ExLet x e1 e2 ->
       pprLet p (pprPrec 0 x) e1 e2
     ExVar x -> pprPrec 0 x

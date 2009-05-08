@@ -63,6 +63,16 @@ tcExprC = tc S.empty where
       tassert (t2 == t3) $
         "Mismatch in if: " ++ show t2 ++ " /= " ++ show t3
       return t2
+    ExCase e1 (xl, el) (xr, er) -> do
+      t1 <- tc d g e1
+      case t1 of
+        TyCon "either" [txl, txr] -> do
+          tl <- tc d (g =+= xl =:= txl) el
+          tr <- tc d (g =+= xr =:= txr) er
+          tassert (tl == tr) $
+            "Mismatch in match: " ++ show tl ++ " /= " ++ show tr
+          return tl
+        _ -> tgot "match" t1 "('a, 'b) either"
     ExLet x e1 e2 -> do
       t1 <- tc d g e1
       tc d (g =+= x =:= t1) e2
@@ -147,6 +157,21 @@ tcExprA = tc S.empty where
       t3 <- tc d g e3
       t2 \/? t3
         |! "Mismatch in if: " ++ show t2 ++ " and " ++ show t3
+    ExCase e1 (xl, el) (xr, er) -> do
+      t1 <- tc d g e1
+      case t1 of
+        TyCon "either" [txl, txr] -> do
+          tassert (qualifier txl <: usage xl el) $
+            "Affine variable " ++ show xl ++ " : " ++
+            show txl ++ " duplicated in match body"
+          tassert (qualifier txr <: usage xr er) $
+            "Affine variable " ++ show xr ++ " : " ++
+            show txr ++ " duplicated in match body"
+          tl <- tc d (g =+= xl =:= txl) el
+          tr <- tc d (g =+= xr =:= txr) er
+          tl \/? tr
+            |! "Mismatch in match: " ++ show tl ++ " and " ++ show tr
+        _ -> tgot "match" t1 "('a, 'b) either"
     ExLet x e1 e2 -> do
       t1 <- tc d g e1
       tassert (qualifier t1 <: usage x e2) $
