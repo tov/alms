@@ -12,6 +12,7 @@ import Util
 import BasisUtils
 import Dynamics
 import Ppr (text)
+import Syntax
 
 import Basis.Channels
 
@@ -39,11 +40,19 @@ basis  = [
     --- name    -:  ctype  -: atype   -= value
     --- name    -:: *type            -= value
 
+    -- Unit, products, arrows
+    "unit" `TypEn` tiUnit,
+    "*"    `TypEn` tiTuple,
+    "->"   `TypEn` tiArr,
+    "-o"   `TypEn` tiLol,
+
     -- Booleans
+    "bool" `TypEn` tiBool,
     val "true"  -:: "bool" -= True,
     val "false" -:: "bool" -= False,
 
     -- Sums
+    "either" `TypEn` tiEither,
     pfun 2 "Left"  -:: "all 'b 'a. 'a -> ('a, 'b) either"
       -= vinj . (Left  :: Value -> Either Value Value),
     pfun 2 "Right" -:: "all 'a 'b. 'b -> ('a, 'b) either"
@@ -53,23 +62,8 @@ basis  = [
     pfun 2 "fix" -:: "all 'a 'b. (('a -> 'b) -> ('a -> 'b)) -> ('a -> 'b)"
       -= (\(VaFun _ f) -> mfix f),
 
-    -- "Magic" equality and print; failure
-    pfun 1 "eq" -:: "all 'a. 'a -> 'a -> bool"
-      -= ((==) :: Value -> Value -> Bool),
-    pfun 1 "print" -:: "all 'a. 'a -> unit"
-      -= (print :: Value -> IO ()),
-    pfun 1 "failwith" -: "all 'a. string -> 'a"
-                      -: "all '<a. string -> '<a"
-      -= (fail . ("Failure: "++) :: String -> IO Value),
-
-    -- Arithmetic
-    binArith "add" (+),
-    binArith "sub" (-),
-    binArith "mul" (*),
-    binArith "div" div,
-    fun "le" -:: "int -> int -> bool"
-      -= ((<=) :: Integer -> Integer -> Bool),
-
+    -- Lists
+    "list" `TypEn` TiAbs (-19) [1] [Left 0] False,
     pval 1 "nil"  -: "all 'a. 'a list"
                   -: "all '<a. '<a list"
       -= ([] :: [Value]),
@@ -96,13 +90,32 @@ basis  = [
                    -: "all '<a. '<a list -> '<a list * bool"
       -= (liftM2 (,) id null :: [Value] -> ([Value], Bool)),
 
+    -- Arithmetic
+    "int" `TypEn` tiInt,
+    binArith "add" (+),
+    binArith "sub" (-),
+    binArith "mul" (*),
+    binArith "div" div,
+    fun "le" -:: "int -> int -> bool"
+      -= ((<=) :: Integer -> Integer -> Bool),
+
     -- Strings
+    "string" `TypEn` tiString,
     fun "explode"  -:: "string -> int list"
       -= map (vinj . char2integer),
     fun "implode"  -:: "int list -> string"
       -= vinj . map (integer2char . vprj),
     pfun 1 "toString" -:: "all 'a. 'a -> string"
       -= (return . show :: Value -> IO String),
+
+    -- "Magic" equality and print; failure
+    pfun 1 "eq" -:: "all 'a. 'a -> 'a -> bool"
+      -= ((==) :: Value -> Value -> Bool),
+    pfun 1 "print" -:: "all 'a. 'a -> unit"
+      -= (print :: Value -> IO ()),
+    pfun 1 "failwith" -: "all 'a. string -> 'a"
+                      -: "all '<a. string -> '<a"
+      -= (fail . ("Failure: "++) :: String -> IO Value),
 
     -- I/O
     fun "putChar"  -:: "int -> unit"
@@ -119,6 +132,7 @@ basis  = [
       -= \() -> getLine,
 
     -- References
+    "ref" `TypEn` tiRef,
     pfun 1 "ref" -: "all 'a. 'a -> 'a ref"
                  -: "all '<a. '<a -> '<a ref"
       -= (\v -> Ref `fmap` newIORef v),
@@ -141,6 +155,7 @@ basis  = [
            return r),
 
     -- Threads
+    "thread" `TypEn` tiThread,
     fun "threadFork" -: ""
                      -: "(unit -o unit) -> thread"
       -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
@@ -154,6 +169,8 @@ basis  = [
       -= \t -> do print (t :: Vinj CC.ThreadId); return t,
 
     -- Futures
+    "future"   `TypEn` tiFuture,
+    "cofuture" `TypEn` tiCofuture,
     pfun 1 "newFuture" -: ""
                        -: "all '<a. (unit -o '<a) -> '<a future"
       -= \f -> do
@@ -174,6 +191,13 @@ basis  = [
       -= \future value -> MV.putMVar (unFuture future) value,
 
     -- Session-typed channels
+    "rendezvous" `TypEn` tiRendezvous,
+    "channel"    `TypEn` tiChannel,
+    "send"       `TypEn` tiSend,
+    "recv"       `TypEn` tiRecv,
+    "select"     `TypEn` tiSelect,
+    "follow"     `TypEn` tiFollow,
+    "dual"       `TypEn` TiAbs (-20) [Invariant] [] False,
     pfun 1 "newRendezvous" -: ""
                            -: "all 's. unit -> 's rendezvous"
       -= \() -> do

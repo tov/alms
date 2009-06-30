@@ -23,9 +23,11 @@ module Syntax (
   PO(..),
 
   tiUnit, tiBool, tiInt, tiString, tiEither, tiTuple, tiArr, tiLol,
+  tiRef, tiThread, tiFuture, tiCofuture, tiRendezvous, tiChannel,
+  tiSend, tiRecv, tiSelect, tiFollow,
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitI, tyArrI, tyLolI, tyTupleI,
-  ftv, tysubst, tienv, qualifier, tystrip,
+  ftv, tysubst, qualifier, tystrip,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
@@ -512,25 +514,6 @@ dualSessionType  = d where
   d (TyMu tv t)
     = TyMu tv (d t)
   d t = t
-
-tienv         :: Env String TInfo
-tienv          = fromList [
-                   ("unit",       tiUnit),
-                   ("bool",       tiBool),
-                   ("int",        tiInt),
-                   ("string",     tiString),
-                   ("*",          tiTuple),
-                   ("->",         tiArr),
-                   ("-o",         tiLol),
-                   ("ref",        tiRef),
-                   ("thread",     tiThread),
-                   ("future",     tiFuture),
-                   ("cofuture",   tiCofuture),
-                   ("either",     tiEither),
-                   ("rendezvous", tiRendezvous),
-                   ("channel",    tiChannel)
-                ]
-  where
 
 tiUnit, tiBool, tiInt, tiString,
   tiArr, tiLol, tiRef, tiTuple, tiThread, tiFuture,
