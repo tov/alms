@@ -1,6 +1,7 @@
 {-# LANGUAGE
       EmptyDataDecls,
       FlexibleContexts,
+      FlexibleInstances,
       GADTs,
       ImpredicativeTypes,
       ParallelListComp,
@@ -10,7 +11,7 @@ module Syntax (
   Language(..), A, C, LangRep(..),
   Q(..), Var(..), TyVar(..),
 
-  TyInfo(..), Variance(..),
+  TInfo(..), Variance(..),
   Type(..), TEnv,
   Prog(..), Mod(..),
 
@@ -21,9 +22,10 @@ module Syntax (
 
   PO(..),
 
-  tyNothing, tyArr, tyLol, tyPair, tyGround,
-  ftv, tysubst, tienv, tcinfo, qualifier,
-  transparent, funtypes,
+  tiUnit, tiBool, tiInt, tiString, tiEither, tiTuple, tiArr, tiLol,
+  tyGround, tyArr, tyLol, tyTuple,
+  ftv, tysubst, tienv, qualifier, tystrip,
+  funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
   syntacticValue, constants, modName, prog2mods,
@@ -63,88 +65,91 @@ data Variance = Invariant
   deriving (Eq, Ord)
 
 -- Info about a type constructor (for language A)
-data TyInfo = TyInfo {
+data TInfo = TiAbs {
+    tiId    :: Integer,
     tiArity :: [Variance], -- The variance of each of its parameters
-    tiQual  :: [Q] -> Q    -- The qualifier of the type, given the
+    tiQual  :: [Q] -> Q,   -- The qualifier of the type, given the
                            -- qualifiers of the parameters
+    tiTrans :: Bool
   }
 
-data Type w where
-  TyCon { tycon :: String,
-          tyargs :: [Type w] } :: Type w
-  TyVar :: TyVar -> Type w
-  TyAll :: TyVar -> Type w -> Type w
-  TyMu  :: TyVar -> Type w -> Type w
-  TyC   :: Type C -> Type A
-  TyA   :: Type A -> Type C
+data Type i w where
+  TyCon { tycon  :: String,
+          tyargs :: [Type i w],
+          tyinfo :: i } :: Type i w
+  TyVar :: TyVar -> Type i w
+  TyAll :: TyVar -> Type i w -> Type i w
+  TyMu  :: TyVar -> Type i w -> Type i w
+  TyC   :: Type i C -> Type i A
+  TyA   :: Type i A -> Type i C
 
-type TEnv w = Env Var (Type w)
+type TEnv w = Env Var (Type TInfo w)
 
-data Prog = Prog [Mod] (Expr C)
+data Prog i = Prog [Mod i] (Expr i C)
 
-data Mod  = MdA Var (Maybe (Type A)) (Expr A)
-          | MdC Var (Maybe (Type C)) (Expr C)
-          | MdInt Var (Type A) Var
+data Mod i = MdA Var (Maybe (Type i A)) (Expr i A)
+           | MdC Var (Maybe (Type i C)) (Expr i C)
+           | MdInt Var (Type i A) Var
 
-data Expr w = Expr { fv_ :: FV, expr'_ :: Expr' w }
+data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
 type FV     = M.Map Var Integer
-data Expr' w = ExCon String
-             | ExStr String
-             | ExInt Integer
-             | ExIf (Expr w) (Expr w) (Expr w)
-             | ExCase (Expr w) (Var, Expr w) (Var, Expr w)
-             | ExLet Var (Expr w) (Expr w)
-             | ExLetRec [Binding w] (Expr w)
-             | ExVar Var
-             | ExPair (Expr w) (Expr w)
-             | ExLetPair (Var, Var) (Expr w) (Expr w)
-             | ExAbs Var (Type w) (Expr w)
-             | ExApp (Expr w) (Expr w)
-             | ExTAbs TyVar (Expr w)
-             | ExTApp (Expr w) (Type w)
-             | ExSeq (Expr w) (Expr w)
-             | ExCast (Expr w) (Type w) (Type A)
+data Expr' i w = ExCon String
+               | ExStr String
+               | ExInt Integer
+               | ExIf (Expr i w) (Expr i w) (Expr i w)
+               | ExCase (Expr i w) (Var, Expr i w) (Var, Expr i w)
+               | ExLet Var (Expr i w) (Expr i w)
+               | ExLetRec [Binding i w] (Expr i w)
+               | ExVar Var
+               | ExPair (Expr i w) (Expr i w)
+               | ExLetPair (Var, Var) (Expr i w) (Expr i w)
+               | ExAbs Var (Type i w) (Expr i w)
+               | ExApp (Expr i w) (Expr i w)
+               | ExTAbs TyVar (Expr i w)
+               | ExTApp (Expr i w) (Type i w)
+               | ExSeq (Expr i w) (Expr i w)
+               | ExCast (Expr i w) (Type i w) (Type i A)
 
-data Binding w = Binding {
+data Binding i w = Binding {
   bnvar  :: Var,
-  bntype :: Type w,
-  bnexpr :: Expr w
+  bntype :: Type i w,
+  bnexpr :: Expr i w
 }
 
-fv :: Expr w -> FV
+fv :: Expr i w -> FV
 fv  = fv_
 
-expr' :: Expr w -> Expr' w
+expr' :: Expr i w -> Expr' i w
 expr'  = expr'_
 
-exCon :: String -> Expr w
+exCon :: String -> Expr i w
 exCon  = Expr M.empty . ExCon
 
-exStr :: String -> Expr w
+exStr :: String -> Expr i w
 exStr  = Expr M.empty . ExStr
 
-exInt :: Integer -> Expr w
+exInt :: Integer -> Expr i w
 exInt  = Expr M.empty . ExInt
 
-exIf  :: Expr w -> Expr w -> Expr w -> Expr w
+exIf  :: Expr i w -> Expr i w -> Expr i w -> Expr i w
 exIf ec et ef = Expr {
   fv_    = fv ec |*| (fv et |+| fv ef),
   expr'_ = ExIf ec et ef
 }
 
-exCase  :: Expr w -> (Var, Expr w) -> (Var, Expr w) -> Expr w
+exCase  :: Expr i w -> (Var, Expr i w) -> (Var, Expr i w) -> Expr i w
 exCase e (xl, el) (xr, er) = Expr {
   fv_    = fv e |*| ((fv el |-| xl) |+| (fv er |-| xr)),
   expr'_ = ExCase e (xl, el) (xr, er)
 }
 
-exLet :: Var -> Expr w -> Expr w -> Expr w
+exLet :: Var -> Expr i w -> Expr i w -> Expr i w
 exLet x e1 e2 = Expr {
   fv_    = fv e1 |*| (fv e2 |-| x),
   expr'_ = ExLet x e1 e2
 }
 
-exLetRec :: [Binding w] -> Expr w -> Expr w
+exLetRec :: [Binding i w] -> Expr i w -> Expr i w
 exLetRec bs e2 = Expr {
   fv_    = let es  = map bnexpr bs
                vs  = map bnvar  bs
@@ -153,55 +158,55 @@ exLetRec bs e2 = Expr {
   expr'_ = ExLetRec bs e2
 }
 
-exVar :: Var -> Expr w
+exVar :: Var -> Expr i w
 exVar x = Expr {
   fv_    = M.singleton x 1,
   expr'_ = ExVar x
 }
 
-exPair :: Expr w -> Expr w -> Expr w
+exPair :: Expr i w -> Expr i w -> Expr i w
 exPair e1 e2 = Expr {
   fv_    = fv e1 |*| fv e2,
   expr'_ = ExPair e1 e2
 }
 
-exLetPair :: (Var, Var) -> Expr w -> Expr w -> Expr w
+exLetPair :: (Var, Var) -> Expr i w -> Expr i w -> Expr i w
 exLetPair (x, y) e1 e2 = Expr {
   fv_    = fv e1 |*| ((fv e2 |-| x) |-| y),
   expr'_ = ExLetPair (x, y) e1 e2
 }
 
-exAbs :: Var -> Type w -> Expr w -> Expr w
+exAbs :: Var -> Type i w -> Expr i w -> Expr i w
 exAbs x t e = Expr {
   fv_    = fv e |-| x,
   expr'_ = ExAbs x t e
 }
 
-exApp :: Expr w -> Expr w -> Expr w
+exApp :: Expr i w -> Expr i w -> Expr i w
 exApp e1 e2 = Expr {
   fv_    = fv e1 |*| fv e2,
   expr'_ = ExApp e1 e2
 }
 
-exTAbs :: TyVar -> Expr w -> Expr w
+exTAbs :: TyVar -> Expr i w -> Expr i w
 exTAbs tv e = Expr {
   fv_    = fv e,
   expr'_ = ExTAbs tv e
 }
 
-exTApp :: Expr w -> Type w -> Expr w
+exTApp :: Expr i w -> Type i w -> Expr i w
 exTApp e1 t2 = Expr {
   fv_    = fv e1,
   expr'_ = ExTApp e1 t2
 }
 
-exSeq :: Expr w -> Expr w -> Expr w
+exSeq :: Expr i w -> Expr i w -> Expr i w
 exSeq e1 e2 = Expr {
   fv_    = fv e1 |*| fv e2,
   expr'_ = ExSeq e1 e2
 }
 
-exCast :: Expr w -> Type w -> Type A -> Expr w
+exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
   fv_    = fv e,
   expr'_ = ExCast e t1 t2
@@ -218,16 +223,20 @@ exCast e t1 t2 = Expr {
 ----- Some classes and instances
 -----
 
-instance Language w => Eq (Type w) where
-  TyCon c ps == TyCon c' ps' = c == c' && all2 (==) ps ps'
-  TyA t      == TyA t'       = t == t'
-  TyC t      == TyC t'       = t == t'
-  TyVar x    == TyVar x'     = x == x'
-  TyAll x t  == TyAll x' t'  = tvqual x == tvqual x' &&
-                               t == tysubst x' (TyVar x `asTypeOf` t') t'
-  TyMu x t   == TyMu x' t'   = tvqual x == tvqual x' &&
-                               t == tysubst x' (TyVar x `asTypeOf` t') t'
-  _          == _             = False
+instance Eq TInfo where
+  ti == ti' = tiId ti == tiId ti'
+
+instance Language w => Eq (Type TInfo w) where
+  TyCon c ps i == TyCon c' ps' i' =
+    i == i' && c == c' && all2 (==) ps ps'
+  TyA t        == TyA t'          = t == t'
+  TyC t        == TyC t'          = t == t'
+  TyVar x      == TyVar x'        = x == x'
+  TyAll x t    == TyAll x' t'     =
+    tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
+  TyMu x t     == TyMu x' t'      =
+    tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
+  _            == _               = False
 
 instance Show Variance where
   showsPrec _ Invariant     = ('1':)
@@ -307,20 +316,19 @@ instance PO Q where
   Qa /\ Qa = Qa
   _  /\ _  = Qu
 
-instance Language w => PO (Type w) where
+instance Language w => PO (Type TInfo w) where
   -- Special cases for ->/-o subtyping:
-  ifMJ True  (TyCon "->" ps) (TyCon "-o" ps')
-      = ifMJ True (TyCon "-o" ps) (TyCon "-o" ps')
-  ifMJ True  (TyCon "-o" ps) (TyCon "->" ps')
-      = ifMJ True (TyCon "-o" ps) (TyCon "-o" ps')
-  ifMJ False (TyCon "->" ps) (TyCon "-o" ps')
-      = ifMJ True (TyCon "->" ps) (TyCon "->" ps')
-  ifMJ False (TyCon "-o" ps) (TyCon "->" ps')
-      = ifMJ True (TyCon "->" ps) (TyCon "->" ps')
+  ifMJ True  (TyCon "->" ps _) (TyCon "-o" ps' i')
+      = ifMJ True (TyCon "-o" ps i') (TyCon "-o" ps' i')
+  ifMJ True  (TyCon "-o" ps _) (TyCon "->" ps' i')
+      = ifMJ True (TyCon "-o" ps i') (TyCon "-o" ps' i')
+  ifMJ False (TyCon "->" ps i) (TyCon "-o" ps' _)
+      = ifMJ True (TyCon "->" ps i) (TyCon "->" ps' i)
+  ifMJ False (TyCon "-o" ps i) (TyCon "->" ps' _)
+      = ifMJ True (TyCon "->" ps i) (TyCon "->" ps' i)
   -- Otherwise:
-  ifMJ b (TyCon tc ps) (TyCon tc' ps') =
-    if tc == tc' then do
-      let ti = tcinfo tc
+  ifMJ b (TyCon tc ps i) (TyCon tc' ps' i') =
+    if i == i' && tc == tc' then do
       params <- sequence
         [ case var of
             Covariant     -> ifMJ b p p'
@@ -329,10 +337,10 @@ instance Language w => PO (Type w) where
                              then return p
                              else fail "\\/? or /\\?: Does not exist"
             Omnivariant   -> fail "\\/? or /\\?: It's a mystery"
-           | var <- tiArity ti
+           | var <- tiArity i
            | p   <- ps
            | p'  <- ps' ]
-      return (TyCon tc params)
+      return (TyCon tc params i)
     else fail "\\/? or /\\?: Does not exist"
   ifMJ b (TyAll a t) (TyAll a' t') = ifMJBind TyAll b (a, t) (a', t')
   ifMJ b (TyMu a t)  (TyMu a' t')  = ifMJBind TyMu  b (a, t) (a', t')
@@ -342,8 +350,9 @@ instance Language w => PO (Type w) where
       else fail "\\/? or /\\?: Does not exist"
 
 ifMJBind :: (Monad m, Language w) =>
-            (TyVar -> Type w -> Type w) -> Bool ->
-            (TyVar, Type w) -> (TyVar, Type w) -> m (Type w)
+            (TyVar -> Type TInfo w -> Type TInfo w) -> Bool ->
+            (TyVar, Type TInfo w) -> (TyVar, Type TInfo w) ->
+            m (Type TInfo w)
 ifMJBind cons b (a, t) (a', t') = do
   qual <- ifMJ (not b) (tvqual a) (tvqual a')
   if qual == tvqual a
@@ -381,7 +390,7 @@ class Language w where
   reifyLang   :: LangRep w
   langCase    :: f w -> (w ~ C => f C -> r) -> (w ~ A => f A -> r) -> r
   langMapType :: Functor f =>
-                 (forall w'. Language w' => f (Type w')) -> f (Type w)
+                 (forall w'. Language w' => f (Type i w')) -> f (Type i w)
 
 instance Language C where
   reifyLang       = C
@@ -408,10 +417,10 @@ sameLang x y same diff =
 --- Syntax Utils
 ---
 
-ftv :: Type w -> M.Map TyVar Variance
-ftv (TyCon n ts)   = M.unionsWith (+)
+ftv :: Type TInfo w -> M.Map TyVar Variance
+ftv (TyCon _ ts i)   = M.unionsWith (+)
                        [ M.map (* var) m
-                       | var <- tiArity (tcinfo n)
+                       | var <- tiArity i
                        | m   <- map ftv ts ]
 ftv (TyVar tv)     = M.singleton tv 1
 ftv (TyAll tv t)   = M.delete tv (ftv t)
@@ -435,9 +444,9 @@ freshTyVar tv m = if tv `M.member` m
            else tv'
 
 tysubst :: (Language w, Language w') =>
-           TyVar -> Type w' -> Type w -> Type w
+           TyVar -> Type TInfo w' -> Type TInfo w -> Type TInfo w
 tysubst a t = ts where
-  ts :: Language w => Type w -> Type w
+  ts :: Language w => Type TInfo w -> Type TInfo w
   ts t'@(TyVar a')
                 = sameLang t' t
                     (\_ t0 ->
@@ -465,15 +474,15 @@ tysubst a t = ts where
                               t'' = TyVar a'' `asTypeOf` t'
                           in TyMu a'' (ts (tysubst a' t'' t')))
                     (TyMu a' (ts t'))
-  ts t'@(TyCon "dual" [TyVar a'])
+  ts t'@(TyCon "dual" [TyVar a'] _)
                 = sameLang t' t
                     (\t0' t0 ->
                       if a' == a
                         then dualSessionType t0
                         else t0')
                     t'
-  ts (TyCon c tys)
-                = TyCon c (map (ts) tys)
+  ts (TyCon c tys i)
+                = TyCon c (map ts tys) i
   ts (TyA t')
                 = TyA (ts t')
   ts (TyC t')
@@ -481,104 +490,114 @@ tysubst a t = ts where
 
 -- Helper for finding the dual of a session type (since we can't
 -- express this direction in the type system)
-dualSessionType :: Type w -> Type w
+dualSessionType :: Type TInfo w -> Type TInfo w
 dualSessionType  = d where
-  d (TyCon "->" [TyCon "send" [ta], tr])
-    = TyCon "->" [TyCon "recv" [ta], d tr]
-  d (TyCon "->" [TyCon "recv" [ta], tr])
-    = TyCon "->" [TyCon "send" [ta], d tr]
-  d (TyCon "select" [TyCon "*" [t1, t2]])
-    = TyCon "follow" [TyCon "*" [d t1, d t2]]
-  d (TyCon "follow" [TyCon "*" [t1, t2]])
-    = TyCon "select" [TyCon "*" [d t1, d t2]]
+  d (TyCon "->" [TyCon "send" [ta] _, tr] _)
+    = TyCon "->" [TyCon "recv" [ta] tiRecv, d tr] tiArr
+  d (TyCon "->" [TyCon "recv" [ta] _, tr] _)
+    = TyCon "->" [TyCon "send" [ta] tiSend, d tr] tiArr
+  d (TyCon "select" [TyCon "*" [t1, t2] _] _)
+    = TyCon "follow" [TyCon "*" [d t1, d t2] tiTuple] tiFollow
+  d (TyCon "follow" [TyCon "*" [t1, t2] _] _)
+    = TyCon "select" [TyCon "*" [d t1, d t2] tiTuple] tiSelect
   d (TyMu tv t)
     = TyMu tv (d t)
   d t = t
 
-tienv         :: Env String TyInfo
+tienv         :: Env String TInfo
 tienv          = fromList [
-                   ("*",          pair),
-                   ("->",         arr),
-                   ("-o",         lol),
-                   ("ref",        ref),
-                   ("thread",     thread),
-                   ("future",     future),
-                   ("cofuture",   cofuture),
-                   ("either",     eitherTI),
-                   ("rendezvous", rendezvous),
-                   ("channel",    channel)
+                   ("unit",       tiUnit),
+                   ("bool",       tiBool),
+                   ("int",        tiInt),
+                   ("string",     tiString),
+                   ("*",          tiTuple),
+                   ("->",         tiArr),
+                   ("-o",         tiLol),
+                   ("ref",        tiRef),
+                   ("thread",     tiThread),
+                   ("future",     tiFuture),
+                   ("cofuture",   tiCofuture),
+                   ("either",     tiEither),
+                   ("rendezvous", tiRendezvous),
+                   ("channel",    tiChannel)
                 ]
   where
-  arr        = TyInfo [-1, 1] (const Qu)
-  lol        = TyInfo [-1, 1] (const Qa)
-  ref        = TyInfo [Invariant] (const Qa)
-  pair       = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
-  thread     = TyInfo [] (const Qa)
-  future     = TyInfo [1] (const Qa)
-  cofuture   = TyInfo [-1] (const Qa)
-  eitherTI   = TyInfo [1, 1] (\[q1, q2] -> q1 \/ q2)
-  rendezvous = TyInfo [Invariant] (const Qu)
-  channel    = TyInfo [Invariant] (const Qa)
 
-tiNothing :: TyInfo
-tiNothing = TyInfo (repeat Invariant) (const Qu)
+tiArr, tiLol, tiRef, tiTuple, tiThread, tiFuture,
+  tiCofuture, tiEither, tiRendezvous, tiChannel,
+  tiSend, tiRecv, tiSelect, tiFollow :: TInfo
 
-tcinfo :: String -> TyInfo
-tcinfo s = case tienv =.= s of
-  Just ti -> ti
-  Nothing -> tiNothing
+tiUnit       = TiAbs (-1)  [] (const Qu) True
+tiBool       = TiAbs (-2)  [] (const Qu) True
+tiInt        = TiAbs (-3)  [] (const Qu) True
+tiString     = TiAbs (-4)  [] (const Qu) True
+tiArr        = TiAbs (-5)  [-1, 1] (const Qu) False
+tiLol        = TiAbs (-6)  [-1, 1] (const Qa) False
+tiRef        = TiAbs (-7)  [Invariant] (const Qa) False
+tiTuple      = TiAbs (-8)  [1, 1] (foldr (\/) Qu) False
+tiThread     = TiAbs (-9)  [] (const Qa) False
+tiFuture     = TiAbs (-10) [1] (const Qa) False
+tiCofuture   = TiAbs (-11) [-1] (const Qa) False
+tiEither     = TiAbs (-12) [1, 1] (foldr (\/) Qu) False
+tiRendezvous = TiAbs (-13) [Invariant] (const Qu) False
+tiChannel    = TiAbs (-14) [Invariant] (const Qa) False
+tiSend       = TiAbs (-15) [Invariant] (const Qu) False
+tiRecv       = TiAbs (-16) [Invariant] (const Qu) False
+tiSelect     = TiAbs (-17) [Invariant] (const Qu) False
+tiFollow     = TiAbs (-18) [Invariant] (const Qu) False
 
-tyGround :: String -> Type w
-tyGround s = TyCon s []
+tyGround      :: String -> Type () w
+tyGround s     = TyCon s [] ()
 
-tyArr         :: Type w -> Type w -> Type w
-tyArr a b      = TyCon "->" [a, b]
+tyArr         :: Type () w -> Type () w -> Type () w
+tyArr a b      = TyCon "->" [a, b] ()
 
-tyLol         :: Type w -> Type w -> Type w
-tyLol a b      = TyCon "-o" [a, b]
+tyLol         :: Type () w -> Type () w -> Type () w
+tyLol a b      = TyCon "-o" [a, b] ()
 
-tyPair        :: Type w -> Type w -> Type w
-tyPair a b     = TyCon "*" [a, b]
+tyTuple        :: Type () w -> Type () w -> Type () w
+tyTuple a b     = TyCon "*" [a, b] ()
 
-tyNothing     :: Type w
-tyNothing      = TyCon "" []
-
-qualifier     :: Type A -> Q
-qualifier (TyCon tc ps)      = tiQual (tcinfo tc) (map qualifier ps)
-qualifier (TyVar (TV _ q) )  = q
+qualifier     :: Type TInfo A -> Q
+qualifier (TyCon _ ps ti)    = tiQual ti (map qualifier ps)
+qualifier (TyVar (TV _ q))   = q
 qualifier (TyAll _ t)        = qualifier t
 qualifier (TyMu _ t)         = qualifier t
 qualifier _                  = Qu
 
--- Types that pass transparently through boundaries
-transparent :: [String]
-transparent  = ["string", "int", "bool", "unit"]
+tystrip :: Type i w -> Type () w
+tystrip (TyCon n ts _) = TyCon n (map tystrip ts) ()
+tystrip (TyVar x)      = TyVar x
+tystrip (TyAll xs ts)  = TyAll xs (tystrip ts)
+tystrip (TyMu xs ts)   = TyMu xs (tystrip ts)
+tystrip (TyA t)        = TyA (tystrip t)
+tystrip (TyC t)        = TyC (tystrip t)
 
 -- Funtional types
-funtypes    :: [String]
-funtypes     = ["->", "-o"]
+funtypes    :: [TInfo]
+funtypes     = [tiArr, tiLol]
 
-cgetas :: Type C -> [Type A]
-cgetas (TyCon _ ts) = concatMap cgetas ts
-cgetas (TyVar _)    = []
-cgetas (TyAll _ t)  = cgetas t
-cgetas (TyMu _ t)   = cgetas t
-cgetas (TyA t)      = [t]
-cgetas _            = [] -- can't happen
+cgetas :: Type i C -> [Type i A]
+cgetas (TyCon _ ts _) = concatMap cgetas ts
+cgetas (TyVar _)      = []
+cgetas (TyAll _ t)    = cgetas t
+cgetas (TyMu _ t)     = cgetas t
+cgetas (TyA t)        = [t]
+cgetas _              = [] -- can't happen
 
-agetcs :: Type A -> [Type C]
-agetcs (TyCon _ ts) = concatMap agetcs ts
-agetcs (TyVar _)    = []
-agetcs (TyAll _ t)  = agetcs t
-agetcs (TyMu _ t)   = agetcs t
-agetcs (TyC t)      = [t]
-agetcs _            = [] -- can't happen
+agetcs :: Type i A -> [Type i C]
+agetcs (TyCon _ ts _) = concatMap agetcs ts
+agetcs (TyVar _)      = []
+agetcs (TyAll _ t)    = agetcs t
+agetcs (TyMu _ t)     = agetcs t
+agetcs (TyC t)        = [t]
+agetcs _              = [] -- can't happen
 
-ctype2atype :: Type C -> Type A
-ctype2atype (TyCon n ps) | n `elem` transparent
-  = TyCon n (map ctype2atype ps)
-ctype2atype (TyCon "->" [td, tr])
-  = tyArr (ctype2atype td) (ctype2atype tr)
+ctype2atype :: Type TInfo C -> Type TInfo A
+ctype2atype (TyCon n ps ti) | tiTrans ti
+  = TyCon n (map ctype2atype ps) ti
+ctype2atype (TyCon _ [td, tr] ti) | ti == tiArr
+  = TyCon "->" [ctype2atype td, ctype2atype tr] tiArr
 ctype2atype (TyAll tv t)
                       = TyAll tv (ctype2atype t')
                         where t'  = tysubst tv (TyA (TyVar tv)) t
@@ -588,11 +607,11 @@ ctype2atype (TyMu tv t)
 ctype2atype (TyA t)   = t
 ctype2atype t         = TyC t
 
-atype2ctype :: Type A -> Type C
-atype2ctype (TyCon n ps) | n `elem` transparent
-  = TyCon n (map atype2ctype ps)
-atype2ctype (TyCon n [td, tr]) | n `elem` funtypes
-  = tyArr (atype2ctype td) (atype2ctype tr)
+atype2ctype :: Type TInfo A -> Type TInfo C
+atype2ctype (TyCon n ps ti) | tiTrans ti
+  = TyCon n (map atype2ctype ps) ti
+atype2ctype (TyCon _ [td, tr] ti) | ti `elem` funtypes
+  = TyCon "->" [atype2ctype td, atype2ctype tr] tiArr
 atype2ctype (TyAll tv t) | tvqual tv == Qu
                       = TyAll tv (atype2ctype t')
                         where t' = tysubst tv (TyC (TyVar tv)) t
@@ -602,7 +621,7 @@ atype2ctype (TyMu tv t) | tvqual tv == Qu
 atype2ctype (TyC t)   = t
 atype2ctype t         = TyA t
 
-syntacticValue :: Expr w -> Bool
+syntacticValue :: Expr i w -> Bool
 syntacticValue e = case expr' e of
   ExCon _      -> True
   ExStr _      -> True
@@ -617,43 +636,42 @@ syntacticValue e = case expr' e of
 constants :: [String]
 constants  = [ "()", "unroll" ]
 
-modName :: Mod -> Var
+modName :: Mod i -> Var
 modName (MdA x _ _)   = x
 modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
 
-prog2mods :: Prog -> [Mod]
+prog2mods :: Prog i -> [Mod i]
 prog2mods (Prog ms e) = ms ++ [MdC (Var "it") Nothing e]
 
 -- Unfolding various sequences
 
-unfoldExAbs :: Expr w -> ([Either (Var, Type w) TyVar], Expr w)
+unfoldExAbs :: Expr i w -> ([Either (Var, Type i w) TyVar], Expr i w)
 unfoldExAbs  = unscanr each where
   each e = case expr' e of
     ExAbs x t e' -> Just (Left (x, t), e')
     ExTAbs tv e' -> Just (Right tv, e')
     _            -> Nothing
 
-unfoldTyAll :: Type w -> ([TyVar], Type w)
+unfoldTyAll :: Type i w -> ([TyVar], Type i w)
 unfoldTyAll  = unscanr each where
   each (TyAll x t) = Just (x, t)
   each _           = Nothing
 
-unfoldExTApp :: Expr w -> ([Type w], Expr w)
+unfoldExTApp :: Expr i w -> ([Type i w], Expr i w)
 unfoldExTApp  = unscanl each where
   each e = case expr' e of
     ExTApp e' t  -> Just (t, e')
     _            -> Nothing
 
-unfoldExApp :: Expr w -> ([Expr w], Expr w)
+unfoldExApp :: Expr i w -> ([Expr i w], Expr i w)
 unfoldExApp  = unscanl each where
   each e = case expr' e of
     ExApp e1 e2 -> Just (e2, e1)
     _           -> Nothing
 
-unfoldTyFun :: Type w -> ([Type w], Type w)
+unfoldTyFun :: Type TInfo w -> ([Type TInfo w], Type TInfo w)
 unfoldTyFun  = unscanr each where
-  each (TyCon c [ta, tr]) | c `elem` funtypes = Just (ta, tr)
-  each _                                      = Nothing
-   
+  each (TyCon _ [ta, tr] ti) | ti `elem` funtypes = Just (ta, tr)
+  each _                                         = Nothing
 

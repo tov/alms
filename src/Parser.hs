@@ -47,14 +47,14 @@ tyvarp  = do
   x <- varp
   return (TV x q)
 
-identp :: P (Expr w)
+identp :: P (Expr () w)
 identp  = do
   s <- identifier tok
   if s `elem` constants
     then return (exCon s)
     else return (exVar (Var s))
 
-typep :: Language w => P (Type w)
+typep :: Language w => P (Type () w)
 typep = type0 where
   type0 = choice
           [ do reserved tok "all"
@@ -72,9 +72,9 @@ typep = type0 where
   type6 = tyarg >>= tyapp'
 
   -- We have sugar for product and arrow types:
-  typeExpr :: P (Type w) -> P (Type w)
+  typeExpr :: P (Type () w) -> P (Type () w)
   typeExpr = buildExpressionParser
-    [[ Infix  (reservedOp tok "*"  >> return tyPair) AssocLeft ],
+    [[ Infix  (reservedOp tok "*"  >> return tyTuple) AssocLeft ],
      [ Infix  (reservedOp tok "->" >> return tyArr) AssocRight,
        Infix  (lexeme tok lolli    >> return tyLol) AssocRight ]]
     where lolli = do
@@ -83,26 +83,26 @@ typep = type0 where
                     notFollowedBy (alphaNum <|> oneOf "'_")
 
   -- This uses ScopedTypeVariables to reify the Language type:
-  tyarg :: Language w => P [Type w]
+  tyarg :: Language w => P [Type () w]
   tyarg  = choice
            [ do args <- parens tok (commaSep1 tok typep)
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
              do tc   <- identifier tok
-                return [TyCon tc []],
+                return [TyCon tc [] ()],
              do t <- braces tok (langMapType typep)
                 return [t] ]
 
-  tyapp' :: [Type w] -> P (Type w)
+  tyapp' :: [Type () w] -> P (Type () w)
   tyapp' [t] = option t $ do
                  tc <- identifier tok
-                 tyapp' [TyCon tc [t]]
+                 tyapp' [TyCon tc [t] ()]
   tyapp' ts  = do
                  tc <- identifier tok
-                 tyapp' [TyCon tc ts]
+                 tyapp' [TyCon tc ts ()]
 
-progp :: P Prog
+progp :: P (Prog ())
 progp  = do
   ms <- choice
           [ do ms <- modsp
@@ -112,10 +112,10 @@ progp  = do
   e  <- exprp
   return (Prog ms e)
 
-modsp :: P [Mod]
+modsp :: P [Mod ()]
 modsp  = many1 modp <|> return []
 
-modp :: P Mod
+modp :: P (Mod ())
 modp  = choice
   [ do optional (reserved tok "module")
        lang <- squares tok languagep
@@ -134,7 +134,9 @@ modp  = choice
     languagep  = choice
       [ do reserved tok "C"; return 'C',
         do reserved tok "A"; return 'A' ]
-    modbodyp :: Language w => (Var -> Maybe (Type w) -> Expr w -> Mod) -> P Mod
+    modbodyp :: Language w =>
+                (Var -> Maybe (Type () w) -> Expr () w -> Mod ()) ->
+                P (Mod ())
     modbodyp f = do
       x    <- varp
       t    <- optionMaybe $ colon tok >> typep
@@ -142,7 +144,7 @@ modp  = choice
       e    <- exprp
       return (f x t e)
 
-exprp :: Language w => P (Expr w)
+exprp :: Language w => P (Expr () w)
 exprp = expr0 where
   expr0 = choice
     [ do reserved tok "let"
@@ -157,8 +159,9 @@ exprp = expr0 where
                 bs <- flip sepBy1 (reserved tok "and") $ do
                   x    <- varp
                   let argsloop :: Language w =>
-                                  (Type w -> Type w -> Type w) ->
-                                  P (Type w -> Type w, Expr w -> Expr w)
+                                  (Type () w -> Type () w -> Type () w) ->
+                                  P (Type () w -> Type () w,
+                                     Expr () w -> Expr () w)
                       argsloop arr0 = choice
                         [ do tv <- tyvarp
                              (ft, fe) <- argsloop arr0
@@ -256,13 +259,13 @@ exprp = expr0 where
            return (exPair e1 e2),
         return e1]
 
-argsp1 :: Language w => P (Expr w -> Expr w)
+argsp1 :: Language w => P (Expr () w -> Expr () w)
 argsp1  = foldr (.) id `fmap` many1 argp
 
-argsp :: Language w => P (Expr w -> Expr w)
+argsp :: Language w => P (Expr () w -> Expr () w)
 argsp  = foldr (.) id `fmap` many argp
 
-argp :: Language w => P (Expr w -> Expr w)
+argp :: Language w => P (Expr () w -> Expr () w)
 argp  = choice
         [ tyvarp >>! exTAbs,
           parens tok $ do
@@ -278,11 +281,11 @@ finish p = do
   eof
   return r
 
-parseProg     :: P Prog
-parseMods     :: P [Mod]
-parseMod      :: P Mod
-parseType     :: Language w => P (Type w)
-parseExpr     :: Language w => P (Expr w)
+parseProg     :: P (Prog ())
+parseMods     :: P [Mod ()]
+parseMod      :: P (Mod ())
+parseType     :: Language w => P (Type () w)
+parseExpr     :: Language w => P (Expr () w)
 parseProg      = finish progp
 parseMods      = finish modsp
 parseMod       = finish modp
@@ -291,19 +294,19 @@ parseExpr      = finish exprp
 
 -- Convenience functions for quick-and-dirty parsing:
 
-pp  :: String -> Prog
+pp  :: String -> Prog ()
 pp   = makeQaD parseProg
 
-pms :: String -> [Mod]
+pms :: String -> [Mod ()]
 pms  = makeQaD parseMods
 
-pm  :: String -> Mod
+pm  :: String -> Mod ()
 pm   = makeQaD parseMod
 
-pt  :: Language w => String -> Type w
+pt  :: Language w => String -> Type () w
 pt   = makeQaD parseType
 
-pe  :: Language w => String -> Expr w
+pe  :: Language w => String -> Expr () w
 pe   = makeQaD parseExpr
 
 makeQaD :: P a -> String -> a

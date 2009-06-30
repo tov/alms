@@ -32,34 +32,34 @@ parensIf False doc = doc
 class Separator a where
   separator :: a -> Doc
 
-instance Separator (Type w) where
+instance Separator (Type i w) where
   separator _ = comma
 
 instance (Ppr a, Separator a) => Ppr [a] where
   pprPrec _ xs = hcat (intersperse (separator (head xs))
                                    (map (pprPrec precCom) xs))
 
-instance Ppr (Type w) where
+instance Ppr (Type i w) where
   -- Print sugar for arrow types:
-  pprPrec p (TyCon "->" [t1, t2])
+  pprPrec p (TyCon "->" [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "->" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon "-o" [t1, t2])
+  pprPrec p (TyCon "-o" [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "-o" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon "*" [t1, t2])
+  pprPrec p (TyCon "*" [t1, t2] _)
                   = parensIf (p > precStar) $
                       sep [ pprPrec precStar t1,
                         text "*" <+> pprPrec (precStar + 1) t2 ]
-  pprPrec _ (TyCon n [])  = text n
-  pprPrec p (TyCon n [t]) = parensIf (p > precApp) $
-                              sep [ pprPrec precApp t,
-                                    text n ]
-  pprPrec p (TyCon n ts)  = parensIf (p > precApp) $
-                              sep [ parens (pprPrec p ts),
-                                    text n ]
+  pprPrec _ (TyCon n [] _)  = text n
+  pprPrec p (TyCon n [t] _) = parensIf (p > precApp) $
+                                sep [ pprPrec precApp t,
+                                      text n ]
+  pprPrec p (TyCon n ts _)  = parensIf (p > precApp) $
+                                sep [ parens (pprPrec p ts),
+                                      text n ]
   pprPrec p (TyVar x)     = pprPrec p x
   pprPrec p (TyAll x t)   = parensIf (p > precDot) $
                               hang (text "all" <+>
@@ -78,11 +78,11 @@ instance Ppr (Type w) where
   pprPrec _ (TyA t)       = braces (pprPrec 0 t)
   pprPrec _ (TyC t)       = braces (pprPrec 0 t)
 
-instance Ppr Prog where
+instance Ppr (Prog i) where
   pprPrec _ (Prog ms e) = vcat (map (pprPrec 0) ms) $+$
                           hang (text "in") 2 (pprPrec 0 e)
 
-instance Ppr Mod where
+instance Ppr (Mod i) where
   pprPrec _ (MdC x Nothing e) = sep
     [ text "module[C]" <+> pprPrec 0 x,
       nest 2 $ equals <+> pprPrec 0 e ]
@@ -104,7 +104,7 @@ instance Ppr Mod where
       nest 2 $ text ":>" <+> pprPrec 0 t,
       nest 4 $ equals <+> pprPrec 0 y ]
 
-instance Ppr (Expr w) where
+instance Ppr (Expr i w) where
   pprPrec p e0 = case expr' e0 of
     ExCon s -> text s
     ExInt i -> integer i
@@ -171,7 +171,7 @@ instance Ppr (Expr w) where
               text ":>",
               pprPrec (precCast + 1) t2 ]
 
-pprLet :: Int -> Doc -> Expr w -> Expr w -> Doc
+pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
   hang (hang (text "let" <+> pat <+> pprArgList args <+> equals)
              2
@@ -186,7 +186,7 @@ pprLet p pat e1 e2 = parensIf (p > precDot) $
     isLet (ExLetPair _ _ _) = True
     isLet _                 = False
 
-pprAbs :: Int -> Expr w -> Doc
+pprAbs :: Int -> Expr i w -> Doc
 pprAbs p e = parensIf (p > precDot) $
   hang
     (addArgs (char '\\') <> char '.')
@@ -198,7 +198,7 @@ pprAbs p e = parensIf (p > precDot) $
                                 char ':' <+> pprPrec 0 t))
           _             -> (<>  pprArgList args)
 
-pprArgList :: [Either (Var, Type w) TyVar] -> Doc
+pprArgList :: [Either (Var, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg where
   eachArg (Left (x, t))   = parens $ hang
                               (pprPrec 0 x)
@@ -206,10 +206,10 @@ pprArgList = fsep . map eachArg where
                               (colon <+> pprPrec 0 t)
   eachArg (Right tv)      = pprPrec 0 tv
 
-instance Show Prog     where showsPrec = showFromPpr
-instance Show Mod      where showsPrec = showFromPpr
-instance Show (Expr w) where showsPrec = showFromPpr
-instance Show (Type w) where showsPrec = showFromPpr
+instance Show (Prog i)   where showsPrec = showFromPpr
+instance Show (Mod i)    where showsPrec = showFromPpr
+instance Show (Expr i w) where showsPrec = showFromPpr
+instance Show (Type i w) where showsPrec = showFromPpr
 
 instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Var       where pprPrec = pprFromShow
