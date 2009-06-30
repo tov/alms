@@ -1,11 +1,12 @@
 module Translation (
-  translate, transMods, MEnv,
+  translate, transMods, MEnv, MEnvI
 ) where
 
 import Syntax
 import Env
 
-type MEnv = Env Var Mod
+type MEnv i = Env Var (Mod i)
+type MEnvI  = MEnv TInfo
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.
@@ -13,17 +14,17 @@ newtype Party = Party { unParty :: Var }
 
 -- Translate a program by adding contracts.
 -- Also performs some *trivial* optimizations.
-translate :: Prog -> Prog
+translate :: ProgI -> ProgI
 translate (Prog ms e) =
   Prog ms' (transExpr menv (Party (Var "*main*")) e)
   where (menv, ms') = transMods empty ms
 
-transMods :: MEnv -> [Mod] -> (MEnv, [Mod])
+transMods :: MEnvI -> [ModI] -> (MEnvI, [ModI])
 transMods menv = foldl each (menv, []) where
   each (env, ms) m = let (env', m') = transMod env m
                       in (env', ms ++ [m'])
 
-transMod :: MEnv -> Mod -> (MEnv, Mod)
+transMod :: MEnvI -> ModI -> (MEnvI, ModI)
 transMod menv m@(MdC x (Just t) e) =
   (menv =+= x =:= m,
    MdC x (Just t) (transExpr menv (Party x) e))
@@ -33,13 +34,13 @@ transMod menv m@(MdA x (Just t) e) =
 transMod menv m@(MdInt x t y)      =
   (menv =+= x =:= m,
    MdC x (Just (atype2ctype t)) $
-     exLet' z (transExpr menv (Party x) (exVar y :: Expr C)) $
+     exLet' z (transExpr menv (Party x) (exVar y :: ExprI C)) $
        ac (Party y) (Party x) z t)
     where z = y /./ "z"
 transMod menv m                  =
   (menv =+= modName m =:= m, m)
 
-transExpr :: Language w => MEnv -> Party -> Expr w -> Expr C
+transExpr :: Language w => MEnvI -> Party -> ExprI w -> ExprI C
 transExpr menv neg = te where
   tem menv' = transExpr menv' neg
   te e0 = case expr' e0 of
@@ -67,7 +68,7 @@ transExpr menv neg = te where
     ExSeq e1 e2 -> exSeq (te e1) (te e2)
     ExCast e1 t ta -> transCast neg (te e1) t ta
 
-type2ctype :: Language w => Type w -> Type C
+type2ctype :: Language w => TypeI w -> TypeI C
 type2ctype t = langCase t id atype2ctype
 
 -- Get the LangRep from a term:
@@ -75,7 +76,7 @@ reifyLang1 :: Language w => f w -> LangRep w
 reifyLang1 _ = reifyLang
 
 -- How do we refer to a variable from a given language?
-transVar :: LangRep w -> MEnv -> Party -> Var -> Expr C
+transVar :: LangRep w -> MEnvI -> Party -> Var -> ExprI C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
     (C, Just (MdC _ (Just t) _)) -> cc neg (Party x) x t
@@ -94,7 +95,8 @@ transVar lang menv neg x =
 --    follows t and the context follows ta.  Thus, we need ensure that
 --    e follows ta and that the context follows t.
 --
-transCast :: Language w => Party -> Expr C -> Type w -> Type A -> Expr C
+transCast :: Language w =>
+             Party -> ExprI C -> TypeI w -> TypeI A -> ExprI C
 transCast neg e t' ta =
   exLet' y e $
     exLet' z (ac neg pos y ta) $   -- protect the value
@@ -111,14 +113,14 @@ transCast neg e t' ta =
 --
 -- This wrapper protects the positive party and may blame the
 -- negative party.
-ca :: Party -> Party -> Var -> Type A -> Expr C
-ca neg pos x (TyCon "->" [s1, s2]) =
+ca :: Party -> Party -> Var -> TypeI A -> ExprI C
+ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ac pos neg y s1)) $
       ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-ca neg pos x (TyCon "-o" [s1, s2]) =
+ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
   exLet u createContract $
     exAbs y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
@@ -136,7 +138,7 @@ ca neg pos x (TyAll tv t) =
 ca neg _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise =
   exLet' u createContract $
-    exAbs' y tyUnit $
+    exAbs' y tyUnitI $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exVar x
   where u = x /./ "u"
@@ -148,8 +150,8 @@ ca neg _   x ta | qualifier ta <: Qu = exVar x
 --
 -- This wrapper protects the negative party and may blame the
 -- positive party.
-ac :: Party -> Party -> Var -> Type A -> Expr C
-ac neg pos x (TyCon n [s1, s2]) | n `elem` funtypes =
+ac :: Party -> Party -> Var -> TypeI A -> ExprI C
+ac neg pos x (TyCon _ [s1, s2] ti) | ti `elem` funtypes =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ca pos neg y s1)) $
       ac neg pos z s2
@@ -174,8 +176,8 @@ ac _   _   x ta | qualifier ta <: Qu = exVar x
 -- the blame on the correct C module.
 --
 -- This wrapper protects either party and may blame either party.
-cc :: Party -> Party -> Var -> Type C -> Expr C
-cc neg pos x (TyCon "->" [s1, s2]) =
+cc :: Party -> Party -> Var -> TypeI C -> ExprI C
+cc neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
   exAbs' y s1 $
     exLet' z (exApp (exVar x) (cc pos neg y s1)) $
       cc neg pos z s2
@@ -183,7 +185,7 @@ cc neg pos x (TyCon "->" [s1, s2]) =
         z = x /./ "z"
 cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
   exLet' u createContract $
-    exAbs' y tyUnit $
+    exAbs' y tyUnitI $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exApp (exVar x) exUnit
   where y = x /./ "y"
@@ -197,25 +199,25 @@ cc neg pos x (TyAll tv t) =
 cc _   _   x _ = exVar x
 
 -- Generate an expression to create an initial (blessed) cell
-createContract :: Expr C
+createContract :: ExprI C
 createContract = exApp (exTApp (exVar (Var "#ref"))
-                               (tyUnit `tyArr` tyUnit))
-                       (exAbs (Var "_") tyUnit exUnit)
+                               (tyUnitI `tyArrI` tyUnitI))
+                       (exAbs (Var "_") tyUnitI exUnit)
 
 -- Given a variable containing a reference cell, generate code
 -- to check it
-checkContract :: Var -> Party -> String -> Expr C
+checkContract :: Var -> Party -> String -> ExprI C
 checkContract x (Party who) what =
   exLet f (exApp (exTApp (exVar (Var "#modify"))
-                         (tyUnit `tyArr` tyUnit))
+                         (tyUnitI `tyArrI` tyUnitI))
                  (exVar x `exPair` blameFun (show who) what)) $
     exApp (exVar f) exUnit
   where f = x /./ "f"
 
 -- Generate a function that raises blame
-blameFun :: String -> String -> Expr C
+blameFun :: String -> String -> ExprI C
 blameFun who what =
-  exAbs (Var "_") tyUnit $
+  exAbs (Var "_") tyUnitI $
     exApp (exApp (exVar (Var "#blame"))
                  (exStr who))
           (exStr what)
@@ -227,10 +229,7 @@ Var v /./ s = Var (v ++ '#' : s)
 (/^/)      :: Party -> String -> Party
 Party (Var v) /^/ s = Party (Var (v ++ s))
 
-tyUnit :: Type C
-tyUnit  = tyGround "unit"
-
-exUnit :: Expr C
+exUnit :: Expr i C
 exUnit  = exCon "()"
 
 ----
@@ -243,7 +242,7 @@ exUnit  = exCon "()"
 --   exLet' x e (exVar x)  ==  e
 --
 -- This is always safe to do.
-exLet' :: Var -> Expr w -> Expr w -> Expr w
+exLet' :: Var -> Expr i w -> Expr i w -> Expr i w
 exLet' v e1 e2 = case expr' e2 of
   ExVar v' | v == v' -> e1
   _                  -> exLet v e1 e2
@@ -253,7 +252,7 @@ exLet' v e1 e2 = case expr' e2 of
 --    exAbs' x t (exApp (exVar f) (exVar x))  ==  exVar f
 --
 -- This eta-contraction is always safe, because f has no effect
-exAbs' :: Var -> Type w -> Expr w -> Expr w
+exAbs' :: Var -> Type i w -> Expr i w -> Expr i w
 exAbs' x t e = case expr' e of
   ExApp e1 e2 -> case (expr' e1, expr' e2) of
     (ExVar f, ExVar x') |
@@ -266,7 +265,7 @@ exAbs' x t e = case expr' e of
 --   exTAbs' tv (exTApp (exVar f) tv)  ==  exVar f
 --
 -- This should always be safe, because f has no effect
-exTAbs' :: TyVar -> Expr w -> Expr w
+exTAbs' :: TyVar -> Expr i w -> Expr i w
 exTAbs' tv e = case expr' e of
   ExTApp e1 t2 -> case (expr' e1, t2) of
     (ExVar f, TyVar tv') |

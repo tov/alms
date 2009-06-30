@@ -108,10 +108,10 @@ nameFun (Var x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
 
-evalMods :: [Mod] -> DMod
+evalMods :: [Mod i] -> DMod
 evalMods  = flip (foldM (flip evalMod))
 
-evalMod :: Mod -> DMod
+evalMod :: Mod i -> DMod
 evalMod (MdC x _ e)   env = do
   v <- valOf e env
   return (env =+= x =:= return v)
@@ -123,11 +123,11 @@ evalMod (MdInt x _ y) env = do
     Just v  -> return (env =+= x =:= v)
     Nothing -> fail $ "BUG! Unknown module: " ++ show y
 
-eval :: E -> Prog -> Result
+eval :: E -> Prog i -> Result
 eval env0 (Prog ms e0) = evalMods ms env0 >>= valOf e0
 
 -- The meaning of an expression
-valOf :: Expr w -> D
+valOf :: Expr i w -> D
 valOf e env = case expr' e of
   ExCon s                -> do 
     case env =.= Var s of

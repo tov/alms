@@ -1,6 +1,6 @@
-module Statics {-(
-  GG(..), tcProg, tcMods
-)-} where
+module Statics (
+  GG(..), tcProg, tcMods, tcType
+) where
 
 import Util
 import Syntax
@@ -19,8 +19,8 @@ usage x e = case M.lookup x (fv e) of
 
 -- Type environments
 type D   = S.Set TyVar
-type I   = M.Map String TInfo
-type G w = Env Var (Type TInfo w)
+type I   = Env String TInfo
+type G w = Env Var (TypeI w)
 data GG  = GG { ggC :: G C, ggA :: G A, ggI :: I }
 
 -- Raise a type error
@@ -46,16 +46,20 @@ m |! s = case m of
   _       -> fail s
 infix 1 |!
 
+-- Check a type, at top-level (so we assume no ftvs)
+tcType :: Monad m => I -> Type i w -> m (TypeI w)
+tcType i = tcOpenType i S.empty
+
 -- Check type for closed-ness and and defined-ness, and add info
-tcType :: Monad m => I -> D -> Type () w -> m (Type TInfo w)
-tcType i d0 = tc (d0, S.empty) where
+tcOpenType :: Monad m => I -> D -> Type i w -> m (TypeI w)
+tcOpenType i d0 = tc (d0, S.empty) where
   tc                     :: Monad m =>
-                            (D, D) -> Type () w -> m (Type TInfo w)
+                            (D, D) -> Type i w -> m (TypeI w)
   tc (d, _ ) (TyVar tv)   = do
     tassert (S.member tv d) $
       "Free type variable: " ++ show tv
     return (TyVar tv)
-  tc (d, d') (TyCon n ts ()) = case M.lookup n i of
+  tc (d, d') (TyCon n ts _) = case i =.= n of
     Nothing -> terr $ "Undefined type constructor: " ++ n
     Just ti -> do
       tassert (length ts == length (tiArity ti)) $
@@ -70,16 +74,16 @@ tcType i d0 = tc (d0, S.empty) where
   tc (d, d') (TyA t)      = TyA `liftM` tc (d', d) t
 
 -- Type check an expression
-tcExprC :: Monad m => I -> G C -> Expr () C -> m (Type TInfo C, Expr TInfo C)
+tcExprC :: Monad m => I -> G C -> Expr i C -> m (TypeI C, ExprI C)
 tcExprC i = tc S.empty where
-  tc :: Monad m => D -> G C -> Expr () C -> m (Type TInfo C, Expr TInfo C)
+  tc :: Monad m => D -> G C -> Expr i C -> m (TypeI C, ExprI C)
   tc d g e0 = case expr' e0 of
     ExCon "()"    -> return (TyCon "unit" [] tiUnit, exCon "()")
     ExCon s
       | s `elem` constants -> terr $ "Constant must be applied: " ++ s
       | otherwise          -> terr $ "Unrecognized constant: " ++ s
     ExStr s       -> return (TyCon "string" [] tiString, exStr s)
-    ExInt i       -> return (TyCon "int" [] tiInt, exInt i)
+    ExInt z       -> return (TyCon "int" [] tiInt, exInt z)
     ExIf e1 e2 e3 -> do
       (t1, e1') <- tc d g e1
       tassert (tyinfo t1 == tiBool) $
@@ -104,7 +108,7 @@ tcExprC i = tc S.empty where
       (t2, e2') <- tc d (g =+= x =:= t1) e2
       return (t2, exLet x e1' e2')
     ExLetRec bs e2 -> do
-      tfs <- mapM (tcType i d . bntype) bs
+      tfs <- mapM (tcOpenType i d . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
             tassert (bnvar b `notElem` seen) $
               "Duplicate binding in let rec: " ++ show (bnvar b)
@@ -143,7 +147,7 @@ tcExprC i = tc S.empty where
                return (t2, exLetPair (x, y) e1' e2')
         _ -> tgot "let" t1 "pair type"
     ExAbs x t e     -> do
-      t' <- tcType i d t
+      t' <- tcOpenType i d t
       (te, e') <- tc d (g =+= x =:= t') e
       return (TyCon "->" [t', te] tiArr, exAbs x t' e')
     ExApp e1 e2   -> case expr' e1 of
@@ -171,7 +175,7 @@ tcExprC i = tc S.empty where
       return (TyAll tv t, exTAbs tv e')
     ExTApp e1 t2  -> do
       (t1, e1') <- tc d g e1
-      t2'       <- tcType i d t2
+      t2'       <- tcOpenType i d t2
       case t1 of
         TyAll tv t1' -> return (tysubst tv t2' t1', exTApp e1' t2')
         _            -> tgot "type application" t1 "(for)all type"
@@ -180,8 +184,8 @@ tcExprC i = tc S.empty where
       (t2, e2') <- tc d g e2
       return (t2, exSeq e1' e2')
     ExCast e1 t ta -> do
-      t'  <- tcType i d t
-      ta' <- tcType i S.empty ta
+      t'  <- tcOpenType i d t
+      ta' <- tcOpenType i S.empty ta
       case t' of
         TyCon _ [_, _] ti | ti `elem` funtypes -> return ()
         _ -> tgot "cast (:>)" t' "function type"
@@ -194,7 +198,7 @@ tcExprC i = tc S.empty where
         " is incompatible with A contract " ++ show t'
       return (t', exCast e1' t' ta')
 
-tcExprA :: Monad m => I -> G A -> Expr () A -> m (Type TInfo A, Expr TInfo A)
+tcExprA :: Monad m => I -> G A -> Expr i A -> m (TypeI A, ExprI A)
 tcExprA i = tc S.empty where
   tc d g e0 = case expr' e0 of
     ExCon "()"    -> return (TyCon "unit" [] tiUnit, exCon "()")
@@ -202,7 +206,7 @@ tcExprA i = tc S.empty where
       | s `elem` constants -> terr $ "Constant must be applied: " ++ s
       | otherwise          -> terr $ "Unrecognized constant: " ++ s
     ExStr s       -> return (TyCon "string" [] tiString, exStr s)
-    ExInt i       -> return (TyCon "int" [] tiInt, exInt i)
+    ExInt z       -> return (TyCon "int" [] tiInt, exInt z)
     ExIf e1 e2 e3 -> do
       (t1, e1') <- tc d g e1
       tassert (tyinfo t1 == tiBool) $
@@ -236,7 +240,7 @@ tcExprA i = tc S.empty where
       (t2, e2') <- tc d (g =+= x =:= t1) e2
       return (t2, exLet x e1' e2')
     ExLetRec bs e2 -> do
-      tfs <- mapM (tcType i d . bntype) bs
+      tfs <- mapM (tcOpenType i d . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
             tassert (bnvar b `notElem` seen) $
               "Duplicate binding in let rec: " ++ show (bnvar b)
@@ -283,7 +287,7 @@ tcExprA i = tc S.empty where
           return (t2, exLetPair (x, y) e1' e2')
         _ -> terr $ "Let pair got non-pair type: " ++ show t1
     ExAbs x t e     -> do
-      t' <- tcType i d t
+      t' <- tcOpenType i d t
       tassert (qualifier t' <: usage x e) $
         "Affine variable " ++ show x ++ " : " ++
         show t' ++ " duplicated in lambda body"
@@ -316,7 +320,7 @@ tcExprA i = tc S.empty where
       (t, e') <- tc (S.insert tv d) g e
       return (TyAll tv t, exTAbs tv e')
     ExTApp e1 t2  -> do
-      t2'       <- tcType i d t2
+      t2'       <- tcOpenType i d t2
       (t1, e1') <- tc d g e1
       case t1 of
         TyAll tv t1' -> do
@@ -331,8 +335,8 @@ tcExprA i = tc S.empty where
       (t2, e2') <- tc d g e2
       return (t2, exSeq e1' e2')
     ExCast e1 t ta -> do
-      t'  <- tcType i d t
-      ta' <- tcType i d ta
+      t'  <- tcOpenType i d t
+      ta' <- tcOpenType i d ta
       case t' of
         TyCon _ [_, _] ti | ti `elem` funtypes -> return ()
         _ -> terr $ "Cast requires a function type, but got" ++ show t'
@@ -352,7 +356,7 @@ tcExprA i = tc S.empty where
         (M.keys (fv e))
 
 tcCon         :: (Monad m, Language w) =>
-                 String -> Type TInfo w -> m (Type TInfo w)
+                 String -> TypeI w -> m (TypeI w)
 tcCon "()"   _    = terr $ "Applied 0 arity constant: ()"
 tcCon "unroll" t0 = do
   case tc t0 of
@@ -376,8 +380,7 @@ tcCon s      _    = terr $ "Unrecognized constant: " ++ s
 -- may be free, and a type t', tries to substitute for tvs in t
 -- to produce a type that *might* unify with t'
 tryUnify :: (Monad m, Language w) =>
-             [TyVar] -> Type TInfo w -> Type TInfo w ->
-             m (Type TInfo w -> Type TInfo w)
+             [TyVar] -> TypeI w -> TypeI w -> m (TypeI w -> TypeI w)
 tryUnify [] _ _        = return id
 tryUnify (tv:tvs) t t' =
   case findSubst tv t t' of
@@ -393,10 +396,9 @@ tryUnify (tv:tvs) t t' =
 -- and a second type t', finds a plausible candidate to substitute
 -- for tv to make t and t' unify.  (The answer it finds doesn't
 -- have to be correct.
-findSubst :: Language w =>
-             TyVar -> Type TInfo w -> Type TInfo w -> [Type TInfo w]
+findSubst :: Language w => TyVar -> TypeI w -> TypeI w -> [TypeI w]
 findSubst tv = fs where
-  fs :: Language w => Type TInfo w -> Type TInfo w -> [Type TInfo w]
+  fs :: Language w => TypeI w -> TypeI w -> [TypeI w]
   fs (TyVar tv') t' | tv == tv'
     = [t']
   fs (TyCon _ ts _) (TyCon _ ts' _)
@@ -410,12 +412,12 @@ findSubst tv = fs where
   fs _ _
     = []
 
-tcMod :: Monad m => GG -> Mod () -> m (GG, Mod TInfo)
+tcMod :: Monad m => GG -> Mod i -> m (GG, ModI)
 tcMod gg (MdC x mt e) = do
   (te, e') <- tcExprC (ggI gg) (ggC gg) e
   t' <- case mt of
     Just t  -> do
-      t' <- tcType (ggI gg) S.empty t
+      t' <- tcOpenType (ggI gg) S.empty t
       tassert (te == t') $
         "Declared type for module " ++ show x ++ " : " ++ show t ++
         " doesn't match actual type " ++ show te
@@ -428,7 +430,7 @@ tcMod gg (MdA x mt e) = do
   (te, e') <- tcExprA (ggI gg) (ggA gg) e
   t' <- case mt of
     Just t  -> do
-      t' <- tcType (ggI gg) S.empty t
+      t' <- tcOpenType (ggI gg) S.empty t
       tassert (qualifier t' == Qu) $
         "Declared type of module " ++ show x ++ " is not unlimited"
       tassert (te <: t') $
@@ -446,7 +448,7 @@ tcMod gg (MdInt x t y) = do
   case ggC gg =.= y of
     Nothing -> terr $ "RHS of interface is unbound variable: " ++ show y
     Just ty -> do
-      t' <- tcType (ggI gg) S.empty t
+      t' <- tcOpenType (ggI gg) S.empty t
       tassert (ty == atype2ctype t') $
         "Declared type of interface " ++ show x ++ " :> " ++
         show t' ++ " not compatible with RHS type: " ++ show ty
@@ -454,7 +456,7 @@ tcMod gg (MdInt x t y) = do
                    ggA = ggA gg =+= x =:= t' },
               MdInt x t' y)
 
-tcMods :: Monad m => GG -> [Mod ()] -> m (GG, [Mod TInfo])
+tcMods :: Monad m => GG -> [Mod i] -> m (GG, [Mod TInfo])
 tcMods gg0 ms0 = foldM each (gg0, []) ms0 where
   each (gg, ms) m = do
     (gg', m') <- tcMod gg m
@@ -463,7 +465,7 @@ tcMods gg0 ms0 = foldM each (gg0, []) ms0 where
 -- Type check a program
 --   mkBasis     -- The basis type envs
 --   (Prog ms e) -- Program to check
-tcProg :: Monad m => GG -> Prog () -> m (Type TInfo C, Prog TInfo)
+tcProg :: Monad m => GG -> Prog i -> m (TypeI C, ProgI)
 tcProg gg0 (Prog ms e) = do
   (gg, ms') <- tcMods gg0 ms
   (t, e')   <- tcExprC (ggI gg) (ggC gg) e

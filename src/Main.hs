@@ -1,17 +1,17 @@
 {-# LANGUAGE CPP #-}
-module Main (
+module Main {-(
   main
-) where
+)-} where
 
 import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
 import Parser (parse, parseProg, parseMods)
 import Statics (tcProg, tcMods, GG)
-import Translation (translate, transMods, MEnv)
+import Translation (translate, transMods, MEnvI)
 import Dynamics (eval, evalMods, E)
 import Basis (basis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Mod(..), prog2mods, modName)
+import Syntax (Prog, ProgI, Mod(..), ModI, prog2mods, modName)
 import Env (empty, (=.=), (=-=))
 
 import Control.Monad (when, unless)
@@ -36,8 +36,8 @@ main :: IO ()
 main  = do
   args <- getArgs
   let (opts, mmsrc, filename) = processArgs [] args
-      g0 = basis2tenv basis
-      e0 = basis2venv basis
+  e0 <- basis2venv basis
+  g0 <- basis2tenv basis
   maybe interactive (batch filename) mmsrc (`elem` opts) g0 e0
     `catch`
       \err -> do
@@ -51,50 +51,64 @@ batch filename msrc opt g0 e0 = do
       src <- msrc
       case parse parseProg filename src of
         Left e    -> fail $ "syntax error: " ++ show e
-        Right ast -> do
-          ast0 <- if opt Don'tType
-                    then return ast
-                    else do
-                      (t, ast0) <- tcProg g0 ast
-                      when (opt Verbose) $
-                        mumble "TYPE" t
-                      return ast0
-          ast1 <- if opt Don'tCoerce
-                    then return ast0
-                    else do
-                      let ast1 = translate ast0
-                      when (opt Verbose) $
-                        mumble "TRANSLATION" ast1
-                      return ast1
-          when (opt ReType) $ do
-            (t, _) <- tcProg g0 ast1
-            when (opt Verbose) $
-              mumble "RE-TYPE" t
-          unless (opt Don'tExecute) $ do
-            v <- eval e0 ast1
-            when (opt Verbose) $
-              mumble "RESULT" v
+        Right ast -> check ast where
+          check   :: Prog () -> IO ()
+          coerce  :: ProgI   -> IO ()
+          recheck :: Prog i  -> IO ()
+          execute :: Prog i  -> IO ()
+
+          check ast0 =
+            if opt Don'tType
+              then execute ast0
+              else do
+                (t, ast1) <- tcProg g0 ast0
+                when (opt Verbose) $
+                  mumble "TYPE" t
+                coerce ast1
+
+          coerce ast1 =
+            if opt Don'tCoerce
+              then execute ast1
+              else do
+                let ast2 = translate ast1
+                when (opt Verbose) $
+                  mumble "TRANSLATION" ast2
+                recheck ast2
+
+          recheck ast2 = do
+            when (opt ReType) $ do
+              (t, _) <- tcProg g0 ast2
+              when (opt Verbose) $
+                mumble "RE-TYPE" t
+            execute ast2
+
+          execute ast2 =
+            unless (opt Don'tExecute) $ do
+              v <- eval e0 ast2
+              when (opt Verbose) $
+                mumble "RESULT" v
 
 data ReplState = RS {
   rsStatics     :: GG,
-  rsTranslation :: MEnv,
+  rsTranslation :: MEnvI,
   rsDynamics    :: E
 }
 
-statics, translation, dynamics
-  :: ReplState -> [Mod] -> IO (ReplState, [Mod])
+statics     :: (ReplState, [Mod i]) -> IO (ReplState, [ModI])
+translation :: (ReplState, [ModI])   -> IO (ReplState, [ModI])
+dynamics    :: (ReplState, [Mod i])  -> IO ReplState
 
-statics rs ast = do
+statics (rs, ast) = do
   (g', ast') <- tcMods (rsStatics rs) ast
   return (rs { rsStatics = g' }, ast')
 
-translation rs ast = do
+translation (rs, ast) = do
   let (menv', ast') = transMods (rsTranslation rs) ast
   return (rs { rsTranslation = menv' }, ast')
 
-dynamics rs ast = do
+dynamics (rs, ast) = do
   e' <- evalMods ast (rsDynamics rs)
-  return (rs { rsDynamics = e' }, ast)
+  return rs { rsDynamics = e' }
 
 interactive :: (Option -> Bool) -> GG -> E -> IO ()
 interactive opt g0 e0 = do
@@ -111,25 +125,38 @@ interactive opt g0 e0 = do
               hPutStrLn stderr (errorString err)
               return st
           repl st'
-    doLine st ast = do
-      (st0, ast0) <- if opt Don'tType
-                       then return (st, ast)
-                       else statics st ast
-      (st1, ast1) <- if opt Don'tCoerce
-                       then return (st0, ast0)
-                       else do
-                         (st1, ast1) <- translation st0 ast0
-                         when (opt Verbose) $
-                           mumbles "TRANSLATION" ast1
-                         return (st1, ast1)
-      when (opt ReType) $ do
-        statics st1 ast1
-        return ()
-      (st2, _   ) <- if opt Don'tExecute
-                       then return (st1, ast1)
-                       else dynamics st1 ast1
-      printResult st2 ast0
-      return st2
+    doLine st ast = let
+      check   :: (ReplState, [Mod ()]) -> IO ReplState
+      coerce  :: (ReplState, [ModI])   -> IO ReplState
+      recheck :: (ReplState, [Mod i])  -> IO ReplState
+      execute :: (ReplState, [Mod i])  -> IO ReplState
+
+      check stast0   = if opt Don'tType
+                         then execute stast0
+                         else statics stast0 >>= coerce
+
+      coerce stast1  = if opt Don'tCoerce
+                         then recheck stast1
+                         else do
+                           stast2 <- translation stast1
+                           when (opt Verbose) $
+                             mumbles "TRANSLATION" (snd stast2)
+                           recheck stast2
+
+      recheck stast2 = if opt ReType
+                         then do
+                           statics stast2
+                           execute stast2
+                         else
+                           execute stast2
+
+      execute stast2 = if opt Don'tExecute
+                         then return (fst stast2)
+                         else dynamics stast2
+      in do
+        st2 <- check (st, ast)
+        printResult st2 ast
+        return st2
     reader = loop []
       where
         loop acc = do
@@ -155,11 +182,12 @@ interactive opt g0 e0 = do
                         return (Just ast)
                       Left derr ->
                         loop ((line, derr) : acc)
+    printResult :: ReplState -> [Mod i] -> IO ()
     printResult st ms0 = do
       (_, ds) <- foldrM dispatch (rsDynamics st, []) ms0
       mapM_ print ds
         where
-      dispatch :: (E, [Doc]) -> Mod -> IO (E, [Doc])
+      dispatch :: (E, [Doc]) -> Mod i -> IO (E, [Doc])
       dispatch (e, ds) m = do
         mv   <- case e =.= modName m of
                   Nothing -> return Nothing
@@ -210,9 +238,9 @@ usage  = do
   hPutStrLn stderr "Usage: affine [OPTIONS...] [FILENAME]"
   hPutStrLn stderr ""
   hPutStrLn stderr "Options:"
-  hPutStrLn stderr "  -t   Don't type check"
-  hPutStrLn stderr "  -x   Don't execute"
+  hPutStrLn stderr "  -t   Don't type check (implies -c)"
   hPutStrLn stderr "  -c   Don't add contracts"
+  hPutStrLn stderr "  -x   Don't execute"
   hPutStrLn stderr "  -r   Re-typecheck after translation (may fail)"
   hPutStrLn stderr "  -v   Verbose (show translation, results, types)"
   exitFailure

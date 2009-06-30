@@ -12,10 +12,10 @@ module Syntax (
   Q(..), Var(..), TyVar(..),
 
   TInfo(..), Variance(..),
-  Type(..), TEnv,
-  Prog(..), Mod(..),
+  Type(..), TypeI, TEnv,
+  Prog(..), ProgI, Mod(..), ModI,
 
-  Expr(), Expr'(..), Binding(..), fv, expr',
+  Expr(), ExprI, Expr'(..), Binding(..), BindingI, fv, expr',
   exCon, exStr, exInt, exIf, exCase, exLet, exLetRec,
   exVar, exPair, exLetPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
@@ -24,6 +24,7 @@ module Syntax (
 
   tiUnit, tiBool, tiInt, tiString, tiEither, tiTuple, tiArr, tiLol,
   tyGround, tyArr, tyLol, tyTuple,
+  tyUnitI, tyArrI, tyLolI, tyTupleI,
   ftv, tysubst, tienv, qualifier, tystrip,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
@@ -68,8 +69,10 @@ data Variance = Invariant
 data TInfo = TiAbs {
     tiId    :: Integer,
     tiArity :: [Variance], -- The variance of each of its parameters
-    tiQual  :: [Q] -> Q,   -- The qualifier of the type, given the
-                           -- qualifiers of the parameters
+    tiQual  :: [Either Int Q],
+                           -- The qualifier of the type is the lub of
+                           -- the qualifiers of the named parameters and
+                           -- possibly some constants
     tiTrans :: Bool
   }
 
@@ -83,7 +86,7 @@ data Type i w where
   TyC   :: Type i C -> Type i A
   TyA   :: Type i A -> Type i C
 
-type TEnv w = Env Var (Type TInfo w)
+type TEnv w = Env Var (TypeI w)
 
 data Prog i = Prog [Mod i] (Expr i C)
 
@@ -115,6 +118,12 @@ data Binding i w = Binding {
   bntype :: Type i w,
   bnexpr :: Expr i w
 }
+
+type ExprI    = Expr TInfo
+type TypeI    = Type TInfo
+type ModI     = Mod TInfo
+type BindingI = Binding TInfo
+type ProgI    = Prog TInfo
 
 fv :: Expr i w -> FV
 fv  = fv_
@@ -350,9 +359,9 @@ instance Language w => PO (Type TInfo w) where
       else fail "\\/? or /\\?: Does not exist"
 
 ifMJBind :: (Monad m, Language w) =>
-            (TyVar -> Type TInfo w -> Type TInfo w) -> Bool ->
-            (TyVar, Type TInfo w) -> (TyVar, Type TInfo w) ->
-            m (Type TInfo w)
+            (TyVar -> TypeI w -> TypeI w) -> Bool ->
+            (TyVar, TypeI w) -> (TyVar, TypeI w) ->
+            m (TypeI w)
 ifMJBind cons b (a, t) (a', t') = do
   qual <- ifMJ (not b) (tvqual a) (tvqual a')
   if qual == tvqual a
@@ -417,7 +426,7 @@ sameLang x y same diff =
 --- Syntax Utils
 ---
 
-ftv :: Type TInfo w -> M.Map TyVar Variance
+ftv :: TypeI w -> M.Map TyVar Variance
 ftv (TyCon _ ts i)   = M.unionsWith (+)
                        [ M.map (* var) m
                        | var <- tiArity i
@@ -444,9 +453,9 @@ freshTyVar tv m = if tv `M.member` m
            else tv'
 
 tysubst :: (Language w, Language w') =>
-           TyVar -> Type TInfo w' -> Type TInfo w -> Type TInfo w
+           TyVar -> TypeI w' -> TypeI w -> TypeI w
 tysubst a t = ts where
-  ts :: Language w => Type TInfo w -> Type TInfo w
+  ts :: Language w => TypeI w -> TypeI w
   ts t'@(TyVar a')
                 = sameLang t' t
                     (\_ t0 ->
@@ -490,7 +499,7 @@ tysubst a t = ts where
 
 -- Helper for finding the dual of a session type (since we can't
 -- express this direction in the type system)
-dualSessionType :: Type TInfo w -> Type TInfo w
+dualSessionType :: TypeI w -> TypeI w
 dualSessionType  = d where
   d (TyCon "->" [TyCon "send" [ta] _, tr] _)
     = TyCon "->" [TyCon "recv" [ta] tiRecv, d tr] tiArr
@@ -523,28 +532,29 @@ tienv          = fromList [
                 ]
   where
 
-tiArr, tiLol, tiRef, tiTuple, tiThread, tiFuture,
+tiUnit, tiBool, tiInt, tiString,
+  tiArr, tiLol, tiRef, tiTuple, tiThread, tiFuture,
   tiCofuture, tiEither, tiRendezvous, tiChannel,
   tiSend, tiRecv, tiSelect, tiFollow :: TInfo
 
-tiUnit       = TiAbs (-1)  [] (const Qu) True
-tiBool       = TiAbs (-2)  [] (const Qu) True
-tiInt        = TiAbs (-3)  [] (const Qu) True
-tiString     = TiAbs (-4)  [] (const Qu) True
-tiArr        = TiAbs (-5)  [-1, 1] (const Qu) False
-tiLol        = TiAbs (-6)  [-1, 1] (const Qa) False
-tiRef        = TiAbs (-7)  [Invariant] (const Qa) False
-tiTuple      = TiAbs (-8)  [1, 1] (foldr (\/) Qu) False
-tiThread     = TiAbs (-9)  [] (const Qa) False
-tiFuture     = TiAbs (-10) [1] (const Qa) False
-tiCofuture   = TiAbs (-11) [-1] (const Qa) False
-tiEither     = TiAbs (-12) [1, 1] (foldr (\/) Qu) False
-tiRendezvous = TiAbs (-13) [Invariant] (const Qu) False
-tiChannel    = TiAbs (-14) [Invariant] (const Qa) False
-tiSend       = TiAbs (-15) [Invariant] (const Qu) False
-tiRecv       = TiAbs (-16) [Invariant] (const Qu) False
-tiSelect     = TiAbs (-17) [Invariant] (const Qu) False
-tiFollow     = TiAbs (-18) [Invariant] (const Qu) False
+tiUnit       = TiAbs (-1)  []          []                True
+tiBool       = TiAbs (-2)  []          []                True
+tiInt        = TiAbs (-3)  []          []                True
+tiString     = TiAbs (-4)  []          []                True
+tiArr        = TiAbs (-5)  [-1, 1]     []                False
+tiLol        = TiAbs (-6)  [-1, 1]     [Right Qa]        False
+tiRef        = TiAbs (-7)  [Invariant] [Right Qa]        False
+tiTuple      = TiAbs (-8)  [1, 1]      [Left 0, Left 1]  False
+tiThread     = TiAbs (-9)  []          [Right Qa]        False
+tiFuture     = TiAbs (-10) [1]         [Right Qa]        False
+tiCofuture   = TiAbs (-11) [-1]        [Right Qa]        False
+tiEither     = TiAbs (-12) [1, 1]      [Left 0, Left 1]  False
+tiRendezvous = TiAbs (-13) [Invariant] []                False
+tiChannel    = TiAbs (-14) [Invariant] [Right Qa]        False
+tiSend       = TiAbs (-15) [Invariant] []                False
+tiRecv       = TiAbs (-16) [Invariant] []                False
+tiSelect     = TiAbs (-17) [Invariant] []                False
+tiFollow     = TiAbs (-18) [Invariant] []                False
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon s [] ()
@@ -555,11 +565,27 @@ tyArr a b      = TyCon "->" [a, b] ()
 tyLol         :: Type () w -> Type () w -> Type () w
 tyLol a b      = TyCon "-o" [a, b] ()
 
-tyTuple        :: Type () w -> Type () w -> Type () w
-tyTuple a b     = TyCon "*" [a, b] ()
+tyTuple       :: Type () w -> Type () w -> Type () w
+tyTuple a b    = TyCon "*" [a, b] ()
 
-qualifier     :: Type TInfo A -> Q
-qualifier (TyCon _ ps ti)    = tiQual ti (map qualifier ps)
+tyUnitI        :: TypeI C
+tyUnitI         = TyCon "unit" [] tiUnit
+
+tyArrI         :: TypeI w -> TypeI w -> TypeI w
+tyArrI a b      = TyCon "->" [a, b] tiArr
+
+tyLolI         :: TypeI w -> TypeI w -> TypeI w
+tyLolI a b      = TyCon "-o" [a, b] tiLol
+
+tyTupleI       :: TypeI w -> TypeI w -> TypeI w
+tyTupleI a b    = TyCon "*" [a, b] tiTuple
+
+qualifier     :: TypeI A -> Q
+qualifier (TyCon _ ps ti) = foldl max minBound qs' where
+  qs = map qualifier ps
+  toQ (Left ix) = qs !! ix
+  toQ (Right q) = q
+  qs' = map toQ (tiQual ti)
 qualifier (TyVar (TV _ q))   = q
 qualifier (TyAll _ t)        = qualifier t
 qualifier (TyMu _ t)         = qualifier t
@@ -593,7 +619,7 @@ agetcs (TyMu _ t)     = agetcs t
 agetcs (TyC t)        = [t]
 agetcs _              = [] -- can't happen
 
-ctype2atype :: Type TInfo C -> Type TInfo A
+ctype2atype :: TypeI C -> TypeI A
 ctype2atype (TyCon n ps ti) | tiTrans ti
   = TyCon n (map ctype2atype ps) ti
 ctype2atype (TyCon _ [td, tr] ti) | ti == tiArr
@@ -607,7 +633,7 @@ ctype2atype (TyMu tv t)
 ctype2atype (TyA t)   = t
 ctype2atype t         = TyC t
 
-atype2ctype :: Type TInfo A -> Type TInfo C
+atype2ctype :: TypeI A -> TypeI C
 atype2ctype (TyCon n ps ti) | tiTrans ti
   = TyCon n (map atype2ctype ps) ti
 atype2ctype (TyCon _ [td, tr] ti) | ti `elem` funtypes
@@ -670,7 +696,7 @@ unfoldExApp  = unscanl each where
     ExApp e1 e2 -> Just (e2, e1)
     _           -> Nothing
 
-unfoldTyFun :: Type TInfo w -> ([Type TInfo w], Type TInfo w)
+unfoldTyFun :: TypeI w -> ([TypeI w], TypeI w)
 unfoldTyFun  = unscanr each where
   each (TyCon _ [ta, tr] ti) | ti `elem` funtypes = Just (ta, tr)
   each _                                         = Nothing

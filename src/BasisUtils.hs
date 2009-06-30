@@ -1,17 +1,18 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module BasisUtils (
+module BasisUtils {-(
   Entry(..), Nonce(..), Vinj(..),
   MkFun(..),
   fun, binArith, val, pval, pfun,
   vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
-) where
+)-} where
 
+import Util
 import Dynamics
-import Statics (GG(..))
-import Env (Env, fromList)
-import Syntax (Var(..))
+import Statics (GG(..), tcType)
+import Env (Env, fromList, empty, (=:=), (=+=))
+import Syntax (Var(..), TInfo)
 import Parser (pt)
 
 import Data.Typeable (Typeable)
@@ -19,12 +20,16 @@ import Ppr (ppr, text, hang, char, (<>))
 
 -- Basis entries are either values with names and types, or
 -- abstract type constructors.
-data Entry = Entry {
-  enName  :: String,
-  enCType :: String,
-  enAType :: String,
-  enValue :: Value
-}
+data Entry = ValEn {
+               enName  :: String,
+               enCType :: String,
+               enAType :: String,
+               enValue :: Value
+             }
+           | TypEn {
+               enName  :: String,
+               enTInfo :: TInfo
+             }
 
 -- Type class for making Values out of Haskell functions
 class MkFun r where
@@ -60,10 +65,10 @@ baseMkFun n f = VaFun n $ \v -> vprjM v >>= return . vinj . f
 
 fun :: (MkFun r, Valuable v) =>
        String -> String -> String -> (v -> r) -> Entry
-fun name cty aty f = Entry name cty aty (mkFun (FNNamed [text name]) f)
+fun name cty aty f = ValEn name cty aty (mkFun (FNNamed [text name]) f)
 
 val :: Valuable v => String -> String -> String -> v -> Entry
-val name cty aty v = Entry name cty aty (vinj v)
+val name cty aty v = ValEn name cty aty (vinj v)
 
 pval :: Valuable v => Int -> String -> String -> String -> v -> Entry
 pval 0 name cty aty v = val name cty aty v
@@ -116,15 +121,21 @@ vapp :: Valuable a => Value -> a -> IO Value
 vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
-basis2venv :: [Entry] -> Env Var (IO Value)
-basis2venv es =
-  fromList [ (Var (enName entry), return (enValue entry))
-           | entry <- es ]
+basis2venv :: Monad m => [Entry] -> m (Env Var (IO Value))
+basis2venv es = return $
+  fromList [ (Var s, return v)
+           | ValEn { enName = s, enValue = v } <- es ]
 
-basis2tenv :: [Entry] -> GG
-basis2tenv es = GG { ggC = makeG enCType, ggA = makeG enAType } where
-  makeG getType =
-    fromList [ (Var (enName entry), pt (getType entry))
-             | entry <- es,
-               not (null (getType entry)) ]
+basis2tenv :: Monad m => [Entry] -> m GG
+basis2tenv  = foldM each (GG empty empty empty) where
+  each gg (ValEn { enName = s, enCType = ct, enAType = at }) = do
+    ggC' <- add ct (ggC gg)
+    ggA' <- add at (ggA gg)
+    return gg { ggC = ggC', ggA = ggA' } where
+      add "" env = return env
+      add st env = do
+        t <- tcType (ggI gg) (pt st)
+        return $ env =+= Var s =:= t
+  each gg (TypEn { enName = s, enTInfo = i }) = do
+    return gg { ggI = ggI gg =+= s =:= i }
 
