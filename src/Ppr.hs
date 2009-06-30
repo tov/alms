@@ -175,7 +175,7 @@ pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
   hang (hang (text "let" <+> pat <+> pprArgList args <+> equals)
              2
-             (pprPrec 0 body))
+             (pprPrec 0 body <+> text "in"))
        (if isLet (expr' e2)
           then 0
           else 2)

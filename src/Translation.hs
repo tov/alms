@@ -120,7 +120,7 @@ ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
       ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
+ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiLol =
   exLet u createContract $
     exAbs y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
