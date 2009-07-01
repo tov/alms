@@ -1,5 +1,5 @@
 module Translation (
-  translate, transMods, MEnv, MEnvI
+  translate, transDecls, MEnv, MEnvI
 ) where
 
 import Syntax
@@ -15,14 +15,15 @@ newtype Party = Party { unParty :: Var }
 -- Translate a program by adding contracts.
 -- Also performs some *trivial* optimizations.
 translate :: ProgI -> ProgI
-translate (Prog ms e) =
-  Prog ms' (transExpr menv (Party (Var "*main*")) e)
-  where (menv, ms') = transMods empty ms
+translate (Prog ds e) =
+  Prog ds' (transExpr menv (Party (Var "*main*")) e)
+  where (menv, ds') = transDecls empty ds
 
-transMods :: MEnvI -> [ModI] -> (MEnvI, [ModI])
-transMods menv = foldl each (menv, []) where
-  each (env, ms) m = let (env', m') = transMod env m
-                      in (env', ms ++ [m'])
+transDecls :: MEnvI -> [DeclI] -> (MEnvI, [DeclI])
+transDecls menv = foldl each (menv, []) where
+  each (env, ds) (DcMod m) = let (env', m') = transMod env m
+                              in (env', ds ++ [DcMod m'])
+  each (env, ds) d         = (env, ds ++ [d])
 
 transMod :: MEnvI -> ModI -> (MEnvI, ModI)
 transMod menv m@(MdC x (Just t) e) =

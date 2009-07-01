@@ -1,7 +1,8 @@
 module Parser (
   P, parse,
-  parseProg, parseMods, parseMod, parseTyDec, parseType, parseExpr,
-  pp, pms, pm, ptd, pt, pe
+  parseProg, parseDecls, parseDecl,
+    parseMod, parseTyDec, parseType, parseExpr,
+  pp, pds, pd, pm, ptd, pt, pe
 ) where
 
 import Util
@@ -106,13 +107,19 @@ typep = type0 where
 
 progp :: P (Prog ())
 progp  = do
-  ms <- choice
-          [ do ms <- modsp
+  ds <- choice
+          [ do ds <- many1 declp
                reserved tok "in"
-               return ms,
+               return ds,
             return [] ]
   e  <- exprp
-  return (Prog ms e)
+  return (Prog ds e)
+
+declp :: P (Decl ())
+declp  = choice [
+           tyDecp >>! DcTyp,
+           modp   >>! DcMod
+         ]
 
 tyDecp :: P TyDec
 tyDecp  = do
@@ -144,9 +151,6 @@ tyDecp  = do
     litqualp = choice
       [ symbol tok "U" >> return Qu,
         symbol tok "A" >> return Qa ]
-
-modsp :: P [Mod ()]
-modsp  = many1 modp <|> return []
 
 modp :: P (Mod ())
 modp  = choice
@@ -315,13 +319,15 @@ finish p = do
   return r
 
 parseProg     :: P (Prog ())
-parseMods     :: P [Mod ()]
+parseDecls    :: P [Decl ()]
+parseDecl     :: P (Decl ())
 parseMod      :: P (Mod ())
 parseTyDec    :: P TyDec
 parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
 parseProg      = finish progp
-parseMods      = finish modsp
+parseDecls     = finish (many declp)
+parseDecl      = finish declp
 parseMod       = finish modp
 parseTyDec     = finish tyDecp
 parseType      = finish typep
@@ -332,8 +338,11 @@ parseExpr      = finish exprp
 pp  :: String -> Prog ()
 pp   = makeQaD parseProg
 
-pms :: String -> [Mod ()]
-pms  = makeQaD parseMods
+pds :: String -> [Decl ()]
+pds  = makeQaD parseDecls
+
+pd  :: String -> Decl ()
+pd   = makeQaD parseDecl
 
 pm  :: String -> Mod ()
 pm   = makeQaD parseMod

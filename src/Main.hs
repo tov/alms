@@ -5,13 +5,13 @@ module Main (
 
 import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
-import Parser (parse, parseProg, parseMods)
-import Statics (tcProg, tcMods, GG)
-import Translation (translate, transMods, MEnvI)
-import Dynamics (eval, evalMods, E)
+import Parser (parse, parseProg, parseDecls)
+import Statics (tcProg, tcDecls, GG)
+import Translation (translate, transDecls, MEnvI)
+import Dynamics (eval, evalDecls, E)
 import Basis (basis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Prog, ProgI, Mod(..), ModI, prog2mods, modName)
+import Syntax (Prog, ProgI, Decl(..), DeclI, Mod(..), prog2decls, modName)
 import Env (empty, (=.=), (=-=))
 
 import Control.Monad (when, unless)
@@ -94,21 +94,21 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
-statics     :: (ReplState, [Mod i]) -> IO (ReplState, [ModI])
-translation :: (ReplState, [ModI])   -> IO (ReplState, [ModI])
-dynamics    :: (ReplState, [Mod i])  -> IO ReplState
+statics     :: (ReplState, [Decl i]) -> IO (ReplState, [DeclI])
+translation :: (ReplState, [DeclI])   -> IO (ReplState, [DeclI])
+dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, [Decl i])
 
 statics (rs, ast) = do
-  (g', ast') <- tcMods (rsStatics rs) ast
+  (g', ast') <- tcDecls (rsStatics rs) ast
   return (rs { rsStatics = g' }, ast')
 
 translation (rs, ast) = do
-  let (menv', ast') = transMods (rsTranslation rs) ast
+  let (menv', ast') = transDecls (rsTranslation rs) ast
   return (rs { rsTranslation = menv' }, ast')
 
 dynamics (rs, ast) = do
-  e' <- evalMods ast (rsDynamics rs)
-  return rs { rsDynamics = e' }
+  e' <- evalDecls ast (rsDynamics rs)
+  return (rs { rsDynamics = e' }, ast)
 
 interactive :: (Option -> Bool) -> GG -> E -> IO ()
 interactive opt g0 e0 = do
@@ -126,10 +126,11 @@ interactive opt g0 e0 = do
               return st
           repl st'
     doLine st ast = let
-      check   :: (ReplState, [Mod ()]) -> IO ReplState
-      coerce  :: (ReplState, [ModI])   -> IO ReplState
-      recheck :: (ReplState, [Mod i])  -> IO ReplState
-      execute :: (ReplState, [Mod i])  -> IO ReplState
+      check   :: (ReplState, [Decl ()]) -> IO ReplState
+      coerce  :: (ReplState, [DeclI])   -> IO ReplState
+      recheck :: (ReplState, [Decl i])  -> IO ReplState
+      execute :: (ReplState, [Decl i])  -> IO ReplState
+      display :: (ReplState, [Decl i])  -> IO ReplState
 
       check stast0   = if opt Don'tType
                          then execute stast0
@@ -151,12 +152,14 @@ interactive opt g0 e0 = do
                            execute stast2
 
       execute stast2 = if opt Don'tExecute
-                         then return (fst stast2)
-                         else dynamics stast2
-      in do
-        st2 <- check (st, ast)
-        printResult st2 ast
-        return st2
+                         then display stast2
+                         else dynamics stast2 >>= display
+
+      display stast3 = do
+                         printResult stast3
+                         return (fst stast3)
+
+      in check (st, ast)
     reader = loop []
       where
         loop acc = do
@@ -174,29 +177,31 @@ interactive opt g0 e0 = do
                 case parse parseProg "-" cmd of
                   Right ast -> do
                     addHistory cmd
-                    return (Just (prog2mods ast))
+                    return (Just (prog2decls ast))
                   Left _ ->
-                    case parse parseMods "-" cmd of
+                    case parse parseDecls "-" cmd of
                       Right ast -> do
                         addHistory cmd
                         return (Just ast)
                       Left derr ->
                         loop ((line, derr) : acc)
-    printResult :: ReplState -> [Mod i] -> IO ()
-    printResult st ms0 = do
-      (_, ds) <- foldrM dispatch (rsDynamics st, []) ms0
-      mapM_ print ds
+    printResult :: (ReplState, [Decl i]) -> IO ()
+    printResult (st, ds0) = do
+      (_, docs) <- foldrM dispatch (st, []) ds0
+      mapM_ print docs
         where
-      dispatch :: (E, [Doc]) -> Mod i -> IO (E, [Doc])
-      dispatch (e, ds) m = do
+      dispatch :: (ReplState, [Doc]) -> Decl i -> IO (ReplState, [Doc])
+      dispatch (rs, docs) (DcMod m) = do
+        let e = rsDynamics rs
         mv   <- case e =.= modName m of
                   Nothing -> return Nothing
                   Just v  -> Just `fmap` v
-        let d = case m of
-                  MdC x t _   -> val "C" x t mv
-                  MdA x t _   -> val "A" x t mv
-                  MdInt x t _ -> val "A" x (Just t) mv
-        return (e =-= modName m, d : ds)
+        let doc = case m of
+                    MdC x t _   -> val "C" x t mv
+                    MdA x t _   -> val "A" x t mv
+                    MdInt x t _ -> val "A" x (Just t) mv
+        return (rs { rsDynamics = e =-= modName m }, doc : docs)
+      dispatch (rs, docs) (DcTyp td) = return (rs, ppr td : docs)
       val :: (Ppr x, Ppr t, Ppr v) =>
              String -> x -> Maybe t -> Maybe v -> Doc
       val lang x mt mv =

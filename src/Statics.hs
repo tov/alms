@@ -1,5 +1,5 @@
 module Statics (
-  GG(..), tcProg, tcMods, tcTyDec, tcType
+  GG(..), tcProg, tcDecls, tcTyDec, tcType
 ) where
 
 import Util
@@ -481,17 +481,23 @@ tcMod gg (MdInt x t y) = do
                    ggA = ggA gg =+= x =:= t' },
               MdInt x t' y)
 
-tcMods :: Monad m => GG -> [Mod i] -> m (GG, [Mod TInfo])
-tcMods gg0 ms0 = foldM each (gg0, []) ms0 where
-  each (gg, ms) m = do
-    (gg', m') <- tcMod gg m
-    return (gg', ms ++ [m'])
+tcDecl :: Monad m => GG -> Decl i -> m (GG, DeclI)
+tcDecl gg (DcMod m) = do
+  (gg', m') <- tcMod gg m
+  return (gg', DcMod m')
+tcDecl gg (DcTyp td) = do
+  gg' <- tcTyDec gg td
+  return (gg', DcTyp td)
+
+tcDecls :: Monad m => GG -> [Decl i] -> m (GG, [DeclI])
+tcDecls gg0 ds0 = foldM each (gg0, []) ds0 where
+  each (gg, ds) d = do
+    (gg', d') <- tcDecl gg d
+    return (gg', ds ++ [d'])
 
 -- Type check a program
---   mkBasis     -- The basis type envs
---   (Prog ms e) -- Program to check
 tcProg :: Monad m => GG -> Prog i -> m (TypeI C, ProgI)
-tcProg gg0 (Prog ms e) = do
-  (gg, ms') <- tcMods gg0 ms
+tcProg gg0 (Prog ds e) = do
+  (gg, ds') <- tcDecls gg0 ds
   (t, e')   <- tcExprC (ggI gg) (ggC gg) e
-  return (t, Prog ms' e')
+  return (t, Prog ds' e')

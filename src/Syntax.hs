@@ -13,7 +13,9 @@ module Syntax (
 
   TInfo(..), Variance(..),
   Type(..), TypeI, TEnv,
-  Prog(..), ProgI, Mod(..), ModI, TyDec(..),
+  Prog(..), ProgI,
+  Decl(..), DeclI,
+  Mod(..), ModI, TyDec(..),
 
   Expr(), ExprI, Expr'(..), Binding(..), BindingI, fv, expr',
   exCon, exStr, exInt, exIf, exCase, exLet, exLetRec,
@@ -32,7 +34,7 @@ module Syntax (
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
-  syntacticValue, constants, modName, prog2mods,
+  syntacticValue, constants, modName, prog2decls,
   unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
 ) where
 
@@ -91,11 +93,14 @@ data Type i w where
 
 type TEnv w = Env Var (TypeI w)
 
-data Prog i = Prog [Mod i] (Expr i C)
+data Prog i = Prog [Decl i] (Expr i C)
 
-data Mod i = MdA Var (Maybe (Type i A)) (Expr i A)
-           | MdC Var (Maybe (Type i C)) (Expr i C)
-           | MdInt Var (Type i A) Var
+data Decl i = DcMod (Mod i)
+            | DcTyp TyDec
+
+data Mod i  = MdA Var (Maybe (Type i A)) (Expr i A)
+            | MdC Var (Maybe (Type i C)) (Expr i C)
+            | MdInt Var (Type i A) Var
 
 data TyDec = TdAbs {
                tdName   :: String,
@@ -130,6 +135,7 @@ data Binding i w = Binding {
 
 type ExprI    = Expr TInfo
 type TypeI    = Type TInfo
+type DeclI    = Decl TInfo
 type ModI     = Mod TInfo
 type BindingI = Binding TInfo
 type ProgI    = Prog TInfo
@@ -286,7 +292,7 @@ instance Bounded Q where
 
 -- Minimal complete definition is one of:
 --  * ifMJ
---  * (\/), (/\)
+--  * (\/), (/\)    (only if it's a lattice)
 --  * (\/?), (/\?)
 class Eq a => PO a where
   ifMJ :: Monad m => Bool -> a -> a -> m a
@@ -657,8 +663,8 @@ modName (MdA x _ _)   = x
 modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
 
-prog2mods :: Prog i -> [Mod i]
-prog2mods (Prog ms e) = ms ++ [MdC (Var "it") Nothing e]
+prog2decls :: Prog i -> [Decl i]
+prog2decls (Prog ds e) = ds ++ [DcMod (MdC (Var "it") Nothing e)]
 
 -- Unfolding various sequences
 

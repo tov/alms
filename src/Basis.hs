@@ -66,7 +66,7 @@ basis  = [
       -= (\(VaFun _ f) -> mfix f),
 
     -- Lists
-    "list" `primtyp` TiAbs (-19) [1] [Left 0] False,
+    typ "+'a list qualifier 'a",
     pval 1 "nil"  -: "all 'a. 'a list"
                   -: "all '<a. '<a list"
       -= ([] :: [Value]),

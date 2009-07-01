@@ -4,7 +4,7 @@
     #-}
 module Dynamics (
   E, Result,
-  eval, evalMods,
+  eval, evalDecls,
   Valuable(..),
   FunName(..), Value(..), vaInt, vaUnit
 ) where
@@ -100,7 +100,7 @@ type Result   = IO Value
 type E        = Env Var (IO Value)
 
 type D        = E -> Result
-type DMod     = E -> IO E
+type DDecl    = E -> IO E
 
 -- Add the given name to an anonymous function
 nameFun :: Var -> Value -> Value
@@ -108,10 +108,14 @@ nameFun (Var x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
 
-evalMods :: [Mod i] -> DMod
-evalMods  = flip (foldM (flip evalMod))
+evalDecls :: [Decl i] -> DDecl
+evalDecls  = (flip . foldM . flip) evalDecl
 
-evalMod :: Mod i -> DMod
+evalDecl :: Decl i -> DDecl
+evalDecl (DcMod m) = evalMod m
+evalDecl _         = return
+
+evalMod :: Mod i -> DDecl
 evalMod (MdC x _ e)   env = do
   v <- valOf e env
   return (env =+= x =:= return v)
@@ -124,7 +128,7 @@ evalMod (MdInt x _ y) env = do
     Nothing -> fail $ "BUG! Unknown module: " ++ show y
 
 eval :: E -> Prog i -> Result
-eval env0 (Prog ms e0) = evalMods ms env0 >>= valOf e0
+eval env0 (Prog ds e0) = evalDecls ds env0 >>= valOf e0
 
 -- The meaning of an expression
 valOf :: Expr i w -> D

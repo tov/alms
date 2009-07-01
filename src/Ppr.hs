@@ -82,6 +82,10 @@ instance Ppr (Prog i) where
   pprPrec _ (Prog ms e) = vcat (map (pprPrec 0) ms) $+$
                           hang (text "in") 2 (pprPrec 0 e)
 
+instance Ppr (Decl i) where
+  pprPrec p (DcMod m)  = pprPrec p m
+  pprPrec p (DcTyp td) = pprPrec p td
+
 instance Ppr (Mod i) where
   pprPrec _ (MdC x Nothing e) = sep
     [ text "module[C]" <+> pprPrec 0 x,
