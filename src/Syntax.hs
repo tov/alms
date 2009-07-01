@@ -260,6 +260,10 @@ instance Language w => Eq (Type TInfo w) where
     tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
   TyMu x t     == TyMu x' t'      =
     tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
+  TyA (TyC t)  == t'              = t == t'
+  TyC (TyA t)  == t'              = t == t'
+  t            == TyA (TyC t')    = t == t'
+  t            == TyC (TyA t')    = t == t'
   _            == _               = False
 
 instance Show Q where
@@ -370,8 +374,12 @@ instance Language w => PO (Type TInfo w) where
            | p'  <- ps' ]
       return (TyCon tc params i)
     else fail "\\/? or /\\?: Does not exist"
-  ifMJ b (TyAll a t) (TyAll a' t') = ifMJBind TyAll b (a, t) (a', t')
-  ifMJ b (TyMu a t)  (TyMu a' t')  = ifMJBind TyMu  b (a, t) (a', t')
+  ifMJ b (TyAll a t)   (TyAll a' t')  = ifMJBind TyAll b (a, t) (a', t')
+  ifMJ b (TyMu a t)    (TyMu a' t')   = ifMJBind TyMu  b (a, t) (a', t')
+  ifMJ b (TyC (TyA t)) t'             = ifMJ b t t'
+  ifMJ b (TyA (TyC t)) t'             = ifMJ b t t'
+  ifMJ b t             (TyC (TyA t')) = ifMJ b t t'
+  ifMJ b t             (TyA (TyC t')) = ifMJ b t t'
   ifMJ _ t t' =
     if t == t'
       then return t
