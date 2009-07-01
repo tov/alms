@@ -1,5 +1,5 @@
 module Statics (
-  GG(..), tcProg, tcMods, tcType
+  GG(..), tcProg, tcMods, tcTyDec, tcType
 ) where
 
 import Util
@@ -8,6 +8,7 @@ import Env as Env
 import Ppr ()
 
 import Control.Monad
+import Data.List (elemIndex)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -21,7 +22,12 @@ usage x e = case M.lookup x (fv e) of
 type D   = S.Set TyVar
 type I   = Env String TInfo
 type G w = Env Var (TypeI w)
-data GG  = GG { ggC :: G C, ggA :: G A, ggI :: I }
+data GG  = GG {
+             ggC :: G C,
+             ggA :: G A,
+             ggI :: I,
+             ggN :: Integer
+           }
 
 -- Raise a type error
 terr :: Monad m => String -> m a
@@ -411,6 +417,25 @@ findSubst tv = fs where
     = concat (zipWith fs (agetcs t) (agetcs t'))
   fs _ _
     = []
+
+tcTyDec :: Monad m => GG -> TyDec -> m GG
+tcTyDec gg (TdAbs name params quals) = do
+  let ix = ggN gg + 1
+  let each (Left tv) = case tv `elemIndex` map snd params of
+        Nothing -> terr $ "unbound tyvar " ++ show tv ++
+                          " in qualifier list for type " ++ name
+        Just n  -> return (Left n)
+      each (Right q) = return (Right q)
+  quals' <- mapM each quals
+  return gg {
+    ggN = ix,
+    ggI = ggI gg =+= name =:= TiAbs {
+      tiId    = ix,
+      tiArity = map fst params,
+      tiQual  = quals',
+      tiTrans = False
+    }
+  }
 
 tcMod :: Monad m => GG -> Mod i -> m (GG, ModI)
 tcMod gg (MdC x mt e) = do

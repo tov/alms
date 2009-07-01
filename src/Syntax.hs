@@ -13,7 +13,7 @@ module Syntax (
 
   TInfo(..), Variance(..),
   Type(..), TypeI, TEnv,
-  Prog(..), ProgI, Mod(..), ModI,
+  Prog(..), ProgI, Mod(..), ModI, TyDec(..),
 
   Expr(), ExprI, Expr'(..), Binding(..), BindingI, fv, expr',
   exCon, exStr, exInt, exIf, exCase, exLet, exLetRec,
@@ -23,10 +23,11 @@ module Syntax (
   PO(..),
 
   tiUnit, tiBool, tiInt, tiString, tiEither, tiTuple, tiArr, tiLol,
-  tiRef, tiThread, tiFuture, tiCofuture, tiRendezvous, tiChannel,
-  tiSend, tiRecv, tiSelect, tiFollow,
+  tiDual, tiSend, tiRecv, tiSelect, tiFollow,
+
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitI, tyArrI, tyLolI, tyTupleI,
+
   ftv, tysubst, qualifier, tystrip,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
@@ -50,7 +51,7 @@ data LangRep w where
 
 -- Qualifiers
 data Q = Qa | Qu
-  deriving (Eq, Show)
+  deriving Eq
 
 -- Variables
 data Var = Var { unVar :: String }
@@ -95,6 +96,12 @@ data Prog i = Prog [Mod i] (Expr i C)
 data Mod i = MdA Var (Maybe (Type i A)) (Expr i A)
            | MdC Var (Maybe (Type i C)) (Expr i C)
            | MdInt Var (Type i A) Var
+
+data TyDec = TdAbs {
+               tdName   :: String,
+               tdParams :: [(Variance, TyVar)],
+               tdQual   :: [Either TyVar Q]
+             }
 
 data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
 type FV     = M.Map Var Integer
@@ -248,6 +255,10 @@ instance Language w => Eq (Type TInfo w) where
   TyMu x t     == TyMu x' t'      =
     tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
   _            == _               = False
+
+instance Show Q where
+  showsPrec _ Qa = ('A':)
+  showsPrec _ Qu = ('U':)
 
 instance Show Variance where
   showsPrec _ Invariant     = ('1':)
@@ -485,7 +496,7 @@ tysubst a t = ts where
                               t'' = TyVar a'' `asTypeOf` t'
                           in TyMu a'' (ts (tysubst a' t'' t')))
                     (TyMu a' (ts t'))
-  ts t'@(TyCon "dual" [TyVar a'] _)
+  ts t'@(TyCon "dual" [TyVar a'] i) | i == tiDual
                 = sameLang t' t
                     (\t0' t0 ->
                       if a' == a
@@ -516,9 +527,7 @@ dualSessionType  = d where
   d t = t
 
 tiUnit, tiBool, tiInt, tiString,
-  tiArr, tiLol, tiRef, tiTuple, tiThread, tiFuture,
-  tiCofuture, tiEither, tiRendezvous, tiChannel,
-  tiSend, tiRecv, tiSelect, tiFollow :: TInfo
+  tiArr, tiLol, tiTuple, tiEither :: TInfo
 
 tiUnit       = TiAbs (-1)  []          []                True
 tiBool       = TiAbs (-2)  []          []                True
@@ -526,18 +535,16 @@ tiInt        = TiAbs (-3)  []          []                True
 tiString     = TiAbs (-4)  []          []                True
 tiArr        = TiAbs (-5)  [-1, 1]     []                False
 tiLol        = TiAbs (-6)  [-1, 1]     [Right Qa]        False
-tiRef        = TiAbs (-7)  [Invariant] [Right Qa]        False
-tiTuple      = TiAbs (-8)  [1, 1]      [Left 0, Left 1]  False
-tiThread     = TiAbs (-9)  []          [Right Qa]        False
-tiFuture     = TiAbs (-10) [1]         [Right Qa]        False
-tiCofuture   = TiAbs (-11) [-1]        [Right Qa]        False
-tiEither     = TiAbs (-12) [1, 1]      [Left 0, Left 1]  False
-tiRendezvous = TiAbs (-13) [Invariant] []                False
-tiChannel    = TiAbs (-14) [Invariant] [Right Qa]        False
-tiSend       = TiAbs (-15) [Invariant] []                False
-tiRecv       = TiAbs (-16) [Invariant] []                False
-tiSelect     = TiAbs (-17) [Invariant] []                False
-tiFollow     = TiAbs (-18) [Invariant] []                False
+tiTuple      = TiAbs (-7)  [1, 1]      [Left 0, Left 1]  False
+tiEither     = TiAbs (-8)  [1, 1]      [Left 0, Left 1]  False
+
+tiDual, tiSend, tiRecv, tiSelect, tiFollow :: TInfo
+-- For session types:
+tiDual       = TiAbs (-11) [-1] []                False
+tiSend       = TiAbs (-12) [1]  []                False
+tiRecv       = TiAbs (-13) [-1] []                False
+tiSelect     = TiAbs (-14) [1]  []                False
+tiFollow     = TiAbs (-15) [1]  []                False
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon s [] ()

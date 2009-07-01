@@ -1,9 +1,10 @@
 module Parser (
   P, parse,
-  parseProg, parseMods, parseMod, parseType, parseExpr,
-  pp, pms, pm, pt, pe
+  parseProg, parseMods, parseMod, parseTyDec, parseType, parseExpr,
+  pp, pms, pm, ptd, pt, pe
 ) where
 
+import Util
 import Syntax
 
 import Text.ParserCombinators.Parsec
@@ -27,7 +28,8 @@ tok = makeTokenParser LanguageDef {
                       "match", "with",
                       "let", "rec", "and", "in",
                       "module", "interface",
-                      "all", "A", "C"],
+                      "all", "A", "C",
+                      "type", "qualifier"],
     reservedOpNames = ["|", "->", "*", "=", "\\", "^", ":", ":>"],
     caseSensitive = True
   }
@@ -85,7 +87,7 @@ typep = type0 where
   -- This uses ScopedTypeVariables to reify the Language type:
   tyarg :: Language w => P [Type () w]
   tyarg  = choice
-           [ do args <- parens tok (commaSep1 tok typep)
+           [ do args <- parens tok $ commaSep1 tok typep
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
@@ -112,13 +114,44 @@ progp  = do
   e  <- exprp
   return (Prog ms e)
 
+tyDecp :: P TyDec
+tyDecp  = do
+            reserved tok "type"
+            params <- choice [
+                        paramp >>! \p -> [p],
+                        parens tok $ commaSep1 tok paramp,
+                        return []
+                      ]
+            name   <- identifier tok
+            quals  <- option [] $ do
+              reserved tok "qualifier"
+              sepBy1 qualp (symbol tok "\\/")
+            return (TdAbs name params quals)
+  where
+    paramp = do
+      v  <- variancep
+      tv <- tyvarp
+      return (v, tv)
+    variancep = choice
+      [ char '+' >> return Covariant,
+        char '-' >> return Contravariant,
+        char '0' >> return Omnivariant,
+        char '1' >> return Invariant,
+        return Invariant ]
+    qualp = choice
+      [ litqualp >>! Right,
+        tyvarp   >>! Left ]
+    litqualp = choice
+      [ symbol tok "U" >> return Qu,
+        symbol tok "A" >> return Qa ]
+
 modsp :: P [Mod ()]
 modsp  = many1 modp <|> return []
 
 modp :: P (Mod ())
 modp  = choice
   [ do optional (reserved tok "module")
-       lang <- squares tok languagep
+       lang <- brackets tok languagep
        case lang of
          'C' -> modbodyp MdC
          _   -> modbodyp MdA,
@@ -238,7 +271,7 @@ exprp = expr0 where
   expr9 = chainl1 expr10 (return exApp)
   expr10 = do
              e  <- exprA
-             ts <- many . squares tok $ commaSep1 tok typep
+             ts <- many . brackets tok $ commaSep1 tok typep
              return (foldl exTApp e (concat ts))
   exprA = choice
     [ identp,
@@ -284,11 +317,13 @@ finish p = do
 parseProg     :: P (Prog ())
 parseMods     :: P [Mod ()]
 parseMod      :: P (Mod ())
+parseTyDec    :: P TyDec
 parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
 parseProg      = finish progp
 parseMods      = finish modsp
 parseMod       = finish modp
+parseTyDec     = finish tyDecp
 parseType      = finish typep
 parseExpr      = finish exprp
 
@@ -302,6 +337,9 @@ pms  = makeQaD parseMods
 
 pm  :: String -> Mod ()
 pm   = makeQaD parseMod
+
+ptd :: String -> TyDec
+ptd  = makeQaD parseTyDec
 
 pt  :: Language w => String -> Type () w
 pt   = makeQaD parseType

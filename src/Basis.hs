@@ -40,19 +40,22 @@ basis  = [
     --- name    -:  ctype  -: atype   -= value
     --- name    -:: *type            -= value
 
-    -- Unit, products, arrows
-    "unit" `TypEn` tiUnit,
-    "*"    `TypEn` tiTuple,
-    "->"   `TypEn` tiArr,
-    "-o"   `TypEn` tiLol,
+    -- Primitive types:
+    "unit"   `primtyp` tiUnit,
+    "bool"   `primtyp` tiBool,
+    "int"    `primtyp` tiInt,
+    "string" `primtyp` tiString,
+
+    "*"    `primtyp` tiTuple,
+    "->"   `primtyp` tiArr,
+    "-o"   `primtyp` tiLol,
 
     -- Booleans
-    "bool" `TypEn` tiBool,
     val "true"  -:: "bool" -= True,
     val "false" -:: "bool" -= False,
 
     -- Sums
-    "either" `TypEn` tiEither,
+    "either" `primtyp` tiEither,
     pfun 2 "Left"  -:: "all 'b 'a. 'a -> ('a, 'b) either"
       -= vinj . (Left  :: Value -> Either Value Value),
     pfun 2 "Right" -:: "all 'a 'b. 'b -> ('a, 'b) either"
@@ -63,7 +66,7 @@ basis  = [
       -= (\(VaFun _ f) -> mfix f),
 
     -- Lists
-    "list" `TypEn` TiAbs (-19) [1] [Left 0] False,
+    "list" `primtyp` TiAbs (-19) [1] [Left 0] False,
     pval 1 "nil"  -: "all 'a. 'a list"
                   -: "all '<a. '<a list"
       -= ([] :: [Value]),
@@ -91,7 +94,6 @@ basis  = [
       -= (liftM2 (,) id null :: [Value] -> ([Value], Bool)),
 
     -- Arithmetic
-    "int" `TypEn` tiInt,
     binArith "add" (+),
     binArith "sub" (-),
     binArith "mul" (*),
@@ -100,7 +102,6 @@ basis  = [
       -= ((<=) :: Integer -> Integer -> Bool),
 
     -- Strings
-    "string" `TypEn` tiString,
     fun "explode"  -:: "string -> int list"
       -= map (vinj . char2integer),
     fun "implode"  -:: "int list -> string"
@@ -132,7 +133,7 @@ basis  = [
       -= \() -> getLine,
 
     -- References
-    "ref" `TypEn` tiRef,
+    typ "'a ref qualifier A",
     pfun 1 "ref" -: "all 'a. 'a -> 'a ref"
                  -: "all '<a. '<a -> '<a ref"
       -= (\v -> Ref `fmap` newIORef v),
@@ -155,7 +156,7 @@ basis  = [
            return r),
 
     -- Threads
-    "thread" `TypEn` tiThread,
+    typ "thread qualifier A",
     fun "threadFork" -: ""
                      -: "(unit -o unit) -> thread"
       -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
@@ -169,8 +170,8 @@ basis  = [
       -= \t -> do print (t :: Vinj CC.ThreadId); return t,
 
     -- Futures
-    "future"   `TypEn` tiFuture,
-    "cofuture" `TypEn` tiCofuture,
+    typ "+'a future qualifier A",
+    typ "-'a cofuture qualifier A",
     pfun 1 "newFuture" -: ""
                        -: "all '<a. (unit -o '<a) -> '<a future"
       -= \f -> do
@@ -191,13 +192,15 @@ basis  = [
       -= \future value -> MV.putMVar (unFuture future) value,
 
     -- Session-typed channels
-    "rendezvous" `TypEn` tiRendezvous,
-    "channel"    `TypEn` tiChannel,
-    "send"       `TypEn` tiSend,
-    "recv"       `TypEn` tiRecv,
-    "select"     `TypEn` tiSelect,
-    "follow"     `TypEn` tiFollow,
-    "dual"       `TypEn` TiAbs (-20) [Invariant] [] False,
+    typ "'a rendezvous",
+    typ "+'a channel qualifier A",
+    -- Unfortunately, we need these types to be primitive in order to
+    -- compute duals.
+    "dual"   `primtyp` tiDual,
+    "send"   `primtyp` tiSend,
+    "recv"   `primtyp` tiRecv,
+    "select" `primtyp` tiSelect,
+    "follow" `primtyp` tiFollow,
     pfun 1 "newRendezvous" -: ""
                            -: "all 's. unit -> 's rendezvous"
       -= \() -> do

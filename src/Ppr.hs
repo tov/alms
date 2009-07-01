@@ -104,6 +104,23 @@ instance Ppr (Mod i) where
       nest 2 $ text ":>" <+> pprPrec 0 t,
       nest 4 $ equals <+> pprPrec 0 y ]
 
+instance Ppr TyDec where
+  pprPrec _ (TdAbs n ps qs) = addQuals qs (text "type" <+> pprTypeForm n ps)
+    where
+      addQuals [] doc = doc
+      addQuals _  doc = hang doc 2 $
+        text "qualifier" <+>
+        fsep (punctuate (text " \\/") (map (either ppr ppr) qs))
+
+pprTypeForm :: String -> [(Variance, TyVar)] -> Doc
+pprTypeForm n ps =
+  case ps of
+    []  -> text n
+    [p] -> pprParam p <+> text n
+    _   -> parens (fsep . punctuate comma $ map pprParam ps) <+> text n
+  where
+    pprParam (v, tv) = pprPrec 0 v <> pprPrec 0 tv
+
 instance Ppr (Expr i w) where
   pprPrec p e0 = case expr' e0 of
     ExCon s -> text s
@@ -208,9 +225,11 @@ pprArgList = fsep . map eachArg where
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Mod i)    where showsPrec = showFromPpr
+instance Show TyDec      where showsPrec = showFromPpr
 instance Show (Expr i w) where showsPrec = showFromPpr
 instance Show (Type i w) where showsPrec = showFromPpr
 
+instance Ppr Q         where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Var       where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow

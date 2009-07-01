@@ -1,19 +1,20 @@
 {-# LANGUAGE DeriveDataTypeable #-}
-module BasisUtils {-(
-  Entry(..), Nonce(..), Vinj(..),
+module BasisUtils (
+  Entry, Nonce(..), Vinj(..),
   MkFun(..),
   fun, binArith, val, pval, pfun,
+  typ, primtyp,
   vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
-)-} where
+) where
 
 import Util
 import Dynamics
-import Statics (GG(..), tcType)
+import Statics (GG(..), tcType, tcTyDec)
 import Env (Env, fromList, empty, (=:=), (=+=))
 import Syntax (Var(..), TInfo)
-import Parser (pt)
+import Parser (pt, ptd)
 
 import Data.Typeable (Typeable)
 import Ppr (ppr, text, hang, char, (<>))
@@ -25,6 +26,9 @@ data Entry = ValEn {
                enCType :: String,
                enAType :: String,
                enValue :: Value
+             }
+           | DecEn {
+               enSrc   :: String
              }
            | TypEn {
                enName  :: String,
@@ -86,6 +90,12 @@ mkTyAbs entry =
             VaSus (hang (text "#<sus") 4 $ vppr v <> char '>')
                   (return v) }
 
+typ     :: String -> Entry
+typ      = DecEn . ("type "++)
+
+primtyp :: String -> TInfo -> Entry
+primtyp  = TypEn
+
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
 (-=) = ($)
@@ -127,7 +137,7 @@ basis2venv es = return $
            | ValEn { enName = s, enValue = v } <- es ]
 
 basis2tenv :: Monad m => [Entry] -> m GG
-basis2tenv  = foldM each (GG empty empty empty) where
+basis2tenv  = foldM each (GG empty empty empty 0) where
   each gg (ValEn { enName = s, enCType = ct, enAType = at }) = do
     ggC' <- add ct (ggC gg)
     ggA' <- add at (ggA gg)
@@ -136,6 +146,7 @@ basis2tenv  = foldM each (GG empty empty empty) where
       add st env = do
         t <- tcType (ggI gg) (pt st)
         return $ env =+= Var s =:= t
+  each gg (DecEn { enSrc = s }) = tcTyDec gg (ptd s)
   each gg (TypEn { enName = s, enTInfo = i }) = do
     return gg { ggI = ggI gg =+= s =:= i }
 

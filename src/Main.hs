@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
-module Main {-(
+module Main (
   main
-)-} where
+) where
 
 import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
