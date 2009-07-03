@@ -41,21 +41,21 @@ basis  = [
     --- name    -:: *type            -= value
 
     -- Primitive types:
-    "unit"   `primtype` tiUnit,
-    "bool"   `primtype` tiBool,
-    "int"    `primtype` tiInt,
-    "string" `primtype` tiString,
+    "unit"   `primtype` tdUnit,
+    "bool"   `primtype` tdBool,
+    "int"    `primtype` tdInt,
+    "string" `primtype` tdString,
 
-    "*"    `primtype` tiTuple,
-    "->"   `primtype` tiArr,
-    "-o"   `primtype` tiLol,
+    "*"    `primtype` tdTuple,
+    "->"   `primtype` tdArr,
+    "-o"   `primtype` tdLol,
 
     -- Booleans
     val "true"  -:: "bool" -= True,
     val "false" -:: "bool" -= False,
 
     -- Sums
-    "either" `primtype` tiEither,
+    "either" `primtype` tdEither,
     pfun 2 "Left"  -:: "all 'b 'a. 'a -> ('a, 'b) either"
       -= vinj . (Left  :: Value -> Either Value Value),
     pfun 2 "Right" -:: "all 'a 'b. 'b -> ('a, 'b) either"
@@ -198,11 +198,11 @@ basis  = [
     typeA "+'a channel qualifier A",
     -- Unfortunately, we need these types to be primitive in order to
     -- compute duals.
-    "dual"   `primtype` tiDual,
-    "send"   `primtype` tiSend,
-    "recv"   `primtype` tiRecv,
-    "select" `primtype` tiSelect,
-    "follow" `primtype` tiFollow,
+    "dual"   `primtype` tdDual,
+    "send"   `primtype` tdSend,
+    "recv"   `primtype` tdRecv,
+    "select" `primtype` tdSelect,
+    "follow" `primtype` tdFollow,
     pfun 1 "newRendezvous" -: ""
                            -: "all 's. unit -> 's rendezvous"
       -= \() -> do

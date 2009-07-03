@@ -109,12 +109,12 @@ instance Ppr (Mod i) where
       nest 4 $ equals <+> pprPrec 0 y ]
 
 instance Ppr (TyDec i) where
-  pprPrec _ (TdAbsA n ps qs) = addQuals qs $
+  pprPrec _ (TdAbsA n ps vs qs) = addQuals qs $
     text "type[A]" <?>
-    delimList parens comma (map pprParam ps) <+>
+    delimList parens comma (zipWith pprParam ps vs) <+>
     text n
     where
-      pprParam (v, tv) = pprPrec 0 v <> pprPrec 0 tv
+      pprParam v tv = pprPrec 0 v <> pprPrec 0 tv
       addQuals [] doc = doc
       addQuals _  doc = hang doc 2 $
         text "qualifier" <+>
@@ -123,6 +123,20 @@ instance Ppr (TyDec i) where
     text "type[C]" <?>
     delimList parens comma (map ppr ps) <+>
     text n
+  pprPrec _ (TdSynA n ps rhs) =
+    hang (text "type[A]" <?>
+          delimList parens comma (map ppr ps) <+>
+          text n)
+         2
+         (equals <+>
+          pprPrec 0 rhs)
+  pprPrec _ (TdSynC n ps rhs) =
+    hang (text "type[C]" <?>
+          delimList parens comma (map ppr ps) <+>
+          text n)
+         2
+         (equals <+>
+          pprPrec 0 rhs)
 
 delimList :: (Doc -> Doc) -> Doc -> [Doc] -> Doc
 delimList around delim ds = case ds of
@@ -243,6 +257,7 @@ pprArgList = fsep . map eachArg where
   eachArg (Right tv)      = pprPrec 0 tv
 
 instance Show (Prog i)   where showsPrec = showFromPpr
+instance Show (Decl i)   where showsPrec = showFromPpr
 instance Show (Mod i)    where showsPrec = showFromPpr
 instance Show (TyDec i)  where showsPrec = showFromPpr
 instance Show (Expr i w) where showsPrec = showFromPpr

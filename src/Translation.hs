@@ -6,7 +6,7 @@ import Syntax
 import Env
 
 type MEnv i = Env Var (Mod i)
-type MEnvI  = MEnv TInfo
+type MEnvI  = MEnv TyDen
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.
@@ -115,13 +115,13 @@ transCast neg e t' ta =
 -- This wrapper protects the positive party and may blame the
 -- negative party.
 ca :: Party -> Party -> Var -> TypeI A -> ExprI C
-ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
+ca neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ac pos neg y s1)) $
       ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
-ca neg pos x (TyCon _ [s1, s2] ti) | ti == tiLol =
+ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
   exLet u createContract $
     exAbs y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
@@ -152,7 +152,7 @@ ca neg _   x ta | qualifier ta <: Qu = exVar x
 -- This wrapper protects the negative party and may blame the
 -- positive party.
 ac :: Party -> Party -> Var -> TypeI A -> ExprI C
-ac neg pos x (TyCon _ [s1, s2] ti) | ti `elem` funtypes =
+ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
   exAbs' y (atype2ctype s1) $
     exLet' z (exApp (exVar x) (ca pos neg y s1)) $
       ac neg pos z s2
@@ -178,7 +178,7 @@ ac _   _   x ta | qualifier ta <: Qu = exVar x
 --
 -- This wrapper protects either party and may blame either party.
 cc :: Party -> Party -> Var -> TypeI C -> ExprI C
-cc neg pos x (TyCon _ [s1, s2] ti) | ti == tiArr =
+cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
   exAbs' y s1 $
     exLet' z (exApp (exVar x) (cc pos neg y s1)) $
       cc neg pos z s2

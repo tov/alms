@@ -109,30 +109,28 @@ declp  = choice [
 
 tyDecp :: P (TyDec ())
 tyDecp  = do
-            reserved "type"
-            lang <- brackets languagep
-            case lang of
-              LC -> do
-                params <- delimList
-                            (return ())
-                            parens
-                            comma
-                            tyvarp
-                name   <- identifier
-                return (TdAbsC name params)
-              LA -> do
-                params <- delimList
-                            (return ())
-                            parens
-                            comma
-                            paramp
-                name   <- identifier
-                quals  <- delimList
-                            (reserved "qualifier")
-                            parens
-                            (symbol "\\/")
-                            qualp
-                return (TdAbsA name params quals)
+  reserved "type"
+  lang   <- brackets languagep
+  params <- delimList (return ()) parens comma paramp
+  let variances = map fst params
+      tvs       = map snd params
+  name   <- identifier
+  case lang of
+    LC -> choice [
+      do
+        reservedOp "="
+        rhs <- typep
+        return (TdSynC name tvs rhs),
+      do
+        return (TdAbsC name tvs) ]
+    LA -> choice [
+      do
+        reservedOp "="
+        rhs <- typep
+        return (TdSynA name tvs rhs),
+      do
+        quals <- delimList (reserved "qualifier") parens (symbol "\\/") qualp
+        return (TdAbsA name tvs variances quals) ]
   where
     paramp = do
       v  <- variancep
