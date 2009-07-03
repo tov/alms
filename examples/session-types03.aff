@@ -2,9 +2,10 @@
    Reads natural numbers (very brittle) from standard input
    until getting a blank line, then prints the sum. *)
 
-type[A] done         = int recv -> unit
-type[A] 'rest repeat = int send -> 'rest
-type[A] protocol     = mu 'r. (done * 'r repeat) select
+type[A] protocol =
+  mu 'r.
+    ((int recv -> unit) *
+     (int send -> 'r)) select
 
 module[C] foldl =
   let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (as : 'a list) : 'b =
