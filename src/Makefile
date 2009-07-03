@@ -14,7 +14,7 @@ $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 
 clean:
-	$(RM) *.hi *.o $(EXE) $(EXE)-6.*
+	$(RM) Basis/*.hi Basis/*.o *.hi *.o $(EXE) $(EXE)-6.*
 
 examples: $(EXE)
 	for i in ../examples/ex*.aff; do \
