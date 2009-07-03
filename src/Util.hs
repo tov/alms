@@ -1,6 +1,7 @@
 module Util (
   fromJust, (?:),
-  foldrM, foldl2, foldr2, all2,
+  foldrM, anyM,
+  foldl2, foldr2, all2,
   char2integer, integer2char,
   unscanr, unscanl,
   module Control.Monad
@@ -13,6 +14,14 @@ import Control.Monad
 foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a
 foldrM _ z []     = return z
 foldrM f z (b:bs) = foldrM f z bs >>= flip f b
+
+anyM :: Monad m => (a -> m Bool) -> [a] -> m Bool
+anyM p (x:xs) = do
+  b <- p x
+  if b
+    then return True
+    else anyM p xs
+anyM _    _      = return False
 
 foldl2 :: (c -> a -> b -> c) -> c -> [a] -> [b] -> c
 foldl2 f z (x:xs) (y:ys) = foldl2 f (f z x y) xs ys

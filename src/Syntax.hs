@@ -15,7 +15,7 @@ module Syntax (
   Type(..), TypeI, TEnv,
   Prog(..), ProgI,
   Decl(..), DeclI,
-  Mod(..), ModI, TyDec(..),
+  Mod(..), ModI, TyDec(..), TyDecI,
 
   Expr(), ExprI, Expr'(..), Binding(..), BindingI, fv, expr',
   exCon, exStr, exInt, exIf, exCase, exLet, exLetRec,
@@ -96,17 +96,21 @@ type TEnv w = Env Var (TypeI w)
 data Prog i = Prog [Decl i] (Expr i C)
 
 data Decl i = DcMod (Mod i)
-            | DcTyp TyDec
+            | DcTyp (TyDec i)
 
 data Mod i  = MdA Var (Maybe (Type i A)) (Expr i A)
             | MdC Var (Maybe (Type i C)) (Expr i C)
             | MdInt Var (Type i A) Var
 
-data TyDec = TdAbs {
-               tdName   :: String,
-               tdParams :: [(Variance, TyVar)],
-               tdQual   :: [Either TyVar Q]
-             }
+data TyDec i = TdAbsA {
+                 tdaName   :: String,
+                 tdaParams :: [(Variance, TyVar)],
+                 tdaQual   :: [Either TyVar Q]
+               }
+             | TdAbsC {
+                 tdcName   :: String,
+                 tdcParams :: [TyVar]
+               }
 
 data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
 type FV     = M.Map Var Integer
@@ -137,6 +141,7 @@ type ExprI    = Expr TInfo
 type TypeI    = Type TInfo
 type DeclI    = Decl TInfo
 type ModI     = Mod TInfo
+type TyDecI   = TyDec TInfo
 type BindingI = Binding TInfo
 type ProgI    = Prog TInfo
 
@@ -423,20 +428,23 @@ instance Num Variance where
 -- In GHC 6.10, reifyLang is enough, but in 6.8, we need langCase
 -- and langMapType, it seems.
 class Language w where
+  type OtherLang w
   reifyLang   :: LangRep w
   langCase    :: f w -> (w ~ C => f C -> r) -> (w ~ A => f A -> r) -> r
   langMapType :: Functor f =>
                  (forall w'. Language w' => f (Type i w')) -> f (Type i w)
 
 instance Language C where
-  reifyLang       = C
-  langCase x fc _ = fc x
-  langMapType x   = fmap TyA x
+  type OtherLang C = A
+  reifyLang        = C
+  langCase x fc _  = fc x
+  langMapType x    = fmap TyA x
 
 instance Language A where
-  reifyLang       = A
-  langCase x _ fa = fa x
-  langMapType x   = fmap TyC x
+  type OtherLang A = C
+  reifyLang        = A
+  langCase x _ fa  = fa x
+  langMapType x    = fmap TyC x
 
 sameLang :: (Language w, Language w') =>
             f w -> g w' -> (w ~ w' => f w -> g w -> r) -> r -> r

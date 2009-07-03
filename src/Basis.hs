@@ -41,21 +41,21 @@ basis  = [
     --- name    -:: *type            -= value
 
     -- Primitive types:
-    "unit"   `primtyp` tiUnit,
-    "bool"   `primtyp` tiBool,
-    "int"    `primtyp` tiInt,
-    "string" `primtyp` tiString,
+    "unit"   `primtype` tiUnit,
+    "bool"   `primtype` tiBool,
+    "int"    `primtype` tiInt,
+    "string" `primtype` tiString,
 
-    "*"    `primtyp` tiTuple,
-    "->"   `primtyp` tiArr,
-    "-o"   `primtyp` tiLol,
+    "*"    `primtype` tiTuple,
+    "->"   `primtype` tiArr,
+    "-o"   `primtype` tiLol,
 
     -- Booleans
     val "true"  -:: "bool" -= True,
     val "false" -:: "bool" -= False,
 
     -- Sums
-    "either" `primtyp` tiEither,
+    "either" `primtype` tiEither,
     pfun 2 "Left"  -:: "all 'b 'a. 'a -> ('a, 'b) either"
       -= vinj . (Left  :: Value -> Either Value Value),
     pfun 2 "Right" -:: "all 'a 'b. 'b -> ('a, 'b) either"
@@ -66,7 +66,8 @@ basis  = [
       -= (\(VaFun _ f) -> mfix f),
 
     -- Lists
-    typ "+'a list qualifier 'a",
+    typeC "'a list",
+    typeA "+'a list qualifier 'a",
     pval 1 "nil"  -: "all 'a. 'a list"
                   -: "all '<a. '<a list"
       -= ([] :: [Value]),
@@ -133,7 +134,8 @@ basis  = [
       -= \() -> getLine,
 
     -- References
-    typ "'a ref qualifier A",
+    typeC "'a ref",
+    typeA "'a ref qualifier A",
     pfun 1 "ref" -: "all 'a. 'a -> 'a ref"
                  -: "all '<a. '<a -> '<a ref"
       -= (\v -> Ref `fmap` newIORef v),
@@ -156,7 +158,7 @@ basis  = [
            return r),
 
     -- Threads
-    typ "thread qualifier A",
+    typeA "thread qualifier A",
     fun "threadFork" -: ""
                      -: "(unit -o unit) -> thread"
       -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
@@ -170,8 +172,8 @@ basis  = [
       -= \t -> do print (t :: Vinj CC.ThreadId); return t,
 
     -- Futures
-    typ "+'a future qualifier A",
-    typ "-'a cofuture qualifier A",
+    typeA "+'a future qualifier A",
+    typeA "-'a cofuture qualifier A",
     pfun 1 "newFuture" -: ""
                        -: "all '<a. (unit -o '<a) -> '<a future"
       -= \f -> do
@@ -192,15 +194,15 @@ basis  = [
       -= \future value -> MV.putMVar (unFuture future) value,
 
     -- Session-typed channels
-    typ "'a rendezvous",
-    typ "+'a channel qualifier A",
+    typeA "'a rendezvous",
+    typeA "+'a channel qualifier A",
     -- Unfortunately, we need these types to be primitive in order to
     -- compute duals.
-    "dual"   `primtyp` tiDual,
-    "send"   `primtyp` tiSend,
-    "recv"   `primtyp` tiRecv,
-    "select" `primtyp` tiSelect,
-    "follow" `primtyp` tiFollow,
+    "dual"   `primtype` tiDual,
+    "send"   `primtype` tiSend,
+    "recv"   `primtype` tiRecv,
+    "select" `primtype` tiSelect,
+    "follow" `primtype` tiFollow,
     pfun 1 "newRendezvous" -: ""
                            -: "all 's. unit -> 's rendezvous"
       -= \() -> do

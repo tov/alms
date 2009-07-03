@@ -3,7 +3,7 @@ module BasisUtils (
   Entry, Nonce(..), Vinj(..),
   MkFun(..),
   fun, binArith, val, pval, pfun,
-  typ, primtyp,
+  typeC, typeA, primtype,
   vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
@@ -11,10 +11,10 @@ module BasisUtils (
 
 import Util
 import Dynamics
-import Statics (GG(..), tcType, tcTyDec)
-import Env (Env, fromList, empty, (=:=), (=+=))
-import Syntax (Var(..), TInfo)
-import Parser (pt, ptd)
+import Statics (S, env0, tcDecls, addVal, addTInfo)
+import Env (Env, fromList)
+import Syntax (Var(..), Type, TInfo(..), C, A)
+import Parser (pt, pds)
 
 import Data.Typeable (Typeable)
 import Ppr (ppr, text, hang, char, (<>))
@@ -90,11 +90,14 @@ mkTyAbs entry =
             VaSus (hang (text "#<sus") 4 $ vppr v <> char '>')
                   (return v) }
 
-typ     :: String -> Entry
-typ      = DecEn . ("type "++)
+typeC     :: String -> Entry
+typeC      = DecEn . ("type[C] " ++)
 
-primtyp :: String -> TInfo -> Entry
-primtyp  = TypEn
+typeA     :: String -> Entry
+typeA      = DecEn . ("type[A] " ++)
+
+primtype  :: String -> TInfo -> Entry
+primtype   = TypEn
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
@@ -136,17 +139,17 @@ basis2venv es = return $
   fromList [ (Var s, return v)
            | ValEn { enName = s, enValue = v } <- es ]
 
-basis2tenv :: Monad m => [Entry] -> m GG
-basis2tenv  = foldM each (GG empty empty empty 0) where
-  each gg (ValEn { enName = s, enCType = ct, enAType = at }) = do
-    ggC' <- add ct (ggC gg)
-    ggA' <- add at (ggA gg)
-    return gg { ggC = ggC', ggA = ggA' } where
-      add "" env = return env
-      add st env = do
-        t <- tcType (ggI gg) (pt st)
-        return $ env =+= Var s =:= t
-  each gg (DecEn { enSrc = s }) = tcTyDec gg (ptd s)
-  each gg (TypEn { enName = s, enTInfo = i }) = do
-    return gg { ggI = ggI gg =+= s =:= i }
-
+basis2tenv :: Monad m => [Entry] -> m S
+basis2tenv  = foldM each env0 where
+  each gg0 (ValEn { enName = s, enCType = ct, enAType = at }) = do
+    gg1 <- if null ct
+      then return gg0
+      else addVal gg0 (Var s) (pt ct :: Type () C)
+    gg2 <- if null at
+      then return gg1
+      else addVal gg1 (Var s) (pt at :: Type () A)
+    return gg2
+  each gg0 (DecEn { enSrc = s }) =
+    fst `liftM` tcDecls gg0 (pds s)
+  each gg0 (TypEn { enName = s, enTInfo = i }) =
+    return (addTInfo gg0 s i)

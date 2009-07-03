@@ -6,7 +6,7 @@ module Main (
 import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
 import Parser (parse, parseProg, parseDecls)
-import Statics (tcProg, tcDecls, GG)
+import Statics (tcProg, tcDecls, S)
 import Translation (translate, transDecls, MEnvI)
 import Dynamics (eval, evalDecls, E)
 import Basis (basis)
@@ -46,7 +46,7 @@ main  = do
           prog ++ ": " ++ errorString err
         exitFailure
 
-batch :: String -> IO String -> (Option -> Bool) -> GG -> E -> IO ()
+batch :: String -> IO String -> (Option -> Bool) -> S -> E -> IO ()
 batch filename msrc opt g0 e0 = do
       src <- msrc
       case parse parseProg filename src of
@@ -89,7 +89,7 @@ batch filename msrc opt g0 e0 = do
                 mumble "RESULT" v
 
 data ReplState = RS {
-  rsStatics     :: GG,
+  rsStatics     :: S,
   rsTranslation :: MEnvI,
   rsDynamics    :: E
 }
@@ -110,7 +110,7 @@ dynamics (rs, ast) = do
   e' <- evalDecls ast (rsDynamics rs)
   return (rs { rsDynamics = e' }, ast)
 
-interactive :: (Option -> Bool) -> GG -> E -> IO ()
+interactive :: (Option -> Bool) -> S -> E -> IO ()
 interactive opt g0 e0 = do
   initialize
   repl (RS g0 empty e0)

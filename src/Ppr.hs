@@ -108,22 +108,37 @@ instance Ppr (Mod i) where
       nest 2 $ text ":>" <+> pprPrec 0 t,
       nest 4 $ equals <+> pprPrec 0 y ]
 
-instance Ppr TyDec where
-  pprPrec _ (TdAbs n ps qs) = addQuals qs (text "type" <+> pprTypeForm n ps)
+instance Ppr (TyDec i) where
+  pprPrec _ (TdAbsA n ps qs) = addQuals qs $
+    text "type[A]" <?>
+    delimList parens comma (map pprParam ps) <+>
+    text n
     where
+      pprParam (v, tv) = pprPrec 0 v <> pprPrec 0 tv
       addQuals [] doc = doc
       addQuals _  doc = hang doc 2 $
         text "qualifier" <+>
-        fsep (punctuate (text " \\/") (map (either ppr ppr) qs))
+        delimList parens (text " \\/") (map (either ppr ppr) qs)
+  pprPrec _ (TdAbsC n ps) =
+    text "type[C]" <?>
+    delimList parens comma (map ppr ps) <+>
+    text n
 
-pprTypeForm :: String -> [(Variance, TyVar)] -> Doc
-pprTypeForm n ps =
-  case ps of
-    []  -> text n
-    [p] -> pprParam p <+> text n
-    _   -> parens (fsep . punctuate comma $ map pprParam ps) <+> text n
-  where
-    pprParam (v, tv) = pprPrec 0 v <> pprPrec 0 tv
+delimList :: (Doc -> Doc) -> Doc -> [Doc] -> Doc
+delimList around delim ds = case ds of
+  []  -> empty
+  [d] -> d
+  _   -> around . fsep . punctuate delim $ ds
+
+liftEmpty :: (Doc -> Doc -> Doc) -> Doc -> Doc -> Doc
+liftEmpty joiner d1 d2
+  | isEmpty d1 = d2
+  | isEmpty d2 = d1
+  | otherwise  = joiner d1 d2
+
+(<?>) :: Doc -> Doc -> Doc
+(<?>)  = liftEmpty (<+>)
+infixl 6 <?>
 
 instance Ppr (Expr i w) where
   pprPrec p e0 = case expr' e0 of
@@ -229,7 +244,7 @@ pprArgList = fsep . map eachArg where
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Mod i)    where showsPrec = showFromPpr
-instance Show TyDec      where showsPrec = showFromPpr
+instance Show (TyDec i)  where showsPrec = showFromPpr
 instance Show (Expr i w) where showsPrec = showFromPpr
 instance Show (Type i w) where showsPrec = showFromPpr
 
