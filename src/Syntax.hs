@@ -30,7 +30,7 @@ module Syntax (
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitI, tyArrI, tyLolI, tyTupleI,
 
-  ftv, tysubst, qualifier, tystrip,
+  ftv, freshTyVar, freshTyVars, tysubst, qualifier, tystrip,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
@@ -485,6 +485,14 @@ ftv (TyC t)        = M.map (const Invariant)
                            (M.unions (map ftv (cgetas t)))
 ftv (TyA t)        = M.map (const Invariant)
                            (M.unions (map ftv (agetcs t)))
+
+freshTyVars :: [TyVar] -> M.Map TyVar a -> [TyVar]
+freshTyVars tvs0 m0 = loop tvs0 m1 where
+  m1 = M.union (M.map (const ()) m0)
+               (M.fromList [ (tv, ()) | tv <- tvs0 ])
+  loop (tv:tvs) m' = let tv' = freshTyVar tv m'
+                      in tv' : loop tvs (M.insert tv' () m')
+  loop _        _ = []
 
 freshTyVar :: TyVar -> M.Map TyVar a -> TyVar
 freshTyVar tv m = if tv `M.member` m

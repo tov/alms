@@ -23,25 +23,26 @@ usage x e = case M.lookup x (fv e) of
   _              -> Qa
 
 -- Type constructors are bound to either "type info" or a synonym
-data TyInfo = TiDen TyDen -- | TcSyn [TyVar] (TypeI w)
+data TyInfo w = TiDen TyDen
+              | TiSyn [TyVar] (TypeI w)
 
 -- Type environments
-type D   = S.Set TyVar          -- tyvars in scope
-type I   = Env String TyInfo    -- type constructors in scope
-type G w = Env Var (TypeI w)    -- types of variables in scope
+type D   = S.Set TyVar           -- tyvars in scope
+type I w = Env String (TyInfo w) -- type constructors in scope
+type G w = Env Var (TypeI w)     -- types of variables in scope
 
 data S   = S {
              cVars   :: G C,
              aVars   :: G A,
-             cTypes  :: I,
-             aTypes  :: I,
+             cTypes  :: I C,
+             aTypes  :: I A,
              currIx  :: Integer
            }
 
 -- The type checking monad
 newtype TC w m a =
   TC { unTC :: M.R.ReaderT (TCEnv w) (M.S.StateT Integer m) a }
-data TCEnv w = TCEnv (G w, G (OtherLang w)) (I, I) (D, D)
+data TCEnv w = TCEnv (G w, G (OtherLang w)) (I w, I (OtherLang w)) (D, D)
 
 instance Monad m => Monad (TC w m) where
   m >>= k = TC (unTC m >>= unTC . k)
@@ -72,7 +73,7 @@ runTC gg0 m0 = langCase (WrapTC m0)
   where
     runTCw :: (Language w, Monad m) =>
               (S -> G w, S -> G (OtherLang w)) ->
-              (S -> I, S -> I) ->
+              (S -> I w, S -> I (OtherLang w)) ->
               S -> TC w m a -> m a
     runTCw (getVars, getVars') (getTypes, getTypes') gg (TC m) = do
       let r0 = TCEnv (getVars gg, getVars' gg)
@@ -81,23 +82,23 @@ runTC gg0 m0 = langCase (WrapTC m0)
           s0 = currIx gg
       M.S.evalStateT (M.R.runReaderT m r0) s0
 
-newtype WrapG w = WrapG (G w)
+data WrapGI w = WrapGI (G w) (I w)
 
 intoC :: Language w => TC C m a -> TC w m a
 intoC  = TC . M.R.withReaderT sw . unTC where
   sw (TCEnv (g, g') (i, i') (d, d')) =
-    langCase (WrapG g)
-      (\(WrapG gC) -> TCEnv (gC, g') (i, i') (d, d'))
-      (\(WrapG gA) -> TCEnv (g', gA) (i', i) (d', d))
+    langCase (WrapGI g i)
+      (\(WrapGI gC iC) -> TCEnv (gC, g') (iC, i') (d, d'))
+      (\(WrapGI gA iA) -> TCEnv (g', gA) (i', iA) (d', d))
 
 intoA :: Language w => TC A m a -> TC w m a
 intoA  = TC . M.R.withReaderT sw . unTC where
   sw (TCEnv (g, g') (i, i') (d, d')) =
-    langCase (WrapG g)
-      (\(WrapG gC) -> langCase (WrapG g')
+    langCase (WrapGI g i)
+      (\(WrapGI gC iC)  -> langCase (WrapGI g' i')
           (\_           -> error "impossible! (Statics.intoA)")
-          (\(WrapG g'A) -> TCEnv (g'A, gC) (i', i) (d', d)))
-      (\(WrapG gA) -> TCEnv (gA, g') (i, i') (d, d'))
+          (\(WrapGI g'A i'A) -> TCEnv (g'A, gC) (i'A, iC) (d', d)))
+      (\(WrapGI gA iA) -> TCEnv (gA, g') (iA, i') (d, d'))
 
 outofC :: Language w => TC w m a -> TC C m a
 outofC m = langCase (WrapTC m) unWrapTC (intoA . unWrapTC)
@@ -118,7 +119,7 @@ withVars :: Monad m => G w -> TC w m a -> TC w m a
 withVars g' = TC . M.R.local add . unTC where
   add (TCEnv (g, gw) ii dd) = TCEnv (g =+= g', gw) ii dd
 
-withTypes :: Monad m => I -> TC w m a -> TC w m a
+withTypes :: Monad m => I w -> TC w m a -> TC w m a
 withTypes i' = TC . M.R.local add . unTC where
   add (TCEnv g (i, iw) dd) = TCEnv g (i =+= i', iw) dd
 
@@ -136,7 +137,7 @@ tryGetVar :: Monad m => Var -> TC w m (Maybe (TypeI w))
 tryGetVar x = TC $ asksM get where
   get (TCEnv (g, _) _ _) = return (g =.= x)
 
-getType :: Monad m => String -> TC w m TyInfo
+getType :: Monad m => String -> TC w m (TyInfo w)
 getType n = TC $ asksM get where
   get (TCEnv _ (i, _) _) = i =.= n
     |! "Unbound type constructor: " ++ show n
@@ -161,22 +162,35 @@ m |! s = case m of
 infix 1 |!
 
 -- Check type for closed-ness and and defined-ness, and add info
-tcType :: Monad m => Type i w -> TC w m (TypeI w)
-tcType  = tc where
-  tc :: Monad m => Type i w -> TC w m (TypeI w)
+tcType :: (Language w, Monad m) => Type i w -> TC w m (TypeI w)
+tcType = tc where
+  tc :: (Language w, Monad m) => Type i w -> TC w m (TypeI w)
   tc (TyVar tv)   = do
     checkTV tv
     return (TyVar tv)
   tc (TyCon n ts _) = do
+    ts'  <- mapM tc ts
     tcon <- getType n
     case tcon of
       TiDen td -> do
-        tassert (length ts == length (tdArity td)) $
+        checkLength (length (tdArity td))
+        return (TyCon n ts' td)
+      TiSyn ps t -> do
+        checkLength (length ps)
+        let avoid   = M.unions (map ftv ts')
+            ps'     = freshTyVars ps avoid
+            substs :: Language w =>
+                      [TyVar] -> [TypeI w] -> TypeI w -> TypeI w
+            substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0
+        return .
+          substs ps' ts' .
+            substs ps (map TyVar ps') $ t
+    where
+      checkLength len =
+        tassert (length ts == len) $
           "Type constructor " ++ n ++ " applied to " ++
           show (length ts) ++ " arguments where " ++
-          show (length (tdArity td)) ++ " expected"
-        ts' <- mapM tc ts
-        return (TyCon n ts' td)
+          show len ++ " expected"
   tc (TyAll tv t) = TyAll tv `liftM` withTVs [tv] (tc t)
   tc (TyMu  tv t) = TyMu tv  `liftM` withTVs [tv] (tc t)
   tc (TyC t)      = TyC      `liftM` intoC (tc t)
@@ -548,6 +562,14 @@ withTyDec (TdAbsC name params) k = intoC $ do
                tdTrans = False
              })
     (outofC . k $ TdAbsC name params)
+withTyDec (TdSynC name params rhs) k = intoC $ do
+  t' <- withTVs params $ tcType rhs
+  withTypes (name =:= TiSyn params t')
+    (outofC . k $ TdSynC name params rhs)
+withTyDec (TdSynA name params rhs) k = intoA $ do
+  t' <- withTVs params $ tcType rhs
+  withTypes (name =:= TiSyn params t')
+    (outofA . k $ TdSynA name params rhs)
 
 withMod :: (Language w, Monad m) =>
          Mod i -> (ModI -> TC w m a) -> TC w m a
