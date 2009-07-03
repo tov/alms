@@ -523,6 +523,8 @@ tryUnify (tv:tvs) t t' =
 findSubst :: Language w => TyVar -> TypeI w -> TypeI w -> [TypeI w]
 findSubst tv = fs where
   fs :: Language w => TypeI w -> TypeI w -> [TypeI w]
+  fs (TyCon _ [t] td) t' | td == tdDual = fs (dualSessionType t) t'
+  fs t' (TyCon _ [t] td) | td == tdDual = fs t' (dualSessionType t)
   fs (TyVar tv') t' | tv == tv'
     = [t']
   fs (TyCon _ ts _) (TyCon _ ts' _)

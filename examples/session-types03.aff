@@ -2,6 +2,10 @@
    Reads natural numbers (very brittle) from standard input
    until getting a blank line, then prints the sum. *)
 
+type[A] done         = int recv -> unit
+type[A] 'rest repeat = int send -> 'rest
+type[A] protocol     = mu 'r. (done * 'r repeat) select
+
 module[C] foldl =
   let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (as : 'a list) : 'b =
     match listcase as with
@@ -24,9 +28,7 @@ module[C] stringToInt =
 
 module[A] server =
   let rec loop (acc : int)
-               (c   : (mu 'r.
-                         ((int send -> unit) *
-                           (int recv -> 'r)) follow) channel)
+               (c   : protocol dual channel)
                : unit =
       let c = unroll c in
         match follow c with
@@ -39,9 +41,7 @@ module[A] server =
    in loop 0
 
 module[A] client =
-  let rec loop (c : (mu 'r.
-                      ((int recv -> unit) *
-                       (int send -> 'r)) select) channel) : int =
+  let rec loop (c : protocol channel) : int =
     let c = unroll c in
     let s = getLine () in
       if eq s ""
@@ -57,11 +57,7 @@ module[A] client =
 
 module[A] main =
   \_ : unit.
-    let rv = newRendezvous[
-               mu 'r.
-                 ((int recv -> unit) *
-                  (int send -> 'r)) select
-             ] () in
+    let rv = newRendezvous[protocol] () in
       threadFork (\_:unit. server (accept rv));
       client (request rv)
 

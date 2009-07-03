@@ -178,12 +178,12 @@ interactive opt g0 e0 = do
                   Right ast -> do
                     addHistory cmd
                     return (Just (prog2decls ast))
-                  Left _ ->
+                  Left derr ->
                     case parse parseDecls "-" cmd of
                       Right ast -> do
                         addHistory cmd
                         return (Just ast)
-                      Left derr ->
+                      Left _ ->
                         loop ((line, derr) : acc)
     printResult :: (ReplState, [Decl i]) -> IO ()
     printResult (st, ds0) = do

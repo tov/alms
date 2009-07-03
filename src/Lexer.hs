@@ -45,7 +45,7 @@ stringLiteral    = T.stringLiteral tok
 natural         :: CharParser st Integer
 natural          = T.natural tok
 integer         :: CharParser st Integer
-integer          = T.natural tok
+integer          = T.integer tok
 float           :: CharParser st Double
 float            = T.float tok
 naturalOrFloat  :: CharParser st (Either Integer Double)

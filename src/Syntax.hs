@@ -25,6 +25,8 @@ module Syntax (
   PO(..),
 
   tdUnit, tdBool, tdInt, tdString, tdEither, tdTuple, tdArr, tdLol,
+
+  dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
 
   tyGround, tyArr, tyLol, tyTuple,
@@ -268,8 +270,10 @@ instance Eq TyDen where
   td == td' = tdId td == tdId td'
 
 instance Language w => Eq (Type TyDen w) where
-  TyCon c ps td == TyCon c' ps' td' =
-    td == td' && c == c' && all2 (==) ps ps'
+  TyCon _ [p] td == t | td == tdDual = dualSessionType p == t
+  t == TyCon _ [p] td | td == tdDual = t == dualSessionType p
+  TyCon _ ps td == TyCon _ ps' td' =
+    td == td' && all2 (==) ps ps'
   TyA t        == TyA t'          = t == t'
   TyC t        == TyC t'          = t == t'
   TyVar x      == TyVar x'        = x == x'
@@ -366,18 +370,19 @@ instance PO Q where
   _  /\ _  = Qu
 
 instance Language w => PO (Type TyDen w) where
+  -- Special cases for dual session types:
+  ifMJ b (TyCon _ [p] td) t | td == tdDual = ifMJ b (dualSessionType p) t
+  ifMJ b t (TyCon _ [p] td) | td == tdDual = ifMJ b t (dualSessionType p)
   -- Special cases for ->/-o subtyping:
-  ifMJ True  (TyCon "->" ps _) (TyCon "-o" ps' td')
-      = ifMJ True (TyCon "-o" ps td') (TyCon "-o" ps' td')
-  ifMJ True  (TyCon "-o" ps _) (TyCon "->" ps' td')
-      = ifMJ True (TyCon "-o" ps td') (TyCon "-o" ps' td')
-  ifMJ False (TyCon "->" ps td) (TyCon "-o" ps' _)
-      = ifMJ True (TyCon "->" ps td) (TyCon "->" ps' td)
-  ifMJ False (TyCon "-o" ps td) (TyCon "->" ps' _)
-      = ifMJ True (TyCon "->" ps td) (TyCon "->" ps' td)
+  ifMJ b (TyCon _ ps td) (TyCon _ ps' td')
+    | td == tdArr && td' == tdLol || td == tdLol && td' == tdArr
+      = ifMJ b (build ps) (build ps')
+    where build ps0 = if b
+                        then TyCon "-o" ps0 tdLol
+                        else TyCon "->" ps0 tdArr
   -- Otherwise:
-  ifMJ b (TyCon tc ps td) (TyCon tc' ps' td') =
-    if td == td' && tc == tc' then do
+  ifMJ b (TyCon tc ps td) (TyCon _ ps' td') =
+    if td == td' then do
       params <- sequence
         [ case var of
             Covariant     -> ifMJ b p p'
@@ -538,13 +543,6 @@ tysubst a t = ts where
                               t'' = TyVar a'' `asTypeOf` t'
                           in TyMu a'' (ts (tysubst a' t'' t')))
                     (TyMu a' (ts t'))
-  ts t'@(TyCon "dual" [TyVar a'] td) | td == tdDual
-                = sameLang t' t
-                    (\t0' t0 ->
-                      if a' == a
-                        then dualSessionType t0
-                        else t0')
-                    t'
   ts (TyCon c tys td)
                 = TyCon c (map ts tys) td
   ts (TyA t')
