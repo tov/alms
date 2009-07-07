@@ -97,14 +97,14 @@ instance Show Value where
 --
 
 type Result   = IO Value
-type E        = Env Var (IO Value)
+type E        = Env Ident (IO Value)
 
 type D        = E -> Result
 type DDecl    = E -> IO E
 
 -- Add the given name to an anonymous function
-nameFun :: Var -> Value -> Value
-nameFun (Var x) (VaFun (FNAnonymous _) lam)
+nameFun :: Lid -> Value -> Value
+nameFun (Lid x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
 
@@ -118,13 +118,13 @@ evalDecl _         = return
 evalMod :: Mod i -> DDecl
 evalMod (MdC x _ e)   env = do
   v <- valOf e env
-  return (env =+= x =:= return v)
+  return (env =+= Var x =:= return v)
 evalMod (MdA x _ e)   env = do
   v <- valOf e env
-  return (env =+= x =:= return v)
+  return (env =+= Var x =:= return v)
 evalMod (MdInt x _ y) env = do
-  case env =.= y of
-    Just v  -> return (env =+= x =:= v)
+  case env =.= Var y of
+    Just v  -> return (env =+= Var x =:= v)
     Nothing -> fail $ "BUG! Unknown module: " ++ show y
 
 eval :: E -> Prog i -> Result
@@ -133,10 +133,9 @@ eval env0 (Prog ds e0) = evalDecls ds env0 >>= valOf e0
 -- The meaning of an expression
 valOf :: Expr i w -> D
 valOf e env = case expr' e of
-  ExCon s                -> do 
-    case env =.= Var s of
-      Just v  -> v
-      Nothing -> fail $ "BUG! Unknown constant: " ++ s
+  ExId x         -> case env =.= x of
+    Just v  -> v
+    Nothing -> fail $ "BUG! unbound identifier: " ++ show x
   ExStr s                -> return (vinj s)
   ExInt z                -> return (vinj z)
   ExIf ec et ef         -> do
@@ -147,15 +146,15 @@ valOf e env = case expr' e of
   ExCase e1 (xl, el) (xr, er) -> do
     v1 <- valOf e1 env
     case vprj v1 of
-      Left vl  -> valOf el (env =+= xl =::= vl)
-      Right vr -> valOf er (env =+= xr =::= vr)
+      Left vl  -> valOf el (env =+= Var xl =::= vl)
+      Right vr -> valOf er (env =+= Var xr =::= vr)
   ExLet x e1 e2          -> do
     v1 <- valOf e1 env
-    valOf e2 $ env =+= x =::= nameFun x v1
+    valOf e2 $ env =+= Var x =::= nameFun x v1
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
-          return (envI =+= bnvar b =:= join (readIORef r), r : rs)
+          return (envI =+= Var (bnvar b) =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
       (\r b -> do
@@ -164,9 +163,6 @@ valOf e env = case expr' e of
       (reverse rev_rs)
       bs
     valOf e2 env'
-  ExVar x        -> case env =.= x of
-    Just v  -> v
-    Nothing -> fail $ "BUG! unbound variable: " ++ show x
   ExPair e1 e2           -> do
     v1 <- valOf e1 env
     v2 <- valOf e2 env
@@ -174,11 +170,11 @@ valOf e env = case expr' e of
   ExLetPair (x, y) e1 e2 -> do
     v1 <- valOf e1 env
     let (vx, vy) = vprj v1
-    valOf e2 $ env =+= x =::= nameFun x vx
-                   =+= y =::= nameFun y vy
+    valOf e2 $ env =+= Var x =::= nameFun x vx
+                   =+= Var y =::= nameFun y vy
   ExAbs x _ e'           ->
     return (VaFun (FNAnonymous (ppr e))
-                  (\v -> valOf e' (env =+= x =::= v)))
+                  (\v -> valOf e' (env =+= Var x =::= v)))
   ExApp e1 e2            -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env

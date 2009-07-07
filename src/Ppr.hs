@@ -16,7 +16,7 @@ class Ppr p where
 
 precCast, precCom, precDot, precSemi, precArr, precStar,
   precApp, precTApp :: Int
-precCast  = -1 -- :>
+precCast  = -2 -- :>
 precCom   = -1 -- ,
 precDot   =  0 -- in, else, .
 precSemi  =  1 -- ;
@@ -41,25 +41,25 @@ instance (Ppr a, Separator a) => Ppr [a] where
 
 instance Ppr (Type i w) where
   -- Print sugar for arrow types:
-  pprPrec p (TyCon "->" [t1, t2] _)
+  pprPrec p (TyCon (Lid "->") [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "->" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon "-o" [t1, t2] _)
+  pprPrec p (TyCon (Lid "-o") [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "-o" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon "*" [t1, t2] _)
+  pprPrec p (TyCon (Lid "*") [t1, t2] _)
                   = parensIf (p > precStar) $
                       sep [ pprPrec precStar t1,
                         text "*" <+> pprPrec (precStar + 1) t2 ]
-  pprPrec _ (TyCon n [] _)  = text n
+  pprPrec _ (TyCon n [] _)  = ppr n
   pprPrec p (TyCon n [t] _) = parensIf (p > precApp) $
                                 sep [ pprPrec precApp t,
-                                      text n ]
+                                      ppr n ]
   pprPrec p (TyCon n ts _)  = parensIf (p > precApp) $
                                 sep [ parens (pprPrec p ts),
-                                      text n ]
+                                      ppr n ]
   pprPrec p (TyVar x)     = pprPrec p x
   pprPrec p (TyAll x t)   = parensIf (p > precDot) $
                               hang (text "all" <+>
@@ -112,7 +112,7 @@ instance Ppr (TyDec i) where
   pprPrec _ (TdAbsA n ps vs qs) = addQuals qs $
     text "type[A]" <?>
     delimList parens comma (zipWith pprParam ps vs) <+>
-    text n
+    ppr n
     where
       pprParam v tv = pprPrec 0 v <> pprPrec 0 tv
       addQuals [] doc = doc
@@ -122,18 +122,18 @@ instance Ppr (TyDec i) where
   pprPrec _ (TdAbsC n ps) =
     text "type[C]" <?>
     delimList parens comma (map ppr ps) <+>
-    text n
+    ppr n
   pprPrec _ (TdSynA n ps rhs) =
     hang (text "type[A]" <?>
           delimList parens comma (map ppr ps) <+>
-          text n)
+          ppr n)
          2
          (equals <+>
           pprPrec 0 rhs)
   pprPrec _ (TdSynC n ps rhs) =
     hang (text "type[C]" <?>
           delimList parens comma (map ppr ps) <+>
-          text n)
+          ppr n)
          2
          (equals <+>
           pprPrec 0 rhs)
@@ -156,7 +156,7 @@ infixl 6 <?>
 
 instance Ppr (Expr i w) where
   pprPrec p e0 = case expr' e0 of
-    ExCon s -> text s
+    ExId x  -> pprPrec 0 x
     ExInt i -> integer i
     ExStr s -> text (show s)
     ExIf ec et ef ->
@@ -189,10 +189,9 @@ instance Ppr (Expr i w) where
                        (colon <+> pprPrec 0 t <+> equals))
                  2
                  (pprPrec 0 e)
-    ExVar x -> pprPrec 0 x
     ExPair e1 e2 ->
       parensIf (p > precCom) $
-        sep [ pprPrec (precCom + 1) e1 <> comma,
+        sep [ pprPrec precCom e1 <> comma,
               pprPrec (precCom + 1) e2 ]
     ExLetPair (x, y) e1 e2 ->
       pprLet p (parens (pprPrec 0 x <> comma <+> pprPrec 0 y)) e1 e2
@@ -215,11 +214,11 @@ instance Ppr (Expr i w) where
               pprPrec 0 e2 ]
     ExCast e t1 t2 ->
       parensIf (p > precCast) $
-        sep [ pprPrec (precCast + 1) e,
+        sep [ pprPrec (precCast + 2) e,
               colon,
-              pprPrec (precCast + 1) t1,
+              pprPrec (precCast + 2) t1,
               text ":>",
-              pprPrec (precCast + 1) t2 ]
+              pprPrec (precCast + 2) t2 ]
 
 pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
@@ -248,7 +247,7 @@ pprAbs p e = parensIf (p > precDot) $
                                 char ':' <+> pprPrec 0 t))
           _             -> (<>  pprArgList args)
 
-pprArgList :: [Either (Var, Type i w) TyVar] -> Doc
+pprArgList :: [Either (Lid, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg where
   eachArg (Left (x, t))   = parens $ hang
                               (pprPrec 0 x)
@@ -265,7 +264,9 @@ instance Show (Type i w) where showsPrec = showFromPpr
 
 instance Ppr Q         where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
-instance Ppr Var       where pprPrec = pprFromShow
+instance Ppr Lid       where pprPrec = pprFromShow
+instance Ppr Uid       where pprPrec = pprFromShow
+instance Ppr Ident     where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
 
 showFromPpr :: Ppr a => Int -> a -> ShowS

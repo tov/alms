@@ -9,18 +9,20 @@
       TypeFamilies #-}
 module Syntax (
   Language(..), A, C, LangRep(..),
-  Q(..), Var(..), TyVar(..),
+  Q(..),
+  Lid(..), Uid(..), Ident(..), TyVar(..),
 
   TyTag(..), Variance(..),
-  Type(..), TypeI, TEnv,
-  Prog(..), ProgI,
-  Decl(..), DeclI,
-  Mod(..), ModI, TyDec(..), TyDecI,
+  Type(..), TypeT, TEnv,
+  Prog(..), ProgT,
+  Decl(..), DeclT,
+  Mod(..), ModT, TyDec(..), TyDecT,
 
-  Expr(), ExprI, Expr'(..), Binding(..), BindingI, fv, expr',
-  exCon, exStr, exInt, exIf, exCase, exLet, exLetRec,
-  exVar, exPair, exLetPair,
+  Expr(), ExprT, Expr'(..), Binding(..), BindingT, fv, expr',
+  exId, exStr, exInt, exIf, exCase, exLet, exLetRec,
+  exPair, exLetPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
+  exVar, exCon,
 
   PO(..),
 
@@ -30,7 +32,7 @@ module Syntax (
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
 
   tyGround, tyArr, tyLol, tyTuple,
-  tyUnitI, tyArrI, tyLolI, tyTupleI,
+  tyUnitT, tyArrT, tyLolT, tyTupleT,
 
   ftv, freshTyVar, freshTyVars, tysubst, qualifier, tystrip,
   funtypes,
@@ -58,11 +60,18 @@ data Q = Qa | Qu
   deriving Eq
 
 -- Variables
-data Var = Var { unVar :: String }
+newtype Lid = Lid { unLid :: String }
+  deriving (Eq, Ord)
+
+newtype Uid = Uid { unUid :: String }
+  deriving (Eq, Ord)
+
+data Ident = Var { unVar :: Lid }
+           | Con { unCon :: Uid }
   deriving (Eq, Ord)
 
 -- Type variables
-data TyVar = TV { tvname :: Var, tvqual :: Q }
+data TyVar = TV { tvname :: Lid, tvqual :: Q }
   deriving (Eq, Ord)
 
 -- Variance
@@ -85,7 +94,7 @@ data TyTag =
   }
 
 data Type i w where
-  TyCon { tycon  :: String,
+  TyCon { tycon  :: Lid,
           tyargs :: [Type i w],
           tyinfo :: i } :: Type i w
   TyVar :: TyVar -> Type i w
@@ -94,51 +103,50 @@ data Type i w where
   TyC   :: Type i C -> Type i A
   TyA   :: Type i A -> Type i C
 
-type TEnv w = Env Var (TypeI w)
+type TEnv w = Env Lid (TypeT w)
 
 data Prog i = Prog [Decl i] (Expr i C)
 
 data Decl i = DcMod (Mod i)
             | DcTyp (TyDec i)
 
-data Mod i  = MdA Var (Maybe (Type i A)) (Expr i A)
-            | MdC Var (Maybe (Type i C)) (Expr i C)
-            | MdInt Var (Type i A) Var
+data Mod i  = MdA Lid (Maybe (Type i A)) (Expr i A)
+            | MdC Lid (Maybe (Type i C)) (Expr i C)
+            | MdInt Lid (Type i A) Lid
 
 data TyDec i = TdAbsC {
-                 tdName      :: String,
+                 tdName      :: Lid,
                  tdParams    :: [TyVar]
                }
              | TdAbsA {
-                 tdName      :: String,
+                 tdName      :: Lid,
                  tdParams    :: [TyVar],
                  tdVariances :: [Variance],
                  tdaQual     :: [Either TyVar Q]
                }
              | TdSynC {
-                 tdName      :: String,
+                 tdName      :: Lid,
                  tdParams    :: [TyVar],
                  tdcRHS      :: Type () C
              }
              | TdSynA {
-                 tdName      :: String,
+                 tdName      :: Lid,
                  tdParams    :: [TyVar],
                  tdaRHS      :: Type () A
              }
 
 data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
-type FV     = M.Map Var Integer
-data Expr' i w = ExCon String
+type FV       = M.Map Lid Integer
+data Expr' i w = ExId Ident
                | ExStr String
                | ExInt Integer
                | ExIf (Expr i w) (Expr i w) (Expr i w)
-               | ExCase (Expr i w) (Var, Expr i w) (Var, Expr i w)
-               | ExLet Var (Expr i w) (Expr i w)
+               | ExCase (Expr i w) (Lid, Expr i w) (Lid, Expr i w)
+               | ExLet Lid (Expr i w) (Expr i w)
                | ExLetRec [Binding i w] (Expr i w)
-               | ExVar Var
                | ExPair (Expr i w) (Expr i w)
-               | ExLetPair (Var, Var) (Expr i w) (Expr i w)
-               | ExAbs Var (Type i w) (Expr i w)
+               | ExLetPair (Lid, Lid) (Expr i w) (Expr i w)
+               | ExAbs Lid (Type i w) (Expr i w)
                | ExApp (Expr i w) (Expr i w)
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
@@ -146,27 +154,24 @@ data Expr' i w = ExCon String
                | ExCast (Expr i w) (Type i w) (Type i A)
 
 data Binding i w = Binding {
-  bnvar  :: Var,
+  bnvar  :: Lid,
   bntype :: Type i w,
   bnexpr :: Expr i w
 }
 
-type ExprI    = Expr TyTag
-type TypeI    = Type TyTag
-type DeclI    = Decl TyTag
-type ModI     = Mod TyTag
-type TyDecI   = TyDec TyTag
-type BindingI = Binding TyTag
-type ProgI    = Prog TyTag
+type ExprT    = Expr TyTag
+type TypeT    = Type TyTag
+type DeclT    = Decl TyTag
+type ModT     = Mod TyTag
+type TyDecT   = TyDec TyTag
+type BindingT = Binding TyTag
+type ProgT    = Prog TyTag
 
 fv :: Expr i w -> FV
 fv  = fv_
 
 expr' :: Expr i w -> Expr' i w
 expr'  = expr'_
-
-exCon :: String -> Expr i w
-exCon  = Expr M.empty . ExCon
 
 exStr :: String -> Expr i w
 exStr  = Expr M.empty . ExStr
@@ -180,13 +185,13 @@ exIf ec et ef = Expr {
   expr'_ = ExIf ec et ef
 }
 
-exCase  :: Expr i w -> (Var, Expr i w) -> (Var, Expr i w) -> Expr i w
+exCase  :: Expr i w -> (Lid, Expr i w) -> (Lid, Expr i w) -> Expr i w
 exCase e (xl, el) (xr, er) = Expr {
   fv_    = fv e |*| ((fv el |-| xl) |+| (fv er |-| xr)),
   expr'_ = ExCase e (xl, el) (xr, er)
 }
 
-exLet :: Var -> Expr i w -> Expr i w -> Expr i w
+exLet :: Lid -> Expr i w -> Expr i w -> Expr i w
 exLet x e1 e2 = Expr {
   fv_    = fv e1 |*| (fv e2 |-| x),
   expr'_ = ExLet x e1 e2
@@ -201,10 +206,12 @@ exLetRec bs e2 = Expr {
   expr'_ = ExLetRec bs e2
 }
 
-exVar :: Var -> Expr i w
-exVar x = Expr {
-  fv_    = M.singleton x 1,
-  expr'_ = ExVar x
+exId :: Ident -> Expr i w
+exId x = Expr {
+  fv_    = case x of
+             Var y -> M.singleton y 1
+             Con _ -> M.empty,
+  expr'_ = ExId x
 }
 
 exPair :: Expr i w -> Expr i w -> Expr i w
@@ -213,13 +220,13 @@ exPair e1 e2 = Expr {
   expr'_ = ExPair e1 e2
 }
 
-exLetPair :: (Var, Var) -> Expr i w -> Expr i w -> Expr i w
+exLetPair :: (Lid, Lid) -> Expr i w -> Expr i w -> Expr i w
 exLetPair (x, y) e1 e2 = Expr {
   fv_    = fv e1 |*| ((fv e2 |-| x) |-| y),
   expr'_ = ExLetPair (x, y) e1 e2
 }
 
-exAbs :: Var -> Type i w -> Expr i w -> Expr i w
+exAbs :: Lid -> Type i w -> Expr i w -> Expr i w
 exAbs x t e = Expr {
   fv_    = fv e |-| x,
   expr'_ = ExAbs x t e
@@ -255,11 +262,17 @@ exCast e t1 t2 = Expr {
   expr'_ = ExCast e t1 t2
 }
 
+exVar :: Lid -> Expr i w
+exVar  = exId . Var
+
+exCon :: Uid -> Expr i w
+exCon  = exId . Con
+
 (|*|), (|+|) :: FV -> FV -> FV
 (|*|) = M.unionWith (+)
 (|+|) = M.unionWith max
 
-(|-|) :: FV -> Var -> FV
+(|-|) :: FV -> Lid -> FV
 (|-|)  = flip M.delete
 
 -----
@@ -297,8 +310,15 @@ instance Show Variance where
   showsPrec _ Contravariant = ('-':)
   showsPrec _ Omnivariant   = ('0':)
 
-instance Show Var where
-  show = unVar
+instance Show Lid where
+  show = unLid
+
+instance Show Uid where
+  show = unUid
+
+instance Show Ident where
+  show (Var x) = show x
+  show (Con k) = show k
 
 instance Show TyVar where
   show (TV x Qu) = "'" ++ show x
@@ -378,8 +398,8 @@ instance Language w => PO (Type TyTag w) where
     | td == tdArr && td' == tdLol || td == tdLol && td' == tdArr
       = ifMJ b (build ps) (build ps')
     where build ps0 = if b
-                        then TyCon "-o" ps0 tdLol
-                        else TyCon "->" ps0 tdArr
+                        then TyCon (Lid "-o") ps0 tdLol
+                        else TyCon (Lid "->") ps0 tdArr
   -- Otherwise:
   ifMJ b (TyCon tc ps td) (TyCon _ ps' td') =
     if td == td' then do
@@ -408,9 +428,9 @@ instance Language w => PO (Type TyTag w) where
       else fail "\\/? or /\\?: Does not exist"
 
 ifMJBind :: (Monad m, Language w) =>
-            (TyVar -> TypeI w -> TypeI w) -> Bool ->
-            (TyVar, TypeI w) -> (TyVar, TypeI w) ->
-            m (TypeI w)
+            (TyVar -> TypeT w -> TypeT w) -> Bool ->
+            (TyVar, TypeT w) -> (TyVar, TypeT w) ->
+            m (TypeT w)
 ifMJBind cons b (a, t) (a', t') = do
   qual <- ifMJ (not b) (tvqual a) (tvqual a')
   if qual == tvqual a
@@ -478,7 +498,7 @@ sameLang x y same diff =
 --- Syntax Utils
 ---
 
-ftv :: TypeI w -> M.Map TyVar Variance
+ftv :: TypeT w -> M.Map TyVar Variance
 ftv (TyCon _ ts td)= M.unionsWith (+)
                        [ M.map (* var) m
                        | var <- tdArity td
@@ -504,7 +524,7 @@ freshTyVar tv m = if tv `M.member` m
                     then loop 0
                     else tv
   where
-    attach n = tv { tvname = Var (unVar (tvname tv) ++ show n) }
+    attach n = tv { tvname = Lid (unLid (tvname tv) ++ show n) }
     loop    :: Int -> TyVar
     loop n   =
       let tv' = attach n
@@ -513,9 +533,9 @@ freshTyVar tv m = if tv `M.member` m
            else tv'
 
 tysubst :: (Language w, Language w') =>
-           TyVar -> TypeI w' -> TypeI w -> TypeI w
+           TyVar -> TypeT w' -> TypeT w -> TypeT w
 tysubst a t = ts where
-  ts :: Language w => TypeI w -> TypeI w
+  ts :: Language w => TypeT w -> TypeT w
   ts t'@(TyVar a')
                 = sameLang t' t
                     (\_ t0 ->
@@ -552,16 +572,16 @@ tysubst a t = ts where
 
 -- Helper for finding the dual of a session type (since we can't
 -- express this direction in the type system)
-dualSessionType :: TypeI w -> TypeI w
+dualSessionType :: TypeT w -> TypeT w
 dualSessionType  = d where
-  d (TyCon "->" [TyCon "send" [ta] _, tr] _)
-    = TyCon "->" [TyCon "recv" [ta] tdRecv, d tr] tdArr
-  d (TyCon "->" [TyCon "recv" [ta] _, tr] _)
-    = TyCon "->" [TyCon "send" [ta] tdSend, d tr] tdArr
-  d (TyCon "select" [TyCon "*" [t1, t2] _] _)
-    = TyCon "follow" [TyCon "*" [d t1, d t2] tdTuple] tdFollow
-  d (TyCon "follow" [TyCon "*" [t1, t2] _] _)
-    = TyCon "select" [TyCon "*" [d t1, d t2] tdTuple] tdSelect
+  d (TyCon (Lid "->") [TyCon (Lid "send") [ta] _, tr] _)
+    = TyCon (Lid "->") [TyCon (Lid "recv") [ta] tdRecv, d tr] tdArr
+  d (TyCon (Lid "->") [TyCon (Lid "recv") [ta] _, tr] _)
+    = TyCon (Lid "->") [TyCon (Lid "send") [ta] tdSend, d tr] tdArr
+  d (TyCon (Lid "select") [TyCon (Lid "*") [t1, t2] _] _)
+    = TyCon (Lid "follow") [TyCon (Lid "*") [d t1, d t2] tdTuple] tdFollow
+  d (TyCon (Lid "follow") [TyCon (Lid "*") [t1, t2] _] _)
+    = TyCon (Lid "select") [TyCon (Lid "*") [d t1, d t2] tdTuple] tdSelect
   d (TyMu tv t)
     = TyMu tv (d t)
   d t = t
@@ -587,30 +607,30 @@ tdSelect     = TyTag (-14) [1]  []                False
 tdFollow     = TyTag (-15) [1]  []                False
 
 tyGround      :: String -> Type () w
-tyGround s     = TyCon s [] ()
+tyGround s     = TyCon (Lid s) [] ()
 
 tyArr         :: Type () w -> Type () w -> Type () w
-tyArr a b      = TyCon "->" [a, b] ()
+tyArr a b      = TyCon (Lid "->") [a, b] ()
 
 tyLol         :: Type () w -> Type () w -> Type () w
-tyLol a b      = TyCon "-o" [a, b] ()
+tyLol a b      = TyCon (Lid "-o") [a, b] ()
 
 tyTuple       :: Type () w -> Type () w -> Type () w
-tyTuple a b    = TyCon "*" [a, b] ()
+tyTuple a b    = TyCon (Lid "*") [a, b] ()
 
-tyUnitI        :: TypeI C
-tyUnitI         = TyCon "unit" [] tdUnit
+tyUnitT        :: TypeT w
+tyUnitT         = TyCon (Lid "unit") [] tdUnit
 
-tyArrI         :: TypeI w -> TypeI w -> TypeI w
-tyArrI a b      = TyCon "->" [a, b] tdArr
+tyArrT         :: TypeT w -> TypeT w -> TypeT w
+tyArrT a b      = TyCon (Lid "->") [a, b] tdArr
 
-tyLolI         :: TypeI w -> TypeI w -> TypeI w
-tyLolI a b      = TyCon "-o" [a, b] tdLol
+tyLolT         :: TypeT w -> TypeT w -> TypeT w
+tyLolT a b      = TyCon (Lid "-o") [a, b] tdLol
 
-tyTupleI       :: TypeI w -> TypeI w -> TypeI w
-tyTupleI a b    = TyCon "*" [a, b] tdTuple
+tyTupleT       :: TypeT w -> TypeT w -> TypeT w
+tyTupleT a b    = TyCon (Lid "*") [a, b] tdTuple
 
-qualifier     :: TypeI A -> Q
+qualifier     :: TypeT A -> Q
 qualifier (TyCon _ ps td) = foldl max minBound qs' where
   qs = map qualifier ps
   toQ (Left ix) = qs !! ix
@@ -649,11 +669,11 @@ agetcs (TyMu _ t)     = agetcs t
 agetcs (TyC t)        = [t]
 agetcs _              = [] -- can't happen
 
-ctype2atype :: TypeI C -> TypeI A
+ctype2atype :: TypeT C -> TypeT A
 ctype2atype (TyCon n ps td) | tdTrans td
   = TyCon n (map ctype2atype ps) td
 ctype2atype (TyCon _ [td, tr] d) | d == tdArr
-  = TyCon "->" [ctype2atype td, ctype2atype tr] tdArr
+  = TyCon (Lid "->") [ctype2atype td, ctype2atype tr] tdArr
 ctype2atype (TyAll tv t)
                       = TyAll tv (ctype2atype t')
                         where t'  = tysubst tv (TyA (TyVar tv)) t
@@ -663,11 +683,11 @@ ctype2atype (TyMu tv t)
 ctype2atype (TyA t)   = t
 ctype2atype t         = TyC t
 
-atype2ctype :: TypeI A -> TypeI C
+atype2ctype :: TypeT A -> TypeT C
 atype2ctype (TyCon n ps td) | tdTrans td
   = TyCon n (map atype2ctype ps) td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
-  = TyCon "->" [atype2ctype td, atype2ctype tr] tdArr
+  = TyCon (Lid "->") [atype2ctype td, atype2ctype tr] tdArr
 atype2ctype (TyAll tv t) | tvqual tv == Qu
                       = TyAll tv (atype2ctype t')
                         where t' = tysubst tv (TyC (TyVar tv)) t
@@ -679,10 +699,9 @@ atype2ctype t         = TyA t
 
 syntacticValue :: Expr i w -> Bool
 syntacticValue e = case expr' e of
-  ExCon _      -> True
+  ExId _       -> True
   ExStr _      -> True
   ExInt _      -> True
-  ExVar _      -> True
   ExPair e1 e2 -> syntacticValue e1 && syntacticValue e2
   ExAbs _ _ _  -> True
   ExTAbs _ _   -> True
@@ -692,17 +711,17 @@ syntacticValue e = case expr' e of
 constants :: [String]
 constants  = [ "()", "unroll" ]
 
-modName :: Mod i -> Var
+modName :: Mod i -> Lid
 modName (MdA x _ _)   = x
 modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
 
 prog2decls :: Prog i -> [Decl i]
-prog2decls (Prog ds e) = ds ++ [DcMod (MdC (Var "it") Nothing e)]
+prog2decls (Prog ds e) = ds ++ [DcMod (MdC (Lid "it") Nothing e)]
 
 -- Unfolding various sequences
 
-unfoldExAbs :: Expr i w -> ([Either (Var, Type i w) TyVar], Expr i w)
+unfoldExAbs :: Expr i w -> ([Either (Lid, Type i w) TyVar], Expr i w)
 unfoldExAbs  = unscanr each where
   each e = case expr' e of
     ExAbs x t e' -> Just (Left (x, t), e')
@@ -726,8 +745,7 @@ unfoldExApp  = unscanl each where
     ExApp e1 e2 -> Just (e2, e1)
     _           -> Nothing
 
-unfoldTyFun :: TypeI w -> ([TypeI w], TypeI w)
+unfoldTyFun :: TypeT w -> ([TypeT w], TypeT w)
 unfoldTyFun  = unscanr each where
   each (TyCon _ [ta, tr] td) | td `elem` funtypes = Just (ta, tr)
   each _                                         = Nothing
-

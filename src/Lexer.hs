@@ -4,9 +4,11 @@ module Lexer (
   symbol, lexeme, whiteSpace, parens, braces, angles, brackets, squares,
   semi, comma, colon, dot, semiSep, semiSep1, commaSep, commaSep1,
 
+  isUpperIdentifier, lid, uid,
   lolli, qualU, qualA, langC, langA
 ) where
 
+import Data.Char (isUpper)
 import Text.ParserCombinators.Parsec
 import qualified Text.ParserCombinators.Parsec.Token as T
 
@@ -102,3 +104,21 @@ qualA            = symbol "A" >> return ()
 langC, langA    :: CharParser st ()
 langC            = symbol "C" >> return ()
 langA            = symbol "A" >> return ()
+
+isUpperIdentifier :: String -> Bool
+isUpperIdentifier "true"  = True
+isUpperIdentifier "false" = True
+isUpperIdentifier (c:_)   = isUpper c
+isUpperIdentifier _       = False
+
+lid, uid        :: CharParser st String
+lid              = lexeme $ do
+  s <- identifier
+  if isUpperIdentifier s
+    then pzero <?> "lowercase identifier"
+    else return s
+uid              = lexeme $ do
+  s <- identifier
+  if isUpperIdentifier s
+    then return s
+    else pzero <?> "uppercase identifier"

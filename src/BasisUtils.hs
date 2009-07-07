@@ -13,7 +13,7 @@ import Util
 import Dynamics
 import Statics (S, env0, tcDecls, addVal, addTyTag)
 import Env (Env, fromList)
-import Syntax (Var(..), Type, TyTag(..), C, A)
+import Syntax (Ident(..), Lid(..), Type, TyTag(..), C, A)
 import Parser (pt, pds)
 
 import Data.Typeable (Typeable)
@@ -134,9 +134,9 @@ vapp :: Valuable a => Value -> a -> IO Value
 vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
-basis2venv :: Monad m => [Entry] -> m (Env Var (IO Value))
+basis2venv :: Monad m => [Entry] -> m (Env Ident (IO Value))
 basis2venv es = return $
-  fromList [ (Var s, return v)
+  fromList [ (Var (Lid s), return v)
            | ValEn { enName = s, enValue = v } <- es ]
 
 basis2tenv :: Monad m => [Entry] -> m S
@@ -144,12 +144,12 @@ basis2tenv  = foldM each env0 where
   each gg0 (ValEn { enName = s, enCType = ct, enAType = at }) = do
     gg1 <- if null ct
       then return gg0
-      else addVal gg0 (Var s) (pt ct :: Type () C)
+      else addVal gg0 (Lid s) (pt ct :: Type () C)
     gg2 <- if null at
       then return gg1
-      else addVal gg1 (Var s) (pt at :: Type () A)
+      else addVal gg1 (Lid s) (pt at :: Type () A)
     return gg2
   each gg0 (DecEn { enSrc = s }) =
     fst `liftM` tcDecls gg0 (pds s)
   each gg0 (TypEn { enName = s, enTyTag = i }) =
-    return (addTyTag gg0 s i)
+    return (addTyTag gg0 (Lid s) i)

@@ -28,8 +28,8 @@ delimList before around delim each =
     return []
   ]
 
-varp :: P Var
-varp  = identifier >>! Var
+lidp :: P Lid
+lidp  = lid >>! Lid
 
 tyvarp :: P TyVar
 tyvarp  = do
@@ -37,15 +37,15 @@ tyvarp  = do
   q <- choice
        [ char '<' >> return Qa,
          return Qu ]
-  x <- varp
+  x <- lidp
   return (TV x q)
 
 identp :: P (Expr () w)
 identp  = do
   s <- identifier
-  if s `elem` constants
-    then return (exCon s)
-    else return (exVar (Var s))
+  if isUpperIdentifier s || elem s constants
+    then return (exCon (Uid s))
+    else return (exVar (Lid s))
 
 typep :: Language w => P (Type () w)
 typep = type0 where
@@ -78,17 +78,17 @@ typep = type0 where
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
-             do tc   <- identifier
+             do tc   <- lidp
                 return [TyCon tc [] ()],
              do t <- braces (langMapType typep)
                 return [t] ]
 
   tyapp' :: [Type () w] -> P (Type () w)
   tyapp' [t] = option t $ do
-                 tc <- identifier
+                 tc <- lidp
                  tyapp' [TyCon tc [t] ()]
   tyapp' ts  = do
-                 tc <- identifier
+                 tc <- lidp
                  tyapp' [TyCon tc ts ()]
 
 progp :: P (Prog ())
@@ -114,7 +114,7 @@ tyDecp  = do
   params <- delimList (return ()) parens comma paramp
   let variances = map fst params
       tvs       = map snd params
-  name   <- identifier
+  name   <- lidp
   case lang of
     LC -> choice [
       do
@@ -157,18 +157,18 @@ modp  = choice
          LC -> modbodyp MdC
          LA -> modbodyp MdA,
     do reserved "interface"
-       x    <- varp
+       x    <- lidp
        reservedOp ":>"
        t    <- typep
        reservedOp "="
-       y    <- varp
+       y    <- lidp
        return (MdInt x t y) ]
   where
     modbodyp :: Language w =>
-                (Var -> Maybe (Type () w) -> Expr () w -> Mod ()) ->
+                (Lid -> Maybe (Type () w) -> Expr () w -> Mod ()) ->
                 P (Mod ())
     modbodyp f = do
-      x    <- varp
+      x    <- lidp
       t    <- optionMaybe $ colon >> typep
       reservedOp "="
       e    <- exprp
@@ -193,7 +193,7 @@ exprp = expr0 where
          choice
            [ do reserved "rec"
                 bs <- flip sepBy1 (reserved "and") $ do
-                  x    <- varp
+                  x    <- lidp
                   let argsloop :: Language w =>
                                   (Type () w -> Type () w -> Type () w) ->
                                   P (Type () w -> Type () w,
@@ -206,7 +206,7 @@ exprp = expr0 where
                                reservedOp "|"
                                return tyLol
                              (y, t) <- parens $ do
-                               y <- varp
+                               y <- lidp
                                colon
                                t <- typep
                                return (y, t)
@@ -222,13 +222,13 @@ exprp = expr0 where
                 reserved "in"
                 e2 <- expr0
                 return (exLetRec bs e2),
-             do x    <- varp
+             do x    <- lidp
                 args <- argsp
                 finishLet (exLet x . args),
              do (x, y) <- parens $ do
-                  x  <- varp
+                  x  <- lidp
                   comma
-                  y  <- varp
+                  y  <- lidp
                   return (x, y)
                 finishLet (exLetPair (x, y)) ],
       do reserved "if"
@@ -242,13 +242,13 @@ exprp = expr0 where
          e1 <- expr0
          reserved "with"
          optional (reservedOp "|")
-         c2 <- identifier
-         x2 <- varp
+         c2 <- uid
+         x2 <- lidp
          reservedOp "->"
          e2 <- expr0
          reservedOp "|"
-         c3 <- identifier
-         x3 <- varp
+         c3 <- uid
+         x3 <- lidp
          reservedOp "->"
          e3 <- expr0
          case (c2, c3) of
@@ -258,7 +258,7 @@ exprp = expr0 where
       do reservedOp "\\" <|> reservedOp "^"
          build <- choice
            [ argsp1,
-             do x  <- varp
+             do x  <- lidp
                 colon
                 t  <- typep
                 return (exAbs x t) ]
@@ -280,7 +280,7 @@ exprp = expr0 where
     [ identp,
       integer       >>! exInt,
       stringLiteral >>! exStr,
-      parens (exprN1 <|> return (exCon "()"))
+      parens (exprN1 <|> return (exCon (Uid "()")))
     ]
   exprN1 = do
     e1 <- expr0
@@ -291,8 +291,8 @@ exprp = expr0 where
            t2 <- typep
            return (exCast e1 t1 t2),
         do comma
-           e2 <- expr0
-           return (exPair e1 e2),
+           es <- commaSep1 expr0
+           return (foldl exPair e1 es),
         return e1]
 
 argsp1 :: Language w => P (Expr () w -> Expr () w)
@@ -305,7 +305,7 @@ argp :: Language w => P (Expr () w -> Expr () w)
 argp  = choice
         [ tyvarp >>! exTAbs,
           parens $ do
-            x <- varp
+            x <- lidp
             reservedOp ":"
             t <- typep
             return (exAbs x t) ]

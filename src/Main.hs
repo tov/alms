@@ -7,11 +7,12 @@ import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
 import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S)
-import Translation (translate, transDecls, MEnvI)
+import Translation (translate, transDecls, MEnvT)
 import Dynamics (eval, evalDecls, E)
 import Basis (basis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Prog, ProgI, Decl(..), DeclI, Mod(..), prog2decls, modName)
+import Syntax (Ident(..), Prog, ProgT, Decl(..), DeclT, Mod(..),
+               prog2decls, modName)
 import Env (empty, (=.=), (=-=))
 
 import Control.Monad (when, unless)
@@ -53,7 +54,7 @@ batch filename msrc opt g0 e0 = do
         Left e    -> fail $ "syntax error: " ++ show e
         Right ast -> check ast where
           check   :: Prog () -> IO ()
-          coerce  :: ProgI   -> IO ()
+          coerce  :: ProgT   -> IO ()
           recheck :: Prog i  -> IO ()
           execute :: Prog i  -> IO ()
 
@@ -90,12 +91,12 @@ batch filename msrc opt g0 e0 = do
 
 data ReplState = RS {
   rsStatics     :: S,
-  rsTranslation :: MEnvI,
+  rsTranslation :: MEnvT,
   rsDynamics    :: E
 }
 
-statics     :: (ReplState, [Decl i]) -> IO (ReplState, [DeclI])
-translation :: (ReplState, [DeclI])   -> IO (ReplState, [DeclI])
+statics     :: (ReplState, [Decl i]) -> IO (ReplState, [DeclT])
+translation :: (ReplState, [DeclT])   -> IO (ReplState, [DeclT])
 dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, [Decl i])
 
 statics (rs, ast) = do
@@ -127,7 +128,7 @@ interactive opt g0 e0 = do
           repl st'
     doLine st ast = let
       check   :: (ReplState, [Decl ()]) -> IO ReplState
-      coerce  :: (ReplState, [DeclI])   -> IO ReplState
+      coerce  :: (ReplState, [DeclT])   -> IO ReplState
       recheck :: (ReplState, [Decl i])  -> IO ReplState
       execute :: (ReplState, [Decl i])  -> IO ReplState
       display :: (ReplState, [Decl i])  -> IO ReplState
@@ -193,14 +194,14 @@ interactive opt g0 e0 = do
       dispatch :: (ReplState, [Doc]) -> Decl i -> IO (ReplState, [Doc])
       dispatch (rs, docs) (DcMod m) = do
         let e = rsDynamics rs
-        mv   <- case e =.= modName m of
+        mv   <- case e =.= Var (modName m) of
                   Nothing -> return Nothing
                   Just v  -> Just `fmap` v
         let doc = case m of
                     MdC x t _   -> val "C" x t mv
                     MdA x t _   -> val "A" x t mv
                     MdInt x t _ -> val "A" x (Just t) mv
-        return (rs { rsDynamics = e =-= modName m }, doc : docs)
+        return (rs { rsDynamics = e =-= Var (modName m) }, doc : docs)
       dispatch (rs, docs) (DcTyp td) = return (rs, ppr td : docs)
       val :: (Ppr x, Ppr t, Ppr v) =>
              String -> x -> Maybe t -> Maybe v -> Doc
