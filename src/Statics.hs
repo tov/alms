@@ -1,7 +1,7 @@
 module Statics (
   S, env0,
   tcProg, tcDecls,
-  addVal, addTyDen
+  addVal, addTyTag
 ) where
 
 import Util
@@ -23,7 +23,7 @@ usage x e = case M.lookup x (fv e) of
   _              -> Qa
 
 -- Type constructors are bound to either "type info" or a synonym
-data TyInfo w = TiDen TyDen
+data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeI w)
 
 -- Type environments
@@ -172,7 +172,7 @@ tcType = tc where
     ts'  <- mapM tc ts
     tcon <- getType n
     case tcon of
-      TiDen td -> do
+      TiAbs td -> do
         checkLength (length (tdArity td))
         return (TyCon n ts' td)
       TiSyn ps t -> do
@@ -548,7 +548,7 @@ withTyDec (TdAbsA name params variances quals) k = intoA $ do
         Just n  -> return (Left n)
       each (Right q) = return (Right q)
   quals' <- mapM each quals
-  withTypes (name =:= TiDen TdAbs {
+  withTypes (name =:= TiAbs TyTag {
                tdId    = index,
                tdArity = variances,
                tdQual  = quals',
@@ -557,7 +557,7 @@ withTyDec (TdAbsA name params variances quals) k = intoA $ do
     (outofA . k $ TdAbsA name params variances quals)
 withTyDec (TdAbsC name params) k = intoC $ do
   index <- newIndex
-  withTypes (name =:= TiDen TdAbs {
+  withTypes (name =:= TiAbs TyTag {
                tdId    = index,
                tdArity = map (const Invariant) params,
                tdQual  = [],
@@ -646,11 +646,11 @@ addVal gg x t = runTC gg $ do
   t' <- tcType t
   withVars (x =:= t') saveTC
 
-addTyDen :: S -> String -> TyDen -> S
-addTyDen gg n td =
+addTyTag :: S -> String -> TyTag -> S
+addTyTag gg n td =
   gg {
-    cTypes = cTypes gg =+= n =:= TiDen td,
-    aTypes = aTypes gg =+= n =:= TiDen td
+    cTypes = cTypes gg =+= n =:= TiAbs td,
+    aTypes = aTypes gg =+= n =:= TiAbs td
   }
 
 -- Type check a program

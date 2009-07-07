@@ -6,7 +6,7 @@ import Syntax
 import Env
 
 type MEnv i = Env Var (Mod i)
-type MEnvI  = MEnv TyDen
+type MEnvI  = MEnv TyTag
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.

@@ -11,7 +11,7 @@ module Syntax (
   Language(..), A, C, LangRep(..),
   Q(..), Var(..), TyVar(..),
 
-  TyDen(..), Variance(..),
+  TyTag(..), Variance(..),
   Type(..), TypeI, TEnv,
   Prog(..), ProgI,
   Decl(..), DeclI,
@@ -73,8 +73,8 @@ data Variance = Invariant
   deriving (Eq, Ord)
 
 -- Info about a type constructor (for language A)
-data TyDen =
-  TdAbs {
+data TyTag =
+  TyTag {
     tdId    :: Integer,
     tdArity :: [Variance], -- The variance of each of its parameters
     tdQual  :: [Either Int Q],
@@ -151,13 +151,13 @@ data Binding i w = Binding {
   bnexpr :: Expr i w
 }
 
-type ExprI    = Expr TyDen
-type TypeI    = Type TyDen
-type DeclI    = Decl TyDen
-type ModI     = Mod TyDen
-type TyDecI   = TyDec TyDen
-type BindingI = Binding TyDen
-type ProgI    = Prog TyDen
+type ExprI    = Expr TyTag
+type TypeI    = Type TyTag
+type DeclI    = Decl TyTag
+type ModI     = Mod TyTag
+type TyDecI   = TyDec TyTag
+type BindingI = Binding TyTag
+type ProgI    = Prog TyTag
 
 fv :: Expr i w -> FV
 fv  = fv_
@@ -266,10 +266,10 @@ exCast e t1 t2 = Expr {
 ----- Some classes and instances
 -----
 
-instance Eq TyDen where
+instance Eq TyTag where
   td == td' = tdId td == tdId td'
 
-instance Language w => Eq (Type TyDen w) where
+instance Language w => Eq (Type TyTag w) where
   TyCon _ [p] td == t | td == tdDual = dualSessionType p == t
   t == TyCon _ [p] td | td == tdDual = t == dualSessionType p
   TyCon _ ps td == TyCon _ ps' td' =
@@ -369,7 +369,7 @@ instance PO Q where
   Qa /\ Qa = Qa
   _  /\ _  = Qu
 
-instance Language w => PO (Type TyDen w) where
+instance Language w => PO (Type TyTag w) where
   -- Special cases for dual session types:
   ifMJ b (TyCon _ [p] td) t | td == tdDual = ifMJ b (dualSessionType p) t
   ifMJ b t (TyCon _ [p] td) | td == tdDual = ifMJ b t (dualSessionType p)
@@ -567,24 +567,24 @@ dualSessionType  = d where
   d t = t
 
 tdUnit, tdBool, tdInt, tdString,
-  tdArr, tdLol, tdTuple, tdEither :: TyDen
+  tdArr, tdLol, tdTuple, tdEither :: TyTag
 
-tdUnit       = TdAbs (-1)  []          []                True
-tdBool       = TdAbs (-2)  []          []                True
-tdInt        = TdAbs (-3)  []          []                True
-tdString     = TdAbs (-4)  []          []                True
-tdArr        = TdAbs (-5)  [-1, 1]     []                False
-tdLol        = TdAbs (-6)  [-1, 1]     [Right Qa]        False
-tdTuple      = TdAbs (-7)  [1, 1]      [Left 0, Left 1]  False
-tdEither     = TdAbs (-8)  [1, 1]      [Left 0, Left 1]  False
+tdUnit       = TyTag (-1)  []          []                True
+tdBool       = TyTag (-2)  []          []                True
+tdInt        = TyTag (-3)  []          []                True
+tdString     = TyTag (-4)  []          []                True
+tdArr        = TyTag (-5)  [-1, 1]     []                False
+tdLol        = TyTag (-6)  [-1, 1]     [Right Qa]        False
+tdTuple      = TyTag (-7)  [1, 1]      [Left 0, Left 1]  False
+tdEither     = TyTag (-8)  [1, 1]      [Left 0, Left 1]  False
 
-tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyDen
+tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:
-tdDual       = TdAbs (-11) [-1] []                False
-tdSend       = TdAbs (-12) [1]  []                False
-tdRecv       = TdAbs (-13) [-1] []                False
-tdSelect     = TdAbs (-14) [1]  []                False
-tdFollow     = TdAbs (-15) [1]  []                False
+tdDual       = TyTag (-11) [-1] []                False
+tdSend       = TyTag (-12) [1]  []                False
+tdRecv       = TyTag (-13) [-1] []                False
+tdSelect     = TyTag (-14) [1]  []                False
+tdFollow     = TyTag (-15) [1]  []                False
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon s [] ()
@@ -630,7 +630,7 @@ tystrip (TyA t)        = TyA (tystrip t)
 tystrip (TyC t)        = TyC (tystrip t)
 
 -- Funtional types
-funtypes    :: [TyDen]
+funtypes    :: [TyTag]
 funtypes     = [tdArr, tdLol]
 
 cgetas :: Type i C -> [Type i A]

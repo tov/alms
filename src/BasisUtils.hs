@@ -11,9 +11,9 @@ module BasisUtils (
 
 import Util
 import Dynamics
-import Statics (S, env0, tcDecls, addVal, addTyDen)
+import Statics (S, env0, tcDecls, addVal, addTyTag)
 import Env (Env, fromList)
-import Syntax (Var(..), Type, TyDen(..), C, A)
+import Syntax (Var(..), Type, TyTag(..), C, A)
 import Parser (pt, pds)
 
 import Data.Typeable (Typeable)
@@ -32,7 +32,7 @@ data Entry = ValEn {
              }
            | TypEn {
                enName  :: String,
-               enTyDen :: TyDen
+               enTyTag :: TyTag
              }
 
 -- Type class for making Values out of Haskell functions
@@ -96,7 +96,7 @@ typeC      = DecEn . ("type[C] " ++)
 typeA     :: String -> Entry
 typeA      = DecEn . ("type[A] " ++)
 
-primtype  :: String -> TyDen -> Entry
+primtype  :: String -> TyTag -> Entry
 primtype   = TypEn
 
 (-:), (-=) :: (a -> b) -> a -> b
@@ -151,5 +151,5 @@ basis2tenv  = foldM each env0 where
     return gg2
   each gg0 (DecEn { enSrc = s }) =
     fst `liftM` tcDecls gg0 (pds s)
-  each gg0 (TypEn { enName = s, enTyDen = i }) =
-    return (addTyDen gg0 s i)
+  each gg0 (TypEn { enName = s, enTyTag = i }) =
+    return (addTyTag gg0 s i)
