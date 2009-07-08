@@ -55,13 +55,13 @@ transExpr menv neg = te where
                                 [ (xi, tem (menv =--= pv xi) ei)
                                 | (xi, ei) <- clauses ]
     ExLet x e1 e2 -> exLet' x (te e1) (tem (menv =--= pv x) e2)
-    ExLetRec bs e2 -> let rec  = tem (foldl (=-=) menv (map bnvar bs))
+    ExLetRec bs e2 -> let rec = tem (foldl (=-=) menv (map bnvar bs))
                       in exLetRec
                            [ Binding x (type2ctype t) (rec e)
                            | Binding x t e <- bs ]
                            (rec e2)
     ExPair e1 e2 -> exPair (te e1) (te e2)
-    ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =--= pv x) e)
+    ExAbs x t e -> exAbs x (type2ctype t) (tem (menv =--= pv x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs' tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
