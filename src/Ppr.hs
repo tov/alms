@@ -184,15 +184,14 @@ instance Ppr (Expr i w) where
         sep [ text "if" <+> pprPrec 0 ec,
               nest 2 $ text "then" <+> pprPrec 0 et,
               nest 2 $ text "else" <+> pprPrec precDot ef ]
-    ExCase e1 (xl, el) (xr, er) ->
+    ExCase e1 clauses ->
       parensIf (p > precDot) $
-        vcat [ sep [ text "match", nest 2 $ pprPrec 0 e1, text "with" ],
-               alt "Left" xl el,
-               alt "Right" xr er ]
+        vcat (sep [ text "match", nest 2 $ pprPrec 0 e1, text "with" ]
+              : map alt clauses)
         where
-          alt cons xi ei =
-            hang (char '|' <+> text cons <+>
-                  pprPrec (precApp + 1) xi <+> text "->")
+          alt (xi, ei) =
+            hang (char '|' <+> pprPrec precDot xi <+>
+                  text "->")
                   4
                   (pprPrec precDot ei)
     ExLet x e1 e2 ->
@@ -213,8 +212,6 @@ instance Ppr (Expr i w) where
       parensIf (p > precCom) $
         sep [ pprPrec precCom e1 <> comma,
               pprPrec (precCom + 1) e2 ]
-    ExLetPair (x, y) e1 e2 ->
-      pprLet p (parens (pprPrec 0 x <> comma <+> pprPrec 0 y)) e1 e2
     ExAbs _ _ _ -> pprAbs p e0
     ExApp e1 e2 ->
       parensIf (p > precApp) $
@@ -252,7 +249,6 @@ pprLet p pat e1 e2 = parensIf (p > precDot) $
   where
     (args, body) = unfoldExAbs e1
     isLet (ExLet _ _ _)     = True
-    isLet (ExLetPair _ _ _) = True
     isLet _                 = False
 
 pprAbs :: Int -> Expr i w -> Doc
@@ -267,7 +263,7 @@ pprAbs p e = parensIf (p > precDot) $
                                 char ':' <+> pprPrec 0 t))
           _             -> (<>  pprArgList args)
 
-pprArgList :: [Either (Lid, Type i w) TyVar] -> Doc
+pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg where
   eachArg (Left (x, t))   = parens $ hang
                               (pprPrec 0 x)

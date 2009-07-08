@@ -20,8 +20,7 @@ module Syntax (
 
   Expr(), ExprT, Expr'(..), expr',
   fv,
-  exId, exStr, exInt, exIf, exCase, exLet, exLetRec,
-  exPair, exLetPair,
+  exId, exStr, exInt, exIf, exCase, exLet, exLetRec, exPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
   exVar, exCon,
   Binding(..), BindingT, Patt(..),
@@ -156,12 +155,11 @@ data Expr' i w = ExId Ident
                | ExStr String
                | ExInt Integer
                | ExIf (Expr i w) (Expr i w) (Expr i w)
-               | ExCase (Expr i w) (Lid, Expr i w) (Lid, Expr i w)
+               | ExCase (Expr i w) [(Patt, Expr i w)]
                | ExLet Patt (Expr i w) (Expr i w)
                | ExLetRec [Binding i w] (Expr i w)
                | ExPair (Expr i w) (Expr i w)
-               | ExLetPair (Lid, Lid) (Expr i w) (Expr i w)
-               | ExAbs Lid (Type i w) (Expr i w)
+               | ExAbs Patt (Type i w) (Expr i w)
                | ExApp (Expr i w) (Expr i w)
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
@@ -218,10 +216,11 @@ exIf ec et ef = Expr {
   expr'_ = ExIf ec et ef
 }
 
-exCase  :: Expr i w -> (Lid, Expr i w) -> (Lid, Expr i w) -> Expr i w
-exCase e (xl, el) (xr, er) = Expr {
-  fv_    = fv e |*| ((fv el |-| xl) |+| (fv er |-| xr)),
-  expr'_ = ExCase e (xl, el) (xr, er)
+exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
+exCase e clauses = Expr {
+  fv_    = fv e |*|
+           foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
+  expr'_ = ExCase e clauses
 }
 
 exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
@@ -253,15 +252,9 @@ exPair e1 e2 = Expr {
   expr'_ = ExPair e1 e2
 }
 
-exLetPair :: (Lid, Lid) -> Expr i w -> Expr i w -> Expr i w
-exLetPair (x, y) e1 e2 = Expr {
-  fv_    = fv e1 |*| ((fv e2 |-| x) |-| y),
-  expr'_ = ExLetPair (x, y) e1 e2
-}
-
-exAbs :: Lid -> Type i w -> Expr i w -> Expr i w
+exAbs :: Patt -> Type i w -> Expr i w -> Expr i w
 exAbs x t e = Expr {
-  fv_    = fv e |-| x,
+  fv_    = fv e |--| pv x,
   expr'_ = ExAbs x t e
 }
 
@@ -760,7 +753,7 @@ prog2decls (Prog ds e) = ds ++ [DcMod (MdC (Lid "it") Nothing e)]
 
 -- Unfolding various sequences
 
-unfoldExAbs :: Expr i w -> ([Either (Lid, Type i w) TyVar], Expr i w)
+unfoldExAbs :: Expr i w -> ([Either (Patt, Type i w) TyVar], Expr i w)
 unfoldExAbs  = unscanr each where
   each e = case expr' e of
     ExAbs x t e' -> Just (Left (x, t), e')

@@ -220,7 +220,7 @@ exprp = expr0 where
                                reservedOp "|"
                                return tyLol
                              (y, t) <- parens $ do
-                               y <- lidp
+                               y <- pattp
                                colon
                                t <- typep
                                return (y, t)
@@ -238,13 +238,7 @@ exprp = expr0 where
                 return (exLetRec bs e2),
              do x    <- pattp
                 args <- argsp
-                finishLet (exLet x . args),
-             do (x, y) <- parens $ do
-                  x  <- lidp
-                  comma
-                  y  <- lidp
-                  return (x, y)
-                finishLet (exLetPair (x, y)) ],
+                finishLet (exLet x . args) ],
       do reserved "if"
          ec <- expr0
          reserved "then"
@@ -256,23 +250,16 @@ exprp = expr0 where
          e1 <- expr0
          reserved "with"
          optional (reservedOp "|")
-         c2 <- uid
-         x2 <- lidp
-         reservedOp "->"
-         e2 <- expr0
-         reservedOp "|"
-         c3 <- uid
-         x3 <- lidp
-         reservedOp "->"
-         e3 <- expr0
-         case (c2, c3) of
-           ("Left", "Right") -> return $ exCase e1 (x2, e2) (x3, e3)
-           ("Right", "Left") -> return $ exCase e1 (x3, e3) (x2, e2)
-           _                 -> fail "Unrecognized patterns in match",
+         clauses <- flip sepBy1 (reservedOp "|") $ do
+           xi <- pattp
+           reservedOp "->"
+           ei <- expr0
+           return (xi, ei)
+         return (exCase e1 clauses),
       do reservedOp "\\" <|> reservedOp "^"
          build <- choice
            [ argsp1,
-             do x  <- lidp
+             do x  <- pattp
                 colon
                 t  <- typep
                 return (exAbs x t) ]
@@ -319,7 +306,7 @@ argp :: Language w => P (Expr () w -> Expr () w)
 argp  = choice
         [ tyvarp >>! exTAbs,
           parens $ do
-            x <- lidp
+            x <- pattp
             reservedOp ":"
             t <- typep
             return (exAbs x t) ]
@@ -338,7 +325,7 @@ pattp  = patt0 where
   patt9 = choice
     [ do
         u <- uidp
-        x <- optionMaybe pattA
+        x <- optionMaybe (try pattA)
         return (PaCon u x),
       pattA ]
   pattA = choice

@@ -221,16 +221,16 @@ tcExprC = tc where
       tassert (t2 == t3) $
         "Mismatch in if: " ++ show t2 ++ " /= " ++ show t3
       return (t2, exIf e1' e2' e3')
-    ExCase e1 (xl, el) (xr, er) -> do
+    ExCase e1 clauses -> do
       (t1, e1') <- tc e1
-      case t1 of
-        TyCon (Lid "either") [txl, txr] td | td == tdEither -> do
-          (tl, el') <- withVars (Var xl =:= txl) $ tc el
-          (tr, er') <- withVars (Var xr =:= txr) $ tc er
-          tassert (tl == tr) $
-            "Mismatch in match: " ++ show tl ++ " /= " ++ show tr
-          return (tl, exCase e1' (xl, el') (xr, er'))
-        _ -> tgot "match" t1 "('a, 'b) either"
+      (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
+        (gi, xi') <- tcPatt t1 xi
+        (ti, ei') <- withVars gi $ tc ei
+        return (ti, (xi', ei'))
+      forM_ tis $ \ti' ->
+        tassert (ti == ti') $
+          "Mismatch in case: " ++ show ti ++ " /= " ++ show ti'
+      return (ti, exCase e1' clauses')
     ExLet x e1 e2 -> do
       (t1, e1') <- tc e1
       (gx, x')  <- tcPatt t1 x
@@ -262,19 +262,11 @@ tcExprC = tc where
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2
       return (TyCon (Lid "*") [t1, t2] tdTuple, exPair e1' e2')
-    ExLetPair (x, y) e1 e2 -> do
-      tassert (x /= y) $ "Repeated variable in let pair: " ++ show x
-      (t1, e1') <- tc e1
-      case t1 of
-        TyCon (Lid "*") [tx, ty] td | td == tdTuple
-          -> do
-               (t2, e2') <- withVars (Var x =:= tx =+= Var y =:= ty) $ tc e2
-               return (t2, exLetPair (x, y) e1' e2')
-        _ -> tgot "let" t1 "pair type"
     ExAbs x t e     -> do
       t' <- tcType t
-      (te, e') <- withVars (Var x =:= t') $ tc e
-      return (tyArrT t' te, exAbs x t' e')
+      (gx, x') <- tcPatt t' x
+      (te, e') <- withVars gx $ tc e
+      return (tyArrT t' te, exAbs x' t' e')
     ExApp e1 e2   -> case expr' e1 of
       _             -> do
         (t1, e1') <- tc e1
@@ -337,22 +329,18 @@ tcExprA = tc where
       t <- t2 \/? t3
         |! "Mismatch in if: " ++ show t2 ++ " and " ++ show t3
       return (t, exIf e1' e2' e3')
-    ExCase e1 (xl, el) (xr, er) -> do
+    ExCase e1 clauses -> do
       (t1, e1') <- tc e1
-      case t1 of
-        TyCon (Lid "either") [txl, txr] td | td == tdEither -> do
-          tassert (qualifier txl <: usage xl el) $
-            "Affine variable " ++ show xl ++ " : " ++
-            show txl ++ " duplicated in match body"
-          tassert (qualifier txr <: usage xr er) $
-            "Affine variable " ++ show xr ++ " : " ++
-            show txr ++ " duplicated in match body"
-          (tl, el') <- withVars (Var xl =:= txl) $ tc el
-          (tr, er') <- withVars (Var xr =:= txr) $ tc er
-          t <- tl \/? tr
-            |! "Mismatch in match: " ++ show tl ++ " and " ++ show tr
-          return (t, exCase e1' (xl, el') (xr, er'))
-        _ -> tgot "match" t1 "('a, 'b) either"
+      (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
+        (gi, xi') <- tcPatt t1 xi
+        checkSharing "match" gi ei
+        (ti, ei') <- withVars gi $ tc ei
+        return (ti, (xi', ei'))
+      foldM (\t2 t3 -> do
+               t2 \/? t3
+                 |! "Mismatch in case: " ++ show t2 ++ " and " ++ show t3)
+            ti tis
+      return (ti, exCase e1' clauses')
     ExLet x e1 e2 -> do
       (t1, e1') <- tc e1
       (gx, x')  <- tcPatt t1 x
@@ -387,31 +375,15 @@ tcExprA = tc where
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2
       return (TyCon (Lid "*") [t1, t2] tdTuple, exPair e1' e2')
-    ExLetPair (x, y) e1 e2 -> do
-      tassert (x /= y) $
-        "Repeated variable in let pair: " ++ show x
-      (t1, e1') <- tc e1
-      case t1 of
-        TyCon (Lid "*") [tx, ty] td | td == tdTuple -> do
-          tassert (qualifier tx <: usage x e2) $
-            "Affine variable " ++ show x ++ " : " ++
-            show tx ++ " duplicated in let body"
-          tassert (qualifier ty <: usage y e2) $
-            "Affine variable " ++ show y ++ " : " ++
-            show ty ++ " duplicated in let body"
-          (t2, e2') <- withVars (Var x =:= tx =+= Var y =:= ty) $ tc e2
-          return (t2, exLetPair (x, y) e1' e2')
-        _ -> fail $ "Let pair got non-pair type: " ++ show t1
     ExAbs x t e     -> do
       t' <- tcType t
-      tassert (qualifier t' <: usage x e) $
-        "Affine variable " ++ show x ++ " : " ++
-        show t' ++ " duplicated in lambda body"
-      (te, e') <- withVars (Var x =:= t') $ tc e
+      (gx, x') <- tcPatt t' x
+      checkSharing "lambda" gx e
+      (te, e') <- withVars gx $ tc e
       unworthy <- isUnworthy e0
       if unworthy
-        then return (tyLolT t' te, exAbs x t' e')
-        else return (tyArrT t' te, exAbs x t' e')
+        then return (tyLolT t' te, exAbs x' t' e')
+        else return (tyArrT t' te, exAbs x' t' e')
     ExApp e1 e2   -> case expr' e1 of
       _             -> do
         (t1, e1') <- tc e1
@@ -517,7 +489,7 @@ tcPatt t x0 = case x0 of
       "Pattern got " ++ show t ++ " where string expected"
     return (empty, PaStr s)
   PaInt z    -> do
-    tassert (tyinfo t == tdString) $
+    tassert (tyinfo t == tdInt) $
       "Pattern got " ++ show t ++ " where int expected"
     return (empty, PaInt z)
   PaAs x y   -> do

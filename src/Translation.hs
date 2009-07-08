@@ -51,9 +51,9 @@ transExpr menv neg = te where
     ExStr s -> exStr s
     ExInt z -> exInt z
     ExIf ec et ef -> exIf (te ec) (te et) (te ef)
-    ExCase e1 (xl, el) (xr, er) -> exCase (te e1)
-                                     (xl, tem (menv =-= xl) el)
-                                     (xr, tem (menv =-= xr) er)
+    ExCase e1 clauses -> exCase (te e1)
+                                [ (xi, tem (menv =--= pv xi) ei)
+                                | (xi, ei) <- clauses ]
     ExLet x e1 e2 -> exLet' x (te e1) (tem (menv =--= pv x) e2)
     ExLetRec bs e2 -> let rec  = tem (foldl (=-=) menv (map bnvar bs))
                       in exLetRec
@@ -61,9 +61,7 @@ transExpr menv neg = te where
                            | Binding x t e <- bs ]
                            (rec e2)
     ExPair e1 e2 -> exPair (te e1) (te e2)
-    ExLetPair (x, y) e1 e2 -> exLetPair (x, y) (te e1)
-                                (tem (menv =-= x =-= y) e2)
-    ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =-= x) e)
+    ExAbs x t e -> exAbs' x (type2ctype t) (tem (menv =--= pv x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs' tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
@@ -117,14 +115,14 @@ transCast neg e t' ta =
 -- negative party.
 ca :: Party -> Party -> Lid -> TypeT A -> ExprT C
 ca neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
-  exAbs' y (atype2ctype s1) $
+  exAbsVar' y (atype2ctype s1) $
     exLetVar' z (exApp (exVar x) (ac pos neg y s1)) $
       ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
 ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
   exLetVar' u createContract $
-    exAbs y (atype2ctype s1) $
+    exAbsVar' y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
         exLetVar' z (exApp (exVar x) (ac pos neg y s1)) $
           ca neg pos z s2
@@ -140,7 +138,7 @@ ca neg pos x (TyAll tv t) =
 ca neg _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise =
   exLetVar' u createContract $
-    exAbs' y tyUnitT $
+    exAbsVar' y tyUnitT $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exVar x
   where u = x /./ "u"
@@ -154,7 +152,7 @@ ca neg _   x ta | qualifier ta <: Qu = exVar x
 -- positive party.
 ac :: Party -> Party -> Lid -> TypeT A -> ExprT C
 ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
-  exAbs' y (atype2ctype s1) $
+  exAbsVar' y (atype2ctype s1) $
     exLetVar' z (exApp (exVar x) (ca pos neg y s1)) $
       ac neg pos z s2
   where y = x /./ "y"
@@ -180,14 +178,14 @@ ac _   _   x ta | qualifier ta <: Qu = exVar x
 -- This wrapper protects either party and may blame either party.
 cc :: Party -> Party -> Lid -> TypeT C -> ExprT C
 cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
-  exAbs' y s1 $
+  exAbsVar' y s1 $
     exLetVar' z (exApp (exVar x) (cc pos neg y s1)) $
       cc neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
 cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
   exLetVar' u createContract $
-    exAbs' y tyUnitT $
+    exAbsVar' y tyUnitT $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exApp (exVar x) exUnit
   where y = x /./ "y"
@@ -204,7 +202,7 @@ cc _   _   x _ = exVar x
 createContract :: ExprT C
 createContract = exApp (exTApp (exVar (Lid "#ref"))
                                (tyUnitT `tyArrT` tyUnitT))
-                       (exAbs (Lid "_") tyUnitT exUnit)
+                       (exAbs PaWild tyUnitT exUnit)
 
 -- Given a variable containing a reference cell, generate code
 -- to check it
@@ -219,7 +217,7 @@ checkContract x (Party who) what =
 -- Generate a function that raises blame
 blameFun :: String -> String -> ExprT C
 blameFun who what =
-  exAbs (Lid "_") tyUnitT $
+  exAbs PaWild tyUnitT $
     exApp (exApp (exVar (Lid "#blame"))
                  (exStr who))
           (exStr what)
@@ -257,13 +255,16 @@ exLetVar'  = exLet' . PaVar
 --    exAbs' x t (exApp (exVar f) (exVar x))  ==  exVar f
 --
 -- This eta-contraction is always safe, because f has no effect
-exAbs' :: Lid -> Type i w -> Expr i w -> Expr i w
+exAbs' :: Patt -> Type i w -> Expr i w -> Expr i w
 exAbs' x t e = case expr' e of
-  ExApp e1 e2 -> case (expr' e1, expr' e2) of
-    (ExId (Var f), ExId (Var x')) |
-      x == x' && x /= f -> exVar f
+  ExApp e1 e2 -> case (x, expr' e1, expr' e2) of
+    (PaVar y, ExId (Var f), ExId (Var y')) |
+      y == y' && y /= f -> exVar f
     _                   -> exAbs x t e
   _           -> exAbs x t e
+
+exAbsVar' :: Lid -> Type i w -> Expr i w -> Expr i w
+exAbsVar'  = exAbs' . PaVar
 
 -- Construct a type-lambda expression, but with a special case:
 --

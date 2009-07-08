@@ -145,11 +145,15 @@ valOf e env = case expr' e of
     case c of
       VaCon (Uid "true") _ -> valOf et env
       _                    -> valOf ef env
-  ExCase e1 (xl, el) (xr, er) -> do
+  ExCase e1 clauses -> do
     v1 <- valOf e1 env
-    case vprj v1 of
-      Left vl  -> valOf el (env =+= xl =::= vl)
-      Right vr -> valOf er (env =+= xr =::= vr)
+    let loop ((xi, ei):rest) = case bindPatt xi v1 env of
+          Just env' -> valOf ei env'
+          Nothing   -> loop rest
+        loop []              =
+          fail $ "Pattern match failure: " ++ show v1 ++
+                 " matches none of " ++ show (map fst clauses)
+    loop clauses
   ExLet x e1 e2          -> do
     v1   <- valOf e1 env
     env' <- bindPatt x v1 env
@@ -170,14 +174,9 @@ valOf e env = case expr' e of
     v1 <- valOf e1 env
     v2 <- valOf e2 env
     return (vinj (v1, v2))
-  ExLetPair (x, y) e1 e2 -> do
-    v1 <- valOf e1 env
-    let (vx, vy) = vprj v1
-    valOf e2 $ env =+= x =::= nameFun x vx
-                   =+= y =::= nameFun y vy
   ExAbs x _ e'           ->
     return (VaFun (FNAnonymous (ppr e))
-                  (\v -> valOf e' (env =+= x =::= v)))
+                  (\v -> bindPatt x v env >>= valOf e'))
   ExApp e1 e2            -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env
@@ -205,7 +204,7 @@ valOf e env = case expr' e of
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
-  PaVar lid    -> return (env =+= lid =:= return v)
+  PaVar lid    -> return (env =+= lid =:= return (lid `nameFun` v))
   PaCon uid mx -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
