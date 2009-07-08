@@ -28,7 +28,7 @@ module Syntax (
 
   PO(..),
 
-  tdUnit, tdBool, tdInt, tdString, tdEither, tdTuple, tdArr, tdLol,
+  tdUnit, tdBool, tdInt, tdString, tdTuple, tdArr, tdLol,
 
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
@@ -608,7 +608,7 @@ dualSessionType  = d where
   d t = t
 
 tdUnit, tdBool, tdInt, tdString,
-  tdArr, tdLol, tdTuple, tdEither :: TyTag
+  tdArr, tdLol, tdTuple :: TyTag
 
 tdUnit       = TyTag (-1)  []          []                True
 tdBool       = TyTag (-2)  []          []                True
@@ -617,7 +617,6 @@ tdString     = TyTag (-4)  []          []                True
 tdArr        = TyTag (-5)  [-1, 1]     []                False
 tdLol        = TyTag (-6)  [-1, 1]     [Right Qa]        False
 tdTuple      = TyTag (-7)  [1, 1]      [Left 0, Left 1]  False
-tdEither     = TyTag (-8)  [1, 1]      [Left 0, Left 1]  False
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:
