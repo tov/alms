@@ -50,7 +50,6 @@ transExpr menv neg = te where
       Var x -> transVar (reifyLang1 e0) menv neg x
     ExStr s -> exStr s
     ExInt z -> exInt z
-    ExIf ec et ef -> exIf (te ec) (te et) (te ef)
     ExCase e1 clauses -> exCase (te e1)
                                 [ (xi, tem (menv =--= pv xi) ei)
                                 | (xi, ei) <- clauses ]

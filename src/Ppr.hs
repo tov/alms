@@ -179,9 +179,10 @@ instance Ppr (Expr i w) where
     ExId x  -> pprPrec 0 x
     ExInt i -> integer i
     ExStr s -> text (show s)
-    ExIf ec et ef ->
+    ExCase e1 [ (PaCon (Uid "true")  Nothing, et),
+                (PaCon (Uid "false") Nothing, ef) ] ->
       parensIf (p > precDot) $
-        sep [ text "if" <+> pprPrec 0 ec,
+        sep [ text "if" <+> pprPrec 0 e1,
               nest 2 $ text "then" <+> pprPrec 0 et,
               nest 2 $ text "else" <+> pprPrec precDot ef ]
     ExCase e1 clauses ->

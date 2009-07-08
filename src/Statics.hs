@@ -212,15 +212,6 @@ tcExprC = tc where
       return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
-    ExIf e1 e2 e3 -> do
-      (t1, e1') <- tc e1
-      tassert (tyinfo t1 == tdBool) $
-        "If condition was " ++ show t1 ++ " where bool expected"
-      (t2, e2') <- tc e2
-      (t3, e3') <- tc e3
-      tassert (t2 == t3) $
-        "Mismatch in if: " ++ show t2 ++ " /= " ++ show t3
-      return (t2, exIf e1' e2' e3')
     ExCase e1 clauses -> do
       (t1, e1') <- tc e1
       (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
@@ -324,15 +315,6 @@ tcExprA = tc where
       return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
-    ExIf e1 e2 e3 -> do
-      (t1, e1') <- tc e1
-      tassert (tyinfo t1 == tdBool) $
-        "If condition was " ++ show t1 ++ " where bool expected"
-      (t2, e2') <- tc e2
-      (t3, e3') <- tc e3
-      t <- t2 \/? t3
-        |! "Mismatch in if: " ++ show t2 ++ " and " ++ show t3
-      return (t, exIf e1' e2' e3')
     ExCase e1 clauses -> do
       (t1, e1') <- tc e1
       (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do

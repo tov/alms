@@ -20,7 +20,7 @@ module Syntax (
 
   Expr(), ExprT, Expr'(..), expr',
   fv,
-  exId, exStr, exInt, exIf, exCase, exLet, exLetRec, exPair,
+  exId, exStr, exInt, exCase, exLet, exLetRec, exPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast, exUnroll,
   exVar, exCon,
   Binding(..), BindingT, Patt(..),
@@ -154,7 +154,6 @@ type FV       = M.Map Lid Integer
 data Expr' i w = ExId Ident
                | ExStr String
                | ExInt Integer
-               | ExIf (Expr i w) (Expr i w) (Expr i w)
                | ExCase (Expr i w) [(Patt, Expr i w)]
                | ExLet Patt (Expr i w) (Expr i w)
                | ExLetRec [Binding i w] (Expr i w)
@@ -210,12 +209,6 @@ exStr  = Expr M.empty . ExStr
 
 exInt :: Integer -> Expr i w
 exInt  = Expr M.empty . ExInt
-
-exIf  :: Expr i w -> Expr i w -> Expr i w -> Expr i w
-exIf ec et ef = Expr {
-  fv_    = fv ec |*| (fv et |+| fv ef),
-  expr'_ = ExIf ec et ef
-}
 
 exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
 exCase e clauses = Expr {

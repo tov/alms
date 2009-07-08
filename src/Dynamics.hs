@@ -140,11 +140,6 @@ valOf e env = case expr' e of
   ExId (Con c)           -> return (VaCon c Nothing)
   ExStr s                -> return (vinj s)
   ExInt z                -> return (vinj z)
-  ExIf ec et ef         -> do
-    c <- valOf ec env
-    case c of
-      VaCon (Uid "true") _ -> valOf et env
-      _                    -> valOf ef env
   ExCase e1 clauses -> do
     v1 <- valOf e1 env
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
