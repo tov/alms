@@ -185,6 +185,8 @@ instance Ppr (Expr i w) where
         sep [ text "if" <+> pprPrec 0 e1,
               nest 2 $ text "then" <+> pprPrec 0 et,
               nest 2 $ text "else" <+> pprPrec precDot ef ]
+    ExCase e1 [ (x, e2) ] ->
+      pprLet p (pprPrec 0 x) e1 e2
     ExCase e1 clauses ->
       parensIf (p > precDot) $
         vcat (sep [ text "match", nest 2 $ pprPrec 0 e1, text "with" ]
@@ -195,8 +197,6 @@ instance Ppr (Expr i w) where
                   text "->")
                   4
                   (pprPrec precDot ei)
-    ExLet x e1 e2 ->
-      pprLet p (pprPrec 0 x) e1 e2
     ExLetRec bs e2 ->
       text "let" <+>
       vcat (zipWith each ("rec" : repeat "and") bs) $$
@@ -253,8 +253,8 @@ pprLet p pat e1 e2 = parensIf (p > precDot) $
        (pprPrec precDot e2)
   where
     (args, body) = unfoldExAbs e1
-    isLet (ExLet _ _ _)     = True
-    isLet _                 = False
+    isLet (ExCase _ [_]) = True
+    isLet _              = False
 
 pprAbs :: Int -> Expr i w -> Doc
 pprAbs p e = parensIf (p > precDot) $

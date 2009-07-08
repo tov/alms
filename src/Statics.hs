@@ -220,13 +220,8 @@ tcExprC = tc where
         return (ti, (xi', ei'))
       forM_ tis $ \ti' ->
         tassert (ti == ti') $
-          "Mismatch in case: " ++ show ti ++ " /= " ++ show ti'
+          "Mismatch in match/let: " ++ show ti ++ " /= " ++ show ti'
       return (ti, exCase e1' clauses')
-    ExLet x e1 e2 -> do
-      (t1, e1') <- tc e1
-      (gx, x')  <- tcPatt t1 x
-      (t2, e2') <- withVars gx $ tc e2
-      return (t2, exLet x' e1' e2')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
@@ -324,15 +319,10 @@ tcExprA = tc where
         return (ti, (xi', ei'))
       foldM (\t2 t3 -> do
                t2 \/? t3
-                 |! "Mismatch in case: " ++ show t2 ++ " and " ++ show t3)
+                 |! "Mismatch in match/let: " ++ show t2 ++
+                    " and " ++ show t3)
             ti tis
       return (ti, exCase e1' clauses')
-    ExLet x e1 e2 -> do
-      (t1, e1') <- tc e1
-      (gx, x')  <- tcPatt t1 x
-      checkSharing "let" gx e2
-      (t2, e2') <- withVars gx $ tc e2
-      return (t2, exLet x' e1' e2')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do

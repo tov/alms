@@ -149,10 +149,6 @@ valOf e env = case expr' e of
           fail $ "Pattern match failure: " ++ show v1 ++
                  " matches none of " ++ show (map fst clauses)
     loop clauses
-  ExLet x e1 e2          -> do
-    v1   <- valOf e1 env
-    env' <- bindPatt x v1 env
-    valOf e2 $ env'
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")

@@ -20,9 +20,9 @@ module Syntax (
 
   Expr(), ExprT, Expr'(..), expr',
   fv,
-  exId, exStr, exInt, exCase, exLet, exLetRec, exPair,
+  exId, exStr, exInt, exCase, exLetRec, exPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast, exUnroll,
-  exVar, exCon,
+  exVar, exCon, exLet,
   Binding(..), BindingT, Patt(..),
   pv,
 
@@ -155,7 +155,6 @@ data Expr' i w = ExId Ident
                | ExStr String
                | ExInt Integer
                | ExCase (Expr i w) [(Patt, Expr i w)]
-               | ExLet Patt (Expr i w) (Expr i w)
                | ExLetRec [Binding i w] (Expr i w)
                | ExPair (Expr i w) (Expr i w)
                | ExAbs Patt (Type i w) (Expr i w)
@@ -215,12 +214,6 @@ exCase e clauses = Expr {
   fv_    = fv e |*|
            foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
   expr'_ = ExCase e clauses
-}
-
-exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
-exLet x e1 e2 = Expr {
-  fv_    = fv e1 |*| (fv e2 |--| pv x),
-  expr'_ = ExLet x e1 e2
 }
 
 exLetRec :: [Binding i w] -> Expr i w -> Expr i w
@@ -293,6 +286,9 @@ exVar  = exId . Var
 
 exCon :: Uid -> Expr i w
 exCon  = exId . Con
+
+exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
+exLet x e1 e2 = exCase e1 [(x, e2)]
 
 (|*|), (|+|) :: FV -> FV -> FV
 (|*|) = M.unionWith (+)

@@ -238,7 +238,7 @@ exprp = expr0 where
                 return (exLetRec bs e2),
              do x    <- pattp
                 args <- argsp
-                finishLet (exLet x . args) ],
+                finishLet (\rhs body -> exCase rhs [(x, args body)]) ],
       do reserved "if"
          ec <- expr0
          reserved "then"
