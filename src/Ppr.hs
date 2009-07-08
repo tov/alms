@@ -179,24 +179,30 @@ instance Ppr (Expr i w) where
     ExId x  -> pprPrec 0 x
     ExInt i -> integer i
     ExStr s -> text (show s)
-    ExCase e1 [ (PaCon (Uid "true")  Nothing, et),
-                (PaCon (Uid "false") Nothing, ef) ] ->
-      parensIf (p > precDot) $
-        sep [ text "if" <+> pprPrec 0 e1,
-              nest 2 $ text "then" <+> pprPrec 0 et,
-              nest 2 $ text "else" <+> pprPrec precDot ef ]
-    ExCase e1 [ (x, e2) ] ->
-      pprLet p (pprPrec 0 x) e1 e2
     ExCase e1 clauses ->
-      parensIf (p > precDot) $
-        vcat (sep [ text "match", nest 2 $ pprPrec 0 e1, text "with" ]
-              : map alt clauses)
-        where
-          alt (xi, ei) =
-            hang (char '|' <+> pprPrec precDot xi <+>
-                  text "->")
-                  4
-                  (pprPrec precDot ei)
+      case clauses of
+        [ (PaCon (Uid "true")  Nothing, et),
+          (PaCon (Uid "false") Nothing, ef) ] ->
+            parensIf (p > precDot) $
+              sep [ text "if" <+> pprPrec 0 e1,
+                    nest 2 $ text "then" <+> pprPrec 0 et,
+                    nest 2 $ text "else" <+> pprPrec precDot ef ]
+        [ (PaWild, e2) ] ->
+            parensIf (p > precSemi) $
+              sep [ pprPrec (precSemi + 1) e1 <> semi,
+                    pprPrec 0 e2 ]
+        [ (x, e2) ] ->
+            pprLet p (pprPrec 0 x) e1 e2
+        _ ->
+            parensIf (p > precDot) $
+              vcat (sep [ text "match",
+                          nest 2 $ pprPrec 0 e1,
+                          text "with" ] : map alt clauses)
+            where
+              alt (xi, ei) =
+                hang (char '|' <+> pprPrec precDot xi <+> text "->")
+                      4
+                      (pprPrec precDot ei)
     ExLetRec bs e2 ->
       text "let" <+>
       vcat (zipWith each ("rec" : repeat "and") bs) $$
@@ -226,10 +232,6 @@ instance Ppr (Expr i w) where
                 map (pprPrec precCom) args ]
       where 
         (args, op) = unfoldExTApp e0
-    ExSeq e1 e2 ->
-      parensIf (p > precSemi) $
-        sep [ pprPrec (precSemi + 1) e1 <> semi,
-              pprPrec 0 e2 ]
     ExCast e t1 t2 ->
       parensIf (p > precCast) $
         sep [ pprPrec (precCast + 2) e,

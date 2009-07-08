@@ -63,7 +63,6 @@ transExpr menv neg = te where
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs' tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
-    ExSeq e1 e2 -> exSeq (te e1) (te e2)
     ExCast e1 t ta -> transCast neg (te e1) t ta
     ExUnroll e -> exUnroll (te e)
 

@@ -186,9 +186,6 @@ valOf e env = case expr' e of
       VaSus _ f -> f
       VaCon _ _ -> return v'
       _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
-  ExSeq e1 e2            -> do
-    valOf e1 env
-    valOf e2 env
   ExCast e1 _ _          ->
     valOf e1 env
   ExUnroll e1            ->

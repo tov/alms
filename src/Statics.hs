@@ -278,10 +278,6 @@ tcExprC = tc where
       case t1 of
         TyAll tv t1' -> return (tysubst tv t2' t1', exTApp e1' t2')
         _            -> tgot "type application" t1 "(for)all type"
-    ExSeq e1 e2   -> do
-      (_,  e1') <- tc e1
-      (t2, e2') <- tc e2
-      return (t2, exSeq e1' e2')
     ExCast e1 t ta -> do
       t'  <- tcType t
       ta' <- intoA $ tcType ta
@@ -391,10 +387,6 @@ tcExprA = tc where
             " type for type variable " ++ show tv
           return (tysubst tv t2' t1', exTApp e1' t2')
         _            -> tgot "type application" t1 "(for)all type"
-    ExSeq e1 e2   -> do
-      (_,  e1') <- tc e1
-      (t2, e2') <- tc e2
-      return (t2, exSeq e1' e2')
     ExCast e1 t ta -> do
       t'  <- tcType t
       ta' <- tcType ta

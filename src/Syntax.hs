@@ -21,8 +21,8 @@ module Syntax (
   Expr(), ExprT, Expr'(..), expr',
   fv,
   exId, exStr, exInt, exCase, exLetRec, exPair,
-  exAbs, exApp, exTAbs, exTApp, exSeq, exCast, exUnroll,
-  exVar, exCon, exLet,
+  exAbs, exApp, exTAbs, exTApp, exCast, exUnroll,
+  exVar, exCon, exLet, exSeq, -- <== synthetic
   Binding(..), BindingT, Patt(..),
   pv,
 
@@ -161,7 +161,6 @@ data Expr' i w = ExId Ident
                | ExApp (Expr i w) (Expr i w)
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
-               | ExSeq (Expr i w) (Expr i w)
                | ExCast (Expr i w) (Type i w) (Type i A)
                | ExUnroll (Expr i w)
 
@@ -263,12 +262,6 @@ exTApp e1 t2 = Expr {
   expr'_ = ExTApp e1 t2
 }
 
-exSeq :: Expr i w -> Expr i w -> Expr i w
-exSeq e1 e2 = Expr {
-  fv_    = fv e1 |*| fv e2,
-  expr'_ = ExSeq e1 e2
-}
-
 exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
   fv_    = fv e,
@@ -289,6 +282,9 @@ exCon  = exId . Con
 
 exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
 exLet x e1 e2 = exCase e1 [(x, e2)]
+
+exSeq :: Expr i w -> Expr i w -> Expr i w
+exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 
 (|*|), (|+|) :: FV -> FV -> FV
 (|*|) = M.unionWith (+)

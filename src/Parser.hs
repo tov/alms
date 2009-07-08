@@ -271,7 +271,7 @@ exprp = expr0 where
              choice
                [ do semi
                     e2 <- expr0
-                    return (exSeq e1 e2),
+                    return (exCase e1 [(PaWild, e2)]),
                  return e1 ]
   expr9 = choice
     [ do
