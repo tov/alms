@@ -238,7 +238,7 @@ exprp = expr0 where
                 return (exLetRec bs e2),
              do x    <- pattp
                 args <- argsp
-                finishLet (\rhs body -> exCase rhs [(x, args body)]) ],
+                finishLet (exLet x . args) ],
       do reserved "if"
          ec <- expr0
          reserved "then"
@@ -271,7 +271,7 @@ exprp = expr0 where
              choice
                [ do semi
                     e2 <- expr0
-                    return (exCase e1 [(PaWild, e2)]),
+                    return (exSeq e1 e2),
                  return e1 ]
   expr9 = choice
     [ do
