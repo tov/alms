@@ -11,7 +11,7 @@ import Translation (translate, transDecls, MEnvT)
 import Dynamics (eval, evalDecls, E)
 import Basis (basis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Ident(..), Prog, ProgT, Decl(..), DeclT, Mod(..),
+import Syntax (Prog, ProgT, Decl(..), DeclT, Mod(..),
                prog2decls, modName)
 import Env (empty, (=.=), (=-=))
 
@@ -194,14 +194,14 @@ interactive opt g0 e0 = do
       dispatch :: (ReplState, [Doc]) -> Decl i -> IO (ReplState, [Doc])
       dispatch (rs, docs) (DcMod m) = do
         let e = rsDynamics rs
-        mv   <- case e =.= Var (modName m) of
+        mv   <- case e =.= modName m of
                   Nothing -> return Nothing
                   Just v  -> Just `fmap` v
         let doc = case m of
                     MdC x t _   -> val "C" x t mv
                     MdA x t _   -> val "A" x t mv
                     MdInt x t _ -> val "A" x (Just t) mv
-        return (rs { rsDynamics = e =-= Var (modName m) }, doc : docs)
+        return (rs { rsDynamics = e =-= modName m }, doc : docs)
       dispatch (rs, docs) (DcTyp td) = return (rs, ppr td : docs)
       val :: (Ppr x, Ppr t, Ppr v) =>
              String -> x -> Maybe t -> Maybe v -> Doc

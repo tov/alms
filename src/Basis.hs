@@ -41,18 +41,14 @@ basis  = [
     --- name    -:: *type            -= value
 
     -- Primitive types:
-    "unit"   `primtype` tdUnit,
-    "bool"   `primtype` tdBool,
+    -- "unit" built in
+    -- "bool" built in
     "int"    `primtype` tdInt,
     "string" `primtype` tdString,
 
     "*"    `primtype` tdTuple,
     "->"   `primtype` tdArr,
     "-o"   `primtype` tdLol,
-
-    -- Booleans
-    val "true"  -:: "bool" -= True,
-    val "false" -:: "bool" -= False,
 
     -- Sums
     "either" `primtype` tdEither,

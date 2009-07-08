@@ -4,6 +4,8 @@ module Statics (
   addVal, addTyTag
 ) where
 
+import System.IO.Unsafe
+
 import Util
 import Syntax
 import Env as Env
@@ -25,11 +27,12 @@ usage x e = case M.lookup x (fv e) of
 -- Type constructors are bound to either "type info" or a synonym
 data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeT w)
+              | TiDat TyTag (M.Map Uid (Maybe (TypeT w)))
 
 -- Type environments
 type D   = S.Set TyVar         -- tyvars in scope
+type G w = Env Ident (TypeT w) -- types of variables in scope
 type I w = Env Lid (TyInfo w)  -- type constructors in scope
-type G w = Env Lid (TypeT w)   -- types of variables in scope
 
 data S   = S {
              cVars   :: G C,
@@ -128,12 +131,12 @@ checkTV tv = TC $ asksM check where
   check (TCEnv _ _ (d, _)) = tassert (S.member tv d) $
                                "Free type variable: " ++ show tv
 
-getVar :: Monad m => Lid -> TC w m (TypeT w)
+getVar :: Monad m => Ident -> TC w m (TypeT w)
 getVar x = TC $ asksM get where
   get (TCEnv (g, _) _ _) = g =.= x
     |! "Unbound variable: " ++ show x
 
-tryGetVar :: Monad m => Lid -> TC w m (Maybe (TypeT w))
+tryGetVar :: Monad m => Ident -> TC w m (Maybe (TypeT w))
 tryGetVar x = TC $ asksM get where
   get (TCEnv (g, _) _ _) = return (g =.= x)
 
@@ -185,6 +188,9 @@ tcType = tc where
         return .
           substs ps' ts' .
             substs ps (map TyVar ps') $ t
+      TiDat td _ -> do
+        checkLength (length (tdArity td))
+        return (TyCon n ts' td)
     where
       checkLength len =
         tassert (length ts == len) $
@@ -201,13 +207,13 @@ tcExprC :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
 tcExprC = tc where
   tc :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
   tc e0 = case expr' e0 of
-    ExId (Con (Uid "()"))  -> return (tyUnitT, exCon (Uid "()"))
-    ExId (Con (Uid s))
-      | s `elem` constants -> fail $ "Constant must be applied: " ++ s
-      | otherwise          -> fail $ "Unrecognized constant: " ++ s
-    ExId (Var x)  -> do
+    -- XXX -- ExId (Con (Uid "()"))  -> return (tyUnitT, exCon (Uid "()"))
+    -- ExId (Con (Uid s))
+      -- | s `elem` constants -> fail $ "Constant must be applied: " ++ s
+      -- | otherwise          -> fail $ "Unrecognized constant: " ++ s
+    ExId x -> do
       tx <- getVar x
-      return (tx, exVar x)
+      return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
     ExIf e1 e2 e3 -> do
@@ -223,15 +229,15 @@ tcExprC = tc where
       (t1, e1') <- tc e1
       case t1 of
         TyCon (Lid "either") [txl, txr] td | td == tdEither -> do
-          (tl, el') <- withVars (xl =:= txl) $ tc el
-          (tr, er') <- withVars (xr =:= txr) $ tc er
+          (tl, el') <- withVars (Var xl =:= txl) $ tc el
+          (tr, er') <- withVars (Var xr =:= txr) $ tc er
           tassert (tl == tr) $
             "Mismatch in match: " ++ show tl ++ " /= " ++ show tr
           return (tl, exCase e1' (xl, el') (xr, er'))
         _ -> tgot "match" t1 "('a, 'b) either"
     ExLet x e1 e2 -> do
       (t1, e1') <- tc e1
-      (t2, e2') <- withVars (x =:= t1) $ tc e2
+      (t2, e2') <- withVars (Var x =:= t1) $ tc e2
       return (t2, exLet x e1' e2')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
@@ -241,7 +247,7 @@ tcExprC = tc where
             tassert (syntacticValue (bnexpr b)) $
               "Not a syntactic value in let rec: " ++ show (bnexpr b)
             g' <- makeG (bnvar b : seen) bs' ts'
-            return (g' =+= bnvar b =:= t)
+            return (g' =+= Var (bnvar b) =:= t)
           makeG _    _       _       = return empty
       g'  <- makeG [] bs tfs
       (tas, e's) <- unzip `liftM` mapM (withVars g' . tc . bnexpr) bs
@@ -265,18 +271,18 @@ tcExprC = tc where
       case t1 of
         TyCon (Lid "*") [tx, ty] td | td == tdTuple
           -> do
-               (t2, e2') <- withVars (x =:= tx =+= y =:= ty) $ tc e2
+               (t2, e2') <- withVars (Var x =:= tx =+= Var y =:= ty) $ tc e2
                return (t2, exLetPair (x, y) e1' e2')
         _ -> tgot "let" t1 "pair type"
     ExAbs x t e     -> do
       t' <- tcType t
-      (te, e') <- withVars (x =:= t') $ tc e
+      (te, e') <- withVars (Var x =:= t') $ tc e
       return (tyArrT t' te, exAbs x t' e')
     ExApp e1 e2   -> case expr' e1 of
-      ExId (Con u)  -> do
-        (t2, e2') <- tc e2
-        t         <- tcCon u t2
-        return (t, exApp (exCon u) e2')
+      -- XXX -- ExId (Con u)  -> do
+        -- (t2, e2') <- tc e2
+        -- t         <- tcCon u t2
+        -- return (t, exApp (exCon u) e2')
       _             -> do
         (t1, e1') <- tc e1
         (t2, e2') <- tc e2
@@ -324,13 +330,13 @@ tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
   tc :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
   tc e0 = case expr' e0 of
-    ExId (Con (Uid "()"))  -> return (tyUnitT, exCon (Uid "()"))
-    ExId (Con (Uid s))
-      | s `elem` constants -> fail $ "Constant must be applied: " ++ s
-      | otherwise          -> fail $ "Unrecognized constant: " ++ s
-    ExId (Var x)  -> do
+    -- XXX -- ExId (Con (Uid "()"))  -> return (tyUnitT, exCon (Uid "()"))
+    -- ExId (Con (Uid s))
+      -- | s `elem` constants -> fail $ "Constant must be applied: " ++ s
+      -- | otherwise          -> fail $ "Unrecognized constant: " ++ s
+    ExId x -> do
       tx <- getVar x
-      return (tx, exVar x)
+      return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
     ExIf e1 e2 e3 -> do
@@ -352,8 +358,8 @@ tcExprA = tc where
           tassert (qualifier txr <: usage xr er) $
             "Affine variable " ++ show xr ++ " : " ++
             show txr ++ " duplicated in match body"
-          (tl, el') <- withVars (xl =:= txl) $ tc el
-          (tr, er') <- withVars (xr =:= txr) $ tc er
+          (tl, el') <- withVars (Var xl =:= txl) $ tc el
+          (tr, er') <- withVars (Var xr =:= txr) $ tc er
           t <- tl \/? tr
             |! "Mismatch in match: " ++ show tl ++ " and " ++ show tr
           return (t, exCase e1' (xl, el') (xr, er'))
@@ -363,7 +369,7 @@ tcExprA = tc where
       tassert (qualifier t1 <: usage x e2) $
         "Affine variable " ++ show x ++ " : " ++
         show t1 ++ " duplicated in let body"
-      (t2, e2') <- withVars (x =:= t1) $ tc e2
+      (t2, e2') <- withVars (Var x =:= t1) $ tc e2
       return (t2, exLet x e1' e2')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
@@ -375,7 +381,7 @@ tcExprA = tc where
             tassert (qualifier t <: Qu) $
               "Affine type in let rec binding: " ++ show t
             g' <- makeG (bnvar b : seen) bs' ts'
-            return (g' =+= bnvar b =:= t)
+            return (g' =+= Var (bnvar b) =:= t)
           makeG _    _       _       = return empty
       g'  <- makeG [] bs tfs
       (tas, e's) <- unzip `liftM` mapM (withVars g' . tc . bnexpr) bs
@@ -405,7 +411,7 @@ tcExprA = tc where
           tassert (qualifier ty <: usage y e2) $
             "Affine variable " ++ show y ++ " : " ++
             show ty ++ " duplicated in let body"
-          (t2, e2') <- withVars (x =:= tx =+= y =:= ty) $ tc e2
+          (t2, e2') <- withVars (Var x =:= tx =+= Var y =:= ty) $ tc e2
           return (t2, exLetPair (x, y) e1' e2')
         _ -> fail $ "Let pair got non-pair type: " ++ show t1
     ExAbs x t e     -> do
@@ -413,16 +419,16 @@ tcExprA = tc where
       tassert (qualifier t' <: usage x e) $
         "Affine variable " ++ show x ++ " : " ++
         show t' ++ " duplicated in lambda body"
-      (te, e') <- withVars (x =:= t') $ tc e
+      (te, e') <- withVars (Var x =:= t') $ tc e
       unworthy <- isUnworthy e0
       if unworthy
         then return (tyLolT t' te, exAbs x t' e')
         else return (tyArrT t' te, exAbs x t' e')
     ExApp e1 e2   -> case expr' e1 of
-      ExId (Con u)  -> do
-        (t2, e2') <- tc e2
-        t         <- tcCon u t2
-        return (t, exApp (exCon u) e2')
+      -- XXX -- ExId (Con u)  -> do
+        -- (t2, e2') <- tc e2
+        -- t         <- tcCon u t2
+        -- return (t, exApp (exCon u) e2')
       _             -> do
         (t1, e1') <- tc e1
         (t2, e2') <- tc e2
@@ -474,12 +480,13 @@ tcExprA = tc where
 
   isUnworthy e =
     anyM (\x -> do
-           mtx <- tryGetVar x
+           mtx <- tryGetVar (Var x)
            return $ case mtx of
              Just tx -> qualifier tx == Qa
              Nothing -> False)
          (M.keys (fv e))
 
+{- XXX
 tcCon         :: (Monad m, Language w) =>
                  Uid -> TypeT w -> TC w m (TypeT w)
 tcCon (Uid "unroll") t0 = do
@@ -500,6 +507,7 @@ tcCon (Uid "unroll") t0 = do
     tc _             = Nothing
 tcCon (Uid "()") _ = fail $ "Applied 0 arity constant: ()"
 tcCon (Uid s)    _ = fail $ "Unrecognized constant: " ++ s
+-}
 
 -- Given a list of type variables tvs, an type t in which tvs
 -- may be free, and a type t', tries to substitute for tvs in t
@@ -573,6 +581,119 @@ withTyDec (TdSynA name params rhs) k = intoA $ do
   t' <- withTVs params $ tcType rhs
   withTypes (name =:= TiSyn params t')
     (outofA . k $ TdSynA name params rhs)
+withTyDec (TdDatC name params alts) k = intoC $ do
+  index <- newIndex
+  let tag = TyTag {
+              tdId    = index,
+              tdArity = map (const Invariant) params,
+              tdQual  = [],
+              tdTrans = False
+            }
+  alts' <- withTVs params $
+    withTypes (name =:= TiDat tag M.empty) $
+      sequence
+        [ case mt of
+            Nothing -> return (cons, Nothing)
+            Just t  -> do
+              t' <- tcType t
+              return (cons, Just t')
+        | (cons, mt) <- alts ]
+  withTypes (name =:= TiDat tag (M.fromList alts')) $
+    withVars (alts2env name params tag alts') $
+      (outofC . k $ TdDatC name params alts)
+withTyDec (TdDatA name params alts) k = intoA $ do
+  index <- newIndex
+  let tag0 = TyTag {
+               tdId    = index,
+               tdArity = map (const 0) params,
+               tdQual  = [],
+               tdTrans = False
+             }
+  (tag, alts') <- fixDataType name params alts tag0
+  unsafePerformIO $ do
+    print tag
+    return $
+      withTypes (name =:= TiDat tag (M.fromList alts')) $
+        withVars (alts2env name params tag alts') $
+          (outofA . k $ TdDatA name params alts)
+
+fixDataType :: Monad m =>
+               Lid -> [TyVar] -> [(Uid, Maybe (Type () A))] ->
+               TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
+fixDataType name params alts = loop where
+  loop :: Monad m => TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
+  loop tag = do
+    alts' <- withTVs params $
+      withTypes (name =:= TiDat tag M.empty) $
+        sequence
+          [ case mt of
+              Nothing -> return (k, Nothing)
+              Just t  -> do
+                t' <- tcType t
+                return (k, Just t')
+          | (k, mt) <- alts ]
+    let t'    = foldl tyTupleT tyUnitT [ t | (_, Just t) <- alts' ]
+        arity = typeVariances params t'
+        qual  = typeQual params t'
+    if arity == tdArity tag && qual == tdQual tag
+      then return (tag, alts')
+      else loop tag {
+             tdArity = arity,
+             tdQual  = qual
+           }
+
+alts2env :: Lid -> [TyVar] -> TyTag -> [(Uid, Maybe (TypeT w))] -> G w
+alts2env name params tag = fromList . map each where
+  each (uid, Nothing) = (Con uid, alls result)
+  each (uid, Just t)  = (Con uid, alls (t `tyArrT` result))
+  alls t              = foldr TyAll t params
+  result              = TyCon name (map TyVar params) tag
+
+typeVariances :: [TyVar] -> TypeT A -> [Variance]
+typeVariances d0 = finish . loop where
+  finish m = [ maybe 0 id (M.lookup tv m)
+             | tv <- d0 ]
+
+  loop :: TypeT A -> M.Map TyVar Variance
+  loop (TyCon _ ts info)
+                    = M.unionsWith (\/)
+                        (zipWith
+                          (\t v -> M.map (* v) (loop t))
+                          ts
+                          (tdArity info))
+  loop (TyVar tv)   = M.singleton tv 1
+  loop (TyAll tv t) = M.delete tv (loop t)
+  loop (TyMu tv t)  = M.delete tv (loop t)
+  loop (TyC t)      = loopC t
+  loop _            = error "Can't get TyA here"
+
+  loopC :: TypeT C -> M.Map TyVar Variance
+  loopC (TyCon _ ps _) = M.unionsWith (\/) (map loopC ps)
+  loopC (TyVar _)      = M.empty
+  loopC (TyAll _ t)    = loopC t
+  loopC (TyMu _ t)     = loopC t
+  loopC (TyA t)        = M.map (const Invariant) (loop t)
+  loopC _              = error "Can't get TyC here"
+
+typeQual :: [TyVar] -> TypeT A -> [Either Int Q]
+typeQual d0 = finish . loop where
+  finish es = [ e | Just e <-
+                  [ case e of
+                      Right q -> Just (Right q)
+                      Left tv -> fmap Left (elemIndex tv d0)
+                  | e <- S.toList es ] ]
+
+  loop :: TypeT A -> S.Set (Either TyVar Q)
+  loop (TyCon _ ts info)
+                    = S.unions
+                        [ case qual of
+                            Right q -> S.singleton (Right q)
+                            Left i  -> loop (ts !! i)
+                        | qual <- tdQual info ]
+  loop (TyVar tv)   = S.singleton (Left tv)
+  loop (TyAll tv t) = S.delete (Left tv) (loop t)
+  loop (TyMu tv t)  = S.delete (Left tv) (loop t)
+  loop _            = S.empty
 
 withMod :: (Language w, Monad m) =>
          Mod i -> (ModT -> TC w m a) -> TC w m a
@@ -586,9 +707,9 @@ withMod (MdC x mt e) k = intoC $ do
         " doesn't match actual type " ++ show te
       return t'
     Nothing -> return te
-  withVars (x =:= t') .
+  withVars (Var x =:= t') .
     intoA .
-      withVars (x =:= ctype2atype t') .
+      withVars (Var x =:= ctype2atype t') .
         outofA .
           k $ MdC x (Just t') e'
 withMod (MdA x mt e) k = intoA $ do
@@ -606,21 +727,21 @@ withMod (MdA x mt e) k = intoA $ do
       tassert (qualifier te == Qu) $
         "Type of module " ++ show x ++ " is not unlimited"
       return te
-  withVars (x =:= t') .
+  withVars (Var x =:= t') .
     intoC .
-      withVars (x =:= atype2ctype t') .
+      withVars (Var x =:= atype2ctype t') .
         outofC .
           k $ MdA x (Just t') e'
 withMod (MdInt x t y) k = do
-  ty <- intoC $ getVar y
+  ty <- intoC $ getVar (Var y)
   t' <- intoA $ tcType t
   tassert (ty == atype2ctype t') $
     "Declared type of interface " ++ show x ++ " :> " ++
     show t' ++ " not compatible with RHS type: " ++ show ty
   intoA .
-    withVars (x =:= t') .
+    withVars (Var x =:= t') .
       intoC .
-        withVars (x =:= atype2ctype t') .
+        withVars (Var x =:= atype2ctype t') .
           outofC .
             k $ MdInt x t' y
 
@@ -642,7 +763,7 @@ tcDecls gg ds = runTC gg $
                     return (gg', ds')
 
 -- For adding types of primitives to the environment
-addVal :: (Language w, Monad m) => S -> Lid -> Type i w -> m S
+addVal :: (Language w, Monad m) => S -> Ident -> Type i w -> m S
 addVal gg x t = runTC gg $ do
   t' <- tcType t
   withVars (x =:= t') saveTC
@@ -663,4 +784,16 @@ tcProg gg (Prog ds e) =
       return (t, Prog ds' e')
 
 env0 :: S
-env0 = S empty empty empty empty 0
+env0 = S g0 g0 i0 i0 0 where
+  g0 :: G w
+  g0  = Con (Uid "()")    =:= tyUnitT =+=
+        Con (Uid "true")  =:= tyBoolT =+=
+        Con (Uid "false") =:= tyBoolT
+  i0 :: I w
+  i0  = Lid "unit" =:= TiDat tdUnit (M.fromList [
+          (Uid "()",    Nothing)
+        ]) =+=
+        Lid "bool" =:= TiDat tdBool (M.fromList [
+          (Uid "true",  Nothing),
+          (Uid "false", Nothing)
+        ])

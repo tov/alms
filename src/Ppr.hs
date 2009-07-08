@@ -137,6 +137,26 @@ instance Ppr (TyDec i) where
          2
          (equals <+>
           pprPrec 0 rhs)
+  pprPrec _ (TdDatC n ps alts) =
+    hang (text "type[C]" <?>
+          delimList parens comma (map ppr ps) <+>
+          ppr n)
+         2
+         (pprAlternatives alts)
+  pprPrec _ (TdDatA n ps alts) =
+    hang (text "type[A]" <?>
+          delimList parens comma (map ppr ps) <+>
+          ppr n)
+         2
+         (pprAlternatives alts)
+
+pprAlternatives :: [(Uid, Maybe (Type i w))] -> Doc
+pprAlternatives [] = equals
+pprAlternatives (a:as) = sep $
+  equals <+> alt a : [ char '|' <+> alt a' | a' <- as ]
+  where
+    alt (Uid s, Nothing) = text s
+    alt (Uid s, Just t)  = text s <+> text "of" <+> pprPrec precDot t
 
 delimList :: (Doc -> Doc) -> Doc -> [Doc] -> Doc
 delimList around delim ds = case ds of

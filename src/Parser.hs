@@ -28,6 +28,9 @@ delimList before around delim each =
     return []
   ]
 
+uidp :: P Uid
+uidp  = uid >>! Uid
+
 lidp :: P Lid
 lidp  = lid >>! Lid
 
@@ -119,15 +122,17 @@ tyDecp  = do
     LC -> choice [
       do
         reservedOp "="
-        rhs <- typep
-        return (TdSynC name tvs rhs),
+        choice [
+          altsp >>! TdDatC name tvs,
+          typep >>! TdSynC name tvs ],
       do
         return (TdAbsC name tvs) ]
     LA -> choice [
       do
         reservedOp "="
-        rhs <- typep
-        return (TdSynA name tvs rhs),
+        choice [
+          altsp >>! TdDatA name tvs,
+          typep >>! TdSynA name tvs ],
       do
         quals <- delimList (reserved "qualifier") parens (symbol "\\/") qualp
         return (TdAbsA name tvs variances quals) ]
@@ -148,6 +153,15 @@ tyDecp  = do
     litqualp = choice
       [ qualU    >> return Qu,
         qualA    >> return Qa ]
+    altsp :: Language w => P [(Uid, Maybe (Type () w))]
+    altsp  = sepBy1 altp (reservedOp "|")
+    altp  :: Language w => P (Uid, Maybe (Type () w))
+    altp   = do
+      k <- uidp
+      t <- optionMaybe $ do
+        reserved "of"
+        typep
+      return (k, t)
 
 modp :: P (Mod ())
 modp  = choice

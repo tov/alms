@@ -26,7 +26,7 @@ tok = T.makeTokenParser T.LanguageDef {
                         "match", "with",
                         "let", "rec", "and", "in",
                         "module", "interface",
-                        "all",
+                        "all", "of",
                         "type", "qualifier"],
     T.reservedOpNames = ["|", "->", "*", "=", "\\", "^", ":", ":>"],
     T.caseSensitive = True
@@ -112,12 +112,12 @@ isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 
 lid, uid        :: CharParser st String
-lid              = lexeme $ do
+lid              = try . lexeme $ do
   s <- identifier
   if isUpperIdentifier s
     then pzero <?> "lowercase identifier"
     else return s
-uid              = lexeme $ do
+uid              = try . lexeme $ do
   s <- identifier
   if isUpperIdentifier s
     then return s

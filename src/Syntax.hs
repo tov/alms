@@ -32,7 +32,7 @@ module Syntax (
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
 
   tyGround, tyArr, tyLol, tyTuple,
-  tyUnitT, tyArrT, tyLolT, tyTupleT,
+  tyUnitT, tyBoolT, tyArrT, tyLolT, tyTupleT,
 
   ftv, freshTyVar, freshTyVars, tysubst, qualifier, tystrip,
   funtypes,
@@ -92,6 +92,7 @@ data TyTag =
                            -- possibly some constants
     tdTrans :: Bool
   }
+  deriving Show
 
 data Type i w where
   TyCon { tycon  :: Lid,
@@ -133,6 +134,16 @@ data TyDec i = TdAbsC {
                  tdName      :: Lid,
                  tdParams    :: [TyVar],
                  tdaRHS      :: Type () A
+             }
+             | TdDatC {
+                 tdName      :: Lid,
+                 tdParams    :: [TyVar],
+                 tdcAlts     :: [(Uid, Maybe (Type () C))]
+             }
+             | TdDatA {
+                 tdName      :: Lid,
+                 tdParams    :: [TyVar],
+                 tdaAlts     :: [(Uid, Maybe (Type () A))]
              }
 
 data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
@@ -621,6 +632,9 @@ tyTuple a b    = TyCon (Lid "*") [a, b] ()
 tyUnitT        :: TypeT w
 tyUnitT         = TyCon (Lid "unit") [] tdUnit
 
+tyBoolT        :: TypeT w
+tyBoolT         = TyCon (Lid "bool") [] tdBool
+
 tyArrT         :: TypeT w -> TypeT w -> TypeT w
 tyArrT a b      = TyCon (Lid "->") [a, b] tdArr
 
@@ -709,7 +723,7 @@ syntacticValue e = case expr' e of
   _            -> False
 
 constants :: [String]
-constants  = [ "()", "unroll" ]
+constants  = [ "unroll" ]
 
 modName :: Mod i -> Lid
 modName (MdA x _ _)   = x

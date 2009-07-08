@@ -66,6 +66,7 @@ vcast a = case cast a of
 -- dynamic value with some typeclass operations
 data Value = VaFun FunName (Value -> Result)
            | VaSus Doc Result
+           | VaCon Uid (Maybe Value)
            | forall a. Valuable a => VaDyn a
   deriving Typeable
 
@@ -97,7 +98,7 @@ instance Show Value where
 --
 
 type Result   = IO Value
-type E        = Env Ident (IO Value)
+type E        = Env Lid (IO Value)
 
 type D        = E -> Result
 type DDecl    = E -> IO E
@@ -118,13 +119,13 @@ evalDecl _         = return
 evalMod :: Mod i -> DDecl
 evalMod (MdC x _ e)   env = do
   v <- valOf e env
-  return (env =+= Var x =:= return v)
+  return (env =+= x =:= return v)
 evalMod (MdA x _ e)   env = do
   v <- valOf e env
-  return (env =+= Var x =:= return v)
+  return (env =+= x =:= return v)
 evalMod (MdInt x _ y) env = do
-  case env =.= Var y of
-    Just v  -> return (env =+= Var x =:= v)
+  case env =.= y of
+    Just v  -> return (env =+= x =:= v)
     Nothing -> fail $ "BUG! Unknown module: " ++ show y
 
 eval :: E -> Prog i -> Result
@@ -133,28 +134,29 @@ eval env0 (Prog ds e0) = evalDecls ds env0 >>= valOf e0
 -- The meaning of an expression
 valOf :: Expr i w -> D
 valOf e env = case expr' e of
-  ExId x         -> case env =.= x of
+  ExId (Var x)           -> case env =.= x of
     Just v  -> v
     Nothing -> fail $ "BUG! unbound identifier: " ++ show x
+  ExId (Con c)           -> return (VaCon c Nothing)
   ExStr s                -> return (vinj s)
   ExInt z                -> return (vinj z)
   ExIf ec et ef         -> do
     c <- valOf ec env
-    if vprj c
-      then valOf et env
-      else valOf ef env
+    case c of
+      VaCon (Uid "true") _ -> valOf et env
+      _                    -> valOf ef env
   ExCase e1 (xl, el) (xr, er) -> do
     v1 <- valOf e1 env
     case vprj v1 of
-      Left vl  -> valOf el (env =+= Var xl =::= vl)
-      Right vr -> valOf er (env =+= Var xr =::= vr)
+      Left vl  -> valOf el (env =+= xl =::= vl)
+      Right vr -> valOf er (env =+= xr =::= vr)
   ExLet x e1 e2          -> do
     v1 <- valOf e1 env
-    valOf e2 $ env =+= Var x =::= nameFun x v1
+    valOf e2 $ env =+= x =::= nameFun x v1
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
-          return (envI =+= Var (bnvar b) =:= join (readIORef r), r : rs)
+          return (envI =+= bnvar b =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
       (\r b -> do
@@ -170,17 +172,18 @@ valOf e env = case expr' e of
   ExLetPair (x, y) e1 e2 -> do
     v1 <- valOf e1 env
     let (vx, vy) = vprj v1
-    valOf e2 $ env =+= Var x =::= nameFun x vx
-                   =+= Var y =::= nameFun y vy
+    valOf e2 $ env =+= x =::= nameFun x vx
+                   =+= y =::= nameFun y vy
   ExAbs x _ e'           ->
     return (VaFun (FNAnonymous (ppr e))
-                  (\v -> valOf e' (env =+= Var x =::= v)))
+                  (\v -> valOf e' (env =+= x =::= v)))
   ExApp e1 e2            -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env
     v1' <- force v1  -- Magic type application
     case v1' of
       VaFun _ f -> f v2
+      VaCon c _ -> return (VaCon c (Just v2))
       _         -> fail $ "BUG! applied non-function " ++ show v1
                            ++ " to argument " ++ show v2
   ExTAbs _ e'            ->
@@ -190,6 +193,7 @@ valOf e env = case expr' e of
     v' <- valOf e' env
     case v' of
       VaSus _ f -> f
+      VaCon _ _ -> return v'
       _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
   ExSeq e1 e2            -> do
     valOf e1 env
@@ -212,18 +216,31 @@ instance Valuable Integer where
 instance Valuable () where
   veq        = (==)
   vpprPrec _ = text . show
+  vinj ()    = VaCon (Uid "()") Nothing
+  vprjM (VaCon (Uid "()") _) = return ()
+  vprjM _                    = fail "vprjM: not a unit"
 
 instance Valuable Bool where
   veq        = (==)
   vpprPrec _ True  = text "true"
   vpprPrec _ False = text "false"
+  vinj True  = VaCon (Uid "true") Nothing
+  vinj False = VaCon (Uid "false") Nothing
+  vprjM (VaCon (Uid "true") _)  = return True
+  vprjM (VaCon (Uid "false") _) = return False
+  vprjM _                       = fail "vprjM: not a bool"
 
 instance Valuable Value where
-  veq (VaDyn a) b = veqDyn a b
-  veq _         _ = False
-  vpprPrec p (VaFun n _) = pprPrec p n
-  vpprPrec _ (VaSus n _) = n
-  vpprPrec p (VaDyn v)   = vpprPrec p v
+  veq (VaCon c v) (VaCon d w) = c == d && v == w
+  veq (VaDyn a)   b           = veqDyn a b
+  veq _           _           = False
+  vpprPrec p (VaFun n _)        = pprPrec p n
+  vpprPrec _ (VaSus n _)        = n
+  vpprPrec p (VaCon c Nothing)  = pprPrec p c
+  vpprPrec p (VaCon c (Just v)) = parensIf (p > precApp) $
+                                    pprPrec precApp c <+>
+                                    vpprPrec (precApp + 1) v
+  vpprPrec p (VaDyn v)          = vpprPrec p v
 
 instance Valuable Char where
   veq            = (==)
@@ -233,7 +250,7 @@ instance Valuable Char where
 instance (Valuable a, Valuable b) => Valuable (a, b) where
   veq (a, b) (a', b') = veq a a' && veq b b'
   vpprPrec p (a, b)   = parensIf (p > precCom) $
-                          sep [vpprPrec (precCom + 1) a <> char ',',
+                          sep [vpprPrec precCom a <> char ',',
                                vpprPrec (precCom + 1) b]
 
 instance (Valuable a, Valuable b) => Valuable (Either a b) where
