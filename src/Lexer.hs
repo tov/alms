@@ -23,7 +23,7 @@ tok = T.makeTokenParser T.LanguageDef {
     T.opStart        = oneOf "~!@#$%^&*-+=<>/?\\|",
     T.opLetter       = oneOf "~!@#$%^&*-+=<>/?\\|",
     T.reservedNames  = ["if", "then", "else",
-                        "match", "with",
+                        "match", "with", "as", "_",
                         "let", "rec", "and", "in",
                         "module", "interface",
                         "all", "of",

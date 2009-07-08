@@ -35,7 +35,7 @@ transMod menv m@(MdA x (Just t) e) =
 transMod menv m@(MdInt x t y)      =
   (menv =+= x =:= m,
    MdC x (Just (atype2ctype t)) $
-     exLet' z (transExpr menv (Party x) (exVar y :: ExprT C)) $
+     exLetVar' z (transExpr menv (Party x) (exVar y :: ExprT C)) $
        ac (Party y) (Party x) z t)
     where z = y /./ "z"
 transMod menv m                  =
@@ -54,7 +54,7 @@ transExpr menv neg = te where
     ExCase e1 (xl, el) (xr, er) -> exCase (te e1)
                                      (xl, tem (menv =-= xl) el)
                                      (xr, tem (menv =-= xr) er)
-    ExLet x e1 e2 -> exLet' x (te e1) (tem (menv =-= x) e2)
+    ExLet x e1 e2 -> exLet' x (te e1) (tem (menv =--= pv x) e2)
     ExLetRec bs e2 -> let rec  = tem (foldl (=-=) menv (map bnvar bs))
                       in exLetRec
                            [ Binding x (type2ctype t) (rec e)
@@ -100,8 +100,8 @@ transVar lang menv neg x =
 transCast :: Language w =>
              Party -> ExprT C -> TypeT w -> TypeT A -> ExprT C
 transCast neg e t' ta =
-  exLet' y e $
-    exLet' z (ac neg pos y ta) $   -- protect the value
+  exLetVar' y e $
+    exLetVar' z (ac neg pos y ta) $   -- protect the value
       langCase t'
         (\_ -> ca neg pos z ta)    -- protect the context, or
         (\t -> ca neg pos z t)     -- protect the context
@@ -118,28 +118,28 @@ transCast neg e t' ta =
 ca :: Party -> Party -> Lid -> TypeT A -> ExprT C
 ca neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
   exAbs' y (atype2ctype s1) $
-    exLet' z (exApp (exVar x) (ac pos neg y s1)) $
+    exLetVar' z (exApp (exVar x) (ac pos neg y s1)) $
       ca neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
 ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
-  exLet u createContract $
+  exLetVar' u createContract $
     exAbs y (atype2ctype s1) $
       exSeq (checkContract u neg "applied one-shot function twice") $
-        exLet' z (exApp (exVar x) (ac pos neg y s1)) $
+        exLetVar' z (exApp (exVar x) (ac pos neg y s1)) $
           ca neg pos z s2
   where u = x /./ "u"
         y = x /./ "y"
         z = x /./ "z"
 ca neg pos x (TyAll tv t) =
   exTAbs' tv' $
-    exLet' u (exTApp (exVar x) (TyVar tv')) $
+    exLetVar' u (exTApp (exVar x) (TyVar tv')) $
       ca neg pos u t
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
 ca neg _   x ta | qualifier ta <: Qu = exVar x
                 | otherwise =
-  exLet' u createContract $
+  exLetVar' u createContract $
     exAbs' y tyUnitT $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exVar x
@@ -155,13 +155,13 @@ ca neg _   x ta | qualifier ta <: Qu = exVar x
 ac :: Party -> Party -> Lid -> TypeT A -> ExprT C
 ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
   exAbs' y (atype2ctype s1) $
-    exLet' z (exApp (exVar x) (ca pos neg y s1)) $
+    exLetVar' z (exApp (exVar x) (ca pos neg y s1)) $
       ac neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
 ac neg pos x (TyAll tv t) =
   exTAbs' tv' $
-    exLet' u (exTApp (exVar x) (TyVar tv')) $
+    exLetVar' u (exTApp (exVar x) (TyVar tv')) $
       ac neg pos u t
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
@@ -181,12 +181,12 @@ ac _   _   x ta | qualifier ta <: Qu = exVar x
 cc :: Party -> Party -> Lid -> TypeT C -> ExprT C
 cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
   exAbs' y s1 $
-    exLet' z (exApp (exVar x) (cc pos neg y s1)) $
+    exLetVar' z (exApp (exVar x) (cc pos neg y s1)) $
       cc neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
 cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
-  exLet' u createContract $
+  exLetVar' u createContract $
     exAbs' y tyUnitT $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exApp (exVar x) exUnit
@@ -194,7 +194,7 @@ cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
         u = x /./ "u"
 cc neg pos x (TyAll tv t) =
   exTAbs' tv' $
-    exLet' u (exTApp (exVar x) (TyVar tv')) $
+    exLetVar' u (exTApp (exVar x) (TyVar tv')) $
       cc neg pos u t
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
@@ -210,9 +210,9 @@ createContract = exApp (exTApp (exVar (Lid "#ref"))
 -- to check it
 checkContract :: Lid -> Party -> String -> ExprT C
 checkContract x (Party who) what =
-  exLet f (exApp (exTApp (exVar (Lid "#modify"))
-                         (tyUnitT `tyArrT` tyUnitT))
-                 (exVar x `exPair` blameFun (show who) what)) $
+  exLetVar' f (exApp (exTApp (exVar (Lid "#modify"))
+                             (tyUnitT `tyArrT` tyUnitT))
+                     (exVar x `exPair` blameFun (show who) what)) $
     exApp (exVar f) exUnit
   where f = x /./ "f"
 
@@ -244,10 +244,13 @@ exUnit  = exCon (Uid "()")
 --   exLet' x e (exVar x)  ==  e
 --
 -- This is always safe to do.
-exLet' :: Lid -> Expr i w -> Expr i w -> Expr i w
-exLet' v e1 e2 = case expr' e2 of
-  ExId (Var v') | v == v' -> e1
-  _                       -> exLet v e1 e2
+exLet' :: Patt -> Expr i w -> Expr i w -> Expr i w
+exLet' x e1 e2 = case (x, expr' e2) of
+  (PaVar y, ExId (Var y')) | y == y' -> e1
+  _                                  -> exLet x e1 e2
+
+exLetVar' :: Lid -> Expr i w -> Expr i w -> Expr i w
+exLetVar'  = exLet' . PaVar
 
 -- Constructs a lambda expression, but with a special case:
 --

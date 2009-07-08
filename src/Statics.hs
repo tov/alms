@@ -4,8 +4,6 @@ module Statics (
   addVal, addTyTag
 ) where
 
-import System.IO.Unsafe
-
 import Util
 import Syntax
 import Env as Env
@@ -27,7 +25,7 @@ usage x e = case M.lookup x (fv e) of
 -- Type constructors are bound to either "type info" or a synonym
 data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeT w)
-              | TiDat TyTag (M.Map Uid (Maybe (TypeT w)))
+              | TiDat TyTag [TyVar] (Env Uid (Maybe (TypeT w)))
 
 -- Type environments
 type D   = S.Set TyVar         -- tyvars in scope
@@ -178,17 +176,8 @@ tcType = tc where
       TiAbs td -> do
         checkLength (length (tdArity td))
         return (TyCon n ts' td)
-      TiSyn ps t -> do
-        checkLength (length ps)
-        let avoid   = M.unions (map ftv ts')
-            ps'     = freshTyVars ps avoid
-            substs :: Language w =>
-                      [TyVar] -> [TypeT w] -> TypeT w -> TypeT w
-            substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0
-        return .
-          substs ps' ts' .
-            substs ps (map TyVar ps') $ t
-      TiDat td _ -> do
+      TiSyn ps t -> return (tysubsts ps ts' t)
+      TiDat td _ _ -> do
         checkLength (length (tdArity td))
         return (TyCon n ts' td)
     where
@@ -202,15 +191,22 @@ tcType = tc where
   tc (TyC t)      = TyC      `liftM` intoC (tc t)
   tc (TyA t)      = TyA      `liftM` intoA (tc t)
 
+tysubsts :: Language w => [TyVar] -> [TypeT w] -> TypeT w -> TypeT w
+tysubsts ps ts t =
+  let avoid   = M.unions (map ftv ts)
+      ps'     = freshTyVars ps avoid
+      substs :: Language w =>
+                [TyVar] -> [TypeT w] -> TypeT w -> TypeT w
+      substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
+  substs ps' ts .
+    substs ps (map TyVar ps') $
+      t
+
 -- Type check an expression
 tcExprC :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
 tcExprC = tc where
   tc :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
   tc e0 = case expr' e0 of
-    -- XXX -- ExId (Con (Uid "()"))  -> return (tyUnitT, exCon (Uid "()"))
-    -- ExId (Con (Uid s))
-      -- | s `elem` constants -> fail $ "Constant must be applied: " ++ s
-      -- | otherwise          -> fail $ "Unrecognized constant: " ++ s
     ExId x -> do
       tx <- getVar x
       return (tx, exId x)
@@ -237,8 +233,9 @@ tcExprC = tc where
         _ -> tgot "match" t1 "('a, 'b) either"
     ExLet x e1 e2 -> do
       (t1, e1') <- tc e1
-      (t2, e2') <- withVars (Var x =:= t1) $ tc e2
-      return (t2, exLet x e1' e2')
+      (gx, x')  <- tcPatt t1 x
+      (t2, e2') <- withVars gx $ tc e2
+      return (t2, exLet x' e1' e2')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
@@ -279,10 +276,6 @@ tcExprC = tc where
       (te, e') <- withVars (Var x =:= t') $ tc e
       return (tyArrT t' te, exAbs x t' e')
     ExApp e1 e2   -> case expr' e1 of
-      -- XXX -- ExId (Con u)  -> do
-        -- (t2, e2') <- tc e2
-        -- t         <- tcCon u t2
-        -- return (t, exApp (exCon u) e2')
       _             -> do
         (t1, e1') <- tc e1
         (t2, e2') <- tc e2
@@ -330,10 +323,6 @@ tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
   tc :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
   tc e0 = case expr' e0 of
-    -- XXX -- ExId (Con (Uid "()"))  -> return (tyUnitT, exCon (Uid "()"))
-    -- ExId (Con (Uid s))
-      -- | s `elem` constants -> fail $ "Constant must be applied: " ++ s
-      -- | otherwise          -> fail $ "Unrecognized constant: " ++ s
     ExId x -> do
       tx <- getVar x
       return (tx, exId x)
@@ -366,11 +355,10 @@ tcExprA = tc where
         _ -> tgot "match" t1 "('a, 'b) either"
     ExLet x e1 e2 -> do
       (t1, e1') <- tc e1
-      tassert (qualifier t1 <: usage x e2) $
-        "Affine variable " ++ show x ++ " : " ++
-        show t1 ++ " duplicated in let body"
-      (t2, e2') <- withVars (Var x =:= t1) $ tc e2
-      return (t2, exLet x e1' e2')
+      (gx, x')  <- tcPatt t1 x
+      checkSharing "let" gx e2
+      (t2, e2') <- withVars gx $ tc e2
+      return (t2, exLet x' e1' e2')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
@@ -425,10 +413,6 @@ tcExprA = tc where
         then return (tyLolT t' te, exAbs x t' e')
         else return (tyArrT t' te, exAbs x t' e')
     ExApp e1 e2   -> case expr' e1 of
-      -- XXX -- ExId (Con u)  -> do
-        -- (t2, e2') <- tc e2
-        -- t         <- tcCon u t2
-        -- return (t, exApp (exCon u) e2')
       _             -> do
         (t1, e1') <- tc e1
         (t2, e2') <- tc e2
@@ -478,6 +462,15 @@ tcExprA = tc where
         " and " ++ show t' ++ " are incompatible"
       return (ta', exCast e1' t' ta')
 
+  checkSharing name g e =
+    forM_ (toList g) $ \(x, tx) ->
+      case x of
+        Var x' ->
+          tassert (qualifier tx <: usage x' e) $
+            "Affine variable " ++ show x' ++ " : " ++
+            show tx ++ " duplicated in " ++ name ++ " body"
+        _ -> return ()
+
   isUnworthy e =
     anyM (\x -> do
            mtx <- tryGetVar (Var x)
@@ -485,6 +478,55 @@ tcExprA = tc where
              Just tx -> qualifier tx == Qa
              Nothing -> False)
          (M.keys (fv e))
+
+tcPatt :: (Monad m, Language w) =>
+          TypeT w -> Patt -> TC w m (G w, Patt)
+tcPatt t x0 = case x0 of
+  PaWild     -> return (empty, PaWild)
+  PaVar x    -> return (Var x =:= t, PaVar x)
+  PaCon u mx -> do
+    case t of
+      TyCon name ts tag -> do
+        tcon <- getType name
+        case tcon of
+          TiDat tag' params alts | tag == tag' -> do
+            case alts =.= u of
+              Nothing -> tgot "Pattern" t ("constructor " ++ show u)
+              Just mt -> case (mt, mx) of
+                (Nothing, Nothing) -> return (empty, PaCon u Nothing)
+                (Just t1, Just x1) -> do
+                  let t1' = tysubsts params ts t1
+                  (gx1, x1') <- tcPatt t1' x1
+                  return (gx1, PaCon u (Just x1'))
+                _ -> tgot "Pattern" t "different arity"
+          _ ->
+            fail $ "Pattern " ++ show x0 ++ " for type not in scope"
+      _ -> tgot "Pattern" t ("constructor " ++ show u)
+  PaPair x y -> do
+    case t of
+      TyCon (Lid "*") [tx, ty] td | td == tdTuple
+        -> do
+          (gx, x') <- tcPatt tx x
+          (gy, y') <- tcPatt ty y
+          tassert (isEmpty (gx =|= gy)) $
+            "Pattern " ++ show x0 ++ " binds variable twice"
+          return (gx =+= gy, PaPair x' y')
+      _ -> tgot "Pattern" t "pair type"
+  PaStr s    -> do
+    tassert (tyinfo t == tdString) $
+      "Pattern got " ++ show t ++ " where string expected"
+    return (empty, PaStr s)
+  PaInt z    -> do
+    tassert (tyinfo t == tdString) $
+      "Pattern got " ++ show t ++ " where int expected"
+    return (empty, PaInt z)
+  PaAs x y   -> do
+    (gx, x') <- tcPatt t x
+    let gy    = Var y =:= t
+    tassert (isEmpty (gx =|= gy)) $
+      "Pattern " ++ show x0 ++ " binds " ++ show y ++ " twice"
+    return (gx =+= gy, PaAs x' y)
+
 
 {- XXX
 tcCon         :: (Monad m, Language w) =>
@@ -590,7 +632,7 @@ withTyDec (TdDatC name params alts) k = intoC $ do
               tdTrans = False
             }
   alts' <- withTVs params $
-    withTypes (name =:= TiDat tag M.empty) $
+    withTypes (name =:= TiDat tag params empty) $
       sequence
         [ case mt of
             Nothing -> return (cons, Nothing)
@@ -598,7 +640,7 @@ withTyDec (TdDatC name params alts) k = intoC $ do
               t' <- tcType t
               return (cons, Just t')
         | (cons, mt) <- alts ]
-  withTypes (name =:= TiDat tag (M.fromList alts')) $
+  withTypes (name =:= TiDat tag params (fromList alts')) $
     withVars (alts2env name params tag alts') $
       (outofC . k $ TdDatC name params alts)
 withTyDec (TdDatA name params alts) k = intoA $ do
@@ -610,12 +652,9 @@ withTyDec (TdDatA name params alts) k = intoA $ do
                tdTrans = False
              }
   (tag, alts') <- fixDataType name params alts tag0
-  unsafePerformIO $ do
-    print tag
-    return $
-      withTypes (name =:= TiDat tag (M.fromList alts')) $
-        withVars (alts2env name params tag alts') $
-          (outofA . k $ TdDatA name params alts)
+  withTypes (name =:= TiDat tag params (fromList alts')) $
+    withVars (alts2env name params tag alts') $
+      (outofA . k $ TdDatA name params alts)
 
 fixDataType :: Monad m =>
                Lid -> [TyVar] -> [(Uid, Maybe (Type () A))] ->
@@ -624,7 +663,7 @@ fixDataType name params alts = loop where
   loop :: Monad m => TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
   loop tag = do
     alts' <- withTVs params $
-      withTypes (name =:= TiDat tag M.empty) $
+      withTypes (name =:= TiDat tag params empty) $
         sequence
           [ case mt of
               Nothing -> return (k, Nothing)
@@ -790,10 +829,10 @@ env0 = S g0 g0 i0 i0 0 where
         Con (Uid "true")  =:= tyBoolT =+=
         Con (Uid "false") =:= tyBoolT
   i0 :: I w
-  i0  = Lid "unit" =:= TiDat tdUnit (M.fromList [
-          (Uid "()",    Nothing)
-        ]) =+=
-        Lid "bool" =:= TiDat tdBool (M.fromList [
-          (Uid "true",  Nothing),
-          (Uid "false", Nothing)
-        ])
+  i0  = Lid "unit" =:= TiDat tdUnit [] (
+          Uid "()"    =:= Nothing
+        ) =+=
+        Lid "bool" =:= TiDat tdBool [] (
+          Uid "true"  =:= Nothing =+=
+          Uid "false" =:= Nothing
+        )

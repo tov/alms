@@ -1,21 +1,26 @@
 module Env (
   Env,
-  empty, (=:=), (=::=), (=+=), (=-=), (=.=), (=|=),
+  empty, isEmpty,
+  (=:=), (=::=), (=+=), (=-=), (=--=), (=.=), (=|=),
   mapAccum, mapAccumM,
   toList, fromList, contents
 ) where
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 import Data.Monoid
 
 infix 6 =:=, =::=, =.=
 infixr 5 =+=
-infixl 5 =-=, =|=
+infixl 5 =-=, =--=, =|=
 
 newtype Env v a = Env { unEnv:: M.Map v a }
 
 empty    :: Env v a
 empty     = Env M.empty
+
+isEmpty  :: Env v a -> Bool
+isEmpty   = M.null . unEnv
 
 -- singleton bind
 (=:=)    :: Ord v => v -> a -> Env v a
@@ -32,6 +37,9 @@ m =+= n   = Env (M.unionWith (\_ x -> x) (unEnv m) (unEnv n)) where
 -- difference
 (=-=)    :: Ord v => Env v a -> v -> Env v a
 m =-= v   = Env (M.delete v (unEnv m))
+
+(=--=)   :: Ord v => Env v a -> S.Set v -> Env v a
+m =--= vs = Env (S.fold M.delete (unEnv m) vs)
 
 -- lookup
 (=.=)    :: Ord v => Env v a -> v -> Maybe a

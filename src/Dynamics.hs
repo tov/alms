@@ -151,8 +151,9 @@ valOf e env = case expr' e of
       Left vl  -> valOf el (env =+= xl =::= vl)
       Right vr -> valOf er (env =+= xr =::= vr)
   ExLet x e1 e2          -> do
-    v1 <- valOf e1 env
-    valOf e2 $ env =+= x =::= nameFun x v1
+    v1   <- valOf e1 env
+    env' <- bindPatt x v1 env
+    valOf e2 $ env'
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
@@ -200,6 +201,30 @@ valOf e env = case expr' e of
     valOf e2 env
   ExCast e1 _ _          ->
     valOf e1 env
+
+bindPatt :: Monad m => Patt -> Value -> E -> m E
+bindPatt x0 v env = case x0 of
+  PaWild       -> return env
+  PaVar lid    -> return (env =+= lid =:= return v)
+  PaCon uid mx -> case (mx, v) of
+    (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
+    (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
+    _                                             -> perr
+  PaPair x y   -> case vprjM v of
+    Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
+    Nothing       -> perr
+  PaStr s      -> if v == vinj s
+                    then return env
+                    else perr
+  PaInt z      -> if v == vinj z
+                    then return env
+                    else perr
+  PaAs x lid   -> do
+    env' <- bindPatt x v env
+    return (env' =+= lid =:= return v)
+  where perr = fail $
+                 "Pattern match failure: " ++ show x0 ++
+                 " does not match " ++ show v
 
 force :: Value -> IO Value
 force (VaSus _ v) = v >>= force

@@ -18,7 +18,7 @@ precCast, precCom, precDot, precSemi, precArr, precStar,
   precApp, precTApp :: Int
 precCast  = -2 -- :>
 precCom   = -1 -- ,
-precDot   =  0 -- in, else, .
+precDot   =  0 -- in, else, as, of, .
 precSemi  =  1 -- ;
 precArr   =  5 -- ->
 precStar  =  6 -- *
@@ -275,11 +275,28 @@ pprArgList = fsep . map eachArg where
                               (colon <+> pprPrec 0 t)
   eachArg (Right tv)      = pprPrec 0 tv
 
+instance Ppr Patt where
+  pprPrec _ PaWild               = text "_"
+  pprPrec _ (PaVar lid)          = ppr lid
+  pprPrec _ (PaCon uid Nothing)  = ppr uid
+  pprPrec p (PaCon uid (Just x)) = parensIf (p > precApp) $
+                                     pprPrec precApp uid <+>
+                                     pprPrec (precApp + 1) x
+  pprPrec p (PaPair x y)         = parensIf (p > precCom) $
+                                     pprPrec precCom x <> comma <+>
+                                     pprPrec (precCom + 1) y
+  pprPrec _ (PaStr s)            = text (show s)
+  pprPrec _ (PaInt z)            = text (show z)
+  pprPrec p (PaAs x lid)         = parensIf (p > precDot) $
+                                     pprPrec (precDot + 1) x <+>
+                                     text "as" <+> ppr lid
+
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
 instance Show (Mod i)    where showsPrec = showFromPpr
 instance Show (TyDec i)  where showsPrec = showFromPpr
 instance Show (Expr i w) where showsPrec = showFromPpr
+instance Show Patt       where showsPrec = showFromPpr
 instance Show (Type i w) where showsPrec = showFromPpr
 
 instance Ppr Q         where pprPrec = pprFromShow

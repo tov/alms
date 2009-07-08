@@ -1,8 +1,8 @@
 module Parser (
   P, parse,
   parseProg, parseDecls, parseDecl,
-    parseMod, parseTyDec, parseType, parseExpr,
-  pp, pds, pd, pm, ptd, pt, pe
+    parseMod, parseTyDec, parseType, parseExpr, parsePatt,
+  pp, pds, pd, pm, ptd, pt, pe, px
 ) where
 
 import Util
@@ -236,7 +236,7 @@ exprp = expr0 where
                 reserved "in"
                 e2 <- expr0
                 return (exLetRec bs e2),
-             do x    <- lidp
+             do x    <- pattp
                 args <- argsp
                 finishLet (exLet x . args),
              do (x, y) <- parens $ do
@@ -324,6 +324,36 @@ argp  = choice
             t <- typep
             return (exAbs x t) ]
 
+pattp :: P Patt
+pattp  = patt0 where
+  patt0 = do
+    x <- patt9
+    choice
+      [ do
+          reserved "as"
+          y <- lidp
+          return (PaAs x y),
+        return x
+      ]
+  patt9 = choice
+    [ do
+        u <- uidp
+        x <- optionMaybe pattA
+        return (PaCon u x),
+      pattA ]
+  pattA = choice
+    [ reserved "_"  >>  return PaWild,
+      lidp          >>! PaVar,
+      integer       >>! PaInt,
+      stringLiteral >>! PaStr,
+      parens pattN1
+    ]
+  pattN1 = do
+    xs <- commaSep patt0
+    case xs of
+      []    -> return (PaCon (Uid "()") Nothing)
+      x:xs' -> return (foldl PaPair x xs')
+
 finish :: CharParser st a -> CharParser st a
 finish p = do
   optional (whiteSpace)
@@ -338,6 +368,7 @@ parseMod      :: P (Mod ())
 parseTyDec    :: P (TyDec ())
 parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
+parsePatt     :: P Patt
 parseProg      = finish progp
 parseDecls     = finish (many declp)
 parseDecl      = finish declp
@@ -345,6 +376,7 @@ parseMod       = finish modp
 parseTyDec     = finish tyDecp
 parseType      = finish typep
 parseExpr      = finish exprp
+parsePatt      = finish pattp
 
 -- Convenience functions for quick-and-dirty parsing:
 
@@ -368,6 +400,9 @@ pt   = makeQaD parseType
 
 pe  :: Language w => String -> Expr () w
 pe   = makeQaD parseExpr
+
+px  :: String -> Patt
+px   = makeQaD parsePatt
 
 makeQaD :: P a -> String -> a
 makeQaD parser =

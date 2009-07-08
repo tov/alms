@@ -18,11 +18,14 @@ module Syntax (
   Decl(..), DeclT,
   Mod(..), ModT, TyDec(..), TyDecT,
 
-  Expr(), ExprT, Expr'(..), Binding(..), BindingT, fv, expr',
+  Expr(), ExprT, Expr'(..), expr',
+  fv,
   exId, exStr, exInt, exIf, exCase, exLet, exLetRec,
   exPair, exLetPair,
   exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
   exVar, exCon,
+  Binding(..), BindingT, Patt(..),
+  pv,
 
   PO(..),
 
@@ -46,6 +49,7 @@ import Util
 import Env
 
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- We have two languages:
 data C
@@ -153,7 +157,7 @@ data Expr' i w = ExId Ident
                | ExInt Integer
                | ExIf (Expr i w) (Expr i w) (Expr i w)
                | ExCase (Expr i w) (Lid, Expr i w) (Lid, Expr i w)
-               | ExLet Lid (Expr i w) (Expr i w)
+               | ExLet Patt (Expr i w) (Expr i w)
                | ExLetRec [Binding i w] (Expr i w)
                | ExPair (Expr i w) (Expr i w)
                | ExLetPair (Lid, Lid) (Expr i w) (Expr i w)
@@ -170,6 +174,14 @@ data Binding i w = Binding {
   bnexpr :: Expr i w
 }
 
+data Patt = PaWild
+          | PaVar Lid
+          | PaCon Uid (Maybe Patt)
+          | PaPair Patt Patt
+          | PaStr String
+          | PaInt Integer
+          | PaAs Patt Lid
+
 type ExprT    = Expr TyTag
 type TypeT    = Type TyTag
 type DeclT    = Decl TyTag
@@ -180,6 +192,16 @@ type ProgT    = Prog TyTag
 
 fv :: Expr i w -> FV
 fv  = fv_
+
+pv :: Patt -> S.Set Lid
+pv PaWild             = S.empty
+pv (PaVar x)          = S.singleton x
+pv (PaCon _ Nothing)  = S.empty
+pv (PaCon _ (Just x)) = pv x
+pv (PaPair x y)       = pv x `S.union` pv y
+pv (PaStr _)          = S.empty
+pv (PaInt _)          = S.empty
+pv (PaAs x y)         = pv x `S.union` S.singleton y
 
 expr' :: Expr i w -> Expr' i w
 expr'  = expr'_
@@ -202,9 +224,9 @@ exCase e (xl, el) (xr, er) = Expr {
   expr'_ = ExCase e (xl, el) (xr, er)
 }
 
-exLet :: Lid -> Expr i w -> Expr i w -> Expr i w
+exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
 exLet x e1 e2 = Expr {
-  fv_    = fv e1 |*| (fv e2 |-| x),
+  fv_    = fv e1 |*| (fv e2 |--| pv x),
   expr'_ = ExLet x e1 e2
 }
 
@@ -285,6 +307,9 @@ exCon  = exId . Con
 
 (|-|) :: FV -> Lid -> FV
 (|-|)  = flip M.delete
+
+(|--|) :: FV -> S.Set Lid -> FV
+(|--|)  = S.fold M.delete
 
 -----
 ----- Some classes and instances
