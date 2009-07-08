@@ -245,7 +245,8 @@ exprp = expr0 where
          et <- expr0
          reserved "else"
          ef <- expr0
-         return (exIf ec et ef),
+         return (exCase ec [(PaCon (Uid "true")  Nothing, et),
+                            (PaCon (Uid "false") Nothing, ef)]),
       do reserved "match"
          e1 <- expr0
          reserved "with"
