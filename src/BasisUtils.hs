@@ -3,7 +3,7 @@ module BasisUtils (
   Entry, Nonce(..), Vinj(..),
   MkFun(..),
   fun, binArith, val, pval, pfun,
-  typeC, typeA, primtype,
+  typeC, typeA, primtype, src,
   vapp,
   (-:), (-::), (-=),
   basis2venv, basis2tenv
@@ -56,6 +56,7 @@ instance MkFun Value where
   mkFun n f = VaFun n $ \v -> vprjM v >>= return . f
 
 instance MkFun Integer  where mkFun = baseMkFun
+instance MkFun Char     where mkFun = baseMkFun
 instance MkFun Bool     where mkFun = baseMkFun
 instance MkFun ()       where mkFun = baseMkFun
 instance MkFun Nonce    where mkFun = baseMkFun
@@ -98,6 +99,9 @@ typeA      = DecEn . ("type[A] " ++)
 
 primtype  :: String -> TyTag -> Entry
 primtype   = TypEn
+
+src       :: String -> Entry
+src        = DecEn
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)

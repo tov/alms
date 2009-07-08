@@ -5,7 +5,7 @@
   LANGUAGE DeriveDataTypeable
   #-}
 module Basis (
-  basis, basis2venv, basis2tenv
+  primBasis, srcBasis, basis2venv, basis2tenv
 ) where
 
 import Util
@@ -24,20 +24,13 @@ import qualified Control.Concurrent.MVar as MV
 import Control.Monad
 import Control.Monad.Fix
 
-basis :: [Entry]
-basis  = [
-    ---
-    --- Special (untypable) constants:
-    ---
-
-    val "()"     -:: "" -= (),
-    fun "unroll" -:: "" -= (id :: Value -> Value),
-
+primBasis :: [Entry]
+primBasis  = [
     ---
     --- Ordinary constants:
     ---
 
-    --- name    -:  ctype  -: atype   -= value
+    --- name    -:  ctype  -: atype  -= value
     --- name    -:: *type            -= value
 
     -- Primitive types:
@@ -51,41 +44,18 @@ basis  = [
     "-o"   `primtype` tdLol,
 
     -- Sums
+    typeC "'a option = None | Some of 'a",
+    typeA "'<a option = None | Some of '<a",
     typeC "('a, 'b) either = Left of 'a | Right of 'b",
-    typeA "('a, 'b) either = Left of 'a | Right of 'b",
+    typeA "('<a, '<b) either = Left of '<a | Right of '<b",
 
     -- Recursion
     pfun 2 "fix" -:: "all 'a 'b. (('a -> 'b) -> ('a -> 'b)) -> ('a -> 'b)"
       -= (\(VaFun _ f) -> mfix f),
 
     -- Lists
-    typeC "'a list",
-    typeA "+'a list qualifier 'a",
-    pval 1 "nil"  -: "all 'a. 'a list"
-                  -: "all '<a. '<a list"
-      -= ([] :: [Value]),
-    pfun 1 "cons" -: "all 'a. 'a -> 'a list -> 'a list"
-                  -: "all '<a. '<a -> '<a list -> '<a list"
-      -= ((:) :: Value -> [Value] -> [Value]),
-    pfun 1 "listcase"
-        -: "all 'a. 'a list -> (unit, 'a * 'a list) either"
-        -: "all '<a. '<a list -> (unit, '<a * '<a list) either"
-      -= ((\lst -> vinj $ case lst of
-             []   -> Left ()
-             x:xs -> Right (vinj x, vinj xs))
-          :: [Value] -> Value),
-    pfun 1 "null" -:: "all 'a. 'a list -> bool"
-      -= (null :: [Value] -> Bool),
-    pfun 1 "hd"   -:: "all 'a. 'a list -> 'a"
-      -= (head :: [Value] -> Value),
-    pfun 1 "tl"   -:: "all 'a. 'a list -> 'a list"
-      -= (tail :: [Value] -> [Value]),
-    pfun 1 "uncons" -: "all 'a. 'a list -> 'a * 'a list"
-                    -: "all '<a. '<a list -> '<a * '<a list"
-      -= (liftM2 (,) head tail :: [Value] -> (Value, [Value])),
-    pfun 1 "anull" -: ""
-                   -: "all '<a. '<a list -> '<a list * bool"
-      -= (liftM2 (,) id null :: [Value] -> ([Value], Bool)),
+    typeC "'a list  = Nil | Cons of 'a * 'a list",
+    typeA "'<a list = Nil | Cons of '<a * '<a list",
 
     -- Arithmetic
     binArith "add" (+),
@@ -97,9 +67,9 @@ basis  = [
 
     -- Strings
     fun "explode"  -:: "string -> int list"
-      -= map (vinj . char2integer),
+      -= map char2integer,
     fun "implode"  -:: "int list -> string"
-      -= vinj . map (integer2char . vprj),
+      -= map integer2char,
     pfun 1 "toString" -:: "all 'a. 'a -> string"
       -= (return . show :: Value -> IO String),
 
@@ -135,7 +105,7 @@ basis  = [
     pfun 2 "swap" -: ""
                   -: "all '<a '<b. '<a ref * '<b -> '<b ref * '<a"
       -= (\(vr, v1) -> do
-            v0 <- atomicModifyIORef (unRef (vprj vr)) (\v0 -> (v1, v0))
+            v0 <- atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))
             return (vr, v0)),
     pfun 1 "takeRef" -: "all 'a. 'a ref -> 'a"
                      -: "all '<a. '<a ref -> '<a"
@@ -222,7 +192,7 @@ basis  = [
       -: "all '<a 's. ('<a recv -> 's) channel -> '<a * 's channel"
       -= \c -> do
            a <- readChan (unChannel c)
-           return (vinj a, vinj c),
+           return (a, c),
     pfun 2 "sel1"
       -: ""
       -: "all 's1 's2. ('s1 * 's2) select channel -> 's1 channel"
@@ -243,8 +213,8 @@ basis  = [
            e  <- readChan (unChannel c)
            e' <- vprjM e
            if e'
-             then return (Left (vinj c))
-             else return (Right (vinj c)),
+             then return (Left c)
+             else return (Right c),
 
     -- Used by contract system -- # names prevent them from appearing
     -- in a source program (which could result in nasty shadowing)
@@ -252,7 +222,7 @@ basis  = [
       -= (\v -> Ref `fmap` newIORef v),
     pfun 1 "#modify" -:: "all 'a. 'a ref * 'a -> 'a"
       -= (\(vr, v1) -> do
-            atomicModifyIORef (unRef (vprj vr)) (\v0 -> (v1, v0))),
+            atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))),
     fun "#blame" -: "string -> string -> unit"
                  -: ""
       -= \who what -> fail $ "Contract violation: " ++
@@ -288,3 +258,19 @@ instance Valuable Rendezvous where
   veq = (==)
   vpprPrec _ _ = text "#<rendezvous>"
 
+srcBasis :: String
+srcBasis  = unlines [
+  "module[C] null = ^'a (x : 'a list).",
+  "  match x with",
+  "  | Nil -> true",
+  "  | _   -> false",
+  "module[C] hd = ^'a (xs : 'a list).",
+  "  let Cons(x, _) = xs in x",
+  "module[C] tl = ^'a (xs : 'a list).",
+  "  let Cons(_, xs') = xs in xs'",
+  "module[A] anull = ^'<a (xs : '<a list).",
+  "  match xs with",
+  "  | Nil          -> (Nil['<a], true)",
+  "  | Cons(x, xs') -> (Cons(x, xs'), false)",
+  ""
+  ]

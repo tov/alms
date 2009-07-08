@@ -13,11 +13,10 @@ type MEnvT  = MEnv TyTag
 newtype Party = Party { unParty :: Lid }
 
 -- Translate a program by adding contracts.
--- Also performs some *trivial* optimizations.
-translate :: ProgT -> ProgT
-translate (Prog ds e) =
+translate :: MEnvT -> ProgT -> ProgT
+translate menv0 (Prog ds e) =
   Prog ds' (transExpr menv (Party (Lid "*main*")) e)
-  where (menv, ds') = transDecls empty ds
+  where (menv, ds') = transDecls menv0 ds
 
 transDecls :: MEnvT -> [DeclT] -> (MEnvT, [DeclT])
 transDecls menv = foldl each (menv, []) where

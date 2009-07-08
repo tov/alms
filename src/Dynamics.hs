@@ -33,14 +33,6 @@ class Typeable a => Valuable a where
   vpprPrec     :: Int -> a -> Doc
   vpprPrec _ _  = text "#<->"
 
-  vpprPrecList :: Int -> [a] -> Doc
-  vpprPrecList _ []     = text "nil"
-  vpprPrecList p (x:xs) = parensIf (p > precApp) $
-                            hang (text "cons" <+>
-                                  vpprPrec (precApp + 1) x)
-                                 1
-                                 (vpprPrecList (precApp + 1) xs)
-
   vppr         :: a -> Doc
   vppr          = vpprPrec 0
 
@@ -54,6 +46,25 @@ class Typeable a => Valuable a where
 
   vprj         :: Value -> a
   vprj          = maybe (error "BUG! vprj: coercion error") id . vprjM
+
+  vpprPrecList :: Int -> [a] -> Doc
+  vpprPrecList _ []     = text "nil"
+  vpprPrecList p (x:xs) = parensIf (p > precApp) $
+                            hang (text "cons" <+>
+                                  vpprPrec (precApp + 1) x)
+                                 1
+                                 (vpprPrecList (precApp + 1) xs)
+
+  vinjList     :: [a] -> Value
+  vinjList []     = VaCon (Uid "Nil") Nothing
+  vinjList (x:xs) = VaCon (Uid "Cons") (Just (vinj (x, xs)))
+
+  vprjListM    :: Monad m => Value -> m [a]
+  vprjListM (VaCon (Uid "Nil") Nothing) = return []
+  vprjListM (VaCon (Uid "Cons") (Just v)) = do
+    (x, xs) <- vprjM v
+    return (x:xs)
+  vprjListM _ = fail "vprjM: not a list"
 
 vcast :: (Typeable a, Typeable b, Monad m) => a -> m b
 vcast a = case cast a of
@@ -222,6 +233,8 @@ force v           = return v
 instance Valuable a => Valuable [a] where
   veq a b  = length a == length b && all2 veq a b
   vpprPrec = vpprPrecList
+  vinj     = vinjList
+  vprjM    = vprjListM
 
 instance Valuable Integer where
   veq        = (==)
@@ -229,15 +242,12 @@ instance Valuable Integer where
 
 instance Valuable () where
   veq        = (==)
-  vpprPrec _ = text . show
   vinj ()    = VaCon (Uid "()") Nothing
   vprjM (VaCon (Uid "()") _) = return ()
   vprjM _                    = fail "vprjM: not a unit"
 
 instance Valuable Bool where
   veq        = (==)
-  vpprPrec _ True  = text "true"
-  vpprPrec _ False = text "false"
   vinj True  = VaCon (Uid "true") Nothing
   vinj False = VaCon (Uid "false") Nothing
   vprjM (VaCon (Uid "true") _)  = return True
@@ -260,26 +270,41 @@ instance Valuable Char where
   veq            = (==)
   vpprPrec _     = text . show
   vpprPrecList _ = text . show
+  vinjList       = VaDyn
+  vprjListM      = vcast
 
 instance (Valuable a, Valuable b) => Valuable (a, b) where
   veq (a, b) (a', b') = veq a a' && veq b b'
   vpprPrec p (a, b)   = parensIf (p > precCom) $
                           sep [vpprPrec precCom a <> char ',',
                                vpprPrec (precCom + 1) b]
+  vinj (a, b) = VaDyn (vinj a, vinj b)
+  vprjM v = case vcast v of
+    Just (a, b) -> do
+      a' <- vprjM a
+      b' <- vprjM b
+      return (a', b')
+    Nothing -> fail "vprjM: not a pair"
 
 instance (Valuable a, Valuable b) => Valuable (Either a b) where
   veq (Left a)  (Left a')  = veq a a'
   veq (Right b) (Right b') = veq b b'
   veq (Left _)  (Right _)  = False
   veq (Right _) (Left _)   = False
-  vpprPrec p v = parensIf (p > precApp) $
-                   text cons <+> v'
-    where (cons, v') = case v of
-            Left v0  -> ("Left",  vpprPrec (precApp + 1) v0)
-            Right v0 -> ("Right", vpprPrec (precApp + 1) v0)
   vinj (Left v)  = VaCon (Uid "Left") (Just (vinj v))
   vinj (Right v) = VaCon (Uid "Right") (Just (vinj v))
   vprjM (VaCon (Uid "Left") (Just v))  = liftM Left (vprjM v)
   vprjM (VaCon (Uid "Right") (Just v)) = liftM Right (vprjM v)
   vprjM _                              = fail "vprjM: not a sum"
+
+instance Valuable a => Valuable (Maybe a) where
+  veq (Just a)  (Just a')  = veq a a'
+  veq Nothing   Nothing    = True
+  veq (Just _)  Nothing    = False
+  veq Nothing   (Just _)   = False
+  vinj (Just v) = VaCon (Uid "Some") (Just (vinj v))
+  vinj Nothing  = VaCon (Uid "None") Nothing
+  vprjM (VaCon (Uid "Some") (Just v))  = liftM Just (vprjM v)
+  vprjM (VaCon (Uid "None") Nothing)   = return Nothing
+  vprjM _                              = fail "vprjM: not an option"
 

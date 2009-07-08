@@ -9,7 +9,7 @@ import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S)
 import Translation (translate, transDecls, MEnvT)
 import Dynamics (eval, evalDecls, E)
-import Basis (basis)
+import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
 import Syntax (Prog, ProgT, Decl(..), DeclT, Mod(..),
                prog2decls, modName)
@@ -37,9 +37,10 @@ main :: IO ()
 main  = do
   args <- getArgs
   let (opts, mmsrc, filename) = processArgs [] args
-  e0 <- basis2venv basis
-  g0 <- basis2tenv basis
-  maybe interactive (batch filename) mmsrc (`elem` opts) g0 e0
+  g0  <- basis2tenv primBasis
+  e0  <- basis2venv primBasis
+  st0 <- loadSource (RS g0 empty e0) "basis" srcBasis
+  maybe interactive (batch filename) mmsrc (`elem` opts) st0
     `catch`
       \err -> do
         prog <- getProgName
@@ -47,8 +48,15 @@ main  = do
           prog ++ ": " ++ errorString err
         exitFailure
 
-batch :: String -> IO String -> (Option -> Bool) -> S -> E -> IO ()
-batch filename msrc opt g0 e0 = do
+loadSource :: ReplState -> String -> String -> IO ReplState
+loadSource st name src = do
+  case parse parseDecls name src of
+    Left e     -> fail (show e)
+    Right ast0 ->
+      statics (st, ast0) >>= translation >>= dynamics >>= return . fst
+
+batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
+batch filename msrc opt st0 = do
       src <- msrc
       case parse parseProg filename src of
         Left e    -> fail $ "syntax error: " ++ show e
@@ -62,7 +70,7 @@ batch filename msrc opt g0 e0 = do
             if opt Don'tType
               then execute ast0
               else do
-                (t, ast1) <- tcProg g0 ast0
+                (t, ast1) <- tcProg (rsStatics st0) ast0
                 when (opt Verbose) $
                   mumble "TYPE" t
                 coerce ast1
@@ -71,21 +79,21 @@ batch filename msrc opt g0 e0 = do
             if opt Don'tCoerce
               then execute ast1
               else do
-                let ast2 = translate ast1
+                let ast2 = translate (rsTranslation st0) ast1
                 when (opt Verbose) $
                   mumble "TRANSLATION" ast2
                 recheck ast2
 
           recheck ast2 = do
             when (opt ReType) $ do
-              (t, _) <- tcProg g0 ast2
+              (t, _) <- tcProg (rsStatics st0) ast2
               when (opt Verbose) $
                 mumble "RE-TYPE" t
             execute ast2
 
           execute ast2 =
             unless (opt Don'tExecute) $ do
-              v <- eval e0 ast2
+              v <- eval (rsDynamics st0) ast2
               when (opt Verbose) $
                 mumble "RESULT" v
 
@@ -95,7 +103,7 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
-statics     :: (ReplState, [Decl i]) -> IO (ReplState, [DeclT])
+statics     :: (ReplState, [Decl i])  -> IO (ReplState, [DeclT])
 translation :: (ReplState, [DeclT])   -> IO (ReplState, [DeclT])
 dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, [Decl i])
 
@@ -111,10 +119,10 @@ dynamics (rs, ast) = do
   e' <- evalDecls ast (rsDynamics rs)
   return (rs { rsDynamics = e' }, ast)
 
-interactive :: (Option -> Bool) -> S -> E -> IO ()
-interactive opt g0 e0 = do
+interactive :: (Option -> Bool) -> ReplState -> IO ()
+interactive opt rs0 = do
   initialize
-  repl (RS g0 empty e0)
+  repl rs0
   where
     repl st = do
       mast <- reader
