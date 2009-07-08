@@ -188,8 +188,8 @@ tcType = tc where
           show len ++ " expected"
   tc (TyAll tv t) = TyAll tv `liftM` withTVs [tv] (tc t)
   tc (TyMu  tv t) = TyMu tv  `liftM` withTVs [tv] (tc t)
-  tc (TyC t)      = TyC      `liftM` intoC (tc t)
-  tc (TyA t)      = TyA      `liftM` intoA (tc t)
+  tc (TyC t)      = tyC      `liftM` intoC (tc t)
+  tc (TyA t)      = tyA      `liftM` intoA (tc t)
 
 tysubsts :: Language w => [TyVar] -> [TypeT w] -> TypeT w -> TypeT w
 tysubsts ps ts t =

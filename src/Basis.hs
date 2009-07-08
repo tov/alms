@@ -45,8 +45,9 @@ primBasis  = [
 
     -- Sums
     typeC "'a option = None | Some of 'a",
-    typeA "'<a option = None | Some of '<a",
     typeC "('a, 'b) either = Left of 'a | Right of 'b",
+
+    typeA "'<a option = None | Some of '<a",
     typeA "('<a, '<b) either = Left of '<a | Right of '<b",
 
     -- Recursion
@@ -272,5 +273,24 @@ srcBasis  = unlines [
   "  match xs with",
   "  | Nil          -> (Nil['<a], true)",
   "  | Cons(x, xs') -> (Cons(x, xs'), false)",
+  "",
+  "module[C] foldrC =",
+  "  let rec foldr 'a 'b (f : 'a -> 'b -> 'b)",
+  "                      (z : 'b) (xs : 'a list) : 'b =",
+  "        match xs with",
+  "        | Nil -> z",
+  "        | Cons(x,xs) -> f x (foldr f z xs)",
+  "   in foldr",
+  "module[A] foldrA =",
+  "  let rec foldr '<a '<b (f : '<a -> '<b -o '<b)",
+  "                        (z : '<b) |(xs : '<a list) : '<b =",
+  "        match xs with",
+  "        | Nil -> z",
+  "        | Cons(x,xs) -> f x (foldr f z xs)",
+  "   in foldr",
+  "module[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
+  "  ^'a. foldrA (^(x: 'a) (xs:'a list). Cons(x, xs)) Nil['a]",
+  "module[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
+  "  ^'a. foldrC (^(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
   ""
   ]

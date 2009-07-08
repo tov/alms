@@ -13,7 +13,7 @@ module Syntax (
   Lid(..), Uid(..), Ident(..), TyVar(..),
 
   TyTag(..), Variance(..),
-  Type(..), TypeT, TEnv,
+  Type(..), tyC, tyA, TypeT, TEnv,
   Prog(..), ProgT,
   Decl(..), DeclT,
   Mod(..), ModT, TyDec(..), TyDecT,
@@ -36,7 +36,7 @@ module Syntax (
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyBoolT, tyArrT, tyLolT, tyTupleT,
 
-  ftv, freshTyVar, freshTyVars, tysubst, qualifier, tystrip,
+  ftv, freshTyVar, freshTyVars, tysubst, qualifier,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
@@ -106,6 +106,14 @@ data Type i w where
   TyMu  :: TyVar -> Type i w -> Type i w
   TyC   :: Type i C -> Type i A
   TyA   :: Type i A -> Type i C
+
+tyC :: Type i C -> Type i A
+tyC (TyA t) = t
+tyC t       = TyC t
+
+tyA :: Type i A -> Type i C
+tyA (TyC t) = t
+tyA t       = TyA t
 
 type TEnv w = Env Lid (TypeT w)
 
@@ -315,10 +323,6 @@ instance Language w => Eq (Type TyTag w) where
     tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
   TyMu x t     == TyMu x' t'      =
     tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
-  TyA (TyC t)  == t'              = t == t'
-  TyC (TyA t)  == t'              = t == t'
-  t            == TyA (TyC t')    = t == t'
-  t            == TyC (TyA t')    = t == t'
   _            == _               = False
 
 instance Show Q where
@@ -439,10 +443,6 @@ instance Language w => PO (Type TyTag w) where
     else fail "\\/? or /\\?: Does not exist"
   ifMJ b (TyAll a t)   (TyAll a' t')  = ifMJBind TyAll b (a, t) (a', t')
   ifMJ b (TyMu a t)    (TyMu a' t')   = ifMJBind TyMu  b (a, t) (a', t')
-  ifMJ b (TyC (TyA t)) t'             = ifMJ b t t'
-  ifMJ b (TyA (TyC t)) t'             = ifMJ b t t'
-  ifMJ b t             (TyC (TyA t')) = ifMJ b t t'
-  ifMJ b t             (TyA (TyC t')) = ifMJ b t t'
   ifMJ _ t t' =
     if t == t'
       then return t
@@ -496,13 +496,13 @@ instance Language C where
   type OtherLang C = A
   reifyLang        = C
   langCase x fc _  = fc x
-  langMapType x    = fmap TyA x
+  langMapType x    = fmap tyA x
 
 instance Language A where
   type OtherLang A = C
   reifyLang        = A
   langCase x _ fa  = fa x
-  langMapType x    = fmap TyC x
+  langMapType x    = fmap tyC x
 
 sameLang :: (Language w, Language w') =>
             f w -> g w' -> (w ~ w' => f w -> g w -> r) -> r -> r
@@ -587,9 +587,9 @@ tysubst a t = ts where
   ts (TyCon c tys td)
                 = TyCon c (map ts tys) td
   ts (TyA t')
-                = TyA (ts t')
+                = tyA (ts t')
   ts (TyC t')
-                = TyC (ts t')
+                = tyC (ts t')
 
 -- Helper for finding the dual of a session type (since we can't
 -- express this direction in the type system)
@@ -664,14 +664,6 @@ qualifier (TyAll _ t)        = qualifier t
 qualifier (TyMu _ t)         = qualifier t
 qualifier _                  = Qu
 
-tystrip :: Type i w -> Type () w
-tystrip (TyCon n ts _) = TyCon n (map tystrip ts) ()
-tystrip (TyVar x)      = TyVar x
-tystrip (TyAll xs ts)  = TyAll xs (tystrip ts)
-tystrip (TyMu xs ts)   = TyMu xs (tystrip ts)
-tystrip (TyA t)        = TyA (tystrip t)
-tystrip (TyC t)        = TyC (tystrip t)
-
 -- Funtional types
 funtypes    :: [TyTag]
 funtypes     = [tdArr, tdLol]
@@ -699,26 +691,24 @@ ctype2atype (TyCon _ [td, tr] d) | d == tdArr
   = TyCon (Lid "->") [ctype2atype td, ctype2atype tr] tdArr
 ctype2atype (TyAll tv t)
                       = TyAll tv (ctype2atype t')
-                        where t'  = tysubst tv (TyA (TyVar tv)) t
+                        where t'  = tysubst tv (tyA (TyVar tv)) t
 ctype2atype (TyMu tv t)
                       = TyMu tv (ctype2atype t')
-                        where t'  = tysubst tv (TyA (TyVar tv)) t
-ctype2atype (TyA t)   = t
-ctype2atype t         = TyC t
+                        where t'  = tysubst tv (tyA (TyVar tv)) t
+ctype2atype t         = tyC t
 
 atype2ctype :: TypeT A -> TypeT C
 atype2ctype (TyCon n ps td) | tdTrans td
   = TyCon n (map atype2ctype ps) td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
   = TyCon (Lid "->") [atype2ctype td, atype2ctype tr] tdArr
-atype2ctype (TyAll tv t) | tvqual tv == Qu
+atype2ctype (TyAll tv t)
                       = TyAll tv (atype2ctype t')
-                        where t' = tysubst tv (TyC (TyVar tv)) t
-atype2ctype (TyMu tv t) | tvqual tv == Qu
+                        where t' = tysubst tv (tyC (TyVar tv)) t
+atype2ctype (TyMu tv t)
                       = TyMu tv (atype2ctype t')
-                        where t' = tysubst tv (TyC (TyVar tv)) t
-atype2ctype (TyC t)   = t
-atype2ctype t         = TyA t
+                        where t' = tysubst tv (tyC (TyVar tv)) t
+atype2ctype t         = tyA t
 
 syntacticValue :: Expr i w -> Bool
 syntacticValue e = case expr' e of
