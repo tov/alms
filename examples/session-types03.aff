@@ -8,11 +8,11 @@ type[A] protocol =
      (int send -> 'r)) select
 
 module[C] foldl =
-  let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (as : 'a list) : 'b =
-    match listcase as with
+  let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (alst : 'a list) : 'b =
+    match listcase alst with
     | Left _  -> z
-    | Right p -> let (a, as) = p in
-                   loop f (f a z) as
+    | Right p -> let (a, alst) = p in
+                   loop f (f a z) alst
   in loop
 
 -- This is pretty brittle :-)

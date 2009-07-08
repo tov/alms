@@ -26,7 +26,7 @@ tok = T.makeTokenParser T.LanguageDef {
                         "match", "with", "as", "_",
                         "let", "rec", "and", "in",
                         "module", "interface",
-                        "all", "of",
+                        "all", "mu", "unroll", "of",
                         "type", "qualifier"],
     T.reservedOpNames = ["|", "->", "*", "=", "\\", "^", ":", ":>"],
     T.caseSensitive = True

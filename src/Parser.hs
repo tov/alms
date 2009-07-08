@@ -46,7 +46,7 @@ tyvarp  = do
 identp :: P (Expr () w)
 identp  = do
   s <- identifier
-  if isUpperIdentifier s || elem s constants
+  if isUpperIdentifier s
     then return (exCon (Uid s))
     else return (exVar (Lid s))
 
@@ -272,7 +272,11 @@ exprp = expr0 where
                     e2 <- expr0
                     return (exSeq e1 e2),
                  return e1 ]
-  expr9 = chainl1 expr10 (return exApp)
+  expr9 = choice
+    [ do
+        reserved "unroll"
+        expr10 >>! exUnroll,
+      chainl1 expr10 (return exApp) ]
   expr10 = do
              e  <- exprA
              ts <- many . brackets $ commaSep1 typep

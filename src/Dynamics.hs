@@ -200,6 +200,8 @@ valOf e env = case expr' e of
     valOf e2 env
   ExCast e1 _ _          ->
     valOf e1 env
+  ExUnroll e1            ->
+    valOf e1 env
 
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
@@ -287,3 +289,9 @@ instance (Valuable a, Valuable b) => Valuable (Either a b) where
     where (cons, v') = case v of
             Left v0  -> ("Left",  vpprPrec (precApp + 1) v0)
             Right v0 -> ("Right", vpprPrec (precApp + 1) v0)
+  vinj (Left v)  = VaCon (Uid "Left") (Just (vinj v))
+  vinj (Right v) = VaCon (Uid "Right") (Just (vinj v))
+  vprjM (VaCon (Uid "Left") (Just v))  = liftM Left (vprjM v)
+  vprjM (VaCon (Uid "Right") (Just v)) = liftM Right (vprjM v)
+  vprjM _                              = fail "vprjM: not a sum"
+

@@ -310,6 +310,10 @@ tcExprC = tc where
         "Mismatch in cast: C type " ++ show t1 ++
         " is incompatible with A contract " ++ show t'
       return (t', exCast e1' t' ta')
+    ExUnroll e -> do
+      (te, e') <- tcExprC e
+      t <- unrollType te
+      return (t, exUnroll e')
 
 tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
@@ -433,6 +437,10 @@ tcExprA = tc where
         "Mismatch in cast: types " ++ show t1 ++
         " and " ++ show t' ++ " are incompatible"
       return (ta', exCast e1' t' ta')
+    ExUnroll e -> do
+      (te, e') <- tcExprA e
+      t <- unrollType te
+      return (t, exUnroll e')
 
   checkSharing name g e =
     forM_ (toList g) $ \(x, tx) ->
@@ -499,11 +507,8 @@ tcPatt t x0 = case x0 of
       "Pattern " ++ show x0 ++ " binds " ++ show y ++ " twice"
     return (gx =+= gy, PaAs x' y)
 
-
-{- XXX
-tcCon         :: (Monad m, Language w) =>
-                 Uid -> TypeT w -> TC w m (TypeT w)
-tcCon (Uid "unroll") t0 = do
+unrollType :: (Monad m, Language w) => TypeT w -> TC w m (TypeT w)
+unrollType t0 = do
   case tc t0 of
     Nothing -> fail $ "Nothing to unroll in: " ++ show t0
     Just tf -> return tf
@@ -519,9 +524,6 @@ tcCon (Uid "unroll") t0 = do
     tc (TyAll tv t)  = TyAll tv `fmap` tc t
     tc (TyMu tv t)   = Just (tysubst tv (TyMu tv t) t)
     tc _             = Nothing
-tcCon (Uid "()") _ = fail $ "Applied 0 arity constant: ()"
-tcCon (Uid s)    _ = fail $ "Unrecognized constant: " ++ s
--}
 
 -- Given a list of type variables tvs, an type t in which tvs
 -- may be free, and a type t', tries to substitute for tvs in t

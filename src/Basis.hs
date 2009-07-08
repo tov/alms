@@ -51,11 +51,8 @@ basis  = [
     "-o"   `primtype` tdLol,
 
     -- Sums
-    "either" `primtype` tdEither,
-    pfun 2 "Left"  -:: "all 'b 'a. 'a -> ('a, 'b) either"
-      -= vinj . (Left  :: Value -> Either Value Value),
-    pfun 2 "Right" -:: "all 'a 'b. 'b -> ('a, 'b) either"
-      -= vinj . (Right :: Value -> Either Value Value),
+    typeC "('a, 'b) either = Left of 'a | Right of 'b",
+    typeA "('a, 'b) either = Left of 'a | Right of 'b",
 
     -- Recursion
     pfun 2 "fix" -:: "all 'a 'b. (('a -> 'b) -> ('a -> 'b)) -> ('a -> 'b)"
@@ -74,8 +71,8 @@ basis  = [
         -: "all 'a. 'a list -> (unit, 'a * 'a list) either"
         -: "all '<a. '<a list -> (unit, '<a * '<a list) either"
       -= ((\lst -> vinj $ case lst of
-             []   -> Left (vinj ())
-             x:xs -> Right (vinj (vinj x, vinj xs)))
+             []   -> Left ()
+             x:xs -> Right (vinj x, vinj xs))
           :: [Value] -> Value),
     pfun 1 "null" -:: "all 'a. 'a list -> bool"
       -= (null :: [Value] -> Bool),

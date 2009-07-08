@@ -236,6 +236,10 @@ instance Ppr (Expr i w) where
               pprPrec (precCast + 2) t1,
               text ":>",
               pprPrec (precCast + 2) t2 ]
+    ExUnroll e ->
+      parensIf (p > precApp) $
+        sep [ text "unroll",
+              pprPrec (precApp + 1) e ]
 
 pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $

@@ -21,7 +21,7 @@ module Syntax (
   Expr(), ExprT, Expr'(..), expr',
   fv,
   exId, exStr, exInt, exIf, exCase, exLet, exLetRec, exPair,
-  exAbs, exApp, exTAbs, exTApp, exSeq, exCast,
+  exAbs, exApp, exTAbs, exTApp, exSeq, exCast, exUnroll,
   exVar, exCon,
   Binding(..), BindingT, Patt(..),
   pv,
@@ -40,7 +40,7 @@ module Syntax (
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
-  syntacticValue, constants, modName, prog2decls,
+  syntacticValue, modName, prog2decls,
   unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
 ) where
 
@@ -165,6 +165,7 @@ data Expr' i w = ExId Ident
                | ExTApp (Expr i w) (Type i w)
                | ExSeq (Expr i w) (Expr i w)
                | ExCast (Expr i w) (Type i w) (Type i A)
+               | ExUnroll (Expr i w)
 
 data Binding i w = Binding {
   bnvar  :: Lid,
@@ -286,6 +287,12 @@ exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
   fv_    = fv e,
   expr'_ = ExCast e t1 t2
+}
+
+exUnroll :: Expr i w -> Expr i w
+exUnroll e = Expr {
+  fv_    = fv e,
+  expr'_ = ExUnroll e
 }
 
 exVar :: Lid -> Expr i w
@@ -738,10 +745,8 @@ syntacticValue e = case expr' e of
   ExAbs _ _ _  -> True
   ExTAbs _ _   -> True
   ExTApp e1 _  -> syntacticValue e1
+  ExUnroll e1  -> syntacticValue e1
   _            -> False
-
-constants :: [String]
-constants  = [ "unroll" ]
 
 modName :: Mod i -> Lid
 modName (MdA x _ _)   = x
