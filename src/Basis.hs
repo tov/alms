@@ -217,6 +217,10 @@ primBasis  = [
              then return (Left c)
              else return (Right c),
 
+    -- Unsafe coercions
+    pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
+      -= (id :: Value -> Value),
+
     -- Used by contract system -- # names prevent them from appearing
     -- in a source program (which could result in nasty shadowing)
     pfun 1 "#ref" -:: "all 'a. 'a -> 'a ref"
