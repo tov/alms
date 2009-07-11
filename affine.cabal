@@ -1,5 +1,5 @@
 Name:           affine
-Version:        0.4.0
+Version:        0.5.0
 Copyright:      2009, Jesse A. Tov
 Cabal-Version:  >= 1.2
 License:        BSD3
@@ -20,7 +20,8 @@ Executable affine
                         base >= 3,
                         pretty >= 1,
                         containers >= 0.1,
-                        parsec >= 2.1
+                        parsec >= 2.1,
+                        mtl >= 1.1
   -- Ick!  Is there a better way?
   if impl(ghc == 6.10.*)
     Build-Depends:      editline
