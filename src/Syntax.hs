@@ -35,11 +35,11 @@ module Syntax (
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyBoolT, tyArrT, tyLolT, tyTupleT,
 
-  ftv, freshTyVar, freshTyVars, tysubst, qualifier,
+  Ftv(..), freshTyVar, freshTyVars, tysubst, qualifier,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
-  syntacticValue, modName, prog2decls,
+  syntacticValue, castableType, modName, prog2decls,
   unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
 ) where
 
@@ -419,7 +419,7 @@ instance Language w => PO (Type TyTag w) where
   ifMJ b t (TyCon _ [p] td) | td == tdDual = ifMJ b t (dualSessionType p)
   -- Special cases for ->/-o subtyping:
   ifMJ b (TyCon _ ps td) (TyCon _ ps' td')
-    | td == tdArr && td' == tdLol || td == tdLol && td' == tdArr
+    | (td == tdArr && td' == tdLol) || (td == tdLol && td' == tdArr)
       = ifMJ b (build ps) (build ps')
     where build ps0 = if b
                         then TyCon (Lid "-o") ps0 tdLol
@@ -440,26 +440,22 @@ instance Language w => PO (Type TyTag w) where
            | p'  <- ps' ]
       return (TyCon tc params td)
     else fail "\\/? or /\\?: Does not exist"
-  ifMJ b (TyAll a t)   (TyAll a' t')  = ifMJBind TyAll b (a, t) (a', t')
-  ifMJ b (TyMu a t)    (TyMu a' t')   = ifMJBind TyMu  b (a, t) (a', t')
+  ifMJ b (TyAll a t)   (TyAll a' t')  = do
+    qual <- ifMJ (not b) (tvqual a) (tvqual a')
+    let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
+        t1  = tysubst a (TyVar a1 `asTypeOf` t) t
+        t'1 = tysubst a' (TyVar a1 `asTypeOf` t') t'
+    TyAll a1 `liftM` ifMJ b t1 t'1
+  ifMJ b (TyMu a t)    (TyMu a' t')   = do
+    qual <- ifMJ b (tvqual a) (tvqual a')
+    let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
+        t1  = tysubst a (TyVar a1 `asTypeOf` t) t
+        t'1 = tysubst a' (TyVar a1 `asTypeOf` t') t'
+    TyMu a1 `liftM` ifMJ b t1 t'1
   ifMJ _ t t' =
     if t == t'
       then return t
       else fail "\\/? or /\\?: Does not exist"
-
-ifMJBind :: (Monad m, Language w) =>
-            (TyVar -> TypeT w -> TypeT w) -> Bool ->
-            (TyVar, TypeT w) -> (TyVar, TypeT w) ->
-            m (TypeT w)
-ifMJBind cons b (a, t) (a', t') = do
-  qual <- ifMJ (not b) (tvqual a) (tvqual a')
-  if qual == tvqual a
-    then do
-      tt' <- ifMJ b t (tysubst a' (TyVar a `asTypeOf` t') t')
-      return (cons a tt')
-    else do
-      t't <- ifMJ b (tysubst a (TyVar a' `asTypeOf` t) t) t'
-      return (cons a' t't)
 
 -- Variance has a bit more structure still -- it does sign analysis:
 instance Num Variance where
@@ -518,18 +514,24 @@ sameLang x y same diff =
 --- Syntax Utils
 ---
 
-ftv :: TypeT w -> M.Map TyVar Variance
-ftv (TyCon _ ts td)= M.unionsWith (+)
-                       [ M.map (* var) m
-                       | var <- tdArity td
-                       | m   <- map ftv ts ]
-ftv (TyVar tv)     = M.singleton tv 1
-ftv (TyAll tv t)   = M.delete tv (ftv t)
-ftv (TyMu tv t)    = M.delete tv (ftv t)
-ftv (TyC t)        = M.map (const Invariant)
-                           (M.unions (map ftv (cgetas t)))
-ftv (TyA t)        = M.map (const Invariant)
-                           (M.unions (map ftv (agetcs t)))
+class Ftv a where
+  ftv :: a -> M.Map TyVar Variance
+
+instance Ftv (Type TyTag w) where
+  ftv (TyCon _ ts td)= M.unionsWith (+)
+                         [ M.map (* var) m
+                         | var <- tdArity td
+                         | m   <- map ftv ts ]
+  ftv (TyVar tv)     = M.singleton tv 1
+  ftv (TyAll tv t)   = M.delete tv (ftv t)
+  ftv (TyMu tv t)    = M.delete tv (ftv t)
+  ftv (TyC t)        = M.map (const Invariant)
+                             (M.unions (map ftv (cgetas t)))
+  ftv (TyA t)        = M.map (const Invariant)
+                             (M.unions (map ftv (agetcs t)))
+
+instance Ftv a => Ftv [a] where
+  ftv = M.unionsWith (+) . map ftv
 
 freshTyVars :: [TyVar] -> M.Map TyVar a -> [TyVar]
 freshTyVars tvs0 m0 = loop tvs0 m1 where
@@ -569,7 +571,7 @@ tysubst a t = ts where
                       if a' == a
                         then TyAll a' t'
                         else
-                          let a'' = freshTyVar a' (ftv t)
+                          let a'' = freshTyVar a' (ftv [t, t'])
                               t'' = TyVar a'' `asTypeOf` t'
                           in TyAll a'' (ts (tysubst a' t'' t')))
                     (TyAll a' (ts t'))
@@ -579,16 +581,16 @@ tysubst a t = ts where
                       if a' == a
                         then TyMu a' t'
                         else
-                          let a'' = freshTyVar a' (ftv t)
+                          let a'' = freshTyVar a' (ftv [t, t'])
                               t'' = TyVar a'' `asTypeOf` t'
                           in TyMu a'' (ts (tysubst a' t'' t')))
                     (TyMu a' (ts t'))
   ts (TyCon c tys td)
                 = TyCon c (map ts tys) td
   ts (TyA t')
-                = tyA (ts t')
+                = atype2ctype (ts t')
   ts (TyC t')
-                = tyC (ts t')
+                = ctype2atype (ts t')
 
 -- Helper for finding the dual of a session type (since we can't
 -- express this direction in the type system)
@@ -689,11 +691,13 @@ ctype2atype (TyCon n ps td) | tdTrans td
 ctype2atype (TyCon _ [td, tr] d) | d == tdArr
   = TyCon (Lid "->") [ctype2atype td, ctype2atype tr] tdArr
 ctype2atype (TyAll tv t)
-                      = TyAll tv (ctype2atype t')
-                        where t'  = tysubst tv (tyA (TyVar tv)) t
+                      = TyAll tv' (ctype2atype t')
+                        where t'  = tysubst tv (tyA (TyVar tv')) t
+                              tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 ctype2atype (TyMu tv t)
-                      = TyMu tv (ctype2atype t')
-                        where t'  = tysubst tv (tyA (TyVar tv)) t
+                      = TyMu tv' (ctype2atype t')
+                        where t'  = tysubst tv (tyA (TyVar tv')) t
+                              tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 ctype2atype t         = tyC t
 
 atype2ctype :: TypeT A -> TypeT C
@@ -702,11 +706,13 @@ atype2ctype (TyCon n ps td) | tdTrans td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
   = TyCon (Lid "->") [atype2ctype td, atype2ctype tr] tdArr
 atype2ctype (TyAll tv t)
-                      = TyAll tv (atype2ctype t')
-                        where t' = tysubst tv (tyC (TyVar tv)) t
+                      = TyAll tv' (atype2ctype t')
+                        where t' = tysubst tv (tyC (TyVar tv')) t
+                              tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 atype2ctype (TyMu tv t)
-                      = TyMu tv (atype2ctype t')
-                        where t' = tysubst tv (tyC (TyVar tv)) t
+                      = TyMu tv' (atype2ctype t')
+                        where t' = tysubst tv (tyC (TyVar tv')) t
+                              tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 atype2ctype t         = tyA t
 
 syntacticValue :: Expr i w -> Bool
@@ -720,6 +726,14 @@ syntacticValue e = case expr' e of
   ExTApp e1 _  -> syntacticValue e1
   ExUnroll e1  -> syntacticValue e1
   _            -> False
+
+castableType :: TypeT w -> Bool
+castableType (TyVar _)      = False
+castableType (TyCon _ _ td) = td `elem` funtypes
+castableType (TyAll _ t)    = castableType t
+castableType (TyMu _ t)     = castableType t
+castableType (TyC _)        = False
+castableType (TyA _)        = False
 
 modName :: Mod i -> Lid
 modName (MdA x _ _)   = x

@@ -28,7 +28,7 @@ data TyInfo w = TiAbs TyTag
               | TiDat TyTag [TyVar] (Env Uid (Maybe (TypeT w)))
 
 -- Type environments
-type D   = S.Set TyVar         -- tyvars in scope
+type D   = Env TyVar TyVar     -- tyvars in scope, with renaming
 type G w = Env Ident (TypeT w) -- types of variables in scope
 type I w = Env Lid (TyInfo w)  -- type constructors in scope
 
@@ -79,7 +79,7 @@ runTC gg0 m0 = langCase (WrapTC m0)
     runTCw (getVars, getVars') (getTypes, getTypes') gg (TC m) = do
       let r0 = TCEnv (getVars gg, getVars' gg)
                      (getTypes gg, getTypes' gg)
-                     (S.empty, S.empty)
+                     (empty, empty)
           s0 = currIx gg
       M.S.evalStateT (M.R.runReaderT m r0) s0
 
@@ -112,9 +112,19 @@ newIndex  = TC $ do
   M.S.modify (+ 1)
   M.S.get
 
-withTVs :: Monad m => [TyVar] -> TC w m a -> TC w m a
-withTVs tvs = TC . M.R.local add . unTC where
-  add (TCEnv g ii (d, dw)) = TCEnv g ii (foldr S.insert d tvs, dw)
+withTVs :: Monad m => [TyVar] -> ([TyVar] -> TC w m a) -> TC w m a
+withTVs tvs m = TC $ do
+  TCEnv g ii (d, dw) <- M.R.ask
+  let (d', tvs') = foldr rename (d, []) tvs
+      r'         = TCEnv g ii (d', dw)
+  M.R.local (const r') (unTC (m tvs'))
+    where
+      rename :: TyVar -> (D, [TyVar]) -> (D, [TyVar])
+      rename tv (d, tvs') =
+        let tv' = case d =.= tv of
+              Nothing -> tv
+              Just _  -> tv `freshTyVar` unEnv d
+        in (d =+= tv =:= tv', tv':tvs')
 
 withVars :: Monad m => G w -> TC w m a -> TC w m a
 withVars g' = TC . M.R.local add . unTC where
@@ -124,10 +134,11 @@ withTypes :: Monad m => I w -> TC w m a -> TC w m a
 withTypes i' = TC . M.R.local add . unTC where
   add (TCEnv g (i, iw) dd) = TCEnv g (i =+= i', iw) dd
 
-checkTV :: Monad m => TyVar -> TC w m ()
-checkTV tv = TC $ asksM check where
-  check (TCEnv _ _ (d, _)) = tassert (S.member tv d) $
-                               "Free type variable: " ++ show tv
+getTV :: Monad m => TyVar -> TC w m TyVar
+getTV tv = TC $ asksM check where
+  check (TCEnv _ _ (d, _)) = case d =.= tv of
+    Just tv' -> return tv'
+    _        -> fail $ "Free type variable: " ++ show tv
 
 getVar :: Monad m => Ident -> TC w m (TypeT w)
 getVar x = TC $ asksM get where
@@ -154,6 +165,11 @@ tgot :: Monad m => String -> Type i w -> String -> m a
 tgot who got expected = fail $ who ++ " got " ++ show got ++
                                " where " ++ expected ++ " expected"
 
+-- Combination of tassert and tgot
+tassgot :: Monad m => Bool -> String -> Type i w -> String -> m ()
+tassgot False = tgot
+tassgot True  = \_ _ _ -> return ()
+
 -- Run a partial computation, and if it fails, substitute
 -- the given failure message.
 (|!) :: Monad m => Maybe a -> String -> m a
@@ -167,8 +183,8 @@ tcType :: (Language w, Monad m) => Type i w -> TC w m (TypeT w)
 tcType = tc where
   tc :: (Language w, Monad m) => Type i w -> TC w m (TypeT w)
   tc (TyVar tv)   = do
-    checkTV tv
-    return (TyVar tv)
+    tv' <- getTV tv
+    return (TyVar tv')
   tc (TyCon n ts _) = do
     ts'  <- mapM tc ts
     tcon <- getType n
@@ -186,15 +202,23 @@ tcType = tc where
           "Type constructor " ++ unLid n ++ " applied to " ++
           show (length ts) ++ " arguments where " ++
           show len ++ " expected"
-  tc (TyAll tv t) = TyAll tv `liftM` withTVs [tv] (tc t)
-  tc (TyMu  tv t) = TyMu tv  `liftM` withTVs [tv] (tc t)
-  tc (TyC t)      = tyC      `liftM` intoC (tc t)
-  tc (TyA t)      = tyA      `liftM` intoA (tc t)
+  tc (TyAll tv t) = withTVs [tv] $ \[tv'] -> TyAll tv' `liftM` tc t
+  tc (TyMu  tv t) = withTVs [tv] $ \[tv'] -> do
+    t' <- tc t
+    langCase t'
+      (\_ -> return ())
+      (\_ -> tassert (qualifier t' == tvqual tv) $
+         "Recursive type " ++ show (TyMu tv t) ++ " qualifier " ++
+         "does not match its own type variable.")
+    return (TyMu tv' t')
+  tc (TyC t)      = tyC `liftM` intoC (tc t)
+  tc (TyA t)      = tyA `liftM` intoA (tc t)
 
+-- Given a list of type variables and types, perform all the
+-- substitutions, avoiding capture between them.
 tysubsts :: Language w => [TyVar] -> [TypeT w] -> TypeT w -> TypeT w
 tysubsts ps ts t =
-  let avoid   = M.unions (map ftv ts)
-      ps'     = freshTyVars ps avoid
+  let ps'     = freshTyVars ps (ftv (t:ts))
       substs :: Language w =>
                 [TyVar] -> [TypeT w] -> TypeT w -> TypeT w
       substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
@@ -263,15 +287,14 @@ tcExprC = tc where
             subst <- tryUnify tvs ta t2
             let ta' = subst ta
                 tr' = subst tr
-            tassert (ta' == t2) $
-              "Mismatch in application: got " ++
-              show t2 ++ " where " ++ show ta' ++ " expected"
+            tassgot (ta' == t2)
+              "Application" t2 (show ta')
             return (tr', exApp e1' e2')
-          _ -> fail $ "Mismatch in application: got " ++
-                       show t1 ++ " where function type expected"
-    ExTAbs tv e   -> do
-      (t, e') <- withTVs [tv] $ tc e
-      return (TyAll tv t, exTAbs tv e')
+          _ -> tgot "Application" t1 "function type"
+    ExTAbs tv e   ->
+      withTVs [tv] $ \[tv'] -> do
+        (t, e') <- tc e
+        return (TyAll tv' t, exTAbs tv' e')
     ExTApp e1 t2  -> do
       (t1, e1') <- tc e1
       t2'       <- tcType t2
@@ -281,9 +304,8 @@ tcExprC = tc where
     ExCast e1 t ta -> do
       t'  <- tcType t
       ta' <- intoA $ tcType ta
-      case t' of
-        TyCon _ [_, _] td | td `elem` funtypes -> return ()
-        _ -> tgot "cast (:>)" t' "function type"
+      tassgot (castableType t')
+        "cast (:>)" t' "function type"
       (t1, e1') <- tc e1
       tassert (t1 == t') $
         "Mismatch in cast: declared type " ++ show t' ++
@@ -306,19 +328,18 @@ tcExprA = tc where
       return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
-    ExCase e1 clauses -> do
-      (t1, e1') <- tc e1
-      (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
-        (gi, xi') <- tcPatt t1 xi
+    ExCase e clauses -> do
+      (t0, e') <- tc e
+      (t1:ts, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
+        (gi, xi') <- tcPatt t0 xi
         checkSharing "match" gi ei
         (ti, ei') <- withVars gi $ tc ei
         return (ti, (xi', ei'))
-      foldM (\t2 t3 -> do
-               t2 \/? t3
-                 |! "Mismatch in match/let: " ++ show t2 ++
-                    " and " ++ show t3)
-            ti tis
-      return (ti, exCase e1' clauses')
+      tr <- foldM (\ti' ti -> ti' \/? ti
+                      |! "Mismatch in match/let: " ++ show ti ++
+                          " and " ++ show ti')
+            t1 ts
+      return (tr, exCase e' clauses')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
@@ -367,36 +388,31 @@ tcExprA = tc where
             subst <- tryUnify tvs ta t2
             let ta' = subst ta
                 tr' = subst tr
-            tassert (t2 <: ta') $
-              "Mismatch in application: got " ++
-              show t2 ++ " where " ++ show ta' ++ " expected"
+            tassgot (t2 <: ta')
+              "Application" t2 (show ta')
             return (tr', exApp e1' e2')
-          _ -> fail $ "Mismatch in application: got " ++
-                       show t1 ++ " where function type expected"
-    ExTAbs tv e   -> do
-      (t, e') <- withTVs [tv] $ tc e
-      return (TyAll tv t, exTAbs tv e')
+          _ -> tgot "Application" t1 "function type"
+    ExTAbs tv e   ->
+      withTVs [tv] $ \[tv'] -> do
+        (t, e') <- tc e
+        return (TyAll tv' t, exTAbs tv' e')
     ExTApp e1 t2  -> do
       t2'       <- tcType t2
       (t1, e1') <- tc e1
       case t1 of
         TyAll tv t1' -> do
-          tassert (qualifier t2' <: tvqual tv) $
-            "Mismatch in type application: got " ++
-            show (qualifier t2') ++
-            " type for type variable " ++ show tv
+          tassgot (qualifier t2' <: tvqual tv)
+            "Type application" t2' ("for type variable " ++ show tv)
           return (tysubst tv t2' t1', exTApp e1' t2')
         _            -> tgot "type application" t1 "(for)all type"
     ExCast e1 t ta -> do
       t'  <- tcType t
       ta' <- tcType ta
-      case t' of
-        TyCon _ [_, _] td | td `elem` funtypes -> return ()
-        _ -> fail $ "Cast requires a function type, but got" ++ show t'
+      tassgot (castableType t')
+        "cast (:>)" t' "function type"
       (t1, e1') <- tc e1
-      tassert (t1 <: t') $
-        "Mismatch in cast: got " ++ show t1 ++
-        " where " ++ show t' ++ " expected"
+      tassgot (t1 <: t')
+        "cast (:>)" t1 (show t')
       t1 \/? ta' |!
         "Mismatch in cast: types " ++ show t1 ++
         " and " ++ show t' ++ " are incompatible"
@@ -457,12 +473,12 @@ tcPatt t x0 = case x0 of
           return (gx =+= gy, PaPair x' y')
       _ -> tgot "Pattern" t "pair type"
   PaStr s    -> do
-    tassert (tyinfo t == tdString) $
-      "Pattern got " ++ show t ++ " where string expected"
+    tassgot (tyinfo t == tdString)
+      "Pattern" t "string"
     return (empty, PaStr s)
   PaInt z    -> do
-    tassert (tyinfo t == tdInt) $
-      "Pattern got " ++ show t ++ " where int expected"
+    tassgot (tyinfo t == tdInt)
+      "Pattern" t "int"
     return (empty, PaInt z)
   PaAs x y   -> do
     (gx, x') <- tcPatt t x
@@ -554,12 +570,12 @@ withTyDec (TdAbsC name params) k = intoC $ do
              })
     (outofC . k $ TdAbsC name params)
 withTyDec (TdSynC name params rhs) k = intoC $ do
-  t' <- withTVs params $ tcType rhs
-  withTypes (name =:= TiSyn params t')
+  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
+  withTypes (name =:= t')
     (outofC . k $ TdSynC name params rhs)
 withTyDec (TdSynA name params rhs) k = intoA $ do
-  t' <- withTVs params $ tcType rhs
-  withTypes (name =:= TiSyn params t')
+  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
+  withTypes (name =:= t')
     (outofA . k $ TdSynA name params rhs)
 withTyDec (TdDatC name params alts) k = intoC $ do
   index <- newIndex
@@ -569,17 +585,19 @@ withTyDec (TdDatC name params alts) k = intoC $ do
               tdQual  = [],
               tdTrans = False
             }
-  alts' <- withTVs params $
-    withTypes (name =:= TiDat tag params empty) $
-      sequence
-        [ case mt of
-            Nothing -> return (cons, Nothing)
-            Just t  -> do
-              t' <- tcType t
-              return (cons, Just t')
-        | (cons, mt) <- alts ]
-  withTypes (name =:= TiDat tag params (fromList alts')) $
-    withVars (alts2env name params tag alts') $
+  (params', alts') <-
+    withTVs params $ \params' ->
+      withTypes (name =:= TiDat tag params' empty) $ do
+        alts' <- sequence
+          [ case mt of
+              Nothing -> return (cons, Nothing)
+              Just t  -> do
+                t' <- tcType t
+                return (cons, Just t')
+          | (cons, mt) <- alts ]
+        return (params', alts')
+  withTypes (name =:= TiDat tag params' (fromList alts')) $
+    withVars (alts2env name params' tag alts') $
       (outofC . k $ TdDatC name params alts)
 withTyDec (TdDatA name params alts) k = intoA $ do
   index <- newIndex
@@ -600,18 +618,20 @@ fixDataType :: Monad m =>
 fixDataType name params alts = loop where
   loop :: Monad m => TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
   loop tag = do
-    alts' <- withTVs params $
-      withTypes (name =:= TiDat tag params empty) $
-        sequence
-          [ case mt of
-              Nothing -> return (k, Nothing)
-              Just t  -> do
-                t' <- tcType t
-                return (k, Just t')
-          | (k, mt) <- alts ]
+    (params', alts') <-
+      withTVs params $ \params' ->
+        withTypes (name =:= TiDat tag params' empty) $ do
+          alts' <- sequence
+            [ case mt of
+                Nothing -> return (k, Nothing)
+                Just t  -> do
+                  t' <- tcType t
+                  return (k, Just t')
+            | (k, mt) <- alts ]
+          return (params', alts')
     let t'    = foldl tyTupleT tyUnitT [ t | (_, Just t) <- alts' ]
-        arity = typeVariances params t'
-        qual  = typeQual params t'
+        arity = typeVariances params' t'
+        qual  = typeQual params' t'
     if arity == tdArity tag && qual == tdQual tag
       then return (tag, alts')
       else loop tag {

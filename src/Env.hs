@@ -1,5 +1,5 @@
 module Env (
-  Env,
+  Env(unEnv),
   empty, isEmpty,
   (=:=), (=::=), (=+=), (=-=), (=--=), (=.=), (=|=),
   mapAccum, mapAccumM,
