@@ -289,7 +289,7 @@ srcBasis  = unlines [
   "        | Cons(x,xs) -> f x (foldr f z xs)",
   "   in foldr",
   "module[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
-  "  ^'a. foldrA (^(x: 'a) (xs:'a list). Cons(x, xs)) Nil['a]",
+  "  ^'a. foldrA (^(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
   "module[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
   "  ^'a. foldrC (^(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
   ""
