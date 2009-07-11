@@ -137,36 +137,36 @@ interactive opt rs0 = do
     doLine st ast = let
       check   :: (ReplState, [Decl ()]) -> IO ReplState
       coerce  :: (ReplState, [DeclT])   -> IO ReplState
-      recheck :: (ReplState, [Decl i])  -> IO ReplState
-      execute :: (ReplState, [Decl i])  -> IO ReplState
-      display :: (ReplState, [Decl i])  -> IO ReplState
+      recheck :: [Decl i0] -> (ReplState, [Decl i])  -> IO ReplState
+      execute :: [Decl i0] -> (ReplState, [Decl i])  -> IO ReplState
+      display :: [Decl i0] -> (ReplState, [Decl i])  -> IO ReplState
 
       check stast0   = if opt Don'tType
-                         then execute stast0
+                         then execute (snd stast0) stast0
                          else statics stast0 >>= coerce
 
       coerce stast1  = if opt Don'tCoerce
-                         then recheck stast1
+                         then recheck (snd stast1) stast1
                          else do
                            stast2 <- translation stast1
                            when (opt Verbose) $
                              mumbles "TRANSLATION" (snd stast2)
-                           recheck stast2
+                           recheck (snd stast1) stast2
 
-      recheck stast2 = if opt ReType
-                         then do
-                           statics stast2
-                           execute stast2
-                         else
-                           execute stast2
+      recheck ast1 stast2 = if opt ReType
+                              then do
+                                statics stast2
+                                execute ast1 stast2
+                              else
+                                execute ast1 stast2
 
-      execute stast2 = if opt Don'tExecute
-                         then display stast2
-                         else dynamics stast2 >>= display
+      execute ast1 stast2 = if opt Don'tExecute
+                              then display ast1 stast2
+                              else dynamics stast2 >>= display ast1
 
-      display stast3 = do
-                         printResult stast3
-                         return (fst stast3)
+      display ast1 stast3 = do
+                              printResult (fst stast3, ast1)
+                              return (fst stast3)
 
       in check (st, ast)
     reader = loop []
