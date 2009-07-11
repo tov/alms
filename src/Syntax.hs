@@ -3,7 +3,6 @@
       FlexibleContexts,
       FlexibleInstances,
       GADTs,
-      ImpredicativeTypes,
       ParallelListComp,
       RankNTypes,
       TypeFamilies #-}
