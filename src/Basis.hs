@@ -66,6 +66,28 @@ primBasis  = [
     fun "le" -:: "int -> int -> bool"
       -= ((<=) :: Integer -> Integer -> Bool),
 
+    -- Floating point arithmetic
+    typeC "float",
+    typeA "float",
+    fun "lef" -:: "float -> float -> bool"
+      -= ((<=) :: Double -> Double -> Bool),
+    fun "addf" -:: "float -> float -> float"
+      -= ((+) :: Double -> Double -> Double),
+    fun "subf" -:: "float -> float -> float"
+      -= ((-) :: Double -> Double -> Double),
+    fun "mulf" -:: "float -> float -> float"
+      -= ((*) :: Double -> Double -> Double),
+    fun "divf" -:: "float -> float -> float"
+      -= ((/) :: Double -> Double -> Double),
+    fun "float_of_int" -:: "int -> float"
+      -= (fromIntegral :: Integer -> Double),
+    fun "int_of_float" -:: "float -> int"
+      -= (round :: Double -> Integer),
+    fun "string_of_float" -:: "float -> string"
+      -= (show :: Double -> String),
+    fun "float_of_string" -:: "string -> float"
+      -= (read :: String -> Double),
+
     -- Strings
     fun "explode"  -:: "string -> int list"
       -= map char2integer,
@@ -234,6 +256,11 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO ()
   ]
+
+instance Valuable Double where
+  veq = (==)
+  vpprPrec _ = text . show
+instance MkFun Double where mkFun = baseMkFun
 
 newtype Ref = Ref { unRef :: IORef Value }
   deriving (Eq, Typeable)

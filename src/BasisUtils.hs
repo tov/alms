@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 module BasisUtils (
   Entry, Nonce(..), Vinj(..),
-  MkFun(..),
+  MkFun(..), baseMkFun,
   fun, binArith, val, pval, pfun,
   typeC, typeA, primtype, src,
   vapp,
