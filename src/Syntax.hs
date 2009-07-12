@@ -49,6 +49,7 @@ import Util
 import Env
 
 import Control.Monad.State (State, evalState, get, put)
+import Data.Char (isAlpha)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -375,7 +376,11 @@ instance Show Variance where
   showsPrec _ Omnivariant   = ('0':)
 
 instance Show Lid where
-  show = unLid
+  showsPrec _ (Lid s) = case s of
+    '_':_             -> (s++)
+    c  :_ | isAlpha c -> (s++)
+    '*':_             -> ("( "++) . (s++) . (" )"++)
+    _                 -> ('(':) . (s++) . (')':)
 
 instance Show Uid where
   show = unUid

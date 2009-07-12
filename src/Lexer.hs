@@ -5,8 +5,12 @@ module Lexer (
   semi, comma, colon, dot, semiSep, semiSep1, commaSep, commaSep1,
 
   isUpperIdentifier, lid, uid,
-  lolli, qualU, qualA, langC, langA
+  lolli, arrow, star,
+  qualU, qualA, langC, langA,
+  precOp, opP
 ) where
+
+import Util
 
 import Data.Char (isUpper)
 import Text.ParserCombinators.Parsec
@@ -20,15 +24,15 @@ tok = T.makeTokenParser T.LanguageDef {
     T.nestedComments = True,
     T.identStart     = upper <|> lower <|> oneOf "_",
     T.identLetter    = alphaNum <|> oneOf "_'",
-    T.opStart        = oneOf "~!@#$%^&*-+=<>/?\\|",
-    T.opLetter       = oneOf "~!@#$%^&*-+=<>/?\\|",
+    T.opStart        = oneOf "!$%&*+-/<=>?@^|~",
+    T.opLetter       = oneOf "!$%&*+-/<=>?@^|~.:",
     T.reservedNames  = ["if", "then", "else",
                         "match", "with", "as", "_",
                         "let", "rec", "and", "in",
                         "module", "interface",
                         "all", "mu", "of",
                         "type", "qualifier"],
-    T.reservedOpNames = ["|", "->", "*", "=", "\\", "^", ":", ":>"],
+    T.reservedOpNames = ["|", "=", "\\", "^", ":", ":>"],
     T.caseSensitive = True
   }
 
@@ -47,7 +51,14 @@ stringLiteral    = T.stringLiteral tok
 natural         :: CharParser st Integer
 natural          = T.natural tok
 integer         :: CharParser st Integer
-integer          = T.integer tok
+integer          = lexeme $ try $ do
+  sign <- choice [
+            char '+' >> return id,
+            char '-' >> return negate,
+            return id
+          ]
+  nat  <- natural
+  return (sign nat)
 float           :: CharParser st Double
 float            = T.float tok
 naturalOrFloat  :: CharParser st (Either Integer Double)
@@ -92,10 +103,13 @@ commaSep1       :: CharParser st a -> CharParser st [a]
 commaSep1        = T.commaSep1 tok
 
 lolli           :: CharParser st ()
-lolli            = lexeme $ do
-  char '-'
-  char 'o'
-  notFollowedBy (alphaNum <|> oneOf "'_")
+lolli            = try (symbol "-o") >> return ()
+
+arrow           :: CharParser st ()
+arrow            = try (symbol "->") >> return ()
+
+star            :: CharParser st ()
+star             = symbol "*" >> return ()
 
 qualU, qualA    :: CharParser st ()
 qualU            = symbol "U" >> return ()
@@ -112,13 +126,33 @@ isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 
 lid, uid        :: CharParser st String
-lid              = try . lexeme $ do
+lid              = try $ do
   s <- identifier
   if isUpperIdentifier s
     then pzero <?> "lowercase identifier"
     else return s
-uid              = try . lexeme $ do
+uid              = try $ do
   s <- identifier
   if isUpperIdentifier s
     then return s
     else pzero <?> "uppercase identifier"
+
+precOp :: String -> Int
+precOp ('*':'*':_)    = 7
+precOp (c:_)
+  | c `elem` "*/%"    = 6
+  | c `elem` "+-"     = 5
+  | c `elem` "@^"     = 4
+  | c `elem` "=<>|&$" = 3
+precOp "!="           = 3
+precOp (c:_)
+  | c `elem` "!~?"    = 8
+precOp _              = 0
+
+opP :: Int -> CharParser st String
+opP p = try $ do
+  op <- operator
+  if precOp op == p
+    then return op
+    else pzero
+
