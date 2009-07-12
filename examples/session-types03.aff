@@ -30,23 +30,21 @@ module[A] server =
   let rec loop (acc : int)
                (c   : protocol dual channel)
                : unit =
-      let c = unroll c in
-        match follow c with
-        | Left c ->
-            send c acc;
-            ()
-        | Right c ->
-            let (x, c) = recv c in
-              loop (add acc x) c
+      match follow c with
+      | Left c ->
+          send c acc;
+          ()
+      | Right c ->
+          let (x, c) = recv c in
+            loop (add acc x) c
    in loop 0
 
 module[A] client =
   let rec loop (c : protocol channel) : int =
-    let c = unroll c in
     let s = getLine () in
       if eq s ""
-        then
-          let c      = sel1 c in
+                then
+                    let c      = sel1 c in
           let (r, _) = recv c in
             r
         else

@@ -239,10 +239,6 @@ instance Ppr (Expr i w) where
               pprPrec (precCast + 2) t1,
               text ":>",
               pprPrec (precCast + 2) t2 ]
-    ExUnroll e ->
-      parensIf (p > precApp) $
-        sep [ text "unroll",
-              pprPrec (precApp + 1) e ]
 
 pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
@@ -308,6 +304,10 @@ instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
 instance Ppr Ident     where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
+
+instance Show TypeTW where
+  showsPrec p (TypeTA t) = showsPrec p t
+  showsPrec p (TypeTC t) = showsPrec p t
 
 showFromPpr :: Ppr a => Int -> a -> ShowS
 showFromPpr p t = shows (pprPrec p t)

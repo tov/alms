@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 module Statics (
   S, env0,
   tcProg, tcDecls,
@@ -314,10 +315,6 @@ tcExprC = tc where
         "Mismatch in cast: C type " ++ show t1 ++
         " is incompatible with A contract " ++ show t'
       return (t', exCast e1' t' ta')
-    ExUnroll e -> do
-      (te, e') <- tcExprC e
-      t <- unrollType te
-      return (t, exUnroll e')
 
 tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
@@ -417,10 +414,6 @@ tcExprA = tc where
         "Mismatch in cast: types " ++ show t1 ++
         " and " ++ show t' ++ " are incompatible"
       return (ta', exCast e1' t' ta')
-    ExUnroll e -> do
-      (te, e') <- tcExprA e
-      t <- unrollType te
-      return (t, exUnroll e')
 
   checkSharing name g e =
     forM_ (toList g) $ \(x, tx) ->
@@ -487,24 +480,6 @@ tcPatt t x0 = case x0 of
       "Pattern " ++ show x0 ++ " binds " ++ show y ++ " twice"
     return (gx =+= gy, PaAs x' y)
 
-unrollType :: (Monad m, Language w) => TypeT w -> TC w m (TypeT w)
-unrollType t0 = do
-  case tc t0 of
-    Nothing -> fail $ "Nothing to unroll in: " ++ show t0
-    Just tf -> return tf
-  where
-    tc (TyCon n ts0 td) =
-      let ts0' = map tc ts0
-          each t Nothing   (ts, Nothing)  = (t:ts, Nothing)
-          each t Nothing   (ts, Just ts') = (t:ts, Just (t:ts'))
-          each t (Just t') (ts, _)        = (t:ts, Just (t':ts))
-       in do
-         ts0'' <- snd (foldr2 each ([], Nothing) ts0 ts0')
-         return (TyCon n ts0'' td)
-    tc (TyAll tv t)  = TyAll tv `fmap` tc t
-    tc (TyMu tv t)   = Just (tysubst tv (TyMu tv t) t)
-    tc _             = Nothing
-
 -- Given a list of type variables tvs, an type t in which tvs
 -- may be free, and a type t', tries to substitute for tvs in t
 -- to produce a type that *might* unify with t'
@@ -519,29 +494,40 @@ tryUnify (tv:tvs) t t' =
                   return (subst . subst')
     _        -> fail $
                   "Cannot guess type application to unify " ++
-                  show t ++ " and " ++ show t'
+                  show t ++ " and " ++ show t' ++ " at " ++ show tv
 
 -- Given a type variable tv, type t in which tv may be free,
 -- and a second type t', finds a plausible candidate to substitute
 -- for tv to make t and t' unify.  (The answer it finds doesn't
 -- have to be correct.
-findSubst :: Language w => TyVar -> TypeT w -> TypeT w -> [TypeT w]
-findSubst tv = fs where
-  fs :: Language w => TypeT w -> TypeT w -> [TypeT w]
-  fs (TyCon _ [t] td) t' | td == tdDual = fs (dualSessionType t) t'
-  fs t' (TyCon _ [t] td) | td == tdDual = fs t' (dualSessionType t)
-  fs (TyVar tv') t' | tv == tv'
-    = [t']
-  fs (TyCon _ ts _) (TyCon _ ts' _)
-    = concat (zipWith fs ts ts')
-  fs (TyAll tv0 t) (TyAll tv0' t') | tv /= tv0
-    = [ tr | tr <- fs t t', tr /= TyVar tv0' ]
-  fs (TyC t) (TyC t')
-    = concat (zipWith fs (cgetas t) (cgetas t'))
-  fs (TyA t) (TyA t')
-    = concat (zipWith fs (agetcs t) (agetcs t'))
-  fs _ _
-    = []
+findSubst :: forall w. Language w => TyVar -> TypeT w -> TypeT w -> [TypeT w]
+findSubst tv = chk [] where
+  chk, cmp :: [(TypeTW, TypeTW)] -> TypeT w -> TypeT w -> [TypeT w]
+  chk seen t1 t2 =
+    let tw1 = typeTW t1; tw2 = typeTW t2
+     in if (tw1, tw2) `elem` seen
+          then []
+          else cmp ((tw1, tw2) : seen) t1 t2
+
+  cmp _    (TyVar tv') t'
+    | tv == tv'    = [t']
+  cmp seen (TyCon _ [t] td) t'
+    | td == tdDual = chk seen (dualSessionType t) t'
+  cmp seen t' (TyCon _ [t] td)
+    | td == tdDual = chk seen t' (dualSessionType t)
+  cmp seen (TyCon _ ts _) (TyCon _ ts' _)
+                   = concat (zipWith (chk seen) ts ts')
+  cmp seen (TyAll tv0 t) (TyAll tv0' t')
+    | tv /= tv0    = [ tr | tr <- chk seen t t', tr /= TyVar tv0' ]
+  cmp seen (TyC t) (TyC t')
+                   = concat (zipWith (chk seen) (cgetas t) (cgetas t'))
+  cmp seen (TyA t) (TyA t')
+                   = concat (zipWith (chk seen) (agetcs t) (agetcs t'))
+  cmp seen (TyMu a t) t'
+                   = chk seen (tysubst a (TyMu a t) t) t'
+  cmp seen t' (TyMu a t)
+                   = chk seen t' (tysubst a (TyMu a t) t)
+  cmp _ _ _        = []
 
 withTyDec :: (Language w, Monad m) =>
            TyDec i -> (TyDecT -> TC w m a) -> TC w m a

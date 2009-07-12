@@ -165,9 +165,9 @@ module[A] clipper : {plane} ->
      (ic: {point} sendList dual channel)
      (oc: {point} sendList channel).
        let finish (oc: {point} sendList channel) =
-             sel1 (unroll oc); () in
+             sel1 oc; () in
        let put (oc: {point} sendList channel) (pt: {point}) =
-             send (sel2 (unroll oc)) pt in
+             send (sel2 oc) pt in
        let putCross (oc: {point} sendList channel)
                     (p1: {point}) (p2: {point}) =
              match copt2aopt[{point}] (intersect p1 p2 plane) with
@@ -178,7 +178,7 @@ module[A] clipper : {plane} ->
              if isPointAbovePlane pt plane
                then put oc pt
                else oc in
-         match follow (unroll ic) with
+         match follow ic with
          | Left _   -> finish oc
          | Right ic ->
              let (pt0, ic) = recv ic in
@@ -186,7 +186,7 @@ module[A] clipper : {plane} ->
                           (oc: {point} sendList channel)
                           (pt: {point}) : unit =
                        let oc = putVisible oc pt in
-                         match follow (unroll ic) with
+                         match follow ic with
                          | Left _   -> let oc = putCross oc pt pt0 in
                                          finish oc
                          | Right ic -> let (pt', ic) = recv ic in
@@ -196,7 +196,7 @@ module[A] clipper : {plane} ->
 
 module[A] printer : {point} sendList dual channel -> unit =
   let rec loop (ic: {point} sendList dual channel): unit =
-            match follow (unroll ic) with
+            match follow ic with
             | Left _   -> ()
             | Right ic -> let (pt, ic) = recv ic in
                             putPoint pt;
@@ -211,22 +211,22 @@ type[A] main_prot = mu 'x. ({point} sendList * ({plane} send -> 'x)) select
 module[A] parser : main_prot channel -> unit =
   let rec plane_loop (oc: main_prot channel): unit =
             match getLine () with
-            | "" -> point_loop (sel1 (unroll oc))
+            | "" -> point_loop (sel1 oc)
             | s  -> let plane = parsePlane s in
-                    let oc    = send (sel2 (unroll oc)) plane in
+                    let oc    = send (sel2 oc) plane in
                       plane_loop oc
       and point_loop (oc: {point} sendList channel): unit =
             match getLine () with
-            | "" -> sel1 (unroll oc); ()
+            | "" -> sel1 oc; ()
             | s  -> let point = parsePoint s in
-                    let oc    = send (sel2 (unroll oc)) point in
+                    let oc    = send (sel2 oc) point in
                       point_loop oc
    in plane_loop
 
 module[A] main =
   let rec get_planes (acc: {plane} list) (ic: main_prot dual channel)
                      : {plane} list * {point} sendList dual channel =
-            match follow (unroll ic) with
+            match follow ic with
             | Left ic  -> (revA acc, ic)
             | Right ic -> let (plane, ic) = recv ic in
                             get_planes (Cons(plane,acc)) ic in

@@ -199,8 +199,6 @@ valOf e env = case expr' e of
       _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
   ExCast e1 _ _          ->
     valOf e1 env
-  ExUnroll e1            ->
-    valOf e1 env
 
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of

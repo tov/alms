@@ -17,10 +17,12 @@ module Syntax (
   Decl(..), DeclT,
   Mod(..), ModT, TyDec(..), TyDecT,
 
+  TypeTW(..), typeTW,
+
   Expr(), ExprT, Expr'(..), expr',
   fv,
   exId, exStr, exInt, exCase, exLetRec, exPair,
-  exAbs, exApp, exTAbs, exTApp, exCast, exUnroll,
+  exAbs, exApp, exTAbs, exTApp, exCast,
   exVar, exCon, exLet, exSeq, -- <== synthetic
   Binding(..), BindingT, Patt(..),
   pv,
@@ -35,7 +37,7 @@ module Syntax (
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyBoolT, tyArrT, tyLolT, tyTupleT,
 
-  Ftv(..), freshTyVar, freshTyVars, tysubst, qualifier,
+  Ftv(..), freshTyVar, freshTyVars, tysubst, tysubst1, qualifier,
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs,
 
@@ -46,6 +48,7 @@ module Syntax (
 import Util
 import Env
 
+import Control.Monad.State (State, evalState, get, put)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -169,7 +172,6 @@ data Expr' i w = ExId Ident
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
                | ExCast (Expr i w) (Type i w) (Type i A)
-               | ExUnroll (Expr i w)
 
 data Binding i w = Binding {
   bnvar  :: Lid,
@@ -275,12 +277,6 @@ exCast e t1 t2 = Expr {
   expr'_ = ExCast e t1 t2
 }
 
-exUnroll :: Expr i w -> Expr i w
-exUnroll e = Expr {
-  fv_    = fv e,
-  expr'_ = ExUnroll e
-}
-
 exVar :: Lid -> Expr i w
 exVar  = exId . Var
 
@@ -310,19 +306,63 @@ exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 instance Eq TyTag where
   td == td' = tdId td == tdId td'
 
+data TypeTW = TypeTC (TypeT C)
+            | TypeTA (TypeT A)
+
+typeTW :: Language w => TypeT w -> TypeTW
+typeTW t = langCase t TypeTC TypeTA
+
+-- On TypeTW, we define simple alpha equality, which we then use
+-- to keep track of where we've been when we define type equality
+-- that understands mu.
+instance Eq TypeTW where
+  tw1 == tw2 = case (tw1, tw2) of
+                 (TypeTC t1, TypeTC t2) -> t1 === t2
+                 (TypeTA t1, TypeTA t2) -> t1 === t2
+                 (TypeTC _ , TypeTA _ ) -> False
+                 (TypeTA _ , TypeTC _ ) -> False
+    where
+      (===) :: Language w => TypeT w -> TypeT w -> Bool
+      TyCon _ ps td === TyCon _ ps' td'
+                                 = td == td' && all2 (===) ps ps'
+      TyA t         === TyA t'   = t === t'
+      TyC t         === TyC t'   = t === t'
+      TyVar x       === TyVar x' = x == x'
+      TyAll x t     === TyAll x' t'
+                                 = tvqual x == tvqual x'
+                                && t === tysubst1 x' (TyVar x) t'
+      TyMu x t      === TyMu x' t'
+                                 = tvqual x == tvqual x'
+                                && t === tysubst1 x' (TyVar x) t'
+      _             === _        = False
+
 instance Language w => Eq (Type TyTag w) where
-  TyCon _ [p] td == t | td == tdDual = dualSessionType p == t
-  t == TyCon _ [p] td | td == tdDual = t == dualSessionType p
-  TyCon _ ps td == TyCon _ ps' td' =
-    td == td' && all2 (==) ps ps'
-  TyA t        == TyA t'          = t == t'
-  TyC t        == TyC t'          = t == t'
-  TyVar x      == TyVar x'        = x == x'
-  TyAll x t    == TyAll x' t'     =
-    tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
-  TyMu x t     == TyMu x' t'      =
-    tvqual x == tvqual x' && t == tysubst x' (TyVar x `asTypeOf` t') t'
-  _            == _               = False
+  (==) t1i t2i = evalState (t1i `chk` t2i) [] where
+    chk, cmp :: Language w =>
+                TypeT w -> TypeT w -> State [(TypeTW, TypeTW)] Bool
+    t1 `chk` t2 = do
+      seen <- get
+      let tw1 = typeTW t1; tw2 = typeTW t2
+      if (tw1, tw2) `elem` seen
+        then return True
+        else do
+          put ((tw1, tw2) : (tw2, tw1) : seen)
+          cmp t1 t2
+
+    TyCon _ [p] td `cmp` t
+      | td == tdDual                     = dualSessionType p `chk` t
+    t              `cmp` TyCon _ [p] td
+      | td == tdDual                     = t `chk` dualSessionType p
+    TyMu a t       `cmp` t'              = tysubst a (TyMu a t) t `chk` t'
+    t'             `cmp` TyMu a t        = t' `chk` tysubst a (TyMu a t) t
+    TyCon _ ps td  `cmp` TyCon _ ps' td'
+      | td == td'   = allM2 chk ps ps'
+    TyA t          `cmp` TyA t'          = t `chk` t'
+    TyC t          `cmp` TyC t'          = t `chk` t'
+    TyVar x        `cmp` TyVar x'        = return (x == x')
+    TyAll x t      `cmp` TyAll x' t' 
+      | tvqual x == tvqual x'            = t `chk` tysubst1 x' (TyVar x) t'
+    _            `cmp` _               = return False
 
 instance Show Q where
   showsPrec _ Qa = ('A':)
@@ -413,49 +453,72 @@ instance PO Q where
   Qa /\ Qa = Qa
   _  /\ _  = Qu
 
-instance Language w => PO (Type TyTag w) where
   -- Special cases for dual session types:
-  ifMJ b (TyCon _ [p] td) t | td == tdDual = ifMJ b (dualSessionType p) t
-  ifMJ b t (TyCon _ [p] td) | td == tdDual = ifMJ b t (dualSessionType p)
-  -- Special cases for ->/-o subtyping:
-  ifMJ b (TyCon _ ps td) (TyCon _ ps' td')
-    | (td == tdArr && td' == tdLol) || (td == tdLol && td' == tdArr)
-      = ifMJ b (build ps) (build ps')
-    where build ps0 = if b
-                        then TyCon (Lid "-o") ps0 tdLol
-                        else TyCon (Lid "->") ps0 tdArr
-  -- Otherwise:
-  ifMJ b (TyCon tc ps td) (TyCon _ ps' td') =
-    if td == td' then do
-      params <- sequence
-        [ case var of
-            Covariant     -> ifMJ b p p'
-            Contravariant -> ifMJ (not b) p p'
-            Invariant     -> if p == p'
-                             then return p
-                             else fail "\\/? or /\\?: Does not exist"
-            Omnivariant   -> fail "\\/? or /\\?: It's a mystery"
-           | var <- tdArity td
-           | p   <- ps
-           | p'  <- ps' ]
-      return (TyCon tc params td)
-    else fail "\\/? or /\\?: Does not exist"
-  ifMJ b (TyAll a t)   (TyAll a' t')  = do
-    qual <- ifMJ (not b) (tvqual a) (tvqual a')
-    let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
-        t1  = tysubst a (TyVar a1 `asTypeOf` t) t
-        t'1 = tysubst a' (TyVar a1 `asTypeOf` t') t'
-    TyAll a1 `liftM` ifMJ b t1 t'1
-  ifMJ b (TyMu a t)    (TyMu a' t')   = do
-    qual <- ifMJ b (tvqual a) (tvqual a')
-    let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
-        t1  = tysubst a (TyVar a1 `asTypeOf` t) t
-        t'1 = tysubst a' (TyVar a1 `asTypeOf` t') t'
-    TyMu a1 `liftM` ifMJ b t1 t'1
-  ifMJ _ t t' =
-    if t == t'
-      then return t
+instance  PO (Type TyTag A) where
+  ifMJ bi t1i t2i = clean `liftM` chk [] bi t1i t2i where
+    clean :: TypeT w -> TypeT w
+    clean (TyCon c ps td)  = TyCon c (map clean ps) td
+    clean (TyVar a)        = TyVar a
+    clean (TyAll a t)      = TyAll a (clean t)
+    clean (TyMu a t)
+      | a `M.member` ftv t = TyMu a (clean t)
+      | otherwise          = clean t
+    clean (TyC t)          = tyC (clean t)
+    clean (TyA t)          = tyA (clean t)
+
+    chk, cmp :: Monad m =>
+                [((Bool, TypeTW, TypeTW), TyVar)] ->
+                Bool -> TypeT A -> TypeT A ->
+                m (TypeT A)
+    chk seen b t1 t2 = do
+      let tw1 = typeTW t1; tw2 = typeTW t2
+      case lookup (b, tw1, tw2) seen of
+        Just tv -> return (TyVar tv)
+        Nothing -> TyMu tv `liftM` cmp seen' b t1 t2 where
+          used  = M.fromList [ (a, 1) | (_, a) <- seen ]
+          tv    = freshTyVar (TV (Lid "r") (qualifier t1 \/ qualifier t2))
+                             (ftv [t1, t2] `M.union` used)
+          seen' = (((b, tw1, tw2), tv) : ((b, tw2, tw1), tv) : seen)
+
+    -- Special cases for session types duality:
+    cmp seen b (TyCon _ [p] td) t
+      | td == tdDual                = chk seen b (dualSessionType p) t
+    cmp seen b t (TyCon _ [p] td)
+      | td == tdDual                = chk seen b t (dualSessionType p)
+    -- Special cases for ->/-o subtyping:
+    cmp seen b (TyCon _ ps td) (TyCon _ ps' td')
+      | (td == tdArr && td' == tdLol) || (td == tdLol && td' == tdArr)
+                                    = chk seen b (build ps) (build ps')
+          where build ps0 = if b
+                              then TyCon (Lid "-o") ps0 tdLol
+                              else TyCon (Lid "->") ps0 tdArr
+    -- Otherwise:
+    cmp seen b (TyCon tc ps td) (TyCon _ ps' td') =
+      if td == td' then do
+        params <- sequence
+          [ case var of
+              Covariant     -> chk seen b p p'
+              Contravariant -> chk seen (not b) p p'
+              _             -> if p == p'
+                               then return p
+                               else fail "\\/? or /\\?: Does not exist"
+             | var <- tdArity td
+             | p   <- ps
+             | p'  <- ps' ]
+        return (TyCon tc params td)
       else fail "\\/? or /\\?: Does not exist"
+    cmp seen b (TyAll a t)   (TyAll a' t')  = do
+      qual <- ifMJ (not b) (tvqual a) (tvqual a')
+      let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
+          t1  = tysubst1 a (TyVar a1) t
+          t'1 = tysubst1 a' (TyVar a1) t'
+      TyAll a1 `liftM` chk seen b t1 t'1
+    cmp seen b (TyMu a t) t' = chk seen b (tysubst a (TyMu a t) t) t'
+    cmp seen b t' (TyMu a t) = chk seen b t' (tysubst a (TyMu a t) t)
+    cmp _    _ t t' =
+      if t == t'
+        then return t
+        else fail "\\/? or /\\?: Does not exist"
 
 -- Variance has a bit more structure still -- it does sign analysis:
 instance Num Variance where
@@ -554,6 +617,9 @@ freshTyVar tv m = if tv `M.member` m
            then loop (n + 1)
            else tv'
 
+tysubst1 :: Language w => TyVar -> TypeT w -> TypeT w -> TypeT w
+tysubst1  = tysubst
+
 tysubst :: (Language w, Language w') =>
            TyVar -> TypeT w' -> TypeT w -> TypeT w
 tysubst a t = ts where
@@ -572,8 +638,7 @@ tysubst a t = ts where
                         then TyAll a' t'
                         else
                           let a'' = freshTyVar a' (ftv [t, t'])
-                              t'' = TyVar a'' `asTypeOf` t'
-                          in TyAll a'' (ts (tysubst a' t'' t')))
+                           in TyAll a'' (ts (tysubst1 a' (TyVar a'') t')))
                     (TyAll a' (ts t'))
   ts (TyMu a' t')
                 = sameLang t' t
@@ -582,8 +647,7 @@ tysubst a t = ts where
                         then TyMu a' t'
                         else
                           let a'' = freshTyVar a' (ftv [t, t'])
-                              t'' = TyVar a'' `asTypeOf` t'
-                          in TyMu a'' (ts (tysubst a' t'' t')))
+                          in TyMu a'' (ts (tysubst1 a' (TyVar a'') t')))
                     (TyMu a' (ts t'))
   ts (TyCon c tys td)
                 = TyCon c (map ts tys) td
@@ -653,6 +717,9 @@ tyLolT a b      = TyCon (Lid "-o") [a, b] tdLol
 
 tyTupleT       :: TypeT w -> TypeT w -> TypeT w
 tyTupleT a b    = TyCon (Lid "*") [a, b] tdTuple
+
+infixr 8 `tyArrT`, `tyLolT`
+infixl 7 `tyTupleT`
 
 qualifier     :: TypeT A -> Q
 qualifier (TyCon _ ps td) = foldl max minBound qs' where
@@ -724,7 +791,6 @@ syntacticValue e = case expr' e of
   ExAbs _ _ _  -> True
   ExTAbs _ _   -> True
   ExTApp e1 _  -> syntacticValue e1
-  ExUnroll e1  -> syntacticValue e1
   _            -> False
 
 castableType :: TypeT w -> Bool
@@ -773,3 +839,17 @@ unfoldTyFun :: TypeT w -> ([TypeT w], TypeT w)
 unfoldTyFun  = unscanr each where
   each (TyCon _ [ta, tr] td) | td `elem` funtypes = Just (ta, tr)
   each _                                         = Nothing
+
+{-
+let tv a = TV (Lid a) Qa
+let a = tv "a"
+let b = tv "b"
+let c = tv "c"
+let d = tv "d"
+let at = TyVar a :: TypeT A
+let bt = TyVar b :: TypeT A
+let ct = TyVar c :: TypeT A
+let dt = TyVar d :: TypeT A
+((bt `tyArrT` (TyMu a $ bt `tyArrT` at)), (TyMu a $ bt `tyLolT` at))
+(bt `tyArrT` (TyMu a $ bt `tyArrT` at)) \/ (TyMu a $ bt `tyLolT` at)
+-}
