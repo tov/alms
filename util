@@ -4,7 +4,7 @@ host=frogger.ccs.neu.edu
 remote=public_html/pubs/affine-contracts
 
 if [ -z "$1" ]; then
-  set send edit
+  set send edit link
 fi
 
 while [ -n "$1" ]; do
