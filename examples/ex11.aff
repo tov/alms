@@ -10,9 +10,9 @@ module[A] doPair : (int -o int) * int -> int =
     let (f, x) = pair in
     let result = f x in
       putStr "f(";
-      putStr (toString[int] x);
+      putStr (string_of[int] x);
       putStr ") = ";
-      putStrLn (toString[int] result);
+      putStrLn (string_of[int] result);
       result
 
 module[C] double : int -> {(int -o int) * int} =
