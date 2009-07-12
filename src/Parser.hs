@@ -285,6 +285,7 @@ exprp = expr0 where
   exprA = choice
     [ identp,
       integer       >>! exInt,
+      charLiteral   >>! (exInt . fromIntegral . fromEnum),
       stringLiteral >>! exStr,
       parens (exprN1 <|> return (exCon (Uid "()")))
     ]
@@ -337,6 +338,7 @@ pattp  = patt0 where
     [ reserved "_"  >>  return PaWild,
       lidp          >>! PaVar,
       integer       >>! PaInt,
+      charLiteral   >>! (PaInt . fromIntegral . fromEnum),
       stringLiteral >>! PaStr,
       parens pattN1
     ]

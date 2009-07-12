@@ -79,6 +79,8 @@ primBasis  = [
       -= ((*) :: Double -> Double -> Double),
     fun "divf" -:: "float -> float -> float"
       -= ((/) :: Double -> Double -> Double),
+    fun "sqrt" -:: "float -> float"
+      -= (sqrt :: Double -> Double),
     fun "float_of_int" -:: "int -> float"
       -= (fromIntegral :: Integer -> Double),
     fun "int_of_float" -:: "float -> int"
@@ -93,7 +95,7 @@ primBasis  = [
       -= map char2integer,
     fun "implode"  -:: "int list -> string"
       -= map integer2char,
-    pfun 1 "toString" -:: "all 'a. 'a -> string"
+    pfun 1 "string_of" -:: "all 'a. 'a -> string"
       -= (return . show :: Value -> IO String),
 
     -- "Magic" equality and print; failure
