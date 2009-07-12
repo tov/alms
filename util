@@ -14,6 +14,10 @@ while [ -n "$1" ]; do
     send)
       scp -p affine-contracts*.tar.gz $host:$remote/
       ;;
+    link)
+      ssh $host "cd $remote;
+                 ln -s \"\`ls affine-contracts*.tar.gz | tail -1\`\" affine-contracts.tar.gz"
+      ;;
     edit)
       ssh $host -t vim $remote/index.html
       ;;
