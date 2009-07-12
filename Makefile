@@ -34,7 +34,7 @@ clean:
 	$(RM) -Rf $(DISTDIR) dist
 
 
-VERSION = 0.5.1
+VERSION = 0.5.2
 DISTDIR = affine-contracts-$(VERSION)
 TARBALL = $(DISTDIR).tar.gz
 
