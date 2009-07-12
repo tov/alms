@@ -60,7 +60,7 @@ transExpr menv neg = te where
     ExPair e1 e2 -> exPair (te e1) (te e2)
     ExAbs x t e -> exAbs x (type2ctype t) (tem (menv =--= pv x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
-    ExTAbs tv e -> exTAbs' tv (te e)
+    ExTAbs tv e -> exTAbs tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
     ExCast e1 t ta -> transCast neg (te e1) t ta
     ExUnroll e -> exUnroll (te e)
@@ -129,7 +129,7 @@ ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
 ca neg pos x (TyAll tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
-      ca neg pos u t
+      ca neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
 ca neg _   x ta | qualifier ta <: Qu = exVar x
@@ -157,7 +157,7 @@ ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
 ac neg pos x (TyAll tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
-      ac neg pos u t
+      ac neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
 ac _   _   x ta | qualifier ta <: Qu = exVar x
@@ -190,7 +190,7 @@ cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
 cc neg pos x (TyAll tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
-      cc neg pos u t
+      cc neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
 cc _   _   x _ = exVar x
