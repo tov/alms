@@ -266,7 +266,7 @@ exprp = expr0 where
            ei <- expr0
            return (xi, ei)
          return (exCase e1 clauses),
-      do reservedOp "\\" <|> reservedOp "^"
+      do reservedOp "\\"
          build <- choice
            [ argsp1,
              do x  <- pattp

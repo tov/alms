@@ -95,6 +95,8 @@ primBasis  = [
       -= map char2integer,
     fun "implode"  -:: "int list -> string"
       -= map integer2char,
+    fun "^" -:: "string -> string -> string"
+      -= ((++) :: String -> String -> String),
     pfun 1 "string_of" -:: "all 'a. 'a -> string"
       -= (return . show :: Value -> IO String),
 
@@ -294,15 +296,15 @@ instance Valuable Rendezvous where
 
 srcBasis :: String
 srcBasis  = unlines [
-  "module[C] null = ^'a (x : 'a list).",
+  "module[C] null = \\'a (x : 'a list).",
   "  match x with",
   "  | Nil -> true",
   "  | _   -> false",
-  "module[C] hd = ^'a (xs : 'a list).",
+  "module[C] hd = \\'a (xs : 'a list).",
   "  let Cons(x, _) = xs in x",
-  "module[C] tl = ^'a (xs : 'a list).",
+  "module[C] tl = \\'a (xs : 'a list).",
   "  let Cons(_, xs') = xs in xs'",
-  "module[A] anull = ^'<a (xs : '<a list).",
+  "module[A] anull = \\'<a (xs : '<a list).",
   "  match xs with",
   "  | Nil          -> (Nil['<a], true)",
   "  | Cons(x, xs') -> (Cons(x, xs'), false)",
@@ -322,8 +324,8 @@ srcBasis  = unlines [
   "        | Cons(x,xs) -> f x (foldr f z xs)",
   "   in foldr",
   "module[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
-  "  ^'a. foldrA (^(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
+  "  \\'a. foldrA (\\(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
   "module[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
-  "  ^'a. foldrC (^(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
+  "  \\'a. foldrC (\\(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
   ""
   ]

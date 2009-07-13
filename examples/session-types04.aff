@@ -14,17 +14,14 @@ type[C] plane = Plane of float * float * float * float
 -- We use the plane Plane(a, b, c, d) to represent the open semi-space
 -- { Point(x, y, z) | ax + by + cz + d > 0 }
 
-module[C] putPoint =
+module[C] string_of_point =
   \Point(x, y, z): point.
-    putStr "("; putAny x; putStr ", ";
-    putAny y; putStr ", "; putAny z; putStr ")"
+    "(" ^ string_of x ^ ", " ^ string_of y ^ ", " ^ string_of z ^ ")"
 
-module[C] putPlane =
+module[C] string_of_plane =
   \Plane(a, b, c, d): plane.
-    putAny a; putStr "x + ";
-    putAny b; putStr "y + ";
-    putAny c; putStr "z + ";
-    putAny d; putStr " > 0"
+    string_of a ^ "x + " ^ string_of b ^ "y + " ^
+    string_of c ^ "z + " ^ string_of d ^ " > 0"
 
 module[C] revC : all 'a. 'a list -> 'a list =
   \'a.
@@ -189,8 +186,7 @@ module[A] printer : {point} stream channel -> unit =
             match follow ic with
             | Left _   -> ()
             | Right ic -> let (pt, ic) = recv ic in
-                            putPoint pt;
-                            putStr "\n";
+                            putStrLn (string_of_point pt);
                             loop ic
    in loop
 
