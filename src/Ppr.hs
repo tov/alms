@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Ppr (
   Ppr(..), module Text.PrettyPrint, parensIf,
@@ -5,6 +6,7 @@ module Ppr (
 ) where
 
 import Syntax
+import Lexer (precOp)
 import Text.PrettyPrint
 import Data.List (intersperse)
 
@@ -220,10 +222,24 @@ instance Ppr (Expr i w) where
         sep [ pprPrec precCom e1 <> comma,
               pprPrec (precCom + 1) e2 ]
     ExAbs _ _ _ -> pprAbs p e0
-    ExApp e1 e2 ->
-      parensIf (p > precApp) $
-        sep [ pprPrec precApp e1,
-              pprPrec (precApp + 1) e2 ]
+    ExApp e1 e2
+      | ExId (Var (Lid x)) <- expr' e1,
+        Right p'           <- precOp x,
+        p' == 8
+          -> parensIf (p > p') $
+               text x <+> pprPrec p' e2
+      | ExApp e11 e12      <- expr' e1,
+        ExId (Var (Lid x)) <- expr' e11,
+        (pl, pr, p')       <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
+        p' <= 8
+          -> parensIf (p > p') $
+               sep [ pprPrec (p' + pl) e12,
+                     text x,
+                     pprPrec (p' + pr) e2 ]
+      | otherwise
+          -> parensIf (p > precApp) $
+               sep [ pprPrec precApp e1,
+                     pprPrec (precApp + 1) e2 ]
     ExTAbs _ _  -> pprAbs p e0
     ExTApp _ _  ->
       parensIf (p > precTApp) $

@@ -7,7 +7,7 @@ module Lexer (
   isUpperIdentifier, lid, uid,
   lolli, arrow, star,
   qualU, qualA, langC, langA,
-  precOp, opP
+  Prec, precOp, opP
 ) where
 
 import Util
@@ -137,19 +137,21 @@ uid              = try $ do
     then return s
     else pzero <?> "uppercase identifier"
 
-precOp :: String -> Int
-precOp ('*':'*':_)    = 7
-precOp (c:_)
-  | c `elem` "*/%"    = 6
-  | c `elem` "+-"     = 5
-  | c `elem` "@^"     = 4
-  | c `elem` "=<>|&$" = 3
-precOp "!="           = 3
-precOp (c:_)
-  | c `elem` "!~?"    = 8
-precOp _              = 0
+type Prec = Either Int Int
 
-opP :: Int -> CharParser st String
+precOp :: String -> Prec
+precOp ('*':'*':_)    = Right 7
+precOp (c:_)
+  | c `elem` "*/%"    = Left 6
+  | c `elem` "+-"     = Left 5
+  | c `elem` "@^"     = Right 4
+  | c `elem` "=<>|&$" = Left 3
+precOp "!="           = Left 3
+precOp (c:_)
+  | c `elem` "!~?"    = Right 8
+precOp _              = Left 9
+
+opP :: Prec -> CharParser st String
 opP p = try $ do
   op <- operator
   if precOp op == p

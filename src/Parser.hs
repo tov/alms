@@ -37,7 +37,7 @@ lidp  = lid >>! Lid
 operatorp :: P Lid
 operatorp  = try (parens operator) >>! Lid
 
-oplevelp :: Int -> P Lid
+oplevelp :: Prec -> P Lid
 oplevelp  = liftM Lid . opP
 
 varp :: P Lid
@@ -282,13 +282,13 @@ exprp = expr0 where
                     e2 <- expr0
                     return (exSeq e1 e2),
                  return e1 ]
-  expr3 = chainl1 expr4 (opappp 3)
-  expr4 = chainr1 expr5 (opappp 4)
-  expr5 = chainl1 expr6 (opappp 5)
-  expr6 = chainl1 expr7 (opappp 6)
-  expr7 = chainr1 expr8 (opappp 7)
+  expr3 = chainl1 expr4 (opappp (Left 3))
+  expr4 = chainr1 expr5 (opappp (Right 4))
+  expr5 = chainl1 expr6 (opappp (Left 5))
+  expr6 = chainl1 expr7 (opappp (Left 6))
+  expr7 = chainr1 expr8 (opappp (Right 7))
   expr8 = do
-    ops <- many (oplevelp 8)
+    ops <- many (oplevelp (Right 8))
     arg <- expr9
     return (foldr (\op arg' -> exVar op `exApp` arg') arg ops)
   expr9 = chainl1 expr10 (return exApp)
@@ -317,7 +317,7 @@ exprp = expr0 where
            return (foldl exPair e1 es),
         return e1 ]
 
-opappp :: Int -> P (Expr () w -> Expr () w -> Expr () w)
+opappp :: Prec -> P (Expr () w -> Expr () w -> Expr () w)
 opappp p = do
   op <- oplevelp p
   return (\e1 e2 -> (exVar op `exApp` e1) `exApp` e2)
