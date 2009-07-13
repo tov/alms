@@ -17,7 +17,7 @@ module[A] doPair : (int -o int) * int -> int =
 
 module[C] double : int -> {(int -o int) * int} =
   \z: int.
-    makePair (mul 2) z
+    makePair (( * ) 2) z
 (* returns an affine object, but doesn't break affinity itself. *)
 
 in let pair = double 4 in

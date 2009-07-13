@@ -7,7 +7,7 @@ module[C] ap : (int -> int) -> int -> int =
 
 module[A] inc : int -> int =
   \y: int.
-    let g = (\z:int . add z 1 : int -> int :> int -o int) in
+    let g = (\z:int . z + 1 : int -> int :> int -o int) in
       ap g y         (* g: (int -o int) is used as an (int -> int) *)
 
 in print[int] (inc 5)

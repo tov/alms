@@ -6,6 +6,6 @@ module[C] ap : (int -> int) -> int -> int =
       f x
 
 module[A] inc : int -> int =
-  \y: int. ap (\z: int. add z 1) y
+  \y: int. ap (\z: int. z + 1) y
 
 in print[int] (inc 5)

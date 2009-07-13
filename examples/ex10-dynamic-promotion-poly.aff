@@ -11,6 +11,6 @@ module[A] inc : int -> int =
     (\g: int -o int.
        (ap[int] :  (int -> int) -> int -> int   (* This cast goes bad *)
                 :> (int -o int) -> int -o int) g y)
-    (\z: int. add z 1)
+    (\z: int. z + 1)
 
 in print[int] (inc 5)

@@ -59,25 +59,25 @@ primBasis  = [
     typeA "'<a list = Nil | Cons of '<a * '<a list",
 
     -- Arithmetic
-    binArith "add" (+),
-    binArith "sub" (-),
-    binArith "mul" (*),
-    binArith "div" div,
-    fun "le" -:: "int -> int -> bool"
+    binArith "+" (+),
+    binArith "-" (-),
+    binArith "*" (*),
+    binArith "/" div,
+    fun "<=" -:: "int -> int -> bool"
       -= ((<=) :: Integer -> Integer -> Bool),
 
     -- Floating point arithmetic
     typeC "float",
     typeA "float",
-    fun "lef" -:: "float -> float -> bool"
+    fun "<=." -:: "float -> float -> bool"
       -= ((<=) :: Double -> Double -> Bool),
-    fun "addf" -:: "float -> float -> float"
+    fun "+." -:: "float -> float -> float"
       -= ((+) :: Double -> Double -> Double),
-    fun "subf" -:: "float -> float -> float"
+    fun "-." -:: "float -> float -> float"
       -= ((-) :: Double -> Double -> Double),
-    fun "mulf" -:: "float -> float -> float"
+    fun "*." -:: "float -> float -> float"
       -= ((*) :: Double -> Double -> Double),
-    fun "divf" -:: "float -> float -> float"
+    fun "/." -:: "float -> float -> float"
       -= ((/) :: Double -> Double -> Double),
     fun "sqrt" -:: "float -> float"
       -= (sqrt :: Double -> Double),
@@ -99,7 +99,7 @@ primBasis  = [
       -= (return . show :: Value -> IO String),
 
     -- "Magic" equality and print; failure
-    pfun 1 "eq" -:: "all 'a. 'a -> 'a -> bool"
+    pfun 1 "==" -:: "all 'a. 'a -> 'a -> bool"
       -= ((==) :: Value -> Value -> Bool),
     pfun 1 "print" -:: "all 'a. 'a -> unit"
       -= (print :: Value -> IO ()),
@@ -132,14 +132,14 @@ primBasis  = [
       -= (\(vr, v1) -> do
             v0 <- atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))
             return (vr, v0)),
-    pfun 1 "takeRef" -: "all 'a. 'a ref -> 'a"
+    pfun 1 "!" -: "all 'a. 'a ref -> 'a"
                      -: "all '<a. '<a ref -> '<a"
       -= (\r -> readIORef (unRef r)),
-    pfun 1 "readRef" -:: "all 'a. 'a ref -> 'a ref * 'a"
+    pfun 1 "!!" -:: "all 'a. 'a ref -> 'a ref * 'a"
       -= (\r -> do
            v <- readIORef (unRef r)
            return (r, v)),
-    pfun 1 "writeRef" -: "all 'a. 'a ref -> 'a -> 'a ref"
+    pfun 1 "<-" -: "all 'a. 'a ref -> 'a -> 'a ref"
                       -: "all '<a. '<a ref -> '<a -o '<a ref"
       -= (\r v -> do
            writeIORef (unRef r) v

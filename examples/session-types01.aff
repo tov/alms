@@ -6,7 +6,7 @@ module[A] server =
   \c : protocol dual channel.
     let (x, c) = recv c in
     let (y, c) = recv c in
-      send c (add x y);
+      send c (x + y);
       ()
 
 module[A] client =

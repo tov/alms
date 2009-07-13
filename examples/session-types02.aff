@@ -10,11 +10,11 @@ module[A] server =
     | Left c ->
         let (x, c) = recv c in
         let (y, c) = recv c in
-          send c (add x y);
+          send c (x + y);
           ()
     | Right c ->
         let (x, c) = recv c in
-          send c (sub 0 x);
+          send c (0 - x);
           ()
 
 module[A] client =

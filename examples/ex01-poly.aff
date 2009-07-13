@@ -5,6 +5,6 @@ module[A] ap =
     f x
 
 module[A] inc =
-  \y: int. ap (\z:int. add z 1) y
+  \y: int. ap (\z:int. z + 1) y
 
 in print (inc 5)

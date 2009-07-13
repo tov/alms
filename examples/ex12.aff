@@ -21,7 +21,7 @@ module[A] doPair : (int -> int) * int -> int =
 
 module[C] double : int -> {(int -> int) * int} =
   \z: int.
-    makePair (mul 2) z
+    makePair (( * ) 2) z
 
 in let pair = double 4 in
      doPair pair;

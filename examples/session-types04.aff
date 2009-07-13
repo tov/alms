@@ -74,22 +74,22 @@ module[C] parsePoint : string -> point =
   \s: string.
     let cs = explode s in
     let Cons('(', cs) = dropSpace cs in
-    let (x, Cons(_,cs)) = splitWhile (notp (eq ',')) (dropSpace cs) in
-    let (y, Cons(_,cs)) = splitWhile (notp (eq ',')) (dropSpace cs) in
-    let (z, Cons(_,cs)) = splitWhile (notp (eq ')')) (dropSpace cs) in
+    let (x, Cons(_,cs)) = splitWhile (notp ((==) ',')) (dropSpace cs) in
+    let (y, Cons(_,cs)) = splitWhile (notp ((==) ',')) (dropSpace cs) in
+    let (z, Cons(_,cs)) = splitWhile (notp ((==) ')')) (dropSpace cs) in
       Point (foil x, foil y, foil z)
 
 module[C] parsePlane : string -> plane =
   let foil = \x: int list. float_of_string (implode x) in
   \s: string.
     let cs = explode s in
-    let (a, Cons(_,cs)) = splitWhile (notp (eq 'x')) (dropSpace cs) in
+    let (a, Cons(_,cs)) = splitWhile (notp ((==) 'x')) (dropSpace cs) in
     let Cons('+',cs)    = dropSpace cs in
-    let (b, Cons(_,cs)) = splitWhile (notp (eq 'y')) (dropSpace cs) in
+    let (b, Cons(_,cs)) = splitWhile (notp ((==) 'y')) (dropSpace cs) in
     let Cons('+',cs)    = dropSpace cs in
-    let (c, Cons(_,cs)) = splitWhile (notp (eq 'z')) (dropSpace cs) in
+    let (c, Cons(_,cs)) = splitWhile (notp ((==) 'z')) (dropSpace cs) in
     let Cons('+',cs)    = dropSpace cs in
-    let (d, Cons(_,cs)) = splitWhile (notp (eq '=')) (dropSpace cs) in
+    let (d, Cons(_,cs)) = splitWhile (notp ((==) '=')) (dropSpace cs) in
     let Cons('0',cs)    = dropSpace cs in
       Plane (foil a, foil b, foil c, foil d)
 
@@ -97,13 +97,7 @@ module[C] parsePlane : string -> plane =
 module[C] isPointAbovePlane : point -> plane -> bool =
   \(Point(x, y, z): point)
    (Plane(a, b, c, d): plane).
-     if lef (addf (mulf a x)
-                  (addf (mulf b y)
-                        (addf (mulf c z)
-                              d)))
-           (float_of_string "0")
-       then false
-       else true
+     not (a *. x +. b *. y +. c *. z +. d <=. float_of_string "0")
 
 -- Does the line segment between the two points intersect the plane,
 -- and if so, where?
@@ -111,19 +105,15 @@ module[C] intersect : point -> point -> plane -> point option =
   \(Point(x1, y1, z1) as p1 : point)
    (Point(x2, y2, z2) as p2 : point)
    (Plane(a, b, c, d) as plane : plane).
-     if eq (isPointAbovePlane p1 plane)
-           (isPointAbovePlane p2 plane)
+     if isPointAbovePlane p1 plane == isPointAbovePlane p2 plane
        then None[point]
-       else let t = divf (addf (mulf a x1)
-                               (addf (mulf b y1)
-                                     (addf (mulf c z1)
-                                           d)))
-                         (addf (mulf a (subf x1 x2))
-                               (addf (mulf b (subf y1 y2))
-                                     (mulf c (subf z1 z2)))) in
-            let x = addf x1 (mulf (subf x2 x1) t) in
-            let y = addf y1 (mulf (subf y2 y1) t) in
-            let z = addf z1 (mulf (subf z2 z1) t) in
+       else let t = (a *. x1 +. b *. y1 +. c *. z1 +. d) /.
+                    (a *. (x1 -. x2) +.
+                     b *. (y1 -. y2) +.
+                     c *. (z1 -. z2)) in
+            let x = x1 +. (x2 -. x1) *. t in
+            let y = y1 +. (y2 -. y1) *. t in
+            let z = z1 +. (z2 -. z1) *. t in
               Some (Point (x, y, z))
 
 --

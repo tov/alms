@@ -7,7 +7,7 @@ module[A] ap =
 
 module[C] inc2 =
   \y: int.
-    let g = ap (\z: int. add z 1) in
+    let g = ap (\z: int. z + 1) in
       g (g y)   (* g is used twice here *)
 
 in print (inc2 5)

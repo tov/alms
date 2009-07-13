@@ -5,13 +5,13 @@ module[A] prompt : unit -> string future =
 
 module[C] printDots : int -> int -> unit =
   let rec loop (count : int) (delay : int) : unit =
-    if le count 0
+    if count <= 0
       then ()
       else
         putStr ".";
         flush ();
-        threadDelay (mul 1000 delay);
-        loop (sub count 1) delay
+        threadDelay (1000 * delay);
+        loop (count - 1) delay
   in loop
 
 module[A] main : string -> unit =

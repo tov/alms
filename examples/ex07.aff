@@ -11,6 +11,6 @@ module[A] inc : int -> int =
   \y: int.
     (\g: int -o int.
        iap g y)
-    (\z: int. add z 1)
+    (\z: int. z + 1)
 
 in print[int] (inc 5)

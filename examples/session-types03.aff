@@ -18,12 +18,12 @@ module[C] foldl =
 module[C] stringToInt =
   \s : string.
     let each (digit : int) (acc : int) =
-      let digit = sub digit 48 in
-      if le digit -1
+      let digit = digit - 48 in
+      if digit <= -1
         then failwith[int] "digit out of range"
-        else if le 11 digit
+        else if 11 <= digit
           then failwith[int] "digit out of range"
-          else add digit (mul 10 acc)
+          else digit + 10 * acc
     in foldl each 0 (explode s)
 
 module[A] server =
@@ -42,7 +42,7 @@ module[A] server =
 module[A] client =
   let rec loop (c : protocol channel) : int =
     let s = getLine () in
-      if eq s ""
+      if s == ""
                 then
                     let c      = sel1 c in
           let (r, _) = recv c in
