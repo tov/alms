@@ -1,11 +1,11 @@
 (* Affine opaque objects (contract violation: blame "*main*") *)
 
-module[A] makePair : (int -> int) -> int -> (int -o int) * int =
+let[A] makePair : (int -> int) -> int -> (int -o int) * int =
   \f: int -> int.
     \x: int.
       (f, x)
 
-module[A] doPair : (int -o int) * int -> int =
+let[A] doPair : (int -o int) * int -> int =
   \pair: (int -o int) * int.
     let (f, x) = pair in
     let result = f x in
@@ -15,7 +15,7 @@ module[A] doPair : (int -o int) * int -> int =
       putStrLn (string_of[int] result);
       result
 
-module[C] double : int -> {(int -o int) * int} =
+let[C] double : int -> {(int -o int) * int} =
   \z: int.
     makePair (( * ) 2) z
 (* returns an affine object, but doesn't break affinity itself. *)

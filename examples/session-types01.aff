@@ -2,14 +2,14 @@
 
 type[A] protocol = int send -> int send -> int recv -> unit
 
-module[A] server =
+let[A] server =
   \c : protocol dual channel.
     let (x, c) = recv c in
     let (y, c) = recv c in
       send c (x + y);
       ()
 
-module[A] client =
+let[A] client =
   \c : protocol channel.
     \(x : int) (y : int).
       let c = send c x in
@@ -17,7 +17,7 @@ module[A] client =
       let (r, _) = recv c in
         r
 
-module[A] main =
+let[A] main =
   \(x : int) (y : int).
     let rv = newRendezvous[protocol] () in
       threadFork (\_:unit. server (accept rv));

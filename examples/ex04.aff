@@ -1,11 +1,11 @@
 (* The C Module, Corrected *)
 
-module[A] ap : (int -o int) -> int -o int =
+let[A] ap : (int -o int) -> int -o int =
   \f: int -o int.
     \x: int.
       f x
 
-module[C] inc2 : int -> int =
+let[C] inc2 : int -> int =
   \y: int.
     let g = ap (\z: int. z + 1) in
     let h = ap (\z: int. z + 1) in

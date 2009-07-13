@@ -1,11 +1,11 @@
 (* A Dynamic Promotion Intervenes (like ex7.aff) *)
 
-module[C] ap : (int -> int) -> int -> int =
+let[C] ap : (int -> int) -> int -> int =
   \f: int -> int.
     \x: int.
       f x
 
-module[A] inc : int -> int =
+let[A] inc : int -> int =
   \y: int.
     (\g: int -o int.
        (ap : (int -> int) -> int -> int

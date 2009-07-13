@@ -1,14 +1,14 @@
 (* Polymorphic version: A Lying Interface Module (blame iap2) *)
 
-module[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
+let[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
   \'a.
     \f: 'a -> 'a.
       \x: 'a.
         f (f x)    (* f is used twice here, despite what iap2 claims *)
 
-interface iap2 :> all 'a. ('a -o 'a) -> 'a -o 'a = ap
+let interface iap2 :> all 'a. ('a -o 'a) -> 'a -o 'a = ap
 
-module[A] inc : int -> int =
+let[A] inc : int -> int =
   \y: int.
     (\g: int -o int.
        iap2[int] g y)

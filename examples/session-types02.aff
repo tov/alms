@@ -4,7 +4,7 @@ type[A] 'a protocol = (('a send -> 'a send -> 'a recv -> unit)
                        *
                        ('a send -> 'a recv -> unit)) select
 
-module[A] server =
+let[A] server =
   \c : int protocol dual channel.
     match follow c with
     | Left c ->
@@ -17,7 +17,7 @@ module[A] server =
           send c (0 - x);
           ()
 
-module[A] client =
+let[A] client =
   \c : int protocol channel.
     \(x : int) (y : int).
       let c = sel1 c in
@@ -26,7 +26,7 @@ module[A] client =
       let (r, _) = recv c in
         r
 
-module[A] main =
+let[A] main =
   \(x : int) (y : int).
     let rv = newRendezvous[int protocol] () in
       threadFork (\_:unit. server (accept rv));

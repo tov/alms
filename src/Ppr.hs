@@ -283,12 +283,21 @@ pprAbs p e = parensIf (p > precDot) $
           _             -> (<>  pprArgList args)
 
 pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
-pprArgList = fsep . map eachArg where
+pprArgList = fsep . map eachArg . combine where
   eachArg (Left (x, t))   = parens $ hang
                               (pprPrec 0 x)
                               2
                               (colon <+> pprPrec 0 t)
-  eachArg (Right tv)      = pprPrec 0 tv
+  eachArg (Right tvs)     = brackets .
+                              sep .
+                                punctuate comma $
+                                  map (pprPrec 0) tvs
+
+  combine :: [Either a b] -> [Either a [b]]
+  combine  = foldr each [] where
+    each (Right b) (Right bs : es) = Right (b : bs) : es
+    each (Right b) es              = Right [b] : es
+    each (Left a)  es              = Left a : es
 
 instance Ppr Patt where
   pprPrec _ PaWild               = text "_"

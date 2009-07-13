@@ -7,7 +7,7 @@ type[A] protocol =
     ((int recv -> unit) *
      (int send -> 'r)) select
 
-module[C] foldl =
+let[C] foldl =
   let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (alst : 'a list) : 'b =
     match alst with
     | Nil          -> z
@@ -15,7 +15,7 @@ module[C] foldl =
   in loop
 
 -- This is pretty brittle :-)
-module[C] stringToInt =
+let[C] stringToInt =
   \s : string.
     let each (digit : int) (acc : int) =
       let digit = digit - 48 in
@@ -26,7 +26,7 @@ module[C] stringToInt =
           else digit + 10 * acc
     in foldl each 0 (explode s)
 
-module[A] server =
+let[A] server =
   let rec loop (acc : int)
                (c   : protocol dual channel)
                : unit =
@@ -39,7 +39,7 @@ module[A] server =
             loop (add acc x) c
    in loop 0
 
-module[A] client =
+let[A] client =
   let rec loop (c : protocol channel) : int =
     let s = getLine () in
       if s == ""
@@ -53,7 +53,7 @@ module[A] client =
             loop c
    in loop
 
-module[A] main =
+let[A] main =
   \_ : unit.
     let rv = newRendezvous[protocol] () in
       threadFork (\_:unit. server (accept rv));

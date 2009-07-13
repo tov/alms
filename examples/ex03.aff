@@ -1,11 +1,11 @@
 (* A Blameworthy C Module (blame inc2) *)
 
-module[A] ap =
+let[A] ap =
   \f: int -o int.
     \x: int.
       f x
 
-module[C] inc2 =
+let[C] inc2 =
   \y: int.
     let g = ap (\z: int. z + 1) in
       g (g y)   (* g is used twice here *)

@@ -1,13 +1,13 @@
 (* Polymorphic version: An Ill-Typed A Module (type error) *)
 
-module[A] ap =
+let[A] ap =
   \'<a.
     \'<b.
       \f: '<a -o '<b.
         \x: '<a.
           f x
 
-module[A] inc2 =
+let[A] inc2 =
   \y: int.
     let g = ap (\z: int. z + 1) in
       g (g y)   (* g: (int -o int) is used twice here *)

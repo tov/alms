@@ -1,11 +1,11 @@
 (* A Call from A into C *)
 
-module[C] ap : (int -> int) -> int -> int =
+let[C] ap : (int -> int) -> int -> int =
   \f: int -> int.
     \x: int.
       f x
 
-module[A] inc : int -> int =
+let[A] inc : int -> int =
   \y: int. ap (\z: int. z + 1) y
 
 in print[int] (inc 5)

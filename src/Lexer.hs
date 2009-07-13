@@ -29,7 +29,7 @@ tok = T.makeTokenParser T.LanguageDef {
     T.reservedNames  = ["if", "then", "else",
                         "match", "with", "as", "_",
                         "let", "rec", "and", "in",
-                        "module", "interface",
+                        "interface",
                         "all", "mu", "of",
                         "type", "qualifier"],
     T.reservedOpNames = ["|", "=", "\\", ":", ":>"],

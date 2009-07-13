@@ -1,6 +1,6 @@
 (* Another example with threads. *)
 
-module[A] printer : unit -> unit =
+let[A] printer : unit -> unit =
   let rec loop (_ : unit) : unit =
     threadDelay 100000;
     putStr "x";
@@ -8,14 +8,14 @@ module[A] printer : unit -> unit =
     loop ()
   in loop
 
-module[A] startStop : unit -> unit -o unit =
+let[A] startStop : unit -> unit -o unit =
   \_: unit.
     let id = threadFork printer in
     let id = printThread id in
       \_: unit.
         threadKill id
 
-module[A] timer : unit -> unit =
+let[A] timer : unit -> unit =
   \_: unit.
     let stop = startStop () in
       threadDelay 2000000;

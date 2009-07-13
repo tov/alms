@@ -4,12 +4,12 @@
    then even though the pair is opaque to language C, it's not
    protected by a contract because it's unlimited. *)
 
-module[A] makePair : (int -> int) -> int -> (int -> int) * int =
+let[A] makePair : (int -> int) -> int -> (int -> int) * int =
   \f: int -> int.
     \x: int.
       (f, x)
 
-module[A] doPair : (int -> int) * int -> int =
+let[A] doPair : (int -> int) * int -> int =
   \pair: (int -> int) * int.
     let (f, x) = pair in
     let result = f x in
@@ -19,7 +19,7 @@ module[A] doPair : (int -> int) * int -> int =
       putStrLn (string_of[int] result);
       result
 
-module[C] double : int -> {(int -> int) * int} =
+let[C] double : int -> {(int -> int) * int} =
   \z: int.
     makePair (( * ) 2) z
 

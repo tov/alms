@@ -14,7 +14,7 @@
     in language C.
 *)
 
-module[A] printer : unit -> unit =
+let[A] printer : unit -> unit =
   let rec loop (_ : unit) : unit =
     threadDelay 100000;
     putStr "x";
@@ -22,20 +22,20 @@ module[A] printer : unit -> unit =
     loop ()
   in loop
 
-module[A] startStop : unit -> unit -o unit =
+let[A] startStop : unit -> unit -o unit =
   \_: unit.
     let id = threadFork printer in
     let id = printThread id in
       \_: unit.
         threadKill id
 
-module[A] after : int -> (unit -o unit) -> unit =
+let[A] after : int -> (unit -o unit) -> unit =
   \delay: int.
     \stop: unit -o unit.
       threadFork (\_:unit . threadDelay delay; stop ());
       ()
 
-module[C] main : unit -> unit =
+let[C] main : unit -> unit =
   \_: unit.
     putStrLn "Press <ENTER> to exit.";
     let stop = startStop () in

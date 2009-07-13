@@ -4,7 +4,7 @@
    than just functions.
 *)
 
-module[A] printer : unit -> unit =
+let[A] printer : unit -> unit =
   let rec loop (_ : unit) : unit =
     threadDelay 100000;
     putStr "x";
@@ -12,19 +12,19 @@ module[A] printer : unit -> unit =
     loop ()
   in loop
 
-module[A] start : unit -> thread =
+let[A] start : unit -> thread =
   \_: unit. threadFork printer
 
-module[A] stop : thread -> unit = threadKill
+let[A] stop : thread -> unit = threadKill
 
-module[A] after : int -> (unit -o unit) -> unit =
+let[A] after : int -> (unit -o unit) -> unit =
   \delay: int.
     \stop: unit -o unit.
       threadFork (\_:unit . threadDelay delay; stop ());
       ()
 
 (* {thread} is an "opaque" type *)
-module[C] main : {thread} -> unit =
+let[C] main : {thread} -> unit =
   \id: {thread}.
     after 4000000 (\_:unit. stop id);
     getLine ();

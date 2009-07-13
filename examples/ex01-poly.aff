@@ -1,10 +1,10 @@
 (* Polymorphic version: A Type-Correct, Blame-Free Program *)
 
-module[A] ap =
+let[A] ap =
   \'<a '<b (f: '<a -o '<b) (x: '<a).
     f x
 
-module[A] inc =
+let[A] inc =
   \y: int. ap (\z:int. z + 1) y
 
 in print (inc 5)

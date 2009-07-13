@@ -1,12 +1,12 @@
 (* Polymorphic version: A Dynamic Promotion Intervenes (like ex7.aff) *)
 
-module[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
+let[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
   \'a.
     \f: 'a -> 'a.
       \x: 'a.
         f x
 
-module[A] inc : int -> int =
+let[A] inc : int -> int =
   \y: int.
     (\g: int -o int.
        (ap[int] :  (int -> int) -> int -> int

@@ -1,11 +1,11 @@
 (* A Type-Correct, Blame-Free Program *)
 
-module[A] ap =
+let[A] ap =
   \f: int -o int.
     \x: int.
       f x
 
-module[A] inc =
+let[A] inc =
   \y: int. ap (\z:int. z + 1) y
 
 in print (inc 5)

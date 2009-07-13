@@ -174,12 +174,15 @@ tyDecp  = do
 
 modp :: P (Mod ())
 modp  = choice
-  [ do optional (reserved "module")
-       lang <- brackets languagep
+  [ do lang <- try $ do
+         optional (reserved "let")
+         brackets languagep
        case lang of
          LC -> modbodyp MdC
          LA -> modbodyp MdA,
-    do reserved "interface"
+    do try $ do
+         reserved "let"
+         reserved "interface"
        x    <- varp
        reservedOp ":>"
        t    <- typep
@@ -190,12 +193,13 @@ modp  = choice
     modbodyp :: Language w =>
                 (Lid -> Maybe (Type () w) -> Expr () w -> Mod ()) ->
                 P (Mod ())
-    modbodyp f = do
-      x    <- varp
-      t    <- optionMaybe $ colon >> typep
+    modbodyp build = do
+      f <- varp
+      (fixt, fixe) <- afargsp
+      t <- optionMaybe $ colon >> typep
       reservedOp "="
-      e    <- exprp
-      return (f x t e)
+      e <- exprp
+      return (build f (fmap fixt t) (fixe e))
 
 data Lang = LC | LA deriving (Eq, Show, Ord)
 languagep :: P Lang
@@ -217,26 +221,7 @@ exprp = expr0 where
            [ do reserved "rec"
                 bs <- flip sepBy1 (reserved "and") $ do
                   x    <- varp
-                  let argsloop :: Language w =>
-                                  (Type () w -> Type () w -> Type () w) ->
-                                  P (Type () w -> Type () w,
-                                     Expr () w -> Expr () w)
-                      argsloop arr0 = choice
-                        [ do tv <- tyvarp
-                             (ft, fe) <- argsloop arr0
-                             return (TyAll tv . ft, exTAbs tv . fe),
-                          do arr <- option arr0 $ do
-                               reservedOp "|"
-                               return tyLol
-                             (y, t) <- parens $ do
-                               y <- pattp
-                               colon
-                               t <- typep
-                               return (y, t)
-                             (ft, fe) <- argsloop arr
-                             return (arr t . ft, exAbs y t . fe),
-                          return (id, id) ]
-                  (ft, fe) <- argsloop tyArr
+                  (ft, fe) <- afargsp
                   colon
                   t    <- typep
                   reservedOp "="
@@ -322,6 +307,25 @@ opappp p = do
   op <- oplevelp p
   return (\e1 e2 -> (exVar op `exApp` e1) `exApp` e2)
 
+afargsp :: Language w =>
+            P (Type () w -> Type () w, Expr () w -> Expr () w)
+afargsp = loop tyArr where
+  loop arr0 = choice
+    [ do (tvt, tve) <- tyargp
+         (ft, fe) <- loop arr0
+         return (tvt . ft, tve . fe),
+      do arr <- option arr0 $ do
+           reservedOp "|"
+           return tyLol
+         (y, t) <- parens $ do
+           y <- pattp
+           colon
+           t <- typep
+           return (y, t)
+         (ft, fe) <- loop arr
+         return (arr t . ft, exAbs y t . fe),
+      return (id, id) ]
+
 argsp1 :: Language w => P (Expr () w -> Expr () w)
 argsp1  = foldr (.) id `fmap` many1 argp
 
@@ -330,12 +334,18 @@ argsp  = foldr (.) id `fmap` many argp
 
 argp :: Language w => P (Expr () w -> Expr () w)
 argp  = choice
-        [ tyvarp >>! exTAbs,
+        [ tyargp >>! snd,
           parens $ do
             x <- pattp
             reservedOp ":"
             t <- typep
             return (exAbs x t) ]
+
+tyargp :: Language w =>
+          P (Type () w -> Type () w, Expr () w -> Expr () w)
+tyargp  = do
+  tvs <- liftM return tyvarp <|> brackets (commaSep1 tyvarp)
+  return (\t -> foldr TyAll t tvs, \e -> foldr exTAbs e tvs)
 
 pattp :: P Patt
 pattp  = patt0 where

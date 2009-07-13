@@ -1,9 +1,9 @@
 (* An example with futures *)
 
-module[A] prompt : unit -> string future =
+let[A] prompt : unit -> string future =
   \_:unit. newFuture getLine
 
-module[C] printDots : int -> int -> unit =
+let[C] printDots : int -> int -> unit =
   let rec loop (count : int) (delay : int) : unit =
     if count <= 0
       then ()
@@ -14,7 +14,7 @@ module[C] printDots : int -> int -> unit =
         loop (count - 1) delay
   in loop
 
-module[A] main : string -> unit =
+let[A] main : string -> unit =
   \message: string.
     putStrLn message;
     let future = prompt () in
