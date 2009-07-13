@@ -139,7 +139,7 @@ module[A] copt2aopt : all 'a. {{'a} option} -> 'a option =
 -- sequence of points:
 --
 
-type[A] 'a sendList = mu 'x. (unit * ('a send -> 'x)) select
+type[A] 'a stream = mu 'x. (unit * ('a recv -> 'x)) follow
 
 --
 -- Each transducer takes a plane to clip by, and two rendezvous objects,
@@ -148,22 +148,22 @@ type[A] 'a sendList = mu 'x. (unit * ('a send -> 'x)) select
 --
 
 module[A] clipper : {plane} ->
-                    {point} sendList dual channel ->
-                    {point} sendList channel -o
+                    {point} stream channel ->
+                    {point} stream dual channel -o
                     unit =
     \(plane: {plane})
-     (ic: {point} sendList dual channel)
-     (oc: {point} sendList channel).
-       let finish (oc: {point} sendList channel) =
+     (ic: {point} stream channel)
+     (oc: {point} stream dual channel).
+       let finish (oc: {point} stream dual channel) =
              sel1 oc; () in
-       let put (oc: {point} sendList channel) (pt: {point}) =
+       let put (oc: {point} stream dual channel) (pt: {point}) =
              send (sel2 oc) pt in
-       let putCross (oc: {point} sendList channel)
+       let putCross (oc: {point} stream dual channel)
                     (p1: {point}) (p2: {point}) =
              match copt2aopt[{point}] (intersect p1 p2 plane) with
              | Some pt -> put oc pt
              | None    -> oc in
-       let putVisible (oc: {point} sendList channel)
+       let putVisible (oc: {point} stream dual channel)
                       (pt: {point}) =
              if isPointAbovePlane pt plane
                then put oc pt
@@ -172,8 +172,8 @@ module[A] clipper : {plane} ->
          | Left _   -> finish oc
          | Right ic ->
              let (pt0, ic) = recv ic in
-             let rec loop (ic: {point} sendList dual channel)|
-                          (oc: {point} sendList channel)
+             let rec loop (ic: {point} stream channel)|
+                          (oc: {point} stream dual channel)
                           (pt: {point}) : unit =
                        let oc = putVisible oc pt in
                          match follow ic with
@@ -184,8 +184,8 @@ module[A] clipper : {plane} ->
                                          loop ic oc pt'
                in loop ic oc pt0
 
-module[A] printer : {point} sendList dual channel -> unit =
-  let rec loop (ic: {point} sendList dual channel): unit =
+module[A] printer : {point} stream channel -> unit =
+  let rec loop (ic: {point} stream channel): unit =
             match follow ic with
             | Left _   -> ()
             | Right ic -> let (pt, ic) = recv ic in
@@ -196,16 +196,16 @@ module[A] printer : {point} sendList dual channel -> unit =
 
 -- The main protocol for the program, which lets us split our parser
 -- from our main loop.
-type[A] main_prot = mu 'x. ({point} sendList * ({plane} send -> 'x)) select
+type[A] main_prot = mu 'x. ({point} stream * ({plane} recv -> 'x)) follow
 
-module[A] parser : main_prot channel -> unit =
-  let rec plane_loop (oc: main_prot channel): unit =
+module[A] parser : main_prot dual channel -> unit =
+  let rec plane_loop (oc: main_prot dual channel): unit =
             match getLine () with
             | "" -> point_loop (sel1 oc)
             | s  -> let plane = parsePlane s in
                     let oc    = send (sel2 oc) plane in
                       plane_loop oc
-      and point_loop (oc: {point} sendList channel): unit =
+      and point_loop (oc: {point} stream dual channel): unit =
             match getLine () with
             | "" -> sel1 oc; ()
             | s  -> let point = parsePoint s in
@@ -214,26 +214,26 @@ module[A] parser : main_prot channel -> unit =
    in plane_loop
 
 module[A] main =
-  let rec get_planes (acc: {plane} list) (ic: main_prot dual channel)
-                     : {plane} list * {point} sendList dual channel =
+  let rec get_planes (acc: {plane} list) (ic: main_prot channel)
+                     : {plane} list * {point} stream channel =
             match follow ic with
             | Left ic  -> (revA acc, ic)
             | Right ic -> let (plane, ic) = recv ic in
                             get_planes (Cons(plane,acc)) ic in
   let rec connect (planes: {plane} list)
-                  (ic: {point} sendList dual channel)
-                  : {point} sendList dual channel =
+                  (ic: {point} stream channel)
+                  : {point} stream channel =
             match planes with
             | Nil              -> ic
             | Cons(plane,rest) ->
-                let outrv = newRendezvous[{point} sendList] () in
+                let outrv = newRendezvous[{point} stream] () in
                   threadFork (\_: unit.
-                    clipper plane ic (request outrv));
-                  connect rest (accept outrv) in
+                    clipper plane ic (accept outrv));
+                  connect rest (request outrv) in
   \_: unit.
     let rv           = newRendezvous[main_prot] () in
-    let _            = threadFork (\_: unit. parser (request rv)) in
-    let (planes, ic) = get_planes Nil[{plane}] (accept rv) in
+    let _            = threadFork (\_: unit. parser (accept rv)) in
+    let (planes, ic) = get_planes Nil[{plane}] (request rv) in
     let ic           = connect planes ic in
       printer ic
 
