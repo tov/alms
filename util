@@ -16,7 +16,8 @@ while [ -n "$1" ]; do
       ;;
     link)
       ssh $host "cd $remote;
-                 ln -sf \"\`ls affine-contracts*.tar.gz | tail -1\`\" affine-contracts.tar.gz"
+                 rm affine-contracts.tar.gz;
+                 ln -s \"\`ls affine-contracts-*.tar.gz | tail -1\`\" affine-contracts.tar.gz"
       ;;
     edit)
       ssh $host -t vim $remote/index.html

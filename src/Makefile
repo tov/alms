@@ -7,7 +7,7 @@ EXE     = affine
 HCOPTS  = -W -Wall -O0 $(EDITING)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 
-$(EXE) $(EXE)-%: *.hs
+$(EXE) $(EXE)-%: *.hs Basis/*.hs
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
 
 $(EXE)-%:     GHC     = ghc-$*

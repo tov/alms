@@ -24,7 +24,7 @@ module[C] putPlane =
     putAny a; putStr "x + ";
     putAny b; putStr "y + ";
     putAny c; putStr "z + ";
-    putAny d; putStr " = 0"
+    putAny d; putStr " > 0"
 
 module[C] revC : all 'a. 'a list -> 'a list =
   \'a.
@@ -89,7 +89,7 @@ module[C] parsePlane : string -> plane =
     let Cons('+',cs)    = dropSpace cs in
     let (c, Cons(_,cs)) = splitWhile (notp ((==) 'z')) (dropSpace cs) in
     let Cons('+',cs)    = dropSpace cs in
-    let (d, Cons(_,cs)) = splitWhile (notp ((==) '=')) (dropSpace cs) in
+    let (d, Cons(_,cs)) = splitWhile (notp ((==) '>')) (dropSpace cs) in
     let Cons('0',cs)    = dropSpace cs in
       Plane (foil a, foil b, foil c, foil d)
 
