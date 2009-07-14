@@ -530,33 +530,38 @@ tryUnify (tv:tvs) t t' =
 -- for tv to make t and t' unify.  (The answer it finds doesn't
 -- have to be correct.
 findSubst :: forall w. Language w => TyVar -> TypeT w -> TypeT w -> [TypeT w]
-findSubst tv = chk [] where
-  chk, cmp :: [(TypeTW, TypeTW)] -> TypeT w -> TypeT w -> [TypeT w]
-  chk seen t1 t2 =
+findSubst tv = chk True [] where
+  chk, cmp :: Language w' =>
+              Bool -> [(TypeTW, TypeTW)] -> TypeT w' -> TypeT w' -> [TypeT w']
+  chk b seen t1 t2 =
     let tw1 = typeTW t1; tw2 = typeTW t2
      in if (tw1, tw2) `elem` seen
           then []
-          else cmp ((tw1, tw2) : seen) t1 t2
+          else cmp b ((tw1, tw2) : seen) t1 t2
 
-  cmp _    (TyVar tv') t'
+  cmp True _  (TyVar tv') t'
     | tv == tv'    = [t']
-  cmp seen (TyCon _ [t] td) t'
-    | td == tdDual = chk seen (dualSessionType t) t'
-  cmp seen t' (TyCon _ [t] td)
-    | td == tdDual = chk seen t' (dualSessionType t)
-  cmp seen (TyCon _ ts _) (TyCon _ ts' _)
-                   = concat (zipWith (chk seen) ts ts')
-  cmp seen (TyAll tv0 t) (TyAll tv0' t')
-    | tv /= tv0    = [ tr | tr <- chk seen t t', tr /= TyVar tv0' ]
-  cmp seen (TyC t) (TyC t')
-                   = concat (zipWith (chk seen) (cgetas t) (cgetas t'))
-  cmp seen (TyA t) (TyA t')
-                   = concat (zipWith (chk seen) (agetcs t) (agetcs t'))
-  cmp seen (TyMu a t) t'
-                   = chk seen (tysubst a (TyMu a t) t) t'
-  cmp seen t' (TyMu a t)
-                   = chk seen t' (tysubst a (TyMu a t) t)
-  cmp _ _ _        = []
+  cmp False _ (TyA (TyVar tv')) t'
+    | tv == tv'    = [t']
+  cmp False _ (TyC (TyVar tv')) t'
+    | tv == tv'    = [t']
+  cmp b seen (TyCon _ [t] td) t'
+    | td == tdDual = chk b seen (dualSessionType t) t'
+  cmp b seen t' (TyCon _ [t] td)
+    | td == tdDual = chk b seen t' (dualSessionType t)
+  cmp b seen (TyCon _ ts _) (TyCon _ ts' _)
+                   = concat (zipWith (chk b seen) ts ts')
+  cmp b seen (TyAll tv0 t) (TyAll tv0' t')
+    | tv /= tv0    = [ tr | tr <- chk b seen t t', tr /= TyVar tv0' ]
+  cmp b seen (TyC t) (TyC t')
+                   = tyC `map` cmp (not b) seen t t'
+  cmp b seen (TyA t) (TyA t')
+                   = tyA `map` cmp (not b) seen t t'
+  cmp b seen (TyMu a t) t'
+                   = chk b seen (tysubst a (TyMu a t) t) t'
+  cmp b seen t' (TyMu a t)
+                   = chk b seen t' (tysubst a (TyMu a t) t)
+  cmp _ _ _ _        = []
 
 indexQuals :: Monad m =>
               Lid -> [TyVar] -> [Either TyVar Q] -> TC w m [Either Int Q]

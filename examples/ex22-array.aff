@@ -1,3 +1,10 @@
+(* Type error: affine variable re-used. *)
+
+(*
+    This is like ex21-array.aff, but it has an error in its capability
+    threading, which manifests as a type error.
+*)
+
 abstype[C] 'a array = Array of (int -> 'a) ref with
   let[C] newArray['a] (default: 'a): 'a array =
     Array (ref (\ix: int. default))
@@ -90,8 +97,8 @@ let[A] crazy['a]
                                 copyFromTo range start lft (cap1, caplft)
                            in (cap1, loop (i - 1) lft caplft)) in
                let fr = newFuture (\_:unit.
-                          let (cap2, caprgt) =
-                                 copyFromTo range start rgt (cap2, caprgt)
+                          let (cap2, cap) =
+                                 copyFromTo range start start (cap2, cap)
                            in (cap2, loop (i - 1) rgt caprgt)) in
                let (cap1, caplft) = getFuture fl in
                let (cap2, caprgt) = getFuture fr in
@@ -137,9 +144,4 @@ let[A] main (width: int) (depth: int) : unit =
            ())
 
  in
-   main 10 0;
-   main 10 1;
-   main 10 2;
-   main 10 3;
-   main 10 4;
-   main 10 5
+   main 10 4
