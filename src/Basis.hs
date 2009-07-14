@@ -162,24 +162,28 @@ primBasis  = [
       -= \t -> do print (t :: Vinj CC.ThreadId); return t,
 
     -- Futures
+    typeC "'a future",
+    typeC "'a cofuture",
+
     typeA "+'a future qualifier A",
     typeA "-'a cofuture qualifier A",
-    pfun 1 "newFuture" -: ""
+
+    pfun 1 "newFuture" -: "all 'a. (unit -> 'a) -> 'a future"
                        -: "all '<a. (unit -o '<a) -> '<a future"
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f () >>= MV.putMVar future)
             return (Future future),
-    pfun 1 "getFuture" -: ""
+    pfun 1 "getFuture" -: "all 'a. 'a future -> 'a"
                        -: "all '<a. '<a future -> '<a"
       -= (MV.takeMVar . unFuture),
-    pfun 1 "newCofuture" -: ""
+    pfun 1 "newCofuture" -: "all 'a. ('a future -> unit) -> 'a cofuture"
                          -: "all '<a. ('<a future -o unit) -> '<a cofuture"
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f (Future future) >> return ())
             return (Future future),
-    pfun 1 "putCofuture" -: ""
+    pfun 1 "putCofuture" -: "all 'a. 'a cofuture -> 'a -> unit"
                          -: "all '<a. '<a cofuture -> '<a -o unit"
       -= \future value -> MV.putMVar (unFuture future) value,
 
@@ -296,6 +300,15 @@ instance Valuable Rendezvous where
 
 srcBasis :: String
 srcBasis  = unlines [
+  "let[C] not (b: bool) = if b then false else true",
+  "let[C] (!=)['a] (x: 'a) (y: 'a) = not (x == y)",
+  "let[C] flip['a,'b,'c] (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y",
+  "let[C] (<) (x: int) (y: int) = not (y <= x)",
+  "let[C] (>) = flip (<)",
+  "let[C] (>=) = flip (<=)",
+  "let[C] (<.) (x: float) (y: float) = not (y <=. x)",
+  "let[C] (>.) = flip (<.)",
+  "let[C] (>=.) = flip (<=.)",
   "let[C] null = \\'a (x : 'a list).",
   "  match x with",
   "  | Nil -> true",
