@@ -105,14 +105,13 @@ typep = type0 where
                  tyapp' [TyCon tc ts ()]
 
 progp :: P (Prog ())
-progp  = do
-  ds <- choice
-          [ do ds <- declsp
-               reserved "in"
-               return ds,
-            return [] ]
-  e  <- exprp
-  return (Prog ds e)
+progp  = choice [
+           do ds <- declsp
+              when (null ds) pzero
+              e  <- optionMaybe (reserved "in" >> exprp)
+              return (Prog ds e),
+           exprp >>! (Prog [] . Just)
+         ]
 
 declsp :: P [Decl ()]
 declsp  = choice [
@@ -124,11 +123,9 @@ declsp  = choice [
               sharpLoad
               file <- stringLiteral
               let contents = unsafePerformIO (readFile file)
-              ds <- case parse parseDecls file contents of
-                Left _   -> case parse parseProg file contents of
-                  Left e   -> fail (show e)
-                  Right p  -> return (prog2decls p)
-                Right ds -> return ds
+              ds <- case parse parseProg file contents of
+                Left e   -> fail (show e)
+                Right p  -> return (prog2decls p)
               ds' <- declsp
               return (ds ++ ds'),
             return []

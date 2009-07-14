@@ -188,12 +188,7 @@ interactive opt rs0 = do
                     addHistory cmd
                     return (Just (prog2decls ast))
                   Left derr ->
-                    case parse parseDecls "-" cmd of
-                      Right ast -> do
-                        addHistory cmd
-                        return (Just ast)
-                      Left _ ->
-                        loop ((line, derr) : acc)
+                    loop ((line, derr) : acc)
     printResult :: (ReplState, [Decl i]) -> IO ()
     printResult (st, ds0) = do
       (_, docs) <- foldrM dispatch (st, []) ds0

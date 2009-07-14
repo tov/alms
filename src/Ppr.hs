@@ -79,8 +79,10 @@ instance Ppr (Type i w) where
   pprPrec _ (TyC t)       = braces (pprPrec 0 t)
 
 instance Ppr (Prog i) where
-  pprPrec _ (Prog ms e) = vcat (map (pprPrec 0) ms) $+$
-                          (text "in" >+> pprPrec 0 e)
+  pprPrec _ (Prog ms Nothing)  = vcat (map ppr ms)
+  pprPrec _ (Prog [] (Just e)) = ppr e
+  pprPrec _ (Prog ms (Just e)) = vcat (map (pprPrec 0) ms) $+$
+                                 (text "in" >+> pprPrec 0 e)
 
 instance Ppr (Decl i) where
   pprPrec p (DcMod m)     = pprPrec p m

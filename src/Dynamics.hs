@@ -141,7 +141,8 @@ evalMod (MdInt x _ y) env = do
     Nothing -> fail $ "BUG! Unknown module: " ++ show y
 
 eval :: E -> Prog i -> Result
-eval env0 (Prog ds e0) = evalDecls ds env0 >>= valOf e0
+eval env0 (Prog ds (Just e0)) = evalDecls ds env0 >>= valOf e0
+eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
 valOf :: Expr i w -> D

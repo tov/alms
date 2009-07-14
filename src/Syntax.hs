@@ -128,7 +128,7 @@ tyA t       = TyA t
 
 type TEnv w = Env Lid (TypeT w)
 
-data Prog i = Prog [Decl i] (Expr i C)
+data Prog i = Prog [Decl i] (Maybe (Expr i C))
   deriving (Typeable, Data)
 
 data Decl i = DcMod (Mod i)
@@ -924,7 +924,8 @@ modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
 
 prog2decls :: Prog i -> [Decl i]
-prog2decls (Prog ds e) = ds ++ [DcMod (MdC (Lid "it") Nothing e)]
+prog2decls (Prog ds (Just e)) = ds ++ [DcMod (MdC (Lid "it") Nothing e)]
+prog2decls (Prog ds Nothing)  = ds
 
 -- Unfolding various sequences
 

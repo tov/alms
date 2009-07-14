@@ -845,10 +845,15 @@ addTyTag gg n td =
 
 -- Type check a program
 tcProg :: Monad m => S -> Prog i -> m (TypeT C, ProgT)
-tcProg gg (Prog ds e) =
+tcProg gg (Prog ds me) =
   runTC gg $
     withDecls ds $ \ds' -> do
-      (t, e') <- tcExprC e
+      (t, e') <- case me of
+                   Just e  -> do
+                     (t, e') <- tcExprC e
+                     return (t, Just e')
+                   Nothing -> do
+                     return (tyUnitT, Nothing)
       return (t, Prog ds' e')
 
 env0 :: S

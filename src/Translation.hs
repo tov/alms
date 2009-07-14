@@ -15,7 +15,7 @@ newtype Party = Party { unParty :: Lid }
 -- Translate a program by adding contracts.
 translate :: MEnvT -> ProgT -> ProgT
 translate menv0 (Prog ds e) =
-  Prog ds' (transExpr menv (Party (Lid "*main*")) e)
+  Prog ds' (transExpr menv (Party (Lid "*main*")) `fmap` e)
   where (menv, ds') = transDecls menv0 ds
 
 transDecls :: MEnvT -> [DeclT] -> (MEnvT, [DeclT])
