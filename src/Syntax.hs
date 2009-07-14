@@ -51,7 +51,7 @@ import Util
 import Env
 
 import Control.Monad.State (State, evalState, get, put)
-import Data.Char (isAlpha)
+import Data.Char (isAlpha, isDigit)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -424,11 +424,13 @@ instance Eq TypeTW where
       TyC t         === TyC t'   = t === t'
       TyVar x       === TyVar x' = x == x'
       TyAll x t     === TyAll x' t'
-                                 = tvqual x == tvqual x'
-                                && t === tysubst1 x' (TyVar x) t'
+        | tvqual x == tvqual x' =
+          tysubst1 x a t === tysubst1 x' a t'
+            where a = TyVar (freshTyVar x (ftv [t, t']))
       TyMu x t      === TyMu x' t'
-                                 = tvqual x == tvqual x'
-                                && t === tysubst1 x' (TyVar x) t'
+        | tvqual x == tvqual x' =
+          tysubst1 x a t === tysubst1 x' a t'
+            where a = TyVar (freshTyVar x (ftv [t, t']))
       _             === _        = False
 
 instance Language w => Eq (Type TyTag w) where
@@ -456,7 +458,9 @@ instance Language w => Eq (Type TyTag w) where
     TyC t          `cmp` TyC t'          = t `chk` t'
     TyVar x        `cmp` TyVar x'        = return (x == x')
     TyAll x t      `cmp` TyAll x' t' 
-      | tvqual x == tvqual x'            = t `chk` tysubst1 x' (TyVar x) t'
+      | tvqual x == tvqual x'            = 
+        tysubst1 x a t `chk` tysubst1 x' a t'
+          where a = TyVar (freshTyVar x (ftv [t, t']))
     _            `cmp` _               = return False
 
 instance Show Q where
@@ -717,10 +721,15 @@ freshTyVars tvs0 m0 = loop tvs0 m1 where
 
 freshTyVar :: TyVar -> M.Map TyVar a -> TyVar
 freshTyVar tv m = if tv `M.member` m
-                    then loop 0
+                    then loop count
                     else tv
   where
-    attach n = tv { tvname = Lid (unLid (tvname tv) ++ show n) }
+    suffix   = reverse . takeWhile isDigit . reverse . unLid $ tvname tv
+    prefix   = reverse . dropWhile isDigit . reverse . unLid $ tvname tv
+    count    = case reads suffix of
+                 ((n, ""):_) -> n
+                 _           -> 0
+    attach n = tv { tvname = Lid (prefix ++ show n) }
     loop    :: Int -> TyVar
     loop n   =
       let tv' = attach n

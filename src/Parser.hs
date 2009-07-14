@@ -10,7 +10,6 @@ import Syntax
 import Lexer
 
 import Text.ParserCombinators.Parsec
-import Text.ParserCombinators.Parsec.Expr
 import System.IO.Unsafe (unsafePerformIO)
 
 type St  = ()
@@ -100,15 +99,14 @@ typep = type0 where
                t   <- type0
                return (TyMu tv t),
             type5 ]
-  type5 = typeExpr type6
-  type6 = tyarg >>= tyapp'
-
-  -- We have sugar for product and arrow types:
-  typeExpr :: P (Type () w) -> P (Type () w)
-  typeExpr = buildExpressionParser
-    [[ Infix  (star   >> return tyTuple) AssocLeft ],
-     [ Infix  (arrow  >> return tyArr)   AssocRight,
-       Infix  (lolli  >> return tyLol)   AssocRight ]]
+  type5 = chainr1last type6 tyop5 type0 where
+            tyop5 = choice [
+                      arrow >> return tyArr,
+                      lolli >> return tyLol
+                    ]
+  type6 = chainl1last type7 tyop6 type0 where
+            tyop6 = star >> return tyTuple
+  type7 = tyarg >>= tyapp'
 
   -- This uses ScopedTypeVariables to reify the Language type:
   tyarg :: Language w => P [Type () w]
