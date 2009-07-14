@@ -44,7 +44,9 @@ module Syntax (
   ctype2atype, atype2ctype, cgetas, agetcs, replaceTyTags,
 
   syntacticValue, castableType, modName, prog2decls,
-  unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
+  unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun,
+
+  dumpType
 ) where
 
 import Util
@@ -967,16 +969,28 @@ unfoldTyFun  = unscanr each where
   each (TyCon _ [ta, tr] td) | td `elem` funtypes = Just (ta, tr)
   each _                                         = Nothing
 
-{-
-let tv a = TV (Lid a) Qa
-let a = tv "a"
-let b = tv "b"
-let c = tv "c"
-let d = tv "d"
-let at = TyVar a :: TypeT A
-let bt = TyVar b :: TypeT A
-let ct = TyVar c :: TypeT A
-let dt = TyVar d :: TypeT A
-((bt `tyArrT` (TyMu a $ bt `tyArrT` at)), (TyMu a $ bt `tyLolT` at))
-(bt `tyArrT` (TyMu a $ bt `tyArrT` at)) \/ (TyMu a $ bt `tyLolT` at)
--}
+dumpType :: Int -> TypeT w -> IO ()
+dumpType i t0 = do
+  putStr (replicate i ' ')
+  case t0 of
+    TyCon n ps td -> do
+      putStrLn $ show n ++ " [" ++ show td ++ "] {"
+      mapM_ (dumpType (i + 2)) ps
+      putStrLn (replicate i ' ' ++ "}")
+    TyVar tv -> print tv
+    TyAll a t -> do
+      print $ "all " ++ show a ++ ". {"
+      dumpType (i + 2) t
+      putStrLn (replicate i ' ' ++ "}")
+    TyMu a t -> do
+      print $ "mu " ++ show a ++ ". {"
+      dumpType (i + 2) t
+      putStrLn (replicate i ' ' ++ "}")
+    TyC t -> do
+      print $ "TyC {"
+      dumpType (i + 2) t
+      putStrLn (replicate i ' ' ++ "}")
+    TyA t -> do
+      print $ "TyA {"
+      dumpType (i + 2) t
+      putStrLn (replicate i ' ' ++ "}")

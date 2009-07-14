@@ -27,10 +27,10 @@ abstype[A] ('a, 't) array = Array of {{'a} array} with
     type[A] 't writecap = ('t, unit) readcap
 
     let[A] withNewArray['a] (default: 'a)
-                       ['r] (kont: all 't.
-                                     ('a, 't) array -o
-                                     't writecap -o
-                                     'r): 'r =
+                       ['<r] (kont: all 't.
+                                      ('a, 't) array -o
+                                      't writecap -o
+                                      '<r): '<r =
       kont[unit] (Array['a,unit] (newArray default)) MkCap[unit,unit]
 
     let[A] split['t,'c] (_: ('t, 'c) readcap)

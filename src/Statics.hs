@@ -5,6 +5,7 @@ module Statics (
   addVal, addTyTag
 ) where
 
+
 import Util
 import Syntax
 import Env as Env
@@ -307,20 +308,19 @@ tcExprC = tc where
       (gx, x') <- tcPatt t' x
       (te, e') <- withVars gx $ tc e
       return (tyArrT t' te, exAbs x' t' e')
-    ExApp e1 e2   -> case expr' e1 of
-      _             -> do
-        (t1, e1') <- tc e1
-        (t2, e2') <- tc e2
-        let (tvs, body) = unfoldTyAll t1
-        case body of
-          TyCon (Lid "->") [ta, tr] td | td == tdArr -> do
-            subst <- tryUnify tvs ta t2
-            let ta' = subst ta
-                tr' = subst tr
-            tassgot (ta' == t2)
-              "Application" t2 (show ta')
-            return (tr', exApp e1' e2')
-          _ -> tgot "Application" t1 "function type"
+    ExApp e1 e2   -> do
+      (t1, e1') <- tc e1
+      (t2, e2') <- tc e2
+      case unfoldTyAll t1 of
+        (tvs, TyCon _ [ta, _] _) -> do
+          ts  <- tryUnify tvs ta t2
+          t1' <- foldM tapply t1 ts
+          case t1' of
+            TyCon _ [ta', tr'] td | td == tdArr -> do
+              tassgot (t2 == ta') "Application (operand)" t2 (show ta')
+              return (tr', exApp e1' e2')
+            _ -> tgot "Application (operator)" t1 "function type"
+        _ -> tgot "Application (operator)" t1 "function type"
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
         (t, e') <- tc e
@@ -328,9 +328,8 @@ tcExprC = tc where
     ExTApp e1 t2  -> do
       (t1, e1') <- tc e1
       t2'       <- tcType t2
-      case t1 of
-        TyAll tv t1' -> return (tysubst tv t2' t1', exTApp e1' t2')
-        _            -> tgot "type application" t1 "(for)all type"
+      t1'       <- tapply t1 t2'
+      return (t1', exTApp e1' t2')
     ExCast e1 t ta -> do
       t'  <- tcType t
       ta' <- intoA $ tcType ta
@@ -403,34 +402,28 @@ tcExprA = tc where
       if unworthy
         then return (tyLolT t' te, exAbs x' t' e')
         else return (tyArrT t' te, exAbs x' t' e')
-    ExApp e1 e2   -> case expr' e1 of
-      _             -> do
-        (t1, e1') <- tc e1
-        (t2, e2') <- tc e2
-        let (tvs, body) = unfoldTyAll t1
-        case body of
-          TyCon _ [ta, tr] td
-              | td `elem` funtypes -> do
-            subst <- tryUnify tvs ta t2
-            let ta' = subst ta
-                tr' = subst tr
-            tassgot (t2 <: ta')
-              "Application" t2 (show ta')
-            return (tr', exApp e1' e2')
-          _ -> tgot "Application" t1 "function type"
+    ExApp e1 e2   -> do
+      (t1, e1') <- tc e1
+      (t2, e2') <- tc e2
+      case unfoldTyAll t1 of
+        (tvs, TyCon _ [ta, _] _) -> do
+          ts  <- tryUnify tvs ta t2
+          t1' <- foldM tapply t1 ts
+          case t1' of
+            TyCon _ [ta', tr'] td | td `elem` funtypes -> do
+              tassgot (t2 <: ta') "Application (operand)" t2 (show ta')
+              return (tr', exApp e1' e2')
+            _ -> tgot "Application (operator)" t1 "function type"
+        _ -> tgot "Application (operator)" t1 "function type"
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
         (t, e') <- tc e
         return (TyAll tv' t, exTAbs tv' e')
     ExTApp e1 t2  -> do
-      t2'       <- tcType t2
       (t1, e1') <- tc e1
-      case t1 of
-        TyAll tv t1' -> do
-          tassgot (qualifier t2' <: tvqual tv)
-            "Type application" t2' ("for type variable " ++ show tv)
-          return (tysubst tv t2' t1', exTApp e1' t2')
-        _            -> tgot "type application" t1 "(for)all type"
+      t2'       <- tcType t2
+      t1'       <- tapply t1 t2'
+      return (t1', exTApp e1' t2')
     ExCast e1 t ta -> do
       t'  <- tcType t
       ta' <- tcType ta
@@ -460,6 +453,18 @@ tcExprA = tc where
              Just tx -> qualifier tx == Qa
              Nothing -> False)
          (M.keys (fv e))
+
+tapply :: (Language w, Monad m) =>
+          TypeT w -> TypeT w -> TC w m (TypeT w)
+tapply (TyAll tv t1') t2 = do
+  langCase t2
+    (\_ -> return ())
+    (\_ ->
+      tassert (qualifier t2 <: tvqual tv) $
+        "Type application cannot instantiate type variable " ++
+        show tv ++ " with type " ++ show t2)
+  return (tysubst tv t2 t1')
+tapply t1 _ = tgot "type application" t1 "(for)all type"
 
 tcPatt :: (Monad m, Language w) =>
           TypeT w -> Patt -> TC w m (G w, Patt)
@@ -513,14 +518,14 @@ tcPatt t x0 = case x0 of
 -- may be free, and a type t', tries to substitute for tvs in t
 -- to produce a type that *might* unify with t'
 tryUnify :: (Monad m, Language w) =>
-             [TyVar] -> TypeT w -> TypeT w -> TC w m (TypeT w -> TypeT w)
-tryUnify [] _ _        = return id
+             [TyVar] -> TypeT w -> TypeT w -> TC w m [TypeT w]
+tryUnify [] _ _        = return []
 tryUnify (tv:tvs) t t' =
   case findSubst tv t t' of
     tguess:_ -> do
                   let subst' = tysubst tv tguess
-                  subst <- tryUnify tvs (subst' t) t'
-                  return (subst . subst')
+                  tguesses <- tryUnify tvs (subst' t) t'
+                  return (tguess : tguesses)
     _        -> fail $
                   "Cannot guess type application to unify " ++
                   show t ++ " and " ++ show t' ++ " at " ++ show tv
@@ -771,13 +776,6 @@ withDecl :: Monad m =>
 withDecl (DcMod m)     k = withMod m (k . DcMod)
 withDecl (DcTyp td)    k = withTyDec td (k . DcTyp)
 withDecl (DcAbs at ds) k = withAbsTy at ds (k . DcAbs at)
-  {-$ \ds' -> do
-    (tags, withs) <- unzip `liftM` mapM forgetType tds
-    let ds'' = foldr replaceTyTags ds' tags
-    foldr (\tag -> withoutConstructors tag . withReplacedTyTags tag)
-          (foldr (.) id withs (k (DcAbs tds ds'')))
-          tags
-          -}
 
 withDecls :: Monad m => [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withDecls []     k = k []
@@ -796,10 +794,11 @@ withAbsTy at ds k = case at of
           "abstract-with-end: " ++ show (length params) ++
           " given for type " ++ show name ++
           " which has " ++ show (length (ttArity tag))
-        withoutConstructors tag .
-          withReplacedTyTags tag .
-            withTypes (name =:= TiAbs tag) $
-              k ds'
+        let tag' = tag
+        withoutConstructors tag' .
+          withReplacedTyTags tag' .
+            withTypes (name =:= TiAbs tag') $
+              k (replaceTyTags tag' ds')
   AbsTyA name params arity quals alts ->
     withTyDec (TdDatA name params alts) $ \_ ->
       withDecls ds $ \ds' -> intoA $ do
@@ -822,12 +821,12 @@ withAbsTy at ds k = case at of
         "abstract-with-end: declared qualifier for type " ++ show name ++
         ", " ++ show quals ++
         ", is more general than actual qualifier"
-      let newTag = TyTag (ttId tag) arity quals' False
-      withoutConstructors tag .
-        withReplacedTyTags tag .
-          withTypes (name =:= TiAbs newTag) .
+      let tag' = TyTag (ttId tag) arity quals' False
+      withoutConstructors tag' .
+        withReplacedTyTags tag' .
+          withTypes (name =:= TiAbs tag') .
             outofA $
-              k ds'
+              k (replaceTyTags tag' ds')
 
 tcDecls :: Monad m => S -> [Decl i] -> m (S, [DeclT])
 tcDecls gg ds = runTC gg $
