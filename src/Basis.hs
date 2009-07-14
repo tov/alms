@@ -322,7 +322,6 @@ srcBasis  = unlines [
   "  | Nil          -> (Nil['<a], true)",
   "  | Cons(x, xs') -> (Cons(x, xs'), false)",
   "",
-  {-
   "let[C] foldrC =",
   "  let rec foldr 'a 'b (f : 'a -> 'b -> 'b)",
   "                      (z : 'b) (xs : 'a list) : 'b =",
@@ -341,6 +340,5 @@ srcBasis  = unlines [
   "  \\'a. foldrA (\\(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
   "let[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
   "  \\'a. foldrC (\\(x:'a) (xs:'a list). Cons(x, xs)) Nil['a]",
-  -}
   ""
   ]
