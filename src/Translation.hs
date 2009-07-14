@@ -133,14 +133,19 @@ ca neg pos x (TyAll tv t) =
       ca neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
-ca neg _   x ta | qualifier ta <: Qu = exVar x
-                | otherwise =
-  exLetVar' u createContract $
-    exAbsVar' y tyUnitT $
-      exSeq (checkContract u neg "passed one-shot value twice") $
-        exVar x
-  where u = x /./ "u"
-        y = x /./ "y"
+ca _   _   x (TyCon _ _ td)
+  | ttTrans td         = exVar x
+ca _   _   x (TyVar tv)
+  | tvqual tv <: Qu    = exVar x
+ca _   _   x (TyC _)   = exVar x
+ca neg _   x ta
+  | qualifier ta <: Qu = exAbs' PaWild tyUnitT (exVar x)
+  | otherwise          =
+      exLetVar' u createContract $
+        exAbs' PaWild tyUnitT $
+          exSeq (checkContract u neg "passed one-shot value twice") $
+            exVar x
+      where u = x /./ "u"
 
 -- Given negative and positive blame labels, the name of a C
 -- language variable we wish to protect, and the A type the variable
@@ -161,8 +166,12 @@ ac neg pos x (TyAll tv t) =
       ac neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
-ac _   _   x ta | qualifier ta <: Qu = exVar x
-                | otherwise = exApp (exVar x) exUnit
+ac _   _   x (TyCon _ _ td)
+  | ttTrans td         = exVar x
+ac _   _   x (TyVar tv)
+  | tvqual tv <: Qu    = exVar x
+ac _   _   x (TyC _)   = exVar x
+ac _   _   x _         = exApp (exVar x) exUnit
 
 -- Given negative and positive blame labels, the name of a C
 -- language variable we wish to protect, and the C type the variable
@@ -183,11 +192,10 @@ cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
         z = x /./ "z"
 cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
   exLetVar' u createContract $
-    exAbsVar' y tyUnitT $
+    exAbs' PaWild tyUnitT $
       exSeq (checkContract u neg "passed one-shot value twice") $
         exApp (exVar x) exUnit
-  where y = x /./ "y"
-        u = x /./ "u"
+  where u = x /./ "u"
 cc neg pos x (TyAll tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $

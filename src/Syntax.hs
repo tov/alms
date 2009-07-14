@@ -917,8 +917,16 @@ syntacticValue e = case expr' e of
   ExInt _      -> True
   ExPair e1 e2 -> syntacticValue e1 && syntacticValue e2
   ExAbs _ _ _  -> True
+  ExApp e1 e2  -> syntacticConstructor e1 && syntacticValue e2
   ExTAbs _ _   -> True
-  ExTApp e1 _  -> syntacticValue e1
+  ExTApp e1 _  -> syntacticConstructor e1
+  _            -> False
+
+syntacticConstructor :: Expr i w -> Bool
+syntacticConstructor e = case expr' e of
+  ExId (Con _) -> True
+  ExTApp e1 _  -> syntacticConstructor e1
+  ExApp e1 e2  -> syntacticConstructor e1 && syntacticValue e2
   _            -> False
 
 castableType :: TypeT w -> Bool

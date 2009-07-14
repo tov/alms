@@ -242,8 +242,8 @@ tcType = tc where
          "Recursive type " ++ show (TyMu tv t) ++ " qualifier " ++
          "does not match its own type variable.")
     return (TyMu tv' t')
-  tc (TyC t)      = tyC `liftM` intoC (tc t)
-  tc (TyA t)      = tyA `liftM` intoA (tc t)
+  tc (TyC t)      = ctype2atype `liftM` intoC (tc t)
+  tc (TyA t)      = atype2ctype `liftM` intoA (tc t)
 
 -- Given a list of type variables and types, perform all the
 -- substitutions, avoiding capture between them.
@@ -559,9 +559,9 @@ findSubst tv = chk True [] where
   cmp b seen (TyAll tv0 t) (TyAll tv0' t')
     | tv /= tv0    = [ tr | tr <- chk b seen t t', tr /= TyVar tv0' ]
   cmp b seen (TyC t) (TyC t')
-                   = tyC `map` cmp (not b) seen t t'
+                   = ctype2atype `map` cmp (not b) seen t t'
   cmp b seen (TyA t) (TyA t')
-                   = tyA `map` cmp (not b) seen t t'
+                   = atype2ctype `map` cmp (not b) seen t t'
   cmp b seen (TyMu a t) t'
                    = chk b seen (tysubst a (TyMu a t) t) t'
   cmp b seen t' (TyMu a t)
