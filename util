@@ -4,13 +4,20 @@ host=frogger.ccs.neu.edu
 remote=public_html/pubs/affine-contracts
 
 if [ -z "$1" ]; then
-  set send edit link
+  set showVersion
 fi
 
 while [ -n "$1" ]; do
   cmd="$1"
   shift
   case "$cmd" in
+    release)
+      ver="$1"; shift
+      set version "$ver" ci "version bump: $ver" dist send edit link $@
+      ;;
+    dist)
+      make dist
+      ;;
     send)
       scp -p affine-contracts*.tar.gz $host:$remote/
       ;;
@@ -28,6 +35,11 @@ while [ -n "$1" ]; do
       git mv "$src" "$dst" &&
       mv "$dst" "$src" &&
       svn mv "$src" "$dst"
+      ;;
+    ci)
+      msg="$1"; shift
+      git ca -m "$msg"
+      svn ci -m "$msg"
       ;;
     version)
       version="$1"
