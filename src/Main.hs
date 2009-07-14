@@ -211,6 +211,9 @@ interactive opt rs0 = do
                     MdInt x t _ -> val "A" x (Just t) mv
         return (rs { rsDynamics = e =-= modName m }, doc : docs)
       dispatch (rs, docs) (DcTyp td) = return (rs, ppr td : docs)
+      dispatch (rs, docs) (DcAbs tds ds) = do
+        let docs' = [ text "abstract" <+> ppr td | td <- tds ] ++ docs
+         in foldrM dispatch (rs, docs') ds
       val :: (Ppr x, Ppr t, Ppr v) =>
              String -> x -> Maybe t -> Maybe v -> Doc
       val lang x mt mv =

@@ -1,10 +1,12 @@
 {-# LANGUAGE
+      DeriveDataTypeable,
       EmptyDataDecls,
       FlexibleContexts,
       FlexibleInstances,
       GADTs,
       ParallelListComp,
       RankNTypes,
+      ScopedTypeVariables,
       TypeFamilies #-}
 module Syntax (
   Language(..), A, C, LangRep(..),
@@ -15,7 +17,7 @@ module Syntax (
   Type(..), tyC, tyA, TypeT, TEnv,
   Prog(..), ProgT,
   Decl(..), DeclT,
-  Mod(..), ModT, TyDec(..), TyDecT,
+  Mod(..), ModT, TyDec(..),
 
   TypeTW(..), typeTW,
 
@@ -27,7 +29,7 @@ module Syntax (
   Binding(..), BindingT, Patt(..),
   pv,
 
-  PO(..),
+  PO(..), bigVee, bigVeeM, bigWedge, bigWedgeM,
 
   tdUnit, tdBool, tdInt, tdString, tdTuple, tdArr, tdLol,
 
@@ -39,7 +41,7 @@ module Syntax (
 
   Ftv(..), freshTyVar, freshTyVars, tysubst, tysubst1, qualifier,
   funtypes,
-  ctype2atype, atype2ctype, cgetas, agetcs,
+  ctype2atype, atype2ctype, cgetas, agetcs, replaceTyTags,
 
   syntacticValue, castableType, modName, prog2decls,
   unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun
@@ -53,9 +55,14 @@ import Data.Char (isAlpha)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+import Data.Generics (Typeable(..), Data(..), Fixity(..),
+                      Constr, mkConstr, constrIndex,
+                      DataType, mkDataType,
+                      everywhere, mkT)
+
 -- We have two languages:
-data C
-data A
+data C deriving Typeable
+data A deriving Typeable
 
 data LangRep w where
   A :: LangRep A
@@ -63,29 +70,29 @@ data LangRep w where
 
 -- Qualifiers
 data Q = Qa | Qu
-  deriving Eq
+  deriving (Eq, Typeable, Data)
 
 -- Variables
 newtype Lid = Lid { unLid :: String }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable, Data)
 
 newtype Uid = Uid { unUid :: String }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable, Data)
 
 data Ident = Var { unVar :: Lid }
            | Con { unCon :: Uid }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable, Data)
 
 -- Type variables
 data TyVar = TV { tvname :: Lid, tvqual :: Q }
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable, Data)
 
 -- Variance
 data Variance = Invariant
               | Covariant
               | Contravariant
               | Omnivariant
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable, Data)
 
 -- Info about a type constructor (for language A)
 data TyTag =
@@ -98,7 +105,7 @@ data TyTag =
                            -- possibly some constants
     tdTrans :: Bool
   }
-  deriving Show
+  deriving (Show, Typeable, Data)
 
 data Type i w where
   TyCon { tycon  :: Lid,
@@ -109,6 +116,7 @@ data Type i w where
   TyMu  :: TyVar -> Type i w -> Type i w
   TyC   :: Type i C -> Type i A
   TyA   :: Type i A -> Type i C
+  deriving Typeable
 
 tyC :: Type i C -> Type i A
 tyC (TyA t) = t
@@ -121,15 +129,19 @@ tyA t       = TyA t
 type TEnv w = Env Lid (TypeT w)
 
 data Prog i = Prog [Decl i] (Expr i C)
+  deriving (Typeable, Data)
 
 data Decl i = DcMod (Mod i)
-            | DcTyp (TyDec i)
+            | DcTyp TyDec
+            | DcAbs [TyDec] [Decl i]
+  deriving (Typeable, Data)
 
 data Mod i  = MdA Lid (Maybe (Type i A)) (Expr i A)
             | MdC Lid (Maybe (Type i C)) (Expr i C)
             | MdInt Lid (Type i A) Lid
+  deriving (Typeable, Data)
 
-data TyDec i = TdAbsC {
+data TyDec   = TdAbsC {
                  tdName      :: Lid,
                  tdParams    :: [TyVar]
                }
@@ -159,8 +171,10 @@ data TyDec i = TdAbsC {
                  tdParams    :: [TyVar],
                  tdaAlts     :: [(Uid, Maybe (Type () A))]
              }
+  deriving (Typeable, Data)
 
 data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
+  deriving (Typeable, Data)
 type FV       = M.Map Lid Integer
 data Expr' i w = ExId Ident
                | ExStr String
@@ -173,12 +187,14 @@ data Expr' i w = ExId Ident
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
                | ExCast (Expr i w) (Type i w) (Type i A)
+  deriving (Typeable, Data)
 
 data Binding i w = Binding {
   bnvar  :: Lid,
   bntype :: Type i w,
   bnexpr :: Expr i w
 }
+  deriving (Typeable, Data)
 
 data Patt = PaWild
           | PaVar Lid
@@ -187,12 +203,12 @@ data Patt = PaWild
           | PaStr String
           | PaInt Integer
           | PaAs Patt Lid
+  deriving (Typeable, Data)
 
 type ExprT    = Expr TyTag
 type TypeT    = Type TyTag
 type DeclT    = Decl TyTag
 type ModT     = Mod TyTag
-type TyDecT   = TyDec TyTag
 type BindingT = Binding TyTag
 type ProgT    = Prog TyTag
 
@@ -304,6 +320,70 @@ exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 ----- Some classes and instances
 -----
 
+instance Data C where
+  gfoldl _ _ _  = error "gfoldl(C): uninhabited"
+  gunfold _ _ _ = error "gunfold(C): uninhabited"
+  toConstr _    = error "toConstr(C): uninhabited"
+  dataTypeOf _ = ty_C
+
+instance Data A where
+  gfoldl _ _ _  = error "gfoldl(A): uninhabited"
+  gunfold _ _ _ = error "gunfold(A): uninhabited"
+  toConstr _    = error "toConstr(A): uninhabited"
+  dataTypeOf _ = ty_A
+
+ty_C, ty_A :: DataType
+ty_C  = mkDataType "Syntax.C" [ ]
+ty_A  = mkDataType "Syntax.A" [ ]
+
+instance (Language w, Data i, Data w) => Data (Type i w) where
+   gfoldl k z (TyCon a b c) = z TyCon `k` a `k` b `k` c
+   gfoldl k z (TyVar a)     = z TyVar `k` a
+   gfoldl k z (TyAll a b)   = z TyAll `k` a `k` b
+   gfoldl k z (TyMu a b)    = z TyMu  `k` a `k` b
+   gfoldl k z (TyC a)       = z TyC   `k` a
+   gfoldl k z (TyA a)       = z TyA   `k` a
+
+   gunfold k z c = case constrIndex c of
+                       1 -> k $ k $ k $ z TyCon
+                       2 -> k $ z TyVar
+                       3 -> k $ k $ z TyAll
+                       4 -> k $ k $ z TyMu
+                       5 -> k $ z unTyC
+                       6 -> k $ z unTyA
+                       _ -> error "gunfold(Type): bad constrIndex"
+
+   toConstr (TyCon _ _ _) = con_TyCon
+   toConstr (TyVar _)     = con_TyVar
+   toConstr (TyAll _ _)   = con_TyAll
+   toConstr (TyMu _ _)    = con_TyMu
+   toConstr (TyC _)       = con_TyC
+   toConstr (TyA _)       = con_TyA
+
+   dataTypeOf _ = ty_Type
+
+unTyC :: forall w i. Language w => Type i C -> Type i w
+unTyC t = case reifyLang :: LangRep w of
+            C -> t
+            A -> tyC t
+
+unTyA :: forall w i. Language w => Type i A -> Type i w
+unTyA t = case reifyLang :: LangRep w of
+            C -> tyA t
+            A -> t
+
+con_TyCon, con_TyVar, con_TyAll, con_TyMu, con_TyC, con_TyA
+        :: Constr
+ty_Type :: DataType
+con_TyCon = mkConstr ty_Type "TyCon" [] Prefix
+con_TyVar = mkConstr ty_Type "TyVar" [] Prefix
+con_TyAll = mkConstr ty_Type "TyAll" [] Prefix
+con_TyMu  = mkConstr ty_Type "TyMu"  [] Prefix
+con_TyC   = mkConstr ty_Type "TyC"   [] Prefix
+con_TyA   = mkConstr ty_Type "TyA"   [] Prefix
+ty_Type = mkDataType "Syntax.Type"
+            [ con_TyCon, con_TyVar, con_TyAll, con_TyMu, con_TyC, con_TyA ]
+
 instance Eq TyTag where
   td == td' = tdId td == tdId td'
 
@@ -339,8 +419,8 @@ instance Eq TypeTW where
 
 instance Language w => Eq (Type TyTag w) where
   (==) t1i t2i = evalState (t1i `chk` t2i) [] where
-    chk, cmp :: Language w =>
-                TypeT w -> TypeT w -> State [(TypeTW, TypeTW)] Bool
+    chk, cmp :: Language w' =>
+                TypeT w' -> TypeT w' -> State [(TypeTW, TypeTW)] Bool
     t1 `chk` t2 = do
       seen <- get
       let tw1 = typeTW t1; tw2 = typeTW t2
@@ -403,6 +483,18 @@ instance Bounded Variance where
 instance Bounded Q where
   minBound = Qu
   maxBound = Qa
+
+bigVee :: (Bounded a, PO a) => [a] -> a
+bigVee  = foldr (\/) minBound
+
+bigVeeM :: (Monad m, Bounded a, PO a) => [a] -> m a
+bigVeeM  = foldrM (\/?) minBound
+
+bigWedge :: (Bounded a, PO a) => [a] -> a
+bigWedge  = foldr (/\) maxBound
+
+bigWedgeM :: (Monad m, Bounded a, PO a) => [a] -> m a
+bigWedgeM  = foldrM (/\?) maxBound
 
 -- Minimal complete definition is one of:
 --  * ifMJ
@@ -756,6 +848,12 @@ agetcs (TyAll _ t)    = agetcs t
 agetcs (TyMu _ t)     = agetcs t
 agetcs (TyC t)        = [t]
 agetcs _              = [] -- can't happen
+
+replaceTyTags :: Data a => TyTag -> a -> a
+replaceTyTags tag' = everywhere (mkT each) where
+  each :: TyTag -> TyTag
+  each tag | tdId tag == tdId tag' = tag'
+           | otherwise             = tag
 
 ctype2atype :: TypeT C -> TypeT A
 ctype2atype (TyCon n ps td) | tdTrans td

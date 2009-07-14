@@ -1,3 +1,5 @@
+{-# LANGUAGE
+      DeriveDataTypeable #-}
 module Env (
   Env(unEnv),
   empty, isEmpty,
@@ -8,6 +10,7 @@ module Env (
 
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Generics (Typeable, Data)
 import Data.Monoid
 
 infix 6 =:=, =::=, =.=
@@ -15,6 +18,7 @@ infixr 5 =+=
 infixl 5 =-=, =--=, =|=
 
 newtype Env v a = Env { unEnv:: M.Map v a }
+  deriving (Typeable, Data)
 
 empty    :: Env v a
 empty     = Env M.empty

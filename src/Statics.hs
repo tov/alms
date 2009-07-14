@@ -1,4 +1,4 @@
-{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveDataTypeable, ScopedTypeVariables #-}
 module Statics (
   S, env0,
   tcProg, tcDecls,
@@ -11,6 +11,7 @@ import Env as Env
 import Ppr ()
 
 import Data.List (elemIndex)
+import Data.Data (Typeable, Data)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -27,6 +28,7 @@ usage x e = case M.lookup x (fv e) of
 data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeT w)
               | TiDat TyTag [TyVar] (Env Uid (Maybe (TypeT w)))
+  deriving (Data, Typeable)
 
 -- Type environments
 type D   = Env TyVar TyVar     -- tyvars in scope, with renaming
@@ -135,6 +137,23 @@ withTypes :: Monad m => I w -> TC w m a -> TC w m a
 withTypes i' = TC . M.R.local add . unTC where
   add (TCEnv g (i, iw) dd) = TCEnv g (i =+= i', iw) dd
 
+withoutConstructors :: Monad m => TyTag -> TC w m a -> TC w m a
+withoutConstructors tag = TC . M.R.local clean . unTC where
+  clean (TCEnv (g, gw) ii dd) =
+    TCEnv (fromList (filter keep (toList g)), gw) ii dd
+  keep (Con _, TyCon _ [_, TyCon _ _ tag'] _) = tag' /= tag
+  keep (Con _, TyCon _ _ tag')                = tag' /= tag
+  keep _                                      = True
+
+withReplacedTyTags :: (Language w, Data w, Monad m) =>
+                      TyTag -> TC w m a -> TC w m a
+withReplacedTyTags tag = TC . M.R.local replace . unTC where
+  replace (TCEnv (g, g') (i, i') dd) =
+    langCase (WrapGI g i)
+      (\_ -> TCEnv (r g, r g') (r i, r i') dd)
+      (\_ -> TCEnv (r g, r g') (r i, r i') dd)
+  r a = replaceTyTags tag a
+
 getTV :: Monad m => TyVar -> TC w m TyVar
 getTV tv = TC $ asksM check where
   check (TCEnv _ _ (d, _)) = case d =.= tv of
@@ -154,6 +173,16 @@ getType :: Monad m => Lid -> TC w m (TyInfo w)
 getType n = TC $ asksM get where
   get (TCEnv _ (i, _) _) = i =.= n
     |! "Unbound type constructor: " ++ show n
+
+getTypeTag :: Monad m => String -> Lid -> TC w m TyTag
+getTypeTag who n = do
+  ti <- getType n
+  case ti of
+    TiAbs td     -> return td
+    TiSyn _ _    -> fail $
+      who ++ " expects an abstract or data type, but " ++
+      "got type synonym: " ++ show n
+    TiDat td _ _ -> return td
 
 -- A type checking "assertion" raises a type error if the
 -- asserted condition is false.
@@ -200,7 +229,7 @@ tcType = tc where
     where
       checkLength len =
         tassert (length ts == len) $
-          "Type constructor " ++ unLid n ++ " applied to " ++
+          "Type constructor " ++ show n ++ " applied to " ++
           show (length ts) ++ " arguments where " ++
           show len ++ " expected"
   tc (TyAll tv t) = withTVs [tv] $ \[tv'] -> TyAll tv' `liftM` tc t
@@ -529,16 +558,20 @@ findSubst tv = chk [] where
                    = chk seen t' (tysubst a (TyMu a t) t)
   cmp _ _ _        = []
 
+indexQuals :: Monad m =>
+              Lid -> [TyVar] -> [Either TyVar Q] -> TC w m [Either Int Q]
+indexQuals name tvs = mapM each where
+  each (Left tv) = case tv `elemIndex` tvs of
+    Nothing -> fail $ "unbound tyvar " ++ show tv ++
+                      " in qualifier list for type " ++ show name
+    Just n  -> return (Left n)
+  each (Right q) = return (Right q)
+
 withTyDec :: (Language w, Monad m) =>
-           TyDec i -> (TyDecT -> TC w m a) -> TC w m a
+           TyDec -> (TyDec -> TC w m a) -> TC w m a
 withTyDec (TdAbsA name params variances quals) k = intoA $ do
-  index <- newIndex
-  let each (Left tv) = case tv `elemIndex` params of
-        Nothing -> fail $ "unbound tyvar " ++ show tv ++
-                          " in qualifier list for type " ++ unLid name
-        Just n  -> return (Left n)
-      each (Right q) = return (Right q)
-  quals' <- mapM each quals
+  index  <- newIndex
+  quals' <- indexQuals name params quals
   withTypes (name =:= TiAbs TyTag {
                tdId    = index,
                tdArity = variances,
@@ -728,16 +761,56 @@ withMod (MdInt x t y) k = do
           outofC .
             k $ MdInt x t' y
 
-withDecl :: (Language w, Monad m) =>
-          Decl i -> (DeclT -> TC w m a) -> TC w m a
-withDecl (DcMod m)  k = withMod m (k . DcMod)
-withDecl (DcTyp td) k = withTyDec td (k . DcTyp)
+withDecl :: Monad m =>
+            Decl i -> (DeclT -> TC C m a) -> TC C m a
+withDecl (DcMod m)  k     = withMod m (k . DcMod)
+withDecl (DcTyp td) k     = withTyDec td (k . DcTyp)
+withDecl (DcAbs tds ds) k =
+  withDecls ds $ \ds' -> do
+    (tags, withs) <- unzip `liftM` mapM forgetType tds
+    let ds'' = foldr replaceTyTags ds' tags
+    foldr (\tag -> withoutConstructors tag . withReplacedTyTags tag)
+          (foldr (.) id withs (k (DcAbs tds ds'')))
+          tags
 
 withDecls :: Monad m => [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withDecls []     k = k []
 withDecls (d:ds) k = withDecl d $ \d' ->
                        withDecls ds $ \ds' ->
                          k (d':ds')
+
+forgetType :: Monad m => TyDec -> TC C m (TyTag, TC C m a -> TC C m a)
+forgetType (TdAbsC name params) = do
+  tag <- getTypeTag "abstract-with-end" name
+  tassert (length params == length (tdArity tag)) $
+    "abstract-with-end: " ++ show (length params) ++
+    " given for type " ++ show name ++
+    " which has " ++ show (length (tdArity tag))
+  return (tag, withTypes (name =:= TiAbs tag))
+forgetType (TdAbsA name params variances quals) = intoA $ do
+  tag    <- getTypeTag "abstract-with-end" name
+  quals' <- indexQuals name params quals
+  tassert (length params == length (tdArity tag)) $
+    "abstract-with-end: " ++ show (length params) ++
+    " given for type " ++ show name ++
+    " which has " ++ show (length (tdArity tag))
+  tassert (all2 (<:) (tdArity tag) variances) $
+    "abstract-with-end: declared arity for type " ++ show name ++
+    ", " ++ show variances ++
+    ", is more general than actual arity " ++ show (tdArity tag)
+  let oldIndices = [ ix | Left ix <- tdQual tag ]
+      newIndices = [ ix | Left ix <- quals' ]
+      oldConstant = bigVee [ q | Right q <- tdQual tag ]
+      newConstant = bigVee [ q | Right q <- quals' ]
+  tassert (oldConstant <: newConstant &&
+           all (`elem` newIndices) oldIndices) $
+    "abstract-with-end: declared qualifier for type " ++ show name ++
+    ", " ++ show quals ++
+    ", is more general than actual qualifier"
+  let newTag = TyTag (tdId tag) variances quals' False
+  return (newTag, intoA . withTypes (name =:= TiAbs newTag) . intoC)
+forgetType td = fail $
+  "abstract type decl must be abstract; got " ++ show td
 
 tcDecls :: Monad m => S -> [Decl i] -> m (S, [DeclT])
 tcDecls gg ds = runTC gg $

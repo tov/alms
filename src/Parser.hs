@@ -115,12 +115,19 @@ progp  = do
 
 declp :: P (Decl ())
 declp  = choice [
-           tyDecp >>! DcTyp,
-           modp   >>! DcMod
+           tyDecp False >>! DcTyp,
+           modp         >>! DcMod,
+           do
+             reserved "abstract"
+             tds <- many1 (tyDecp True)
+             reserved "with"
+             ds <- many1 declp
+             reserved "end"
+             return (DcAbs tds ds)
          ]
 
-tyDecp :: P (TyDec ())
-tyDecp  = do
+tyDecp        :: Bool -> P TyDec
+tyDecp absOnly = do
   reserved "type"
   lang   <- brackets languagep
   params <- delimList (return ()) parens comma paramp
@@ -130,6 +137,7 @@ tyDecp  = do
   case lang of
     LC -> choice [
       do
+        when absOnly pzero
         reservedOp "="
         choice [
           altsp >>! TdDatC name tvs,
@@ -138,6 +146,7 @@ tyDecp  = do
         return (TdAbsC name tvs) ]
     LA -> choice [
       do
+        when absOnly pzero
         reservedOp "="
         choice [
           altsp >>! TdDatA name tvs,
@@ -389,7 +398,7 @@ parseProg     :: P (Prog ())
 parseDecls    :: P [Decl ()]
 parseDecl     :: P (Decl ())
 parseMod      :: P (Mod ())
-parseTyDec    :: P (TyDec ())
+parseTyDec    :: P TyDec
 parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
 parsePatt     :: P Patt
@@ -397,7 +406,7 @@ parseProg      = finish progp
 parseDecls     = finish (many declp)
 parseDecl      = finish declp
 parseMod       = finish modp
-parseTyDec     = finish tyDecp
+parseTyDec     = finish (tyDecp False)
 parseType      = finish typep
 parseExpr      = finish exprp
 parsePatt      = finish pattp
@@ -416,7 +425,7 @@ pd   = makeQaD parseDecl
 pm  :: String -> Mod ()
 pm   = makeQaD parseMod
 
-ptd :: String -> (TyDec ())
+ptd :: String -> TyDec
 ptd  = makeQaD parseTyDec
 
 pt  :: Language w => String -> Type () w

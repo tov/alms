@@ -85,8 +85,16 @@ instance Ppr (Prog i) where
                           hang (text "in") 2 (pprPrec 0 e)
 
 instance Ppr (Decl i) where
-  pprPrec p (DcMod m)  = pprPrec p m
-  pprPrec p (DcTyp td) = pprPrec p td
+  pprPrec p (DcMod m)      = pprPrec p m
+  pprPrec p (DcTyp td)     = pprPrec p td
+  pprPrec p (DcAbs tds ds) =
+    vcat [
+      text "abstract",
+      nest 2 $ vcat (map (pprPrec p) tds),
+      text "with",
+      nest 2 $ vcat (map (pprPrec p) ds),
+      text "end"
+    ]
 
 instance Ppr (Mod i) where
   pprPrec _ (MdC x Nothing e) = sep
@@ -110,10 +118,10 @@ instance Ppr (Mod i) where
       nest 2 $ text ":>" <+> pprPrec 0 t,
       nest 4 $ equals <+> pprPrec 0 y ]
 
-instance Ppr (TyDec i) where
+instance Ppr TyDec where
   pprPrec _ (TdAbsA n ps vs qs) = addQuals qs $
     text "type[A]" <?>
-    delimList parens comma (zipWith pprParam ps vs) <+>
+    delimList parens comma (zipWith pprParam vs ps) <+>
     ppr n
     where
       pprParam v tv = pprPrec 0 v <> pprPrec 0 tv
@@ -318,7 +326,7 @@ instance Ppr Patt where
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
 instance Show (Mod i)    where showsPrec = showFromPpr
-instance Show (TyDec i)  where showsPrec = showFromPpr
+instance Show TyDec      where showsPrec = showFromPpr
 instance Show (Expr i w) where showsPrec = showFromPpr
 instance Show Patt       where showsPrec = showFromPpr
 instance Show (Type i w) where showsPrec = showFromPpr
