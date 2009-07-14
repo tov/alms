@@ -1,0 +1,145 @@
+abstype[C] 'a array = Array of (int -> 'a) ref with
+  let[C] newArray['a] (default: 'a): 'a array =
+    Array (ref (\ix: int. default))
+
+  let[C] at['a] (Array r: 'a array) (ix: int): 'a = !r ix
+
+  let[C] update['a] (Array r: 'a array) (ix: int) (new: 'a): unit =
+    let oldf = !r in
+      (r <- \ix': int. if ix == ix' then new else oldf ix');
+      ()
+end
+
+abstype[A] ('a, 't) array = Array of {{'a} array} with
+  abstype[A] ('t, 'c) readcap qualifier A = MkCap with
+    type[A] 't writecap = ('t, unit) readcap
+
+    let[A] withNewArray['a] (default: 'a)
+                       ['r] (kont: all 't.
+                                     ('a, 't) array -o
+                                     't writecap -o
+                                     'r): 'r =
+      kont[unit] (Array['a,unit] (newArray default)) MkCap[unit,unit]
+
+    let[A] split['t,'c] (_: ('t, 'c) readcap)
+               : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap
+             = (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
+
+    let[A] join['t,'c]
+               (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
+               : ('t, 'c) readcap
+             = MkCap['t, 'c]
+  end
+
+  type[A] 't writecap = ('t, unit) readcap
+
+  let[A] read['a,'t] (Array arr: ('a, 't) array) (ix: int)
+             ['c] (cap : ('t, 'c) readcap) : 'a * ('t, 'c) readcap =
+           (at arr ix, cap)
+
+  let[A] write['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
+                      (cap : 't writecap) : 't writecap =
+           update arr ix new;
+           cap
+end
+
+type[A] range = int * int
+
+let[A] iter ((start, limit): range)
+            ['<acc] (f: int -> '<acc -> '<acc) (z: '<acc) =
+  let rec loop (i: int) (acc: '<acc): '<acc =
+    if i < limit
+      then loop (i + 1) (f i acc)
+      else acc
+   in loop 0 z
+
+let[A] copyFromTo (range: range)
+                  ['a,'tsrc] (src: ('a, 'tsrc) array)
+                  ['tdst]    (dst: ('a, 'tdst) array)
+                  ['csrc] =
+  iter range (\(i: int)
+               ((capsrc, capdst): ('tsrc, 'csrc) readcap * 'tdst writecap).
+                  let (elt, capsrc) = read src i capsrc in
+                  let capdst        = write dst i elt capdst in
+                    (capsrc, capdst))
+
+let[A] crazy['a]
+  (default: 'a)
+  (range: range)
+  (depth: int)
+  (leaf: all 't. ('a, 't) array -> 't writecap -> 't writecap)
+  (branch: all 't. ('a, 't) array ->
+           all 's. ('a, 's) array ->
+           all 'r. ('a, 'r) array ->
+           all 'c 'd.
+             't writecap * ('s, 'c) readcap * ('r, 'd) readcap ->
+             't writecap * ('s, 'c) readcap * ('r, 'd) readcap) =
+  let rec loop (i: int)
+               ['t] (start: ('a, 't) array) (cap: 't writecap)
+               : 't writecap =
+    if i == 0
+      then cap
+      else
+        withNewArray default
+         (\'s (lft: ('a, 's) array) (caplft: 's writecap).
+           withNewArray default
+            (\'r (rgt: ('a, 'r) array) (caprgt: 'r writecap).
+               let (cap1, cap2) = split cap in
+               let fl = newFuture (\_:unit.
+                          let (cap1, caplft) =
+                                copyFromTo range start lft (cap1, caplft)
+                           in (cap1, loop (i - 1) lft caplft)) in
+               let fr = newFuture (\_:unit.
+                          let (cap2, caprgt) =
+                                 copyFromTo range start rgt (cap2, caprgt)
+                           in (cap2, loop (i - 1) rgt caprgt)) in
+               let (cap1, caplft) = getFuture fl in
+               let (cap2, caprgt) = getFuture fr in
+               let cap            = join (cap1, cap2) in
+               let (cap, _, _)    = branch start lft rgt
+                                           (cap, caplft, caprgt)
+                in cap))
+   in loop depth
+
+let[A] main (width: int) (depth: int) : unit =
+  let range = (0, width) in
+  let fill['t] (a: (int, 't) array) =
+    iter range (\(i: int). write a i i) in
+  let print_array['a,'t] (a: ('a, 't) array)
+                 ['c] (cap: ('t, 'c) readcap) =
+    putStr "[";
+    let (_, cap) =
+      iter range (\(i: int) ((first, cap): bool * ('t, 'c) readcap).
+                    (if first then () else putStr ",");
+                    let (elt, cap) = read a i cap in
+                      putStr (string_of elt);
+                      (false, cap))
+                 (true, cap) in
+    putStrLn "]";
+    cap in
+  let leaf['t] (a: (int, 't) array) (cap: 't writecap) = cap in
+  let branch ['t] (out: (int, 't) array)
+             ['s] (lft: (int, 's) array)
+             ['r] (rgt: (int, 'r) array)
+             ['c, 'd] =
+    iter range (\(i: int)
+                 ((capout, caplft, caprgt):
+                  't writecap * ('s, 'c) readcap * ('r, 'd) readcap).
+                    let (elt1, caplft) = read lft i caplft in
+                    let (elt2, caprgt) = read rgt (i + 1) caprgt in
+                    let capout = write out i (elt1 + elt2) capout in
+                      (capout, caplft, caprgt)) in
+    withNewArray 0
+      (\'t (a: (int, 't) array) (cap: 't writecap).
+         let cap = fill a cap in
+         let cap = crazy 0 range depth leaf branch a cap in
+           print_array a cap;
+           ())
+
+ in
+   main 10 0;
+   main 10 1;
+   main 10 2;
+   main 10 3;
+   main 10 4;
+   main 10 5
