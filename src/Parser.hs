@@ -11,6 +11,7 @@ import Lexer
 
 import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Expr
+import System.IO.Unsafe (unsafePerformIO)
 
 type St  = ()
 type P a = CharParser St a
@@ -106,80 +107,76 @@ typep = type0 where
 progp :: P (Prog ())
 progp  = do
   ds <- choice
-          [ do ds <- many1 declp
+          [ do ds <- declsp
                reserved "in"
                return ds,
             return [] ]
   e  <- exprp
   return (Prog ds e)
 
+declsp :: P [Decl ()]
+declsp  = choice [
+            do
+              d  <- declp
+              ds <- declsp
+              return (d : ds),
+            do
+              sharpLoad
+              file <- stringLiteral
+              let contents = unsafePerformIO (readFile file)
+              ds <- case parse parseDecls file contents of
+                Left _   -> case parse parseProg file contents of
+                  Left e   -> fail (show e)
+                  Right p  -> return (prog2decls p)
+                Right ds -> return ds
+              ds' <- declsp
+              return (ds ++ ds'),
+            return []
+          ]
+
 declp :: P (Decl ())
 declp  = choice [
-           tyDecp False >>! DcTyp,
-           modp         >>! DcMod,
+           tyDecp >>! DcTyp,
+           modp   >>! DcMod,
            do
-             reserved "abstract"
-             tds <- many1 (tyDecp True)
+             reserved "abstype"
+             lang <- brackets languagep
+             at   <- abstyp lang
              reserved "with"
-             ds <- many1 declp
+             ds <- declsp
              reserved "end"
-             return (DcAbs tds ds)
+             return (DcAbs at ds)
          ]
 
-tyDecp        :: Bool -> P TyDec
-tyDecp absOnly = do
+tyDecp :: P TyDec
+tyDecp  = do
   reserved "type"
   lang   <- brackets languagep
-  params <- delimList (return ()) parens comma paramp
-  let variances = map fst params
-      tvs       = map snd params
-  name   <- lidp
   case lang of
-    LC -> choice [
-      do
-        when absOnly pzero
-        reservedOp "="
-        choice [
-          altsp >>! TdDatC name tvs,
-          typep >>! TdSynC name tvs ],
-      do
-        return (TdAbsC name tvs) ]
-    LA -> choice [
-      do
-        when absOnly pzero
-        reservedOp "="
-        choice [
-          altsp >>! TdDatA name tvs,
-          typep >>! TdSynA name tvs ],
-      do
-        quals <- delimList (reserved "qualifier") parens (symbol "\\/") qualp
-        return (TdAbsA name tvs variances quals) ]
-  where
-    paramp = do
-      v  <- variancep
-      tv <- tyvarp
-      return (v, tv)
-    variancep = choice
-      [ char '+' >> return Covariant,
-        char '-' >> return Contravariant,
-        char '0' >> return Omnivariant,
-        char '1' >> return Invariant,
-        return Invariant ]
-    qualp = choice
-      [ litqualp >>! Right,
-        tyvarp   >>! Left ]
-    litqualp = choice
-      [ qualU    >> return Qu,
-        qualA    >> return Qa ]
-    altsp :: Language w => P [(Uid, Maybe (Type () w))]
-    altsp  = sepBy1 altp (reservedOp "|")
-    altp  :: Language w => P (Uid, Maybe (Type () w))
-    altp   = do
-      k <- uidp
-      t <- optionMaybe $ do
-        reserved "of"
-        typep
-      return (k, t)
+    LC -> do
+      tvs  <- paramsp
+      name <- lidp
+      choice [
+        do
+          reservedOp "="
+          choice [
+            altsp >>! TdDatC name tvs,
+            typep >>! TdSynC name tvs ],
+        do
+          return (TdAbsC name tvs) ]
+    LA -> do
+      (arity, tvs) <- paramsVp
+      name         <- lidp
+      choice [
+        do
+          unless (all (== Invariant) arity) pzero
+          reservedOp "="
+          choice [
+            altsp >>! TdDatA name tvs,
+            typep >>! TdSynA name tvs ],
+        do
+          quals <- qualsp
+          return (TdAbsA name tvs arity quals) ]
 
 modp :: P (Mod ())
 modp  = choice
@@ -209,6 +206,65 @@ modp  = choice
       reservedOp "="
       e <- exprp
       return (build f (fmap fixt t) (fixe e))
+
+abstyp :: Lang -> P AbsTy
+abstyp LC = do
+  tvs  <- paramsp
+  name <- lidp
+  reservedOp "="
+  alts <- altsp
+  return (AbsTyC name tvs alts)
+abstyp LA = do
+  (arity, tvs) <- paramsVp
+  name         <- lidp
+  quals        <- qualsp
+  reservedOp "="
+  alts         <- altsp
+  return (AbsTyA name tvs arity quals alts)
+
+paramsp  :: P [TyVar]
+paramsp   = delimList (return ()) parens comma tyvarp
+
+paramsVp :: P ([Variance], [TyVar])
+paramsVp  = delimList (return ()) parens comma paramVp >>! unzip
+
+qualsp   :: P [Either TyVar Q]
+qualsp    = delimList (reserved "qualifier") parens (symbol "\\/") qualp
+
+paramVp :: P (Variance, TyVar)
+paramVp = do
+  v  <- variancep
+  tv <- tyvarp
+  return (v, tv)
+
+variancep :: P Variance
+variancep = choice
+  [ char '+' >> return Covariant,
+    char '-' >> return Contravariant,
+    char '0' >> return Omnivariant,
+    char '1' >> return Invariant,
+    return Invariant ]
+
+qualp :: P (Either TyVar Q)
+qualp = choice
+  [ litqualp >>! Right,
+    tyvarp   >>! Left ]
+
+litqualp :: P Q
+litqualp = choice
+  [ qualU    >> return Qu,
+    qualA    >> return Qa ]
+
+altsp :: Language w => P [(Uid, Maybe (Type () w))]
+altsp  = sepBy1 altp (reservedOp "|")
+
+altp  :: Language w => P (Uid, Maybe (Type () w))
+altp   = do
+  k <- uidp
+  t <- optionMaybe $ do
+    reserved "of"
+    typep
+  return (k, t)
 
 data Lang = LC | LA deriving (Eq, Show, Ord)
 languagep :: P Lang
@@ -403,10 +459,10 @@ parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
 parsePatt     :: P Patt
 parseProg      = finish progp
-parseDecls     = finish (many declp)
+parseDecls     = finish declsp
 parseDecl      = finish declp
 parseMod       = finish modp
-parseTyDec     = finish (tyDecp False)
+parseTyDec     = finish tyDecp
 parseType      = finish typep
 parseExpr      = finish exprp
 parsePatt      = finish pattp

@@ -5,6 +5,7 @@ module Lexer (
   semi, comma, colon, dot, semiSep, semiSep1, commaSep, commaSep1,
 
   isUpperIdentifier, lid, uid,
+  sharpLoad,
   lolli, arrow, star,
   qualU, qualA, langC, langA,
   Prec, precOp, opP
@@ -29,7 +30,7 @@ tok = T.makeTokenParser T.LanguageDef {
     T.reservedNames  = ["if", "then", "else",
                         "match", "with", "as", "_",
                         "let", "rec", "and", "in",
-                        "interface", "abstract", "end",
+                        "interface", "abstype", "end",
                         "all", "mu", "of",
                         "type", "qualifier"],
     T.reservedOpNames = ["|", "=", "\\", ":", ":>"],
@@ -101,6 +102,9 @@ commaSep        :: CharParser st a -> CharParser st [a]
 commaSep         = T.commaSep tok
 commaSep1       :: CharParser st a -> CharParser st [a]
 commaSep1        = T.commaSep1 tok
+
+sharpLoad       :: CharParser st ()
+sharpLoad        = try (symbol "#load") >> return ()
 
 lolli           :: CharParser st ()
 lolli            = try (symbol "-o") >> return ()

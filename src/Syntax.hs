@@ -17,7 +17,7 @@ module Syntax (
   Type(..), tyC, tyA, TypeT, TEnv,
   Prog(..), ProgT,
   Decl(..), DeclT,
-  Mod(..), ModT, TyDec(..),
+  Mod(..), ModT, TyDec(..), AbsTy(..),
 
   TypeTW(..), typeTW,
 
@@ -97,13 +97,13 @@ data Variance = Invariant
 -- Info about a type constructor (for language A)
 data TyTag =
   TyTag {
-    tdId    :: Integer,
-    tdArity :: [Variance], -- The variance of each of its parameters
-    tdQual  :: [Either Int Q],
+    ttId    :: Integer,
+    ttArity :: [Variance], -- The variance of each of its parameters
+    ttQual  :: [Either Int Q],
                            -- The qualifier of the type is the lub of
                            -- the qualifiers of the named parameters and
                            -- possibly some constants
-    tdTrans :: Bool
+    ttTrans :: Bool
   }
   deriving (Show, Typeable, Data)
 
@@ -133,7 +133,7 @@ data Prog i = Prog [Decl i] (Expr i C)
 
 data Decl i = DcMod (Mod i)
             | DcTyp TyDec
-            | DcAbs [TyDec] [Decl i]
+            | DcAbs AbsTy [Decl i]
   deriving (Typeable, Data)
 
 data Mod i  = MdA Lid (Maybe (Type i A)) (Expr i A)
@@ -149,7 +149,7 @@ data TyDec   = TdAbsC {
                  tdName      :: Lid,
                  tdParams    :: [TyVar],
                  tdVariances :: [Variance],
-                 tdaQual     :: [Either TyVar Q]
+                 tdQual      :: [Either TyVar Q]
                }
              | TdSynC {
                  tdName      :: Lid,
@@ -171,6 +171,20 @@ data TyDec   = TdAbsC {
                  tdParams    :: [TyVar],
                  tdaAlts     :: [(Uid, Maybe (Type () A))]
              }
+  deriving (Typeable, Data)
+
+data AbsTy   = AbsTyC {
+                 atName      :: Lid,
+                 atParams    :: [TyVar],
+                 atcAlts     :: [(Uid, Maybe (Type () C))]
+               }
+             | AbsTyA {
+                 atName      :: Lid,
+                 atParams    :: [TyVar],
+                 atVariances :: [Variance],
+                 atQual      :: [Either TyVar Q],
+                 atAlts      :: [(Uid, Maybe (Type () A))]
+               }
   deriving (Typeable, Data)
 
 data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
@@ -385,7 +399,7 @@ ty_Type = mkDataType "Syntax.Type"
             [ con_TyCon, con_TyVar, con_TyAll, con_TyMu, con_TyC, con_TyA ]
 
 instance Eq TyTag where
-  td == td' = tdId td == tdId td'
+  td == td' = ttId td == ttId td'
 
 data TypeTW = TypeTC (TypeT C)
             | TypeTA (TypeT A)
@@ -599,7 +613,7 @@ instance  PO (Type TyTag A) where
               _             -> if p == p'
                                then return p
                                else fail "\\/? or /\\?: Does not exist"
-             | var <- tdArity td
+             | var <- ttArity td
              | p   <- ps
              | p'  <- ps' ]
         return (TyCon tc params td)
@@ -680,7 +694,7 @@ class Ftv a where
 instance Ftv (Type TyTag w) where
   ftv (TyCon _ ts td)= M.unionsWith (+)
                          [ M.map (* var) m
-                         | var <- tdArity td
+                         | var <- ttArity td
                          | m   <- map ftv ts ]
   ftv (TyVar tv)     = M.singleton tv 1
   ftv (TyAll tv t)   = M.delete tv (ftv t)
@@ -823,7 +837,7 @@ qualifier (TyCon _ ps td) = foldl max minBound qs' where
   qs = map qualifier ps
   toQ (Left ix) = qs !! ix
   toQ (Right q) = q
-  qs' = map toQ (tdQual td)
+  qs' = map toQ (ttQual td)
 qualifier (TyVar (TV _ q))   = q
 qualifier (TyAll _ t)        = qualifier t
 qualifier (TyMu _ t)         = qualifier t
@@ -852,11 +866,11 @@ agetcs _              = [] -- can't happen
 replaceTyTags :: Data a => TyTag -> a -> a
 replaceTyTags tag' = everywhere (mkT each) where
   each :: TyTag -> TyTag
-  each tag | tdId tag == tdId tag' = tag'
+  each tag | ttId tag == ttId tag' = tag'
            | otherwise             = tag
 
 ctype2atype :: TypeT C -> TypeT A
-ctype2atype (TyCon n ps td) | tdTrans td
+ctype2atype (TyCon n ps td) | ttTrans td
   = TyCon n (map ctype2atype ps) td
 ctype2atype (TyCon _ [td, tr] d) | d == tdArr
   = TyCon (Lid "->") [ctype2atype td, ctype2atype tr] tdArr
@@ -871,7 +885,7 @@ ctype2atype (TyMu tv t)
 ctype2atype t         = tyC t
 
 atype2ctype :: TypeT A -> TypeT C
-atype2ctype (TyCon n ps td) | tdTrans td
+atype2ctype (TyCon n ps td) | ttTrans td
   = TyCon n (map atype2ctype ps) td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
   = TyCon (Lid "->") [atype2ctype td, atype2ctype tr] tdArr

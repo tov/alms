@@ -220,11 +220,11 @@ tcType = tc where
     tcon <- getType n
     case tcon of
       TiAbs td -> do
-        checkLength (length (tdArity td))
+        checkLength (length (ttArity td))
         return (TyCon n ts' td)
       TiSyn ps t -> return (tysubsts ps ts' t)
       TiDat td _ _ -> do
-        checkLength (length (tdArity td))
+        checkLength (length (ttArity td))
         return (TyCon n ts' td)
     where
       checkLength len =
@@ -573,19 +573,19 @@ withTyDec (TdAbsA name params variances quals) k = intoA $ do
   index  <- newIndex
   quals' <- indexQuals name params quals
   withTypes (name =:= TiAbs TyTag {
-               tdId    = index,
-               tdArity = variances,
-               tdQual  = quals',
-               tdTrans = False
+               ttId    = index,
+               ttArity = variances,
+               ttQual  = quals',
+               ttTrans = False
              })
     (outofA . k $ TdAbsA name params variances quals)
 withTyDec (TdAbsC name params) k = intoC $ do
   index <- newIndex
   withTypes (name =:= TiAbs TyTag {
-               tdId    = index,
-               tdArity = map (const Invariant) params,
-               tdQual  = [],
-               tdTrans = False
+               ttId    = index,
+               ttArity = map (const Invariant) params,
+               ttQual  = [],
+               ttTrans = False
              })
     (outofC . k $ TdAbsC name params)
 withTyDec (TdSynC name params rhs) k = intoC $ do
@@ -599,10 +599,10 @@ withTyDec (TdSynA name params rhs) k = intoA $ do
 withTyDec (TdDatC name params alts) k = intoC $ do
   index <- newIndex
   let tag = TyTag {
-              tdId    = index,
-              tdArity = map (const Invariant) params,
-              tdQual  = [],
-              tdTrans = False
+              ttId    = index,
+              ttArity = map (const Invariant) params,
+              ttQual  = [],
+              ttTrans = False
             }
   (params', alts') <-
     withTVs params $ \params' ->
@@ -621,10 +621,10 @@ withTyDec (TdDatC name params alts) k = intoC $ do
 withTyDec (TdDatA name params alts) k = intoA $ do
   index <- newIndex
   let tag0 = TyTag {
-               tdId    = index,
-               tdArity = map (const 0) params,
-               tdQual  = [],
-               tdTrans = False
+               ttId    = index,
+               ttArity = map (const 0) params,
+               ttQual  = [],
+               ttTrans = False
              }
   (tag, alts') <- fixDataType name params alts tag0
   withTypes (name =:= TiDat tag params (fromList alts')) $
@@ -651,11 +651,11 @@ fixDataType name params alts = loop where
     let t'    = foldl tyTupleT tyUnitT [ t | (_, Just t) <- alts' ]
         arity = typeVariances params' t'
         qual  = typeQual params' t'
-    if arity == tdArity tag && qual == tdQual tag
+    if arity == ttArity tag && qual == ttQual tag
       then return (tag, alts')
       else loop tag {
-             tdArity = arity,
-             tdQual  = qual
+             ttArity = arity,
+             ttQual  = qual
            }
 
 alts2env :: Lid -> [TyVar] -> TyTag -> [(Uid, Maybe (TypeT w))] -> G w
@@ -676,7 +676,7 @@ typeVariances d0 = finish . loop where
                         (zipWith
                           (\t v -> M.map (* v) (loop t))
                           ts
-                          (tdArity info))
+                          (ttArity info))
   loop (TyVar tv)   = M.singleton tv 1
   loop (TyAll tv t) = M.delete tv (loop t)
   loop (TyMu tv t)  = M.delete tv (loop t)
@@ -705,7 +705,7 @@ typeQual d0 = finish . loop where
                         [ case qual of
                             Right q -> S.singleton (Right q)
                             Left i  -> loop (ts !! i)
-                        | qual <- tdQual info ]
+                        | qual <- ttQual info ]
   loop (TyVar tv)   = S.singleton (Left tv)
   loop (TyAll tv t) = S.delete (Left tv) (loop t)
   loop (TyMu tv t)  = S.delete (Left tv) (loop t)
@@ -763,15 +763,16 @@ withMod (MdInt x t y) k = do
 
 withDecl :: Monad m =>
             Decl i -> (DeclT -> TC C m a) -> TC C m a
-withDecl (DcMod m)  k     = withMod m (k . DcMod)
-withDecl (DcTyp td) k     = withTyDec td (k . DcTyp)
-withDecl (DcAbs tds ds) k =
-  withDecls ds $ \ds' -> do
+withDecl (DcMod m)     k = withMod m (k . DcMod)
+withDecl (DcTyp td)    k = withTyDec td (k . DcTyp)
+withDecl (DcAbs at ds) k = withAbsTy at ds (k . DcAbs at)
+  {-$ \ds' -> do
     (tags, withs) <- unzip `liftM` mapM forgetType tds
     let ds'' = foldr replaceTyTags ds' tags
     foldr (\tag -> withoutConstructors tag . withReplacedTyTags tag)
           (foldr (.) id withs (k (DcAbs tds ds'')))
           tags
+          -}
 
 withDecls :: Monad m => [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withDecls []     k = k []
@@ -779,38 +780,49 @@ withDecls (d:ds) k = withDecl d $ \d' ->
                        withDecls ds $ \ds' ->
                          k (d':ds')
 
-forgetType :: Monad m => TyDec -> TC C m (TyTag, TC C m a -> TC C m a)
-forgetType (TdAbsC name params) = do
-  tag <- getTypeTag "abstract-with-end" name
-  tassert (length params == length (tdArity tag)) $
-    "abstract-with-end: " ++ show (length params) ++
-    " given for type " ++ show name ++
-    " which has " ++ show (length (tdArity tag))
-  return (tag, withTypes (name =:= TiAbs tag))
-forgetType (TdAbsA name params variances quals) = intoA $ do
-  tag    <- getTypeTag "abstract-with-end" name
-  quals' <- indexQuals name params quals
-  tassert (length params == length (tdArity tag)) $
-    "abstract-with-end: " ++ show (length params) ++
-    " given for type " ++ show name ++
-    " which has " ++ show (length (tdArity tag))
-  tassert (all2 (<:) (tdArity tag) variances) $
-    "abstract-with-end: declared arity for type " ++ show name ++
-    ", " ++ show variances ++
-    ", is more general than actual arity " ++ show (tdArity tag)
-  let oldIndices = [ ix | Left ix <- tdQual tag ]
-      newIndices = [ ix | Left ix <- quals' ]
-      oldConstant = bigVee [ q | Right q <- tdQual tag ]
-      newConstant = bigVee [ q | Right q <- quals' ]
-  tassert (oldConstant <: newConstant &&
-           all (`elem` newIndices) oldIndices) $
-    "abstract-with-end: declared qualifier for type " ++ show name ++
-    ", " ++ show quals ++
-    ", is more general than actual qualifier"
-  let newTag = TyTag (tdId tag) variances quals' False
-  return (newTag, intoA . withTypes (name =:= TiAbs newTag) . intoC)
-forgetType td = fail $
-  "abstract type decl must be abstract; got " ++ show td
+withAbsTy :: Monad m =>
+             AbsTy -> [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
+withAbsTy at ds k = case at of
+  AbsTyC name params alts ->
+    withTyDec (TdDatC name params alts) $ \_ ->
+      withDecls ds $ \ds' -> do
+        tag <- getTypeTag "abstract-with-end" name
+        tassert (length params == length (ttArity tag)) $
+          "abstract-with-end: " ++ show (length params) ++
+          " given for type " ++ show name ++
+          " which has " ++ show (length (ttArity tag))
+        withoutConstructors tag .
+          withReplacedTyTags tag .
+            withTypes (name =:= TiAbs tag) $
+              k ds'
+  AbsTyA name params arity quals alts ->
+    withTyDec (TdDatA name params alts) $ \_ ->
+      withDecls ds $ \ds' -> intoA $ do
+      tag    <- getTypeTag "abstract-with-end" name
+      quals' <- indexQuals name params quals
+      tassert (length params == length (ttArity tag)) $
+        "abstract-with-end: " ++ show (length params) ++
+        " given for type " ++ show name ++
+        " which has " ++ show (length (ttArity tag))
+      tassert (all2 (<:) (ttArity tag) arity) $
+        "abstract-with-end: declared arity for type " ++ show name ++
+        ", " ++ show arity ++
+        ", is more general than actual arity " ++ show (ttArity tag)
+      let oldIndices  = [ ix | Left ix <- ttQual tag ]
+          newIndices  = [ ix | Left ix <- quals' ]
+          oldConstant = bigVee [ q | Right q <- ttQual tag ]
+          newConstant = bigVee [ q | Right q <- quals' ]
+      tassert (oldConstant <: newConstant &&
+               all (`elem` newIndices) oldIndices) $
+        "abstract-with-end: declared qualifier for type " ++ show name ++
+        ", " ++ show quals ++
+        ", is more general than actual qualifier"
+      let newTag = TyTag (ttId tag) arity quals' False
+      withoutConstructors tag .
+        withReplacedTyTags tag .
+          withTypes (name =:= TiAbs newTag) .
+            outofA $
+              k ds'
 
 tcDecls :: Monad m => S -> [Decl i] -> m (S, [DeclT])
 tcDecls gg ds = runTC gg $

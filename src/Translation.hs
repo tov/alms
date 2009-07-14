@@ -20,11 +20,11 @@ translate menv0 (Prog ds e) =
 
 transDecls :: MEnvT -> [DeclT] -> (MEnvT, [DeclT])
 transDecls menv = foldl each (menv, []) where
-  each (env, ds) (DcMod m)       = let (env', m') = transMod env m
-                                    in (env', ds ++ [DcMod m'])
-  each (env, ds) (DcTyp td)      = (env, ds ++ [DcTyp td])
-  each (env, ds) (DcAbs tds ds0) = let (env', ds0') = transDecls env ds0
-                                    in (env', ds ++ [DcAbs tds ds0'])
+  each (env, ds) (DcMod m)      = let (env', m') = transMod env m
+                                   in (env', ds ++ [DcMod m'])
+  each (env, ds) (DcTyp td)     = (env, ds ++ [DcTyp td])
+  each (env, ds) (DcAbs at ds0) = let (env', ds0') = transDecls env ds0
+                                   in (env', ds ++ [DcAbs at ds0'])
 
 transMod :: MEnvT -> ModT -> (MEnvT, ModT)
 transMod menv m@(MdC x (Just t) e) =
