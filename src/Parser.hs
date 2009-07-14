@@ -29,6 +29,32 @@ delimList before around delim each =
     return []
   ]
 
+chainl1last :: P a -> P (a -> a -> a) -> P a -> P a
+chainl1last each sep final = start where
+    start  = each >>= loop
+    loop a = option a $ do
+               build <- sep
+               choice
+                 [ each >>= loop . build a,
+                   final >>= return . build a ]
+
+chainr1last :: P a -> P (a -> a -> a) -> P a -> P a
+chainr1last each sep final = start where
+    start  = do
+      a       <- each
+      builder <- loop
+      return (builder a)
+    loop   = option id $ do
+               build <- sep
+               choice
+                 [ do
+                     b       <- each
+                     builder <- loop
+                     return (\a -> a `build` builder b),
+                   do
+                     b       <- final
+                     return (\a -> a `build` b) ]
+
 uidp :: P Uid
 uidp  = uid >>! Uid
 
@@ -329,17 +355,18 @@ exprp = expr0 where
                     e2 <- expr0
                     return (exSeq e1 e2),
                  return e1 ]
-  expr3 = chainl1 expr4 (opappp (Left 3))
-  expr4 = chainr1 expr5 (opappp (Right 4))
-  expr5 = chainl1 expr6 (opappp (Left 5))
-  expr6 = chainl1 expr7 (opappp (Left 6))
-  expr7 = chainr1 expr8 (opappp (Right 7))
-  expr8 = do
-    ops <- many (oplevelp (Right 8))
-    arg <- expr9
-    return (foldr (\op arg' -> exVar op `exApp` arg') arg ops)
+  expr3 = chainl1last expr4 (opappp (Left 3))  expr0
+  expr4 = chainr1last expr5 (opappp (Right 4)) expr0
+  expr5 = chainl1last expr6 (opappp (Left 5))  expr0
+  expr6 = chainl1last expr7 (opappp (Left 6))  expr0
+  expr7 = chainr1last expr8 (opappp (Right 7)) expr0
+  expr8 = expr9
   expr9 = chainl1 expr10 (return exApp)
   expr10 = do
+    ops <- many (oplevelp (Right 10))
+    arg <- expr11
+    return (foldr (\op arg' -> exVar op `exApp` arg') arg ops)
+  expr11 = do
              e  <- exprA
              ts <- many . brackets $ commaSep1 typep
              return (foldl exTApp e (concat ts))

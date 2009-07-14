@@ -152,7 +152,7 @@ precOp (c:_)
   | c `elem` "=<>|&$" = Left 3
 precOp "!="           = Left 3
 precOp (c:_)
-  | c `elem` "!~?"    = Right 8
+  | c `elem` "!~?"    = Right 10
 precOp _              = Left 9
 
 opP :: Prec -> CharParser st String

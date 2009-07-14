@@ -22,10 +22,14 @@ precCast  = -2 -- :>
 precCom   = -1 -- ,
 precDot   =  0 -- in, else, as, of, .
 precSemi  =  1 -- ;
-precArr   =  5 -- ->
-precStar  =  6 -- *
+--           3 -- != = < > | & $
+--           4 -- @ ^ (infixr)
+precArr   =  5 -- -> - +
+precStar  =  6 -- * / %
+--           7 -- ** (infixr)
 precApp   =  9 -- f x
-precTApp  = 10 -- f[t]
+--          10 -- ! ~ ? (prefix)
+precTApp  = 11 -- f[t]
 
 parensIf :: Bool -> Doc -> Doc
 parensIf True  doc = parens doc
@@ -214,13 +218,13 @@ instance Ppr (Expr i w) where
     ExApp e1 e2
       | ExId (Var (Lid x)) <- expr' e1,
         Right p'           <- precOp x,
-        p' == 8
+        p' == 10
           -> parensIf (p > p') $
                text x <+> pprPrec p' e2
       | ExApp e11 e12      <- expr' e1,
         ExId (Var (Lid x)) <- expr' e11,
         (pl, pr, p')       <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
-        p' <= 8
+        p' < 9
           -> parensIf (p > p') $
                sep [ pprPrec (p' + pl) e12,
                      text x,
