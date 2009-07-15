@@ -78,11 +78,16 @@ reifyLang1 _ = reifyLang
 transVar :: LangRep w -> MEnvT -> Party -> Lid -> ExprT C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
-    (C, Just (MdC _ (Just t) _)) -> cc neg (Party x) x t
-    (C, Just (MdA _ (Just t) _)) -> ca neg (Party x) x t
-    (C, Just (MdInt _ t _))      -> ca neg (Party x) x t
-    (A, Just (MdC _ (Just t) _)) -> ac neg (Party x) x (ctype2atype t)
+    (C, Just (MdC _ (Just t) _)) -> addName C x $ cc neg (Party x) x t
+    (C, Just (MdA _ (Just t) _)) -> addName A x $ ca neg (Party x) x t
+    (C, Just (MdInt _ t _))      -> addName A x $ ca neg (Party x) x t
+    (A, Just (MdC _ (Just t) _)) -> addName C x $ ac neg (Party x) x
+                                                     (ctype2atype t)
     _                            -> exVar x
+
+addName :: LangRep w -> Lid -> ExprT C -> ExprT C
+addName lang (Lid name) e = exLet (PaVar name') e (exVar name') where
+  name' = Lid (name ++ "[" ++ show lang ++ "]")
 
 -- Translate a cast ("dynamic promotion")
 --
@@ -250,6 +255,8 @@ Lid v /./ s = Lid (v ++ '#' : s)
 
 (/^/)      :: Party -> String -> Party
 Party (Lid v) /^/ s = Party (Lid (v ++ s))
+
+infixl 4 /./, /^/
 
 exUnit :: Expr i C
 exUnit  = exCon (Uid "()")

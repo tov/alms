@@ -469,6 +469,10 @@ instance Show Q where
   showsPrec _ Qa = ('A':)
   showsPrec _ Qu = ('U':)
 
+instance Show (LangRep w) where
+  showsPrec _ A = ('A':)
+  showsPrec _ C = ('C':)
+
 instance Show Variance where
   showsPrec _ Invariant     = ('1':)
   showsPrec _ Covariant     = ('+':)
