@@ -64,6 +64,9 @@ primBasis  = [
     binArith "-" (-),
     binArith "*" (*),
     binArith "/" div,
+    binArith "%" mod,
+    fun "abs" -:: "int -> int"
+      -= (abs :: Integer -> Integer),
     fun "<=" -:: "int -> int -> bool"
       -= ((<=) :: Integer -> Integer -> Bool),
 
@@ -82,6 +85,10 @@ primBasis  = [
       -= ((**) :: Double -> Double -> Double),
     fun "sqrt" -:: "float -> float"
       -= (sqrt :: Double -> Double),
+    fun "log" -:: "float -> float"
+      -= (log :: Double -> Double),
+    fun "absf" -:: "float -> float"
+      -= (abs :: Double -> Double),
     fun "float_of_int" -:: "int -> float"
       -= (fromIntegral :: Integer -> Double),
     fun "int_of_float" -:: "float -> int"
@@ -332,6 +339,20 @@ srcBasis  = unlines [
   "        | Nil -> z",
   "        | Cons(x,xs) -> f x (foldr f z xs)",
   "   in foldr",
+  "let[A] foldlA =",
+  "  let rec foldl '<a '<b (f : '<a -> '<b -o '<b)",
+  "                        (z : '<b) |(xs : '<a list) : '<b =",
+  "        match xs with",
+  "        | Nil -> z",
+  "        | Cons(x,xs) -> foldl f (f x z) xs",
+  "   in foldl",
+  "let[C] foldlC =",
+  "  let rec foldl 'a 'b (f : 'a -> 'b -> 'b)",
+  "                      (z : 'b) (xs : 'a list) : 'b =",
+  "        match xs with",
+  "        | Nil -> z",
+  "        | Cons(x,xs) -> foldl f (f x z) xs",
+  "   in foldl",
   "let[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
   "  fun 'a -> foldrA (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a]",
   "let[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
