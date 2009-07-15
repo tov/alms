@@ -13,20 +13,20 @@ let[A] printer : unit -> unit =
   in loop
 
 let[A] start : unit -> thread =
-  \_: unit. threadFork printer
+  fun _: unit -> threadFork printer
 
 let[A] stop : thread -> unit = threadKill
 
 let[A] after : int -> (unit -o unit) -> unit =
-  \delay: int.
-    \stop: unit -o unit.
-      threadFork (\_:unit . threadDelay delay; stop ());
+  fun delay: int ->
+    fun stop: (unit -o unit) ->
+      threadFork (fun _:unit  -> threadDelay delay; stop ());
       ()
 
 (* {thread} is an "opaque" type *)
 let[C] main : {thread} -> unit =
-  \id: {thread}.
-    after 4000000 (\_:unit. stop id);
+  fun id: {thread} ->
+    after 4000000 (fun _:unit -> stop id);
     getLine ();
     stop id   (* second stop -- maybe contract error. *)
 

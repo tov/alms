@@ -1,15 +1,15 @@
 (* A Lying Dynamic Promotion (like ex8.aff -- blame inc(:>)) *)
 
 let[C] ap : (int -> int) -> int -> int =
-  \f: int -> int.
-    \x: int.
+  fun f: (int -> int) ->
+    fun x: int ->
       f (f x)    (* f is used twice here, despite what iap2 claims *)
 
 let[A] inc : int -> int =
-  \y: int.
-    (\g: int -o int.
+  fun y: int ->
+    (fun g: (int -o int) ->
        (ap : (int -> int) -> int -> int
            :> (int -o int) -> int -o int) g y)   (* This cast goes bad *)
-    (\z: int. z + 1)
+    (fun z: int -> z + 1)
 
 in print[int] (inc 5)

@@ -1,14 +1,14 @@
 (* Polymorphic version: An Ill-Typed A-to-C Call (type error) *)
 
 let[C] ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
-  \'a 'b.
-    \f: 'a -> 'b.
-      \x: 'a.
+  fun 'a 'b ->
+    fun f: ('a -> 'b) ->
+      fun x: 'a ->
         f x
 
 let[A] inc : int -> int =
-  \y: int.
-    let g = (\z:int . z + 1 : int -> int :> int -o int) in
+  fun y: int ->
+    let g = (fun z:int  -> z + 1 : int -> int :> int -o int) in
       ap[int,int] g y    (* g: (int -o int) is used as an (int -> int) *)
 
 in print[int] (inc 5)

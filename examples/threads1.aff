@@ -9,7 +9,7 @@ let[A] printer : unit -> unit =
   in loop
 
 let[A] timer : unit -> unit =
-  \_: unit.
+  fun _: unit ->
     let id = threadFork printer in
       threadDelay 2000000;
       threadKill id

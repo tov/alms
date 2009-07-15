@@ -1,16 +1,16 @@
 (* An Interface Module Intervenes *)
 
 let[C] ap : (int -> int) -> int -> int =
-  \f: int -> int.
-    \x: int.
+  fun f: (int -> int) ->
+    fun x: int ->
       f x
 
 let interface iap :> (int -o int) -> int -o int = ap
 
 let[A] inc : int -> int =
-  \y: int.
-    (\g: int -o int.
+  fun y: int ->
+    (fun g: (int -o int) ->
        iap g y)
-    (\z: int. z + 1)
+    (fun z: int -> z + 1)
 
 in print[int] (inc 5)

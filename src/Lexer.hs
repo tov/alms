@@ -8,10 +8,11 @@ module Lexer (
   sharpLoad,
   lolli, arrow, star,
   qualU, qualA, langC, langA,
-  Prec, precOp, opP
+  opP
 ) where
 
 import Util
+import Prec
 
 import Data.Char (isUpper)
 import Text.ParserCombinators.Parsec
@@ -27,13 +28,14 @@ tok = T.makeTokenParser T.LanguageDef {
     T.identLetter    = alphaNum <|> oneOf "_'",
     T.opStart        = oneOf "!$%&*+-/<=>?@^|~",
     T.opLetter       = oneOf "!$%&*+-/<=>?@^|~.:",
-    T.reservedNames  = ["if", "then", "else",
+    T.reservedNames  = ["fun",
+                        "if", "then", "else",
                         "match", "with", "as", "_",
                         "let", "rec", "and", "in",
                         "interface", "abstype", "end",
                         "all", "mu", "of",
                         "type", "qualifier"],
-    T.reservedOpNames = ["|", "=", "\\", ":", ":>"],
+    T.reservedOpNames = ["|", "=", ":", ":>", "->"],
     T.caseSensitive = True
   }
 
@@ -140,20 +142,6 @@ uid              = try $ do
   if isUpperIdentifier s
     then return s
     else pzero <?> "uppercase identifier"
-
-type Prec = Either Int Int
-
-precOp :: String -> Prec
-precOp ('*':'*':_)    = Right 7
-precOp (c:_)
-  | c `elem` "*/%"    = Left 6
-  | c `elem` "+-"     = Left 5
-  | c `elem` "@^"     = Right 4
-  | c `elem` "=<>|&$" = Left 3
-precOp "!="           = Left 3
-precOp (c:_)
-  | c `elem` "!~?"    = Right 10
-precOp _              = Left 9
 
 opP :: Prec -> CharParser st String
 opP p = try $ do

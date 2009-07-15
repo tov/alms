@@ -9,14 +9,14 @@ let[A] printer : unit -> unit =
   in loop
 
 let[A] startStop : unit -> unit -o unit =
-  \_: unit.
+  fun _: unit ->
     let id = threadFork printer in
     let id = printThread id in
-      \_: unit.
+      fun _: unit ->
         threadKill id
 
 let[A] timer : unit -> unit =
-  \_: unit.
+  fun _: unit ->
     let stop = startStop () in
       threadDelay 2000000;
       stop ()

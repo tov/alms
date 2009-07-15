@@ -16,7 +16,7 @@ let[C] foldl =
 
 -- This is pretty brittle :-)
 let[C] stringToInt =
-  \s : string.
+  fun s : string ->
     let each (digit : int) (acc : int) =
       let digit = digit - 48 in
       if digit <= -1
@@ -36,7 +36,7 @@ let[A] server =
           ()
       | Right c ->
           let (x, c) = recv c in
-            loop (add acc x) c
+            loop (acc + x) c
    in loop 0
 
 let[A] client =
@@ -54,9 +54,9 @@ let[A] client =
    in loop
 
 let[A] main =
-  \_ : unit.
+  fun _ : unit ->
     let rv = newRendezvous[protocol] () in
-      threadFork (\_:unit. server (accept rv));
+      threadFork (fun _:unit -> server (accept rv));
       client (request rv)
 
 in print (main ())

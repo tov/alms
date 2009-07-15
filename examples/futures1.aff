@@ -1,7 +1,7 @@
 (* An example with futures *)
 
 let[A] prompt : unit -> string future =
-  \_:unit. newFuture getLine
+  fun _:unit -> newFuture getLine
 
 let[C] printDots : int -> int -> unit =
   let rec loop (count : int) (delay : int) : unit =
@@ -15,7 +15,7 @@ let[C] printDots : int -> int -> unit =
   in loop
 
 let[A] main : string -> unit =
-  \message: string.
+  fun message: string ->
     putStrLn message;
     let future = prompt () in
       printDots 80 20;

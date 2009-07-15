@@ -1,12 +1,12 @@
 (* Polymorphic version: The C Module, Corrected *)
 
 let[A] ap : all 'a 'b. ('a -o 'b) -> 'a -o 'b =
-  \'a 'b (f: 'a -o 'b) (x : 'a). f x
+  fun 'a 'b (f: 'a -o 'b) (x : 'a) -> f x
 
 let[C] inc2 : int -> int =
-  \y: int.
-    let g = ap[int,int] (\z: int. z + 1) in
-    let h = ap[int,int] (\z: int. z + 1) in
+  fun y: int ->
+    let g = ap[int,int] (fun z: int -> z + 1) in
+    let h = ap[int,int] (fun z: int -> z + 1) in
       h (g y)
 
 in print[int] (inc2 5)

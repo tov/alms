@@ -5,7 +5,7 @@ type[A] 'a protocol = (('a send -> 'a send -> 'a recv -> unit)
                        ('a send -> 'a recv -> unit)) select
 
 let[A] server =
-  \c : int protocol dual channel.
+  fun c : int protocol dual channel ->
     match follow c with
     | Left c ->
         let (x, c) = recv c in
@@ -18,8 +18,8 @@ let[A] server =
           ()
 
 let[A] client =
-  \c : int protocol channel.
-    \(x : int) (y : int).
+  fun c : int protocol channel ->
+    fun (x : int) (y : int) ->
       let c = sel1 c in
       let c = send c x in
       let c = send c y in
@@ -27,9 +27,9 @@ let[A] client =
         r
 
 let[A] main =
-  \(x : int) (y : int).
+  fun (x : int) (y : int) ->
     let rv = newRendezvous[int protocol] () in
-      threadFork (\_:unit. server (accept rv));
+      threadFork (fun _:unit -> server (accept rv));
       client (request rv) x y
 
 in print (main 3 4)

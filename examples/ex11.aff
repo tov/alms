@@ -1,12 +1,12 @@
 (* Affine opaque objects (contract violation: blame "*main*") *)
 
 let[A] makePair : (int -> int) -> int -> (int -o int) * int =
-  \f: int -> int.
-    \x: int.
+  fun f: (int -> int) ->
+    fun x: int ->
       (f, x)
 
 let[A] doPair : (int -o int) * int -> int =
-  \pair: (int -o int) * int.
+  fun pair: (int -o int) * int ->
     let (f, x) = pair in
     let result = f x in
       putStr "f(";
@@ -16,7 +16,7 @@ let[A] doPair : (int -o int) * int -> int =
       result
 
 let[C] double : int -> {(int -o int) * int} =
-  \z: int.
+  fun z: int ->
     makePair (( * ) 2) z
 (* returns an affine object, but doesn't break affinity itself. *)
 

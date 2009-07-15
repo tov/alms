@@ -2,11 +2,11 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Ppr (
   Ppr(..), module Text.PrettyPrint, parensIf,
-  precSemi, precCom, precDot, precArr, precStar, precApp
+  module Prec
 ) where
 
+import Prec
 import Syntax
-import Lexer (precOp)
 import Text.PrettyPrint
 import Data.List (intersperse)
 
@@ -16,21 +16,6 @@ class Ppr p where
 
   ppr       = pprPrec precDot
   pprPrec _ = ppr
-
-precCast, precCom, precDot, precSemi, precArr, precStar,
-  precApp, precTApp :: Int
-precCast  = -2 -- :>
-precCom   = -1 -- ,
-precDot   =  0 -- in, else, as, of, .
-precSemi  =  1 -- ;
---           3 -- != = < > | & $
---           4 -- @ ^ (infixr)
-precArr   =  5 -- -> - +
-precStar  =  6 -- * / %
---           7 -- ** (infixr)
-precApp   =  9 -- f x
---          10 -- ! ~ ? (prefix)
-precTApp  = 11 -- f[t]
 
 parensIf :: Bool -> Doc -> Doc
 parensIf True  doc = parens doc
@@ -269,9 +254,9 @@ pprAbs p e = parensIf (p > precDot) $
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         addArgs = case args of
-          [Left (x, t)] -> (<> (ppr x <+>
+          [Left (x, t)] -> (<+> (ppr x <+>
                                 char ':' <+> pprPrec (precArr + 1) t))
-          _             -> (<> pprArgList args)
+          _             -> (<+> pprArgList args)
 
 pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where

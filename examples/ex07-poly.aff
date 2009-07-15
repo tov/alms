@@ -1,17 +1,17 @@
 (* Polymorphic version: An Interface Module Intervenes *)
 
 let[C] ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
-  \'a 'b.
-    \f: 'a -> 'b.
-      \x: 'a.
+  fun 'a 'b ->
+    fun f: ('a -> 'b) ->
+      fun x: 'a ->
         f x
 
 let interface iap :> all 'a 'b. ('a -o 'b) -> 'a -o 'b = ap
 
 let[A] inc : int -> int =
-  \y: int.
-    (\g: int -o int.
+  fun y: int ->
+    (fun g: (int -o int) ->
        iap[int,int] g y)
-    (\z: int. z + 1)
+    (fun z: int -> z + 1)
 
 in print[int] (inc 5)

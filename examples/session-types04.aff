@@ -36,7 +36,7 @@ let[A] revA['<a] (xs: '<a list) : '<a list =
      in rev_acc Nil['<a] xs
 
 let[C] splitWhile['a] : ('a -> bool) -> 'a list -> 'a list * 'a list
-  = \pred: 'a -> bool.
+  = fun pred: ('a -> bool) ->
       let rec loop (acc: 'a list) (xs: 'a list) : 'a list * 'a list =
                 match xs with
                 | Nil         -> (revC acc, Nil['a])
@@ -48,7 +48,7 @@ let[C] splitWhile['a] : ('a -> bool) -> 'a list -> 'a list * 'a list
 let[C] not (b: bool) = if b then false else true
 
 let[C] notp['a] (pred: 'a -> bool): 'a -> bool =
-  \a: 'a. not (pred a)
+  fun a: 'a -> not (pred a)
 
 let[C] isSpace (c: int): bool =
   match c with
@@ -209,12 +209,12 @@ let[A] main : unit -> unit =
             | Nil              -> ic
             | Cons(plane,rest) ->
                 let outrv = newRendezvous[{point} stream] () in
-                  threadFork (\_: unit.
+                  threadFork (fun _: unit ->
                     clipper plane ic (accept outrv));
                   connect rest (request outrv) in
-  \_: unit.
+  fun _: unit ->
     let rv           = newRendezvous[main_prot] () in
-    let _            = threadFork (\_: unit. parser (accept rv)) in
+    let _            = threadFork (fun _: unit -> parser (accept rv)) in
     let (planes, ic) = get_planes Nil[{plane}] (request rv) in
     let ic           = connect planes ic in
       printer ic

@@ -1,13 +1,13 @@
 (* An Ill-Typed A-to-C Call (type error) *)
 
 let[C] ap : (int -> int) -> int -> int =
-  \f: int -> int.
-    \x: int.
+  fun f: (int -> int) ->
+    fun x: int ->
       f x
 
 let[A] inc : int -> int =
-  \y: int.
-    let g = (\z:int . z + 1 : int -> int :> int -o int) in
+  fun y: int ->
+    let g = (fun z:int  -> z + 1 : int -> int :> int -o int) in
       ap g y         (* g: (int -o int) is used as an (int -> int) *)
 
 in print[int] (inc 5)

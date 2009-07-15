@@ -1,15 +1,15 @@
 (* Polymorphic version: An Ill-Typed A Module (type error) *)
 
 let[A] ap =
-  \'<a.
-    \'<b.
-      \f: '<a -o '<b.
-        \x: '<a.
+  fun '<a ->
+    fun '<b ->
+      fun f: ('<a -o '<b) ->
+        fun x: '<a ->
           f x
 
 let[A] inc2 =
-  \y: int.
-    let g = ap (\z: int. z + 1) in
+  fun y: int ->
+    let g = ap (fun z: int -> z + 1) in
       g (g y)   (* g: (int -o int) is used twice here *)
 
 in print (inc2 5)

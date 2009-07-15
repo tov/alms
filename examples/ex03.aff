@@ -1,13 +1,13 @@
 (* A Blameworthy C Module (blame inc2) *)
 
 let[A] ap =
-  \f: int -o int.
-    \x: int.
+  fun f: (int -o int) ->
+    fun x: int ->
       f x
 
 let[C] inc2 =
-  \y: int.
-    let g = ap (\z: int. z + 1) in
+  fun y: int ->
+    let g = ap (fun z: int -> z + 1) in
       g (g y)   (* g is used twice here *)
 
 in print (inc2 5)

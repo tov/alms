@@ -23,20 +23,20 @@ let[A] printer : unit -> unit =
   in loop
 
 let[A] startStop : unit -> unit -o unit =
-  \_: unit.
+  fun _: unit ->
     let id = threadFork printer in
     let id = printThread id in
-      \_: unit.
+      fun _: unit ->
         threadKill id
 
 let[A] after : int -> (unit -o unit) -> unit =
-  \delay: int.
-    \stop: unit -o unit.
-      threadFork (\_:unit . threadDelay delay; stop ());
+  fun delay: int ->
+    fun stop: (unit -o unit) ->
+      threadFork (fun _:unit  -> threadDelay delay; stop ());
       ()
 
 let[C] main : unit -> unit =
-  \_: unit.
+  fun _: unit ->
     putStrLn "Press <ENTER> to exit.";
     let stop = startStop () in
       after 4000000 stop;

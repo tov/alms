@@ -5,12 +5,12 @@
    protected by a contract because it's unlimited. *)
 
 let[A] makePair : (int -> int) -> int -> (int -> int) * int =
-  \f: int -> int.
-    \x: int.
+  fun f: (int -> int) ->
+    fun x: int ->
       (f, x)
 
 let[A] doPair : (int -> int) * int -> int =
-  \pair: (int -> int) * int.
+  fun pair: (int -> int) * int ->
     let (f, x) = pair in
     let result = f x in
       putStr "f(";
@@ -20,7 +20,7 @@ let[A] doPair : (int -> int) * int -> int =
       result
 
 let[C] double : int -> {(int -> int) * int} =
-  \z: int.
+  fun z: int ->
     makePair (( * ) 2) z
 
 in let pair = double 4 in

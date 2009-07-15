@@ -9,13 +9,13 @@
 
 abstype[C] 'a array = Array of (int -> 'a) ref with
   let[C] newArray['a] (default: 'a): 'a array =
-    Array (ref (\ix: int. default))
+    Array (ref (fun ix: int -> default))
 
   let[C] at['a] (Array r: 'a array) (ix: int): 'a = !r ix
 
   let[C] update['a] (Array r: 'a array) (ix: int) (new: 'a): unit =
     let oldf = !r in
-      (r <- \ix': int. if ix == ix' then new else oldf ix');
+      (r <- fun ix': int -> if ix == ix' then new else oldf ix');
       ()
 end
 
@@ -77,11 +77,12 @@ let[C] copyFromTo (range: range)
                   ['a,'tsrc] (src: ('a, 'tsrc) afarray)
                   ['tdst]    (dst: ('a, 'tdst) afarray)
                   ['csrc] =
-  iter range (\(i: int)
-               ((capsrc, capdst): ('tsrc, 'csrc) readcap * 'tdst writecap).
-                  let (elt, capsrc) = apair2cpair (read src i capsrc) in
-                  let capdst        = write dst i elt capdst in
-                    (capsrc, capdst))
+  iter range
+    (fun (i: int)
+         ((capsrc, capdst): ('tsrc, 'csrc) readcap * 'tdst writecap) ->
+      let (elt, capsrc) = apair2cpair (read src i capsrc) in
+      let capdst        = write dst i elt capdst in
+        (capsrc, capdst))
 
 let[C] crazy['a]
   (default: 'a)
@@ -101,15 +102,15 @@ let[C] crazy['a]
       then cap
       else
         withNewArray default
-         (\'s (lft: ('a, 's) afarray) (caplft: 's writecap).
+         (fun 's (lft: ('a, 's) afarray) (caplft: 's writecap) ->
            withNewArray default
-            (\'r (rgt: ('a, 'r) afarray) (caprgt: 'r writecap).
+            (fun 'r (rgt: ('a, 'r) afarray) (caprgt: 'r writecap) ->
                let (cap1, cap2) = apair2cpair (split cap) in
-               let fl = newFuture (\_:unit.
+               let fl = newFuture (fun _:unit ->
                           let (cap1, caplft) =
                                 copyFromTo range start lft (cap1, caplft)
                            in (cap1, loop (i - 1) lft caplft)) in
-               let fr = newFuture (\_:unit.
+               let fr = newFuture (fun _:unit ->
                           let (cap2, cap) =
                                  copyFromTo range start start (cap2, cap)
                            in (cap2, loop (i - 1) rgt caprgt)) in
@@ -124,17 +125,18 @@ let[C] crazy['a]
 let[C] main (width: int) (depth: int) : unit =
   let range = (0, width) in
   let fill['t] (a: (int, 't) afarray) =
-    iter range (\(i: int). write a i i) in
+    iter range (fun (i: int) -> write a i i) in
   let print_array['a,'t] (a: ('a, 't) afarray)
                  ['c] (cap: ('t, 'c) readcap) =
     putStr "[";
     let (_, cap) =
-      iter range (\(i: int) ((first, cap): bool * ('t, 'c) readcap).
-                    (if first then () else putStr ",");
-                    let (elt, cap) = apair2cpair (read a i cap) in
-                      putStr (string_of elt);
-                      (false, cap))
-                 (true, cap) in
+      iter range
+        (fun (i: int) ((first, cap): bool * ('t, 'c) readcap) ->
+          (if first then () else putStr ",");
+          let (elt, cap) = apair2cpair (read a i cap) in
+            putStr (string_of elt);
+            (false, cap))
+        (true, cap) in
     putStrLn "]";
     cap in
   let leaf['t] (a: (int, 't) afarray) (cap: 't writecap) = cap in
@@ -142,17 +144,16 @@ let[C] main (width: int) (depth: int) : unit =
              ['s] (lft: (int, 's) afarray)
              ['r] (rgt: (int, 'r) afarray)
              ['c, 'd] =
-    iter range (\(i: int)
-                 ((capout, caplft, caprgt):
-                  't writecap * ('s, 'c) readcap * ('r, 'd) readcap).
-                    let (elt1, caplft) =
-                          apair2cpair (read lft i caplft) in
-                    let (elt2, caprgt) =
-                          apair2cpair (read rgt (i + 1) caprgt) in
-                    let capout = write out i (elt1 + elt2) capout in
-                      (capout, caplft, caprgt)) in
+    iter range
+      (fun (i: int)
+           ((capout, caplft, caprgt)
+              : 't writecap * ('s, 'c) readcap * ('r, 'd) readcap) ->
+        let (elt1, caplft) = apair2cpair (read lft i caplft) in
+        let (elt2, caprgt) = apair2cpair (read rgt (i + 1) caprgt) in
+        let capout = write out i (elt1 + elt2) capout in
+          (capout, caplft, caprgt)) in
     withNewArray 0
-      (\'t (a: (int, 't) afarray) (cap: 't writecap).
+      (fun 't (a: (int, 't) afarray) (cap: 't writecap) ->
          let cap = fill a cap in
          let cap = crazy 0 range depth leaf branch a cap in
            print_array a cap;

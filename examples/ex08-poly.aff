@@ -1,17 +1,17 @@
 (* Polymorphic version: A Lying Interface Module (blame iap2) *)
 
 let[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
-  \'a.
-    \f: 'a -> 'a.
-      \x: 'a.
+  fun 'a ->
+    fun f: ('a -> 'a) ->
+      fun x: 'a ->
         f (f x)    (* f is used twice here, despite what iap2 claims *)
 
 let interface iap2 :> all 'a. ('a -o 'a) -> 'a -o 'a = ap
 
 let[A] inc : int -> int =
-  \y: int.
-    (\g: int -o int.
+  fun y: int ->
+    (fun g: (int -o int) ->
        iap2[int] g y)
-    (\z: int. z + 1)
+    (fun z: int -> z + 1)
 
 in print[int] (inc 5)

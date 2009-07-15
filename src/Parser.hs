@@ -6,6 +6,7 @@ module Parser (
 ) where
 
 import Util
+import Prec
 import Syntax
 import Lexer
 
@@ -85,39 +86,45 @@ identp  = do
     then return (exCon (Uid s))
     else return (exVar (Lid s))
 
-typep :: Language w => P (Type () w)
-typep = type0 where
-  type0 = choice
-          [ do reserved "all"
-               tvs <- many tyvarp
-               dot
-               t   <- type0
-               return (foldr TyAll t tvs),
-            do reserved "mu"
-               tv  <- tyvarp
-               dot
-               t   <- type0
-               return (TyMu tv t),
-            type5 ]
-  type5 = chainr1last type6 tyop5 type0 where
-            tyop5 = choice [
-                      arrow >> return tyArr,
-                      lolli >> return tyLol
-                    ]
-  type6 = chainl1last type7 tyop6 type0 where
-            tyop6 = star >> return tyTuple
-  type7 = tyarg >>= tyapp'
+typep  :: Language w => P (Type () w)
+typep   = typepP 0
 
+typepP :: Language w => Int -> P (Type () w)
+typepP 0 = choice
+           [ do reserved "all"
+                tvs <- many tyvarp
+                dot
+                t   <- typepP 0
+                return (foldr TyAll t tvs),
+             do reserved "mu"
+                tv  <- tyvarp
+                dot
+                t   <- typepP 0
+                return (TyMu tv t),
+             typepP 5 ]
+typepP 1 = typepP 2
+typepP 2 = typepP 3
+typepP 3 = typepP 4
+typepP 4 = typepP 5
+typepP 5 = chainr1last (typepP 6) tyop5 (typepP 0) where
+             tyop5 = choice [
+                       arrow >> return tyArr,
+                       lolli >> return tyLol
+                     ]
+typepP 6 = chainl1last (typepP 7) tyop6 (typepP 0) where
+             tyop6 = star >> return tyTuple
+typepP 7 = tyarg >>= tyapp'
+  where
   -- This uses ScopedTypeVariables to reify the Language type:
   tyarg :: Language w => P [Type () w]
   tyarg  = choice
-           [ do args <- parens $ commaSep1 typep
+           [ do args <- parens $ commaSep1 (typepP 0)
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
              do tc   <- lidp
                 return [TyCon tc [] ()],
-             do t <- braces (langMapType typep)
+             do t <- braces (langMapType (typepP 0))
                 return [t] ]
 
   tyapp' :: [Type () w] -> P (Type () w)
@@ -127,6 +134,7 @@ typep = type0 where
   tyapp' ts  = do
                  tc <- lidp
                  tyapp' [TyCon tc ts ()]
+typepP _ = typepP 0
 
 progp :: P (Prog ())
 progp  = choice [
@@ -337,14 +345,14 @@ exprp = expr0 where
            ei <- expr0
            return (xi, ei)
          return (exCase e1 clauses),
-      do reservedOp "\\"
+      do reserved "fun"
          build <- choice
            [ argsp1,
              do x  <- pattp
                 colon
-                t  <- typep
+                t  <- typepP (precArr + 1)
                 return (exAbs x t) ]
-         dot
+         arrow
          expr0 >>! build,
       expr1 ]
   expr1 = do e1 <- expr3
