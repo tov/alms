@@ -403,7 +403,7 @@ opappp p = do
   return (\e1 e2 -> (exVar op `exApp` e1) `exApp` e2)
 
 afargsp :: Language w =>
-            P (Type () w -> Type () w, Expr () w -> Expr () w)
+           P (Type () w -> Type () w, Expr () w -> Expr () w)
 afargsp = loop tyArr where
   loop arr0 = choice
     [ do (tvt, tve) <- tyargp
@@ -412,13 +412,9 @@ afargsp = loop tyArr where
       do arr <- option arr0 $ do
            reservedOp "|"
            return tyLol
-         (y, t) <- parens $ do
-           y <- pattp
-           colon
-           t <- typep
-           return (y, t)
-         (ft, fe) <- loop arr
-         return (arr t . ft, exAbs y t . fe),
+         (ft,  fe)  <- vargp arr
+         (fts, fes) <- loop arr
+         return (ft . fts, fe . fes),
       return (id, id) ]
 
 argsp1 :: Language w => P (Expr () w -> Expr () w)
@@ -428,13 +424,19 @@ argsp :: Language w => P (Expr () w -> Expr () w)
 argsp  = foldr (.) id `fmap` many argp
 
 argp :: Language w => P (Expr () w -> Expr () w)
-argp  = choice
-        [ tyargp >>! snd,
-          parens $ do
-            x <- pattp
-            reservedOp ":"
-            t <- typep
-            return (exAbs x t) ]
+argp  = (tyargp <|> vargp const) >>! snd
+
+vargp :: Language w =>
+         (Type () w -> Type () w -> Type () w) ->
+         P (Type () w -> Type () w, Expr () w -> Expr () w)
+vargp arr = parens $ choice
+              [ do
+                  x <- pattp
+                  reservedOp ":"
+                  t <- typep
+                  return (arr t, exAbs x t),
+               return (arr tyUnit, exAbs PaWild tyUnit) ]
+  where tyUnit = tyGround "unit"
 
 tyargp :: Language w =>
           P (Type () w -> Type () w, Expr () w -> Expr () w)
