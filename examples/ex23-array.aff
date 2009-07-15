@@ -61,13 +61,6 @@ let[C] iter ((start, limit): range)
       else acc
    in loop 0 z
 
-let[C] makeCpair['a,'b] (x: 'a) (y: 'b) = (x, y)
-let[A] apair2cpair['<a, '<b] ((x, y): '<a * '<b) =
-         (makeCpair : all 'a 'b. 'a -> 'b -> {{'a} * {'b}} :>
-                      all '<a '<b. '<a -> '<b -o {{'<a} * {'<b}}) ['<a,'<b] x y
-let[A] makeApair['a,'b] (x: 'a) (y: 'b) = (x, y)
-let[C] cpair2apair['a, 'b] ((x, y): 'a * 'b) = makeApair['a,'b] x y
-
 type[C] ('a, 't) afarray = {({'a}, {'t}) array}
 type[C] ('t, 'c) readcap = {({'t}, {'c}) readcap}
 type[C] 't writecap      = {({'t}) writecap}
@@ -79,7 +72,7 @@ let[C] copyFromTo (range: range)
   iter range
     (fun (i: int)
          ((capsrc, capdst): ('tsrc, 'csrc) readcap * 'tdst writecap) ->
-      let (elt, capsrc) = apair2cpair (read src i capsrc) in
+      let (elt, capsrc) = read src i capsrc in
       let capdst        = write dst i elt capdst in
         (capsrc, capdst))
 
@@ -104,7 +97,7 @@ let[C] crazy['a]
          (fun 's (lft: ('a, 's) afarray) (caplft: 's writecap) ->
            withNewArray default
             (fun 'r (rgt: ('a, 'r) afarray) (caprgt: 'r writecap) ->
-               let (cap1, cap2) = apair2cpair (split cap) in
+               let (cap1, cap2) = split cap in
                let fl = newFuture (fun _:unit ->
                           let (cap1, caplft) =
                                 copyFromTo range start lft (cap1, caplft)
@@ -115,7 +108,7 @@ let[C] crazy['a]
                            in (cap2, loop (i - 1) rgt caprgt)) in
                let (cap1, caplft) = getFuture fl in
                let (cap2, caprgt) = getFuture fr in
-               let cap            = join (cpair2apair (cap1, cap2)) in
+               let cap            = join (cap1, cap2) in
                let (cap, _, _)    = branch start lft rgt
                                            (cap, caplft, caprgt)
                 in cap))
@@ -132,7 +125,7 @@ let[C] main (width: int) (depth: int) : unit =
       iter range
         (fun (i: int) ((first, cap): bool * ('t, 'c) readcap) ->
           (if first then () else putStr ",");
-          let (elt, cap) = apair2cpair (read a i cap) in
+          let (elt, cap) = read a i cap in
             putStr (string_of elt);
             (false, cap))
         (true, cap) in
@@ -147,8 +140,8 @@ let[C] main (width: int) (depth: int) : unit =
       (fun (i: int)
            ((capout, caplft, caprgt)
               : 't writecap * ('s, 'c) readcap * ('r, 'd) readcap) ->
-        let (elt1, caplft) = apair2cpair (read lft i caplft) in
-        let (elt2, caprgt) = apair2cpair (read rgt (i + 1) caprgt) in
+        let (elt1, caplft) = read lft i caplft in
+        let (elt2, caprgt) = read rgt (i + 1) caprgt in
         let capout = write out i (elt1 + elt2) capout in
           (capout, caplft, caprgt)) in
     withNewArray 0

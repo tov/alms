@@ -803,7 +803,7 @@ tdInt        = TyTag (-3)  []          []                True
 tdString     = TyTag (-4)  []          []                True
 tdArr        = TyTag (-5)  [-1, 1]     []                False
 tdLol        = TyTag (-6)  [-1, 1]     [Right Qa]        False
-tdTuple      = TyTag (-7)  [1, 1]      [Left 0, Left 1]  False
+tdTuple      = TyTag (-7)  [1, 1]      [Left 0, Left 1]  True
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:

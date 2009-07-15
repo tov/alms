@@ -127,6 +127,11 @@ ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
   where u = x /./ "u"
         y = x /./ "y"
         z = x /./ "z"
+ca neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
+  exLet (PaPair (PaVar y) (PaVar z)) (exVar x) $
+    exPair (ca neg pos y s1) (ca neg pos z s2)
+  where y = x /./ "y"
+        z = x /./ "z"
 ca neg pos x (TyAll tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
@@ -160,6 +165,11 @@ ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
       ac neg pos z s2
   where y = x /./ "y"
         z = x /./ "z"
+ac neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
+  exLet (PaPair (PaVar y) (PaVar z)) (exVar x) $
+    exPair (ac neg pos y s1) (ac neg pos z s2)
+  where y = x /./ "y"
+        z = x /./ "z"
 ac neg pos x (TyAll tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
@@ -188,6 +198,11 @@ cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
   exAbsVar' y s1 $
     exLetVar' z (exApp (exVar x) (cc pos neg y s1)) $
       cc neg pos z s2
+  where y = x /./ "y"
+        z = x /./ "z"
+cc neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
+  exLet (PaPair (PaVar y) (PaVar z)) (exVar x) $
+    exPair (cc neg pos y s1) (cc neg pos z s2)
   where y = x /./ "y"
         z = x /./ "z"
 cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
