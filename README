@@ -14,7 +14,7 @@ CONTENTS
 GETTING STARTED
 
   We require GHC to build.  It is known to work with GHC 6.10.1,
-  6.8.2, and 6.8.1.
+  and likely will not work with GHC 6.8.
 
   Provided ghc is in your path, to build on UNIX it should be sufficient
   to type:

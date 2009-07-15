@@ -527,8 +527,8 @@ tryUnify (tv:tvs) t t' =
                   tguesses <- tryUnify tvs (subst' t) t'
                   return (tguess : tguesses)
     _        -> fail $
-                  "Cannot guess type application to unify " ++
-                  show t ++ " and " ++ show t' ++ " at " ++ show tv
+                  "Cannot guess type t such that (" ++ show t ++
+                  ")[t/" ++ show tv ++ "] ~ " ++ show t'
 
 -- Given a type variable tv, type t in which tv may be free,
 -- and a second type t', finds a plausible candidate to substitute
@@ -557,7 +557,9 @@ findSubst tv = chk True [] where
   cmp b seen (TyCon _ ts _) (TyCon _ ts' _)
                    = concat (zipWith (chk b seen) ts ts')
   cmp b seen (TyAll tv0 t) (TyAll tv0' t')
-    | tv /= tv0    = [ tr | tr <- chk b seen t t', tr /= TyVar tv0' ]
+    | tv /= tv0    = [ tr | tr <- chk b seen t t',
+                            not (tv0  `M.member` ftv tr),
+                            not (tv0' `M.member` ftv tr) ]
   cmp b seen (TyC t) (TyC t')
                    = ctype2atype `map` cmp (not b) seen t t'
   cmp b seen (TyA t) (TyA t')
