@@ -19,6 +19,11 @@ import qualified Data.Set as S
 import qualified Control.Monad.Reader as M.R
 import qualified Control.Monad.State  as M.S
 
+-- import System.IO.Unsafe (unsafePerformIO)
+-- p :: (Show a, Monad m) => a -> TC w m ()
+-- p = return . unsafePerformIO . print
+-- p = const (return ())
+
 -- Get the usage (sharing) of a variable in an expression:
 usage :: Lid -> Expr i A -> Q
 usage x e = case M.lookup x (fv e) of
@@ -308,19 +313,8 @@ tcExprC = tc where
       (gx, x') <- tcPatt t' x
       (te, e') <- withVars gx $ tc e
       return (tyArrT t' te, exAbs x' t' e')
-    ExApp e1 e2   -> do
-      (t1, e1') <- tc e1
-      (t2, e2') <- tc e2
-      case unfoldTyAll t1 of
-        (tvs, TyCon _ [ta, _] _) -> do
-          ts  <- tryUnify tvs ta t2
-          t1' <- foldM tapply t1 ts
-          case t1' of
-            TyCon _ [ta', tr'] td | td == tdArr -> do
-              tassgot (t2 == ta') "Application (operand)" t2 (show ta')
-              return (tr', exApp e1' e2')
-            _ -> tgot "Application (operator)" t1 "function type"
-        _ -> tgot "Application (operator)" t1 "function type"
+    ExApp _ _     -> do
+      tcExApp (==) tc e0
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
         (t, e') <- tc e
@@ -402,19 +396,8 @@ tcExprA = tc where
       if unworthy
         then return (tyLolT t' te, exAbs x' t' e')
         else return (tyArrT t' te, exAbs x' t' e')
-    ExApp e1 e2   -> do
-      (t1, e1') <- tc e1
-      (t2, e2') <- tc e2
-      case unfoldTyAll t1 of
-        (tvs, TyCon _ [ta, _] _) -> do
-          ts  <- tryUnify tvs ta t2
-          t1' <- foldM tapply t1 ts
-          case t1' of
-            TyCon _ [ta', tr'] td | td `elem` funtypes -> do
-              tassgot (t2 <: ta') "Application (operand)" t2 (show ta')
-              return (tr', exApp e1' e2')
-            _ -> tgot "Application (operator)" t1 "function type"
-        _ -> tgot "Application (operator)" t1 "function type"
+    ExApp _  _    -> do
+      tcExApp (<:) tc e0
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
         (t, e') <- tc e
@@ -454,8 +437,45 @@ tcExprA = tc where
              Nothing -> False)
          (M.keys (fv e))
 
+tcExApp :: (Language w, Monad m) =>
+           (TypeT w -> TypeT w -> Bool) ->
+           (Expr i w -> TC w m (TypeT w, ExprT w)) ->
+           Expr i w -> TC w m (TypeT w, ExprT w)
+tcExApp (<::) tc e0 = do
+  let foralls t1 ts = do
+        let (tvs, t1f)  = unfoldTyAll t1     -- peel off quantification
+            (tas, _)    = unfoldTyFun t1f    -- peel off arg types
+            nargs       = min (length tas) (length ts)
+            tup ps      = TyCon (Lid "") (take nargs ps) tdTuple
+        -- try to find types to unify formals and actuals, and apply
+        t1' <- tryUnify tvs (tup tas) (tup ts) >>= foldM tapply t1
+        arrows t1' ts
+      arrows tr             [] = return tr
+      arrows t'@(TyAll _ _) ts = foralls t' ts
+      arrows (TyCon _ [ta, tr] td) (t:ts) | td `elem` funtypes = do
+        unifies [] t ta
+        arrows tr ts
+      arrows t' _ = tgot "Application (operator)" t' "function type"
+      unifies tvs ta tf =
+        case tryUnify tvs ta tf of
+          Just ts  -> do
+            ta' <- foldM tapply (foldr TyAll ta tvs) ts
+            if (ta' <:: tf)
+              then return ()
+              else deeper
+          Nothing -> deeper
+        where
+          deeper = case ta of
+            TyAll tv ta1 -> unifies (tvs++[tv]) ta1 tf
+            _            -> tgot "Application (operand)" ta (show tf)
+  let (es, e1) = unfoldExApp e0            -- get operator and args
+  (t1, e1')   <- tc e1                     -- check operator
+  (ts, es')   <- unzip `liftM` mapM tc es  -- check args
+  tr <- foralls t1 ts
+  return (tr, foldl exApp e1' es')
+
 tapply :: (Language w, Monad m) =>
-          TypeT w -> TypeT w -> TC w m (TypeT w)
+          TypeT w -> TypeT w -> m (TypeT w)
 tapply (TyAll tv t1') t2 = do
   langCase t2
     (\_ -> return ())
@@ -518,7 +538,7 @@ tcPatt t x0 = case x0 of
 -- may be free, and a type t', tries to substitute for tvs in t
 -- to produce a type that *might* unify with t'
 tryUnify :: (Monad m, Language w) =>
-             [TyVar] -> TypeT w -> TypeT w -> TC w m [TypeT w]
+            [TyVar] -> TypeT w -> TypeT w -> m [TypeT w]
 tryUnify [] _ _        = return []
 tryUnify (tv:tvs) t t' =
   case findSubst tv t t' of
