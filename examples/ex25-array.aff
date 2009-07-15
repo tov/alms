@@ -1,0 +1,218 @@
+(* Demonstrates (affine) abstract types.  Correct. *)
+
+(*
+    This program defines an array library in [C], and then
+    builds on that by defining a read-write lock array library in
+    [A], where the locks are statically checked capabilities.  It
+    then runs an algorithm that copies an array a bunch of times,
+    mutates the copies in parallel, and recombines the results.  The
+    locks ensure that we don't read an array at the same time someone is
+    writing it.
+*)
+
+abstype[C] 'a array = Array of int * (int -> 'a) ref with
+  let[C] newArray['a] (size : int): 'a array =
+    Array (size, ref (fun ix: int ->
+                        failwith['a] "array element unitialized"))
+
+  let[C] checkIndex (size: int) (ix: int): unit =
+    if ix < 0
+      then failwith[unit] "array index too low"
+    else if ix >= size
+      then failwith[unit] "array index too high"
+    else ()
+
+  let[C] at['a] (Array (size, r): 'a array) (ix: int): 'a =
+    checkIndex size ix;
+    !r ix
+
+  let[C] update['a] (Array (size, r): 'a array) (ix: int) (new: 'a): unit =
+    checkIndex size ix;
+    let oldf = !r in
+      (r <- fun ix': int -> if ix == ix' then new else oldf ix');
+      ()
+
+  let[C] size['a] (Array (size, _): 'a array) = size
+end
+
+abstype[A] ('a, 't) array = Array of {{'a} array} with
+  abstype[A] ('t, 'c) readcap qualifier A = MkCap with
+    type[A] 't writecap = ('t, unit) readcap
+
+    let[A] withNewA['a, '<r]
+              (size: int)
+              (kont: all 't. ('a, 't) array -o 't writecap -o '<r)
+              : '<r =
+      kont (Array['a,unit] (newArray['a] size)) MkCap[unit,unit]
+
+    let[A] splitA['t,'c] (_: ('t, 'c) readcap)
+               : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap =
+      (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
+
+    let[A] joinA['t,'c]
+               (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
+               : ('t, 'c) readcap =
+      MkCap['t, 'c]
+  end
+
+  let[A] atA['a,'t,'c] (Array arr: ('a, 't) array) (ix: int)
+                       (cap : ('t, 'c) readcap)
+                       : 'a * ('t, 'c) readcap =
+    (at arr ix, cap)
+
+  let[A] updateA['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
+                        (cap : 't writecap) : 't writecap =
+    update arr ix new;
+    cap
+
+  let[A] sizeA['a,'t] (Array arr: ('a, 't) array): int =
+    size arr
+end
+
+let[A] foldA ['a,'t,'c,'<r]
+             (f: 'a -> '<r -> '<r) (z: '<r)
+             (a: ('a, 't) array) (c: ('t, 'c) readcap) =
+  let rec loop (i: int) (z: '<r)| (c: ('t, 'c) readcap)
+               : '<r * ('t, 'c) readcap =
+    if i < sizeA a
+      then let (elt, c) = atA a i c in
+             loop (i + 1) (f elt z) c
+      else (z, c)
+   in loop 0 z c
+
+let[A] mapA ['a,'t,'c,'b,'<r]
+            (f: 'a -> 'b)
+            (a: ('a, 't) array) (c: ('t, 'c) readcap) |
+            (k: all 's. ('b, 's) array -o 's writecap -o
+                        ('t, 'c) readcap -o '<r)
+            : '<r =
+  withNewA (sizeA a)
+    (fun['s] (b: ('b, 's) array) (d: 's writecap) ->
+      let ((_, d), c) =
+            foldA (fun (x: 'a) ((i, d): int * 's writecap) ->
+                     (i + 1, updateA b i (f x) d))
+                  (0, d) a c
+       in k b d c)
+
+let[A] putA['a,'t,'c] (a: ('a, 't) array) (c: ('t, 'c) readcap) =
+  putStr "[";
+  let (_, c) =
+    foldA (fun (x: 'a) (comma: bool) ->
+             (if comma then putStr "," else ());
+             putStr (string_of x);
+             true)
+          false a c in
+  putStrLn "]";
+  c
+
+let[A] sumA ['t,'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  foldA (+.) 0.0 a c
+
+let[A] meanA ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let (total, c) = sumA a c in
+    (total /. float_of_int (sizeA a), c)
+
+let[A] stdDevA ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let (mean, c) = meanA a c in
+  let (num, c)  = foldA
+                    (fun (x: float) (acc: float) -> (x -. mean) ** 2.0)
+                    0.0 a c in
+    (sqrt (num /. float_of_int (sizeA a)), c)
+
+let[A] skewness ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let n         = float_of_int (sizeA a) in
+  let (m, c)    = meanA a c in
+  let (s, c)    = stdDevA a c in
+  let (devs, c) = foldA
+                    (fun (x: float) (acc: float) ->
+                       (x -. m) ** 3.0 +.  acc)
+                    0.0 a c in
+    (devs /. ((n -. 1.0) *. s ** 3.0) /. sqrt (6.0 /. n), c)
+
+type[A] transformation = T of string * (float -> float)
+
+let[A] reduceSkewness ['t]
+                       (ts: transformation list)
+                       (a: (float, 't) array)
+                       (c: 't writecap) =
+  let rec find ['c] (ix: int)
+                    (ts: transformation list)
+                    (c: ('t, 'c) readcap)
+                    : float * transformation * ('t, 'c) readcap =
+    match ts with
+    | Nil -> let (sk, c) = skewness a c in
+               (sk, T("identity", fun f: float -> f), c)
+    | Cons(T(_, ft) as t, ts)
+          -> let (c1, c2) = splitA c in
+             let future   = newFuture (fun () ->
+               mapA ft a c1
+                 (fun 's (b: (float, 's) array) (d: 's writecap)
+                         (c: ('t, 'c * unit) readcap) ->
+                    let (sk, d) = skewness b d in
+                      (sk, t, c))) in
+             let (sk1, t1, c2) = find (ix + 1) ts c2 in
+             let (sk2, t2, c1) = getFuture future in
+               if absf sk2 >. absf sk1
+                 then (sk1, t1, joinA (c1, c2))
+                 else (sk2, t2, joinA (c1, c2)) in
+  let rec replace (i: int)
+                  (T(_, ft) as t: transformation)
+                  (c: 't writecap)
+                  : 't writecap =
+    if i < sizeA a
+      then let (x, c) = atA a i c in
+           let c      = updateA a i (ft x) c in
+             replace (i + 1) t c
+      else c in
+  let (sk, t, c) = find 0 ts c in
+    (sk, t, replace 0 t c)
+
+let[A] withNewDistribution['<r]
+         (n: int) (T(_, gen): transformation)
+         (k: all 't. (float, 't) array -> 't writecap -> '<r) : '<r =
+  withNewA n (fun 't (a: (float, 't) array) (c: 't writecap) ->
+    let rec loop (i: int) (c: 't writecap): 't writecap =
+      if i < n
+        then loop (i + 1) (updateA a i (gen (float_of_int (i + 1))) c)
+        else c in
+      k a (loop 0 c))
+
+let[A] flip['a,'b,'<c] ((+): 'a -> 'b -> '<c) (y: 'b) (x: 'a) = x + y
+
+let[A] (^:) '<a (t: '<a) (ts: '<a list) = Cons(t, ts)
+
+let[A] t0 = T("0",         fun (ix: float) -> 1.0)
+let[A] t1 = T("x",         fun (ix: float) -> ix)
+let[A] t2 = T("x^2",       flip ( ** ) 2.0)
+let[A] t3 = T("sqrt x",    sqrt)
+let[A] t4 = T("x^5",       flip ( ** ) 5.0)
+let[A] t5 = T("x^1/5",     flip ( ** ) 0.2)
+let[A] t6 = T("e^x",       ( ** ) 2.718)
+let[A] t7 = T("log x",     log)
+let[A] t8 = T("1/x",       (/.) 1.0)
+let[A] t9 = T("-x",        (-.) -1.0)
+
+let[A] transformations =
+  t0 ^: t1 ^: t2 ^: t3 ^: t4 ^: t5 ^: t6 ^: t7 ^: t8 ^: t9 ^: Nil
+
+let[A] testCase (n: int) (T(name, _) as t: transformation) =
+  withNewDistribution n t
+    (fun 't (a: (float, 't) array) (c: 't writecap) ->
+      let (sk0, c)       = skewness a c in
+      -- putStr   ("Original array:    ");
+      -- let c = putA a c in
+      let (sk, T(name', _), c) = reduceSkewness transformations a c in
+      -- putStr   ("Improved array:    ");
+      -- let c = putA a c in
+      putStrLn ("Distribution:      " ^ name);
+      putStrLn ("Original skewness: " ^ string_of sk0);
+      putStrLn ("Improved skewness: " ^ string_of sk);
+      putStrLn ("Winning function:  " ^ name');
+      putStrLn "")
+
+let[A] tests (n: int) =
+  foldlA (fun (t: transformation) () -> testCase n t)
+         () transformations
+
+in
+  tests 30
