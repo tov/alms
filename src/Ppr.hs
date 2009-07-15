@@ -265,13 +265,13 @@ pprLet p pat e1 e2 = parensIf (p > precDot) $
 
 pprAbs :: Int -> Expr i w -> Doc
 pprAbs p e = parensIf (p > precDot) $
-    addArgs (char '.') <+> char '.'
+    addArgs (text "fun") <+> text "->"
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         addArgs = case args of
           [Left (x, t)] -> (<> (ppr x <+>
-                                char ':' <+> ppr t))
-          _             -> (<>  pprArgList args)
+                                char ':' <+> pprPrec (precArr + 1) t))
+          _             -> (<> pprArgList args)
 
 pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
