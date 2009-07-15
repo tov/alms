@@ -14,7 +14,8 @@ class Ppr p where
   pprPrec :: Int -> p -> Doc
   ppr     :: p -> Doc
 
-  ppr = pprPrec 0
+  ppr       = pprPrec precDot
+  pprPrec _ = ppr
 
 precCast, precCom, precDot, precSemi, precArr, precStar,
   precApp, precTApp :: Int
@@ -42,8 +43,8 @@ instance Separator (Type i w) where
   separator _ = comma
 
 instance (Ppr a, Separator a) => Ppr [a] where
-  pprPrec _ xs = hcat (intersperse (separator (head xs))
-                                   (map (pprPrec precCom) xs))
+  ppr xs = hcat (intersperse (separator (head xs))
+                             (map (pprPrec precCom) xs))
 
 instance Ppr (Type i w) where
   -- Print sugar for arrow types:
@@ -79,14 +80,14 @@ instance Ppr (Type i w) where
                               pprPrec (precDot + 1) x <>
                               char '.'
                                 >+> pprPrec precDot t
-  pprPrec _ (TyA t)       = braces (pprPrec 0 t)
-  pprPrec _ (TyC t)       = braces (pprPrec 0 t)
+  pprPrec _ (TyA t)       = braces (ppr t)
+  pprPrec _ (TyC t)       = braces (ppr t)
 
 instance Ppr (Prog i) where
-  pprPrec _ (Prog ms Nothing)  = vcat (map ppr ms)
-  pprPrec _ (Prog [] (Just e)) = ppr e
-  pprPrec _ (Prog ms (Just e)) = vcat (map (pprPrec 0) ms) $+$
-                                 (text "in" >+> pprPrec 0 e)
+  ppr (Prog ms Nothing)  = vcat (map ppr ms)
+  ppr (Prog [] (Just e)) = ppr e
+  ppr (Prog ms (Just e)) = vcat (map (ppr) ms) $+$
+                           (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
   pprPrec p (DcMod m)     = pprPrec p m
@@ -99,50 +100,50 @@ instance Ppr (Decl i) where
     ]
 
 instance Ppr (Mod i) where
-  pprPrec _ (MdC x Nothing e) = sep
-    [ text "module[C]" <+> pprPrec 0 x,
-      nest 2 $ equals <+> pprPrec 0 e ]
-  pprPrec _ (MdA x Nothing e) = sep
-    [ text "module[A]" <+> pprPrec 0 x,
-      nest 2 $ equals <+> pprPrec 0 e ]
-  pprPrec _ (MdC x (Just t) e) = sep
+  ppr (MdC x Nothing e) = sep
+    [ text "module[C]" <+> ppr x,
+      nest 2 $ equals <+> ppr e ]
+  ppr (MdA x Nothing e) = sep
+    [ text "module[A]" <+> ppr x,
+      nest 2 $ equals <+> ppr e ]
+  ppr (MdC x (Just t) e) = sep
     [ text "module[C]" <+>
-        pprPrec 0 x,
-      nest 2 $ colon <+> pprPrec 0 t,
-      nest 4 $ equals <+> pprPrec 0 e ]
-  pprPrec _ (MdA x (Just t) e) = sep
+        ppr x,
+      nest 2 $ colon <+> ppr t,
+      nest 4 $ equals <+> ppr e ]
+  ppr (MdA x (Just t) e) = sep
     [ text "module[A]" <+>
-        pprPrec 0 x,
-      nest 2 $ colon <+> pprPrec 0 t,
-      nest 4 $ equals <+> pprPrec 0 e ]
-  pprPrec _ (MdInt x t y)      = sep
-    [ text "interface" <+> pprPrec 0 x,
-      nest 2 $ text ":>" <+> pprPrec 0 t,
-      nest 4 $ equals <+> pprPrec 0 y ]
+        ppr x,
+      nest 2 $ colon <+> ppr t,
+      nest 4 $ equals <+> ppr e ]
+  ppr (MdInt x t y)      = sep
+    [ text "interface" <+> ppr x,
+      nest 2 $ text ":>" <+> ppr t,
+      nest 4 $ equals <+> ppr y ]
 
 instance Ppr TyDec where
-  pprPrec _ (TdAbsA n ps vs qs) =
+  ppr (TdAbsA n ps vs qs) =
     text "type[A]" <?> pprParamsV vs ps <?> ppr n
       >?> pprQuals qs
-  pprPrec _ (TdAbsC n ps) =
+  ppr (TdAbsC n ps) =
     text "type[C]" <?> pprParams ps <?> ppr n
-  pprPrec _ (TdSynA n ps rhs) =
+  ppr (TdSynA n ps rhs) =
     text "type[A]" <?> pprParams ps <?> ppr n
-      >?> equals <+> pprPrec 0 rhs
-  pprPrec _ (TdSynC n ps rhs) =
+      >?> equals <+> ppr rhs
+  ppr (TdSynC n ps rhs) =
     text "type[C]" <?> pprParams ps <?> ppr n
-      >?> equals <+> pprPrec 0 rhs
-  pprPrec _ (TdDatC n ps alts) =
+      >?> equals <+> ppr rhs
+  ppr (TdDatC n ps alts) =
     text "type[C]" <?> pprParams ps <?> ppr n
       >?> pprAlternatives alts
-  pprPrec _ (TdDatA n ps alts) =
+  ppr (TdDatA n ps alts) =
     text "type[A]" <?> pprParams ps <?> ppr n
       >?> pprAlternatives alts
 
 instance Ppr AbsTy where
-  pprPrec _ (AbsTyC name params alts) =
+  ppr (AbsTyC name params alts) =
     text "[C]" <?> pprParams params <?> ppr name <?> pprAlternatives alts
-  pprPrec _ (AbsTyA name params variances qual alts) =
+  ppr (AbsTyA name params variances qual alts) =
     text "[A]" <?>
       (pprParamsV variances params <?> ppr name
          >?> pprQuals qual
@@ -171,7 +172,7 @@ pprAlternatives (a:as) = sep $
 
 instance Ppr (Expr i w) where
   pprPrec p e0 = case expr' e0 of
-    ExId x  -> pprPrec 0 x
+    ExId x  -> ppr x
     ExInt i -> integer i
     ExStr s -> text (show s)
     ExCase e1 clauses ->
@@ -179,19 +180,19 @@ instance Ppr (Expr i w) where
         [ (PaCon (Uid "true")  Nothing, et),
           (PaCon (Uid "false") Nothing, ef) ] ->
             parensIf (p > precDot) $
-              sep [ text "if" <+> pprPrec 0 e1,
-                    nest 2 $ text "then" <+> pprPrec 0 et,
+              sep [ text "if" <+> ppr e1,
+                    nest 2 $ text "then" <+> ppr et,
                     nest 2 $ text "else" <+> pprPrec precDot ef ]
         [ (PaWild, e2) ] ->
             parensIf (p > precSemi) $
               sep [ pprPrec (precSemi + 1) e1 <> semi,
-                    pprPrec 0 e2 ]
+                    ppr e2 ]
         [ (x, e2) ] ->
-            pprLet p (pprPrec 0 x) e1 e2
+            pprLet p (ppr x) e1 e2
         _ ->
             parensIf (p > precDot) $
               vcat (sep [ text "match",
-                          nest 2 $ pprPrec 0 e1,
+                          nest 2 $ ppr e1,
                           text "with" ] : map alt clauses)
             where
               alt (xi, ei) =
@@ -205,11 +206,11 @@ instance Ppr (Expr i w) where
         where
           each kw (Binding x t e) =
             -- This could be better by pulling some args out.
-            hang (hang (text kw <+> pprPrec 0 x)
+            hang (hang (text kw <+> ppr x)
                        6
-                       (colon <+> pprPrec 0 t <+> equals))
+                       (colon <+> ppr t <+> equals))
                  2
-                 (pprPrec 0 e)
+                 (ppr e)
     ExPair e1 e2 ->
       parensIf (p > precCom) $
         sep [ pprPrec precCom e1 <> comma,
@@ -252,7 +253,7 @@ instance Ppr (Expr i w) where
 pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
   hang (text "let" <+> pat <+> pprArgList args <+> equals
-          >+> pprPrec 0 body <+> text "in")
+          >+> ppr body <+> text "in")
        (if isLet (expr' e2)
           then 0
           else 2)
@@ -264,23 +265,23 @@ pprLet p pat e1 e2 = parensIf (p > precDot) $
 
 pprAbs :: Int -> Expr i w -> Doc
 pprAbs p e = parensIf (p > precDot) $
-    addArgs (char '\\') <> char '.'
+    addArgs (char '.') <+> char '.'
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         addArgs = case args of
-          [Left (x, t)] -> (<> (pprPrec 0 x <+>
-                                char ':' <+> pprPrec 0 t))
+          [Left (x, t)] -> (<> (ppr x <+>
+                                char ':' <+> ppr t))
           _             -> (<>  pprArgList args)
 
 pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
   eachArg (Left (x, t))   = parens $
-                              pprPrec 0 x
-                                >+> colon <+> pprPrec 0 t
+                              ppr x
+                                >+> colon <+> ppr t
   eachArg (Right tvs)     = brackets .
                               sep .
                                 punctuate comma $
-                                  map (pprPrec 0) tvs
+                                  map ppr tvs
 
   combine :: [Either a b] -> [Either a [b]]
   combine  = foldr each [] where
