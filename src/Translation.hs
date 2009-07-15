@@ -1,3 +1,4 @@
+{-# LANGUAGE PatternGuards #-}
 module Translation (
   translate, transDecls, MEnv, MEnvT
 ) where
@@ -128,7 +129,7 @@ ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
         y = x /./ "y"
         z = x /./ "z"
 ca neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
-  exLet (PaPair (PaVar y) (PaVar z)) (exVar x) $
+  exLet' (PaPair (PaVar y) (PaVar z)) (exVar x) $
     exPair (ca neg pos y s1) (ca neg pos z s2)
   where y = x /./ "y"
         z = x /./ "z"
@@ -166,7 +167,7 @@ ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
   where y = x /./ "y"
         z = x /./ "z"
 ac neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
-  exLet (PaPair (PaVar y) (PaVar z)) (exVar x) $
+  exLet' (PaPair (PaVar y) (PaVar z)) (exVar x) $
     exPair (ac neg pos y s1) (ac neg pos z s2)
   where y = x /./ "y"
         z = x /./ "z"
@@ -201,7 +202,7 @@ cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
   where y = x /./ "y"
         z = x /./ "z"
 cc neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
-  exLet (PaPair (PaVar y) (PaVar z)) (exVar x) $
+  exLet' (PaPair (PaVar y) (PaVar z)) (exVar x) $
     exPair (cc neg pos y s1) (cc neg pos z s2)
   where y = x /./ "y"
         z = x /./ "z"
@@ -260,12 +261,18 @@ exUnit  = exCon (Uid "()")
 
 -- Constructs a let expression, but with a special case:
 --
---   exLet' x e (exVar x)  ==  e
+--   let x      = e in x        ==   e
+--   let (x, y) = e in (x, y)   ==   e
 --
 -- This is always safe to do.
 exLet' :: Patt -> Expr i w -> Expr i w -> Expr i w
 exLet' x e1 e2 = case (x, expr' e2) of
-  (PaVar y, ExId (Var y')) | y == y' -> e1
+  (PaVar y, ExId (Var y'))
+    | y == y'                        -> e1
+  (PaPair (PaVar y) (PaVar z), ExPair ey ez)
+    | ExId (Var y') <- expr' ey,
+      ExId (Var z') <- expr' ez,
+      y == y' && z == z'             -> e1
   _                                  -> exLet x e1 e2
 
 exLetVar' :: Lid -> Expr i w -> Expr i w -> Expr i w
