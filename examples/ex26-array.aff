@@ -1,13 +1,8 @@
 (* Demonstrates (affine) abstract types.  Correct. *)
 
 (*
-    This program defines an array library in [C], and then
-    builds on that by defining a read-write lock array library in
-    [A], where the locks are statically checked capabilities.  It
-    then runs an algorithm that copies an array a bunch of times,
-    mutates the copies in parallel, and recombines the results.  The
-    locks ensure that we don't read an array at the same time someone is
-    writing it.
+    This is like ex25-array.aff, but it has an error in its capability
+    threading, which manifests as a type error.
 *)
 
 abstype[C] 'a array = Array of int * (int -> 'a) ref with
@@ -163,9 +158,8 @@ let[A] reduceSkewness ['t]
              let (sk2, t2, c1) = getFuture future in
                if absf sk2 >. absf sk1
                  then (sk1, t1, joinA (c1, c2))
-                 else (sk2, t2, joinA (c1, c2)) in
-  let (sk, t, c) = find 0 ts c0 in
-    (sk, t, replace 0 t c)
+                 else (replace 0 t2 c0; (sk2, t2, joinA (c1, c2))) in
+  find 0 ts c0
 
 let[A] withNewDistribution['<r]
          (n: int) (T(_, gen): transformation)
