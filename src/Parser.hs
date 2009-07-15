@@ -378,10 +378,10 @@ exprp = expr0 where
              return (foldl exTApp e (concat ts))
   exprA = choice
     [ identp,
-      integer       >>! exInt,
-      charLiteral   >>! (exInt . fromIntegral . fromEnum),
-      stringLiteral >>! exStr,
-      operatorp     >>! exVar,
+      integerOrFloat >>! either exInt exFloat,
+      charLiteral    >>! (exInt . fromIntegral . fromEnum),
+      stringLiteral  >>! exStr,
+      operatorp      >>! exVar,
       parens (exprN1 <|> return (exCon (Uid "()")))
     ]
   exprN1 = do

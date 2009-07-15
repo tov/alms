@@ -153,6 +153,7 @@ valOf e env = case expr' e of
   ExId (Con c)           -> return (VaCon c Nothing)
   ExStr s                -> return (vinj s)
   ExInt z                -> return (vinj z)
+  ExFloat f              -> return (vinj f)
   ExCase e1 clauses -> do
     v1 <- valOf e1 env
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
@@ -238,6 +239,10 @@ instance Valuable a => Valuable [a] where
 
 instance Valuable Integer where
   veq        = (==)
+  vpprPrec _ = text . show
+
+instance Valuable Double where
+  veq = (==)
   vpprPrec _ = text . show
 
 instance Valuable () where

@@ -157,9 +157,10 @@ pprAlternatives (a:as) = sep $
 
 instance Ppr (Expr i w) where
   pprPrec p e0 = case expr' e0 of
-    ExId x  -> ppr x
-    ExInt i -> integer i
-    ExStr s -> text (show s)
+    ExId x    -> ppr x
+    ExInt i   -> integer i
+    ExFloat f -> double f
+    ExStr s   -> text (show s)
     ExCase e1 clauses ->
       case clauses of
         [ (PaCon (Uid "true")  Nothing, et),

@@ -23,7 +23,7 @@ module Syntax (
 
   Expr(), ExprT, Expr'(..), expr',
   fv,
-  exId, exStr, exInt, exCase, exLetRec, exPair,
+  exId, exStr, exInt, exFloat, exCase, exLetRec, exPair,
   exAbs, exApp, exTAbs, exTApp, exCast,
   exVar, exCon, exLet, exSeq, -- <== synthetic
   Binding(..), BindingT, Patt(..),
@@ -31,7 +31,7 @@ module Syntax (
 
   PO(..), bigVee, bigVeeM, bigWedge, bigWedgeM,
 
-  tdUnit, tdBool, tdInt, tdString, tdTuple, tdArr, tdLol,
+  tdUnit, tdBool, tdInt, tdFloat, tdString, tdTuple, tdArr, tdLol,
 
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
@@ -195,6 +195,7 @@ type FV       = M.Map Lid Integer
 data Expr' i w = ExId Ident
                | ExStr String
                | ExInt Integer
+               | ExFloat Double
                | ExCase (Expr i w) [(Patt, Expr i w)]
                | ExLetRec [Binding i w] (Expr i w)
                | ExPair (Expr i w) (Expr i w)
@@ -249,6 +250,9 @@ exStr  = Expr M.empty . ExStr
 
 exInt :: Integer -> Expr i w
 exInt  = Expr M.empty . ExInt
+
+exFloat :: Double -> Expr i w
+exFloat  = Expr M.empty . ExFloat
 
 exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
 exCase e clauses = Expr {
@@ -798,16 +802,17 @@ dualSessionType  = d where
     = TyMu tv (d t)
   d t = t
 
-tdUnit, tdBool, tdInt, tdString,
+tdUnit, tdBool, tdInt, tdFloat, tdString,
   tdArr, tdLol, tdTuple :: TyTag
 
 tdUnit       = TyTag (-1)  []          []                True
 tdBool       = TyTag (-2)  []          []                True
 tdInt        = TyTag (-3)  []          []                True
-tdString     = TyTag (-4)  []          []                True
-tdArr        = TyTag (-5)  [-1, 1]     []                False
-tdLol        = TyTag (-6)  [-1, 1]     [Right Qa]        False
-tdTuple      = TyTag (-7)  [1, 1]      [Left 0, Left 1]  True
+tdFloat      = TyTag (-4)  []          []                True
+tdString     = TyTag (-5)  []          []                True
+tdArr        = TyTag (-6)  [-1, 1]     []                False
+tdLol        = TyTag (-7)  [-1, 1]     [Right Qa]        False
+tdTuple      = TyTag (-8)  [1, 1]      [Left 0, Left 1]  True
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:

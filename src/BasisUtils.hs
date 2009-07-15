@@ -56,6 +56,7 @@ instance MkFun Value where
   mkFun n f = VaFun n $ \v -> vprjM v >>= return . f
 
 instance MkFun Integer  where mkFun = baseMkFun
+instance MkFun Double   where mkFun = baseMkFun
 instance MkFun Char     where mkFun = baseMkFun
 instance MkFun Bool     where mkFun = baseMkFun
 instance MkFun ()       where mkFun = baseMkFun

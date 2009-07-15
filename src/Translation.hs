@@ -47,11 +47,12 @@ transExpr :: Language w => MEnvT -> Party -> ExprT w -> ExprT C
 transExpr menv neg = te where
   tem menv' = transExpr menv' neg
   te e0 = case expr' e0 of
-    ExId i  -> case i of
-      Con k -> exCon k
-      Var x -> transVar (reifyLang1 e0) menv neg x
-    ExStr s -> exStr s
-    ExInt z -> exInt z
+    ExId i    -> case i of
+      Con k   -> exCon k
+      Var x   -> transVar (reifyLang1 e0) menv neg x
+    ExStr s   -> exStr s
+    ExInt z   -> exInt z
+    ExFloat f -> exFloat f
     ExCase e1 clauses -> exCase (te e1)
                                 [ (xi, tem (menv =--= pv xi) ei)
                                 | (xi, ei) <- clauses ]

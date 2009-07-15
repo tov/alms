@@ -272,6 +272,7 @@ tcExprC = tc where
       return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
+    ExFloat f     -> return (TyCon (Lid "float") [] tdFloat, exFloat f)
     ExCase e1 clauses -> do
       (t1, e1') <- tc e1
       (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
@@ -347,6 +348,7 @@ tcExprA = tc where
       return (tx, exId x)
     ExStr s       -> return (TyCon (Lid "string") [] tdString, exStr s)
     ExInt z       -> return (TyCon (Lid "int") [] tdInt, exInt z)
+    ExFloat f     -> return (TyCon (Lid "float") [] tdFloat, exFloat f)
     ExCase e clauses -> do
       (t0, e') <- tc e
       (t1:ts, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
@@ -453,7 +455,8 @@ tcExApp (<::) tc e0 = do
       arrows tr             [] = return tr
       arrows t'@(TyAll _ _) ts = foralls t' ts
       arrows (TyCon _ [ta, tr] td) (t:ts) | td `elem` funtypes = do
-        unifies [] t ta
+        b <- unifies [] t ta
+        tassgot b "Application (operand)" t (show ta)
         arrows tr ts
       arrows t' _ = tgot "Application (operator)" t' "function type"
       unifies tvs ta tf =
@@ -461,13 +464,13 @@ tcExApp (<::) tc e0 = do
           Just ts  -> do
             ta' <- foldM tapply (foldr TyAll ta tvs) ts
             if (ta' <:: tf)
-              then return ()
+              then return True
               else deeper
           Nothing -> deeper
         where
           deeper = case ta of
             TyAll tv ta1 -> unifies (tvs++[tv]) ta1 tf
-            _            -> tgot "Application (operand)" ta (show tf)
+            _            -> return False
   let (es, e1) = unfoldExApp e0            -- get operator and args
   (t1, e1')   <- tc e1                     -- check operator
   (ts, es')   <- unzip `liftM` mapM tc es  -- check args

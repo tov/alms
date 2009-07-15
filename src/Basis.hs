@@ -37,6 +37,7 @@ primBasis  = [
     -- "unit" built in
     -- "bool" built in
     "int"    `primtype` tdInt,
+    "float"  `primtype` tdFloat,
     "string" `primtype` tdString,
 
     "*"    `primtype` tdTuple,
@@ -67,8 +68,6 @@ primBasis  = [
       -= ((<=) :: Integer -> Integer -> Bool),
 
     -- Floating point arithmetic
-    typeC "float",
-    typeA "float",
     fun "<=." -:: "float -> float -> bool"
       -= ((<=) :: Double -> Double -> Bool),
     fun "+." -:: "float -> float -> float"
@@ -79,6 +78,8 @@ primBasis  = [
       -= ((*) :: Double -> Double -> Double),
     fun "/." -:: "float -> float -> float"
       -= ((/) :: Double -> Double -> Double),
+    fun "**" -:: "float -> float -> float"
+      -= ((**) :: Double -> Double -> Double),
     fun "sqrt" -:: "float -> float"
       -= (sqrt :: Double -> Double),
     fun "float_of_int" -:: "int -> float"
@@ -264,11 +265,6 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO ()
   ]
-
-instance Valuable Double where
-  veq = (==)
-  vpprPrec _ = text . show
-instance MkFun Double where mkFun = baseMkFun
 
 newtype Ref = Ref { unRef :: IORef Value }
   deriving (Eq, Typeable)

@@ -1,8 +1,9 @@
 module Lexer (
-  identifier, reserved, operator, reservedOp, charLiteral, stringLiteral,
-  natural, integer, float, naturalOrFloat, decimal, hexadecimal, octal,
-  symbol, lexeme, whiteSpace, parens, braces, angles, brackets, squares,
-  semi, comma, colon, dot, semiSep, semiSep1, commaSep, commaSep1,
+  identifier, reserved, operator, reservedOp, charLiteral,
+  stringLiteral, natural, integer, integerOrFloat, float,
+  naturalOrFloat, decimal, hexadecimal, octal, symbol, lexeme,
+  whiteSpace, parens, braces, angles, brackets, squares, semi, comma,
+  colon, dot, semiSep, semiSep1, commaSep, commaSep1,
 
   isUpperIdentifier, lid, uid,
   sharpLoad,
@@ -62,6 +63,16 @@ integer          = lexeme $ try $ do
           ]
   nat  <- natural
   return (sign nat)
+integerOrFloat  :: CharParser st (Either Integer Double)
+integerOrFloat   = lexeme $ try $ do
+  sign <- choice [
+            char '+' >> return id,
+            char '-' >> return (either (Left . negate) (Right . negate)),
+            return id
+          ]
+  nof  <- naturalOrFloat
+  return (sign nof)
+ 
 float           :: CharParser st Double
 float            = T.float tok
 naturalOrFloat  :: CharParser st (Either Integer Double)
