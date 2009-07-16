@@ -69,6 +69,17 @@ abstype[A] ('a, 't) array = Array of {{'a} array} with
     size arr
 end
 
+let[A] par ['t,'c,'<r1,'<r2]
+           (left:  all 'd. ('t, 'd) readcap -> '<r1 * ('t, 'd) readcap)
+           (right: all 'd. ('t, 'd) readcap -> '<r2 * ('t, 'd) readcap)
+           (c: ('t, 'c) readcap)
+           : '<r1 * '<r2 * ('t, 'c) readcap =
+  let (c1, c2) = splitA c in
+  let future   = newFuture (fun () -> left c1) in
+  let (r2, c2) = right c2 in
+  let (r1, c1) = getFuture future in
+    (r1, r2, joinA (c1, c2))
+
 let[A] foldA ['a,'t,'c,'<r]
              (f: 'a -> '<r -> '<r) (z: '<r)
              (a: ('a, 't) array) (c: ('t, 'c) readcap) =
@@ -115,7 +126,8 @@ let[A] meanA ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
 let[A] stdDevA ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
   let (mean, c) = meanA a c in
   let (num, c)  = foldA
-                    (fun (x: float) (acc: float) -> (x -. mean) ** 2.0)
+                    (fun (x: float) (acc: float) ->
+                       acc +. (x -. mean) ** 2.0)
                     0.0 a c in
     (sqrt (num /. float_of_int (sizeA a)), c)
 
@@ -152,18 +164,19 @@ let[A] reduceSkewness ['t]
     | Nil -> let (sk, c) = skewness a c in
                (sk, T("identity", fun f: float -> f), c)
     | Cons(T(_, ft) as t, ts)
-          -> let (c1, c2) = splitA c in
-             let future   = newFuture (fun () ->
-               mapA ft a c1
-                 (fun 's (b: (float, 's) array) (d: 's writecap)
-                         (c: ('t, 'c * unit) readcap) ->
-                    let (sk, d) = skewness b d in
-                      (sk, t, c))) in
-             let (sk1, t1, c2) = find (ix + 1) ts c2 in
-             let (sk2, t2, c1) = getFuture future in
-               if absf sk2 >. absf sk1
-                 then (sk1, t1, joinA (c1, c2))
-                 else (sk2, t2, joinA (c1, c2)) in
+          -> let ((sk1, t1), (sk2, t2), c) =
+               par
+                 (fun 'c -> find['c] (ix + 1) ts)
+                 (fun 'c (c: ('t, 'c) readcap) ->
+                   mapA ft a c
+                     (fun 's (b: (float, 's) array) (d: 's writecap)
+                             (c: ('t, 'c) readcap) ->
+                       let (sk, d) = skewness b d in
+                         (sk, t, c)))
+                 c
+              in if absf sk2 <. absf sk1
+                   then (sk2, t2, c)
+                   else (sk1, t1, c) in
   let (sk, t, c) = find 0 ts c0 in
     (sk, t, replace 0 t c)
 
@@ -177,29 +190,26 @@ let[A] withNewDistribution['<r]
         else c in
       k a (loop 0 c))
 
-let[A] flip['a,'b,'<c] ((+): 'a -> 'b -> '<c) (y: 'b) (x: 'a) = x + y
-
 let[A] (^:) '<a (t: '<a) (ts: '<a list) = Cons(t, ts)
 
-let[A] t0 = T("0",         fun (ix: float) -> 1.0)
-let[A] t1 = T("x",         fun (ix: float) -> ix)
-let[A] t2 = T("x^2",       flip ( ** ) 2.0)
-let[A] t3 = T("sqrt x",    sqrt)
-let[A] t4 = T("x^5",       flip ( ** ) 5.0)
-let[A] t5 = T("x^1/5",     flip ( ** ) 0.2)
-let[A] t6 = T("e^x",       ( ** ) 2.718)
-let[A] t7 = T("log x",     log)
-let[A] t8 = T("1/x",       (/.) 1.0)
-let[A] t9 = T("-x",        (-.) -1.0)
-
-let[A] transformations =
-  t0 ^: t1 ^: t2 ^: t3 ^: t4 ^: t5 ^: t6 ^: t7 ^: t8 ^: t9 ^: Nil
+let[A] functions (n: int) =
+  T("1",         fun (ix: float) -> 1.0) ^:
+  T("x",         fun (ix: float) -> ix) ^:
+  T("x^2",       flip ( ** ) 2.0) ^:
+  T("sqrt x",    sqrt) ^:
+  T("x^5",       flip ( ** ) 5.0) ^:
+  T("x^1/5",     flip ( ** ) 0.2) ^:
+  T("e^x",       ( ** ) 2.718) ^:
+  T("log x",     log) ^:
+  T("1/x",       (/.) 1.0) ^:
+  T("-x",        (-.) (float_of_int n)) ^:
+  Nil
 
 let[A] testCase (n: int) (T(name, _) as t: transformation) =
   withNewDistribution n t
     (fun 't (a: (float, 't) array) (c: 't writecap) ->
       let (sk0, c)       = skewness a c in
-      let (sk, T(name', _), c) = reduceSkewness transformations a c in
+      let (sk, T(name', _), c) = reduceSkewness (functions n) a c in
       putStrLn ("Distribution:      " ^ name);
       putStrLn ("Original skewness: " ^ string_of sk0);
       putStrLn ("Improved skewness: " ^ string_of sk);
@@ -208,7 +218,7 @@ let[A] testCase (n: int) (T(name, _) as t: transformation) =
 
 let[A] tests (n: int) =
   foldlA (fun (t: transformation) () -> testCase n t)
-         () transformations
+         () (functions n)
 
 in
   tests 30
