@@ -73,6 +73,8 @@ primBasis  = [
     -- Floating point arithmetic
     fun "<=." -:: "float -> float -> bool"
       -= ((<=) :: Double -> Double -> Bool),
+    fun "<." -:: "float -> float -> bool"
+      -= ((<) :: Double -> Double -> Bool),
     fun "+." -:: "float -> float -> float"
       -= ((+) :: Double -> Double -> Double),
     fun "-." -:: "float -> float -> float"
@@ -309,7 +311,6 @@ srcBasis  = unlines [
   "let[C] (<) (x: int) (y: int) = not (y <= x)",
   "let[C] (>) = flip (<)",
   "let[C] (>=) = flip (<=)",
-  "let[C] (<.) (x: float) (y: float) = not (y <=. x)",
   "let[C] (>.) = flip (<.)",
   "let[C] (>=.) = flip (<=.)",
   "let[C] null = fun 'a (x : 'a list) ->",
