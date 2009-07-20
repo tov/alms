@@ -139,7 +139,7 @@ let[A] skewness ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
                     (fun (x: float) (acc: float) ->
                        (x -. m) ** 3.0 +.  acc)
                     0.0 a c in
-    (devs /. ((n -. 1.0) *. s ** 3.0) /. sqrt (6.0 /. n), c)
+    (devs /. ((n -. 1.0) *. s ** 3.0), c)
 
 type[A] transformation = T of string * (float -> float)
 
