@@ -12,6 +12,7 @@ import Lexer
 
 import Text.ParserCombinators.Parsec
 import System.IO.Unsafe (unsafePerformIO)
+import System.FilePath ((</>), dropFileName)
 
 type St  = ()
 type P a = CharParser St a
@@ -153,8 +154,9 @@ declsp  = choice [
               return (d : ds),
             do
               sharpLoad
-              file <- stringLiteral
-              let contents = unsafePerformIO (readFile file)
+              base <- sourceName `liftM` getPosition
+              file <- inDirectoryOf base `liftM` stringLiteral
+              let contents = unsafePerformIO $ readFile file
               ds <- case parse parseProg file contents of
                 Left e   -> fail (show e)
                 Right p  -> return (prog2decls p)
@@ -162,6 +164,8 @@ declsp  = choice [
               return (ds ++ ds'),
             return []
           ]
+  where inDirectoryOf "-"  file = file
+        inDirectoryOf base file = dropFileName base </> file
 
 declp :: P (Decl ())
 declp  = choice [
