@@ -347,11 +347,14 @@ exprp = expr0 where
          return (exCase e1 clauses),
       do reserved "fun"
          build <- choice
-           [ argsp1,
-             do x  <- pattp
-                colon
-                t  <- typepP (precArr + 1)
-                return (exAbs x t) ]
+           [
+             argsp1,
+             do
+               x  <- pattp
+               colon
+               t  <- typepP (precArr + 1)
+               return (exAbs x t)
+           ]
          arrow
          expr0 >>! build,
       expr1 ]
@@ -397,11 +400,14 @@ exprp = expr0 where
            return (foldl exPair e1 es),
         return e1 ]
 
+-- Parse an infix operator at given precedence
 opappp :: Prec -> P (Expr () w -> Expr () w -> Expr () w)
 opappp p = do
   op <- oplevelp p
   return (\e1 e2 -> (exVar op `exApp` e1) `exApp` e2)
 
+-- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
+-- to introduce affine arrows
 afargsp :: Language w =>
            P (Type () w -> Type () w, Expr () w -> Expr () w)
 afargsp = loop tyArr where
@@ -417,27 +423,81 @@ afargsp = loop tyArr where
          return (ft . fts, fe . fes),
       return (id, id) ]
 
+-- One or more of (pat:typ, ...), (), tyvar
 argsp1 :: Language w => P (Expr () w -> Expr () w)
 argsp1  = foldr (.) id `fmap` many1 argp
 
+-- Zero or more of (pat:typ, ...), (), tyvar
 argsp :: Language w => P (Expr () w -> Expr () w)
 argsp  = foldr (.) id `fmap` many argp
 
+-- Parse a (pat:typ, ...), (), or tyvar
 argp :: Language w => P (Expr () w -> Expr () w)
 argp  = (tyargp <|> vargp const) >>! snd
 
+-- Parse a (pat:typ, ...) or () argument
 vargp :: Language w =>
          (Type () w -> Type () w -> Type () w) ->
          P (Type () w -> Type () w, Expr () w -> Expr () w)
-vargp arr = parens $ choice
-              [ do
-                  x <- pattp
-                  reservedOp ":"
-                  t <- typep
-                  return (arr t, exAbs x t),
-               return (arr tyUnit, exAbs PaWild tyUnit) ]
-  where tyUnit = tyGround "unit"
+vargp arr = do
+  (p, t) <- paty
+  return (arr t, exAbs p t)
 
+-- Parse a (pat:typ, ...) or () argument
+paty :: Language w => P (Patt, Type () w)
+paty  = do
+  (p, mt) <- pamty
+  case (p, mt) of
+    (_, Just t) -> return (p, t)
+    (PaCon (Uid "()") Nothing, Nothing)
+                 -> return (p, tyGround "unit")
+    _            -> pzero <?> ":"
+
+-- Parse a (), (pat:typ, ...) or (pat) argument
+pamty :: Language w => P (Patt, Maybe (Type () w))
+pamty  = parens $ choice
+           [
+             do
+               (p, mt) <- pamty
+               maybe (maybecolon p) (morepts p) mt,
+             do
+               p <- pattp
+               maybecolon p,
+             return (PaCon (Uid "()") Nothing, Nothing)
+           ]
+  where
+    maybecolon p = choice
+      [
+        do
+          colon
+          t <- typep
+          morepts p t,
+        moreps p
+      ]
+    moreps p = do
+      ps <- many (comma >> pattp)
+      return (foldl PaPair p ps, Nothing)
+    morepts p0 t0 = do
+      (ps, ts) <- liftM unzip . many $ do
+        comma
+        choice
+          [
+            do
+              (p, mt) <- pamty
+              case mt of
+                Just t  -> return (p, t)
+                Nothing -> colonType p,
+            do
+              p <- pattp
+              colonType p
+          ]
+      return (foldl PaPair p0 ps, Just (foldl tyTuple t0 ts))
+    colonType p = do
+      colon
+      t <- typep
+      return (p, t)
+
+-- Parse a sequence of one or more tyvar arguments
 tyargp :: Language w =>
           P (Type () w -> Type () w, Expr () w -> Expr () w)
 tyargp  = do

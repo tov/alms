@@ -96,7 +96,7 @@ let[A] mapA ['a,'t,'c,'b,'<r]
   withNewA (sizeA a)
     (fun['s] (b: ('b, 's) array) (d: 's writecap) ->
       let ((_, d), c) =
-            foldA (fun (x: 'a) ((i, d): int * 's writecap) ->
+            foldA (fun (x: 'a) (i: int, d: 's writecap) ->
                      (i + 1, updateA b i (f x) d))
                   (0, d) a c
        in k b d c)
