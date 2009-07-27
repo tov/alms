@@ -102,7 +102,7 @@ instance (Locatable a, Locatable b, Locatable c, Locatable d, Locatable e) =>
     | otherwise                = getLoc w
   setLoc (x, y, z, v, w) l     = (setLoc x l, y, z, v, w)
 
-cloneLoc :: Locatable a => a -> a -> a
+cloneLoc :: (Locatable a, Locatable b) => a -> b -> a
 cloneLoc a b = setLoc a (getLoc b)
 
 scrub :: Data a => a -> a
