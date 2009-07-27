@@ -7,6 +7,7 @@ module Ppr (
 
 import Prec
 import Syntax
+
 import Text.PrettyPrint
 import Data.List (intersperse)
 
@@ -156,7 +157,7 @@ pprAlternatives (a:as) = sep $
     alt (Uid s, Just t)  = text s <+> text "of" <+> pprPrec precDot t
 
 instance Ppr (Expr i w) where
-  pprPrec p e0 = case expr' e0 of
+  pprPrec p e0 = case view e0 of
     ExId x    -> ppr x
     ExInt i   -> integer i
     ExFloat f -> double f
@@ -203,13 +204,13 @@ instance Ppr (Expr i w) where
               pprPrec (precCom + 1) e2 ]
     ExAbs _ _ _ -> pprAbs p e0
     ExApp e1 e2
-      | ExId (Var (Lid x)) <- expr' e1,
+      | ExId (Var (Lid x)) <- view e1,
         Right p'           <- precOp x,
         p' == 10
           -> parensIf (p > p') $
                text x <+> pprPrec p' e2
-      | ExApp e11 e12      <- expr' e1,
-        ExId (Var (Lid x)) <- expr' e11,
+      | ExApp e11 e12      <- view e1,
+        ExId (Var (Lid x)) <- view e11,
         (pl, pr, p')       <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
         p' < 9
           -> parensIf (p > p') $
@@ -240,7 +241,7 @@ pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
   hang (text "let" <+> pat <+> pprArgList args <+> equals
           >+> ppr body <+> text "in")
-       (if isLet (expr' e2)
+       (if isLet (view e2)
           then 0
           else 2)
        (pprPrec precDot e2)

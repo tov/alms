@@ -4,11 +4,13 @@ module Util (
   foldl2, foldr2, all2, any2,
   char2integer, integer2char,
   unscanr, unscanl,
+  module Control.Arrow,
   module Control.Monad
 ) where
 
 import Data.Char (chr, ord)
 import Data.Maybe (fromJust)
+import Control.Arrow hiding (loop, (<+>))
 import Control.Monad
 
 foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a

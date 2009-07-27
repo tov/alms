@@ -146,7 +146,7 @@ eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
 valOf :: Expr i w -> D
-valOf e env = case expr' e of
+valOf e env = case view e of
   ExId (Var x)           -> case env =.= x of
     Just v  -> v
     Nothing -> fail $ "BUG! unbound identifier: " ++ show x

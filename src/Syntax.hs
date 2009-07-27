@@ -21,7 +21,7 @@ module Syntax (
 
   TypeTW(..), typeTW,
 
-  Expr(), ExprT, Expr'(..), expr',
+  Expr(), ExprT, Expr'(..),
   fv,
   exId, exStr, exInt, exFloat, exCase, exLetRec, exPair,
   exAbs, exApp, exTAbs, exTApp, exCast,
@@ -46,10 +46,12 @@ module Syntax (
   syntacticValue, castableType, modName, prog2decls,
   unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun,
 
+  module Viewable,
   dumpType
 ) where
 
 import Util
+import Viewable
 import Env
 
 import Control.Monad.State (State, evalState, get, put)
@@ -189,7 +191,10 @@ data AbsTy   = AbsTyC {
                }
   deriving (Typeable, Data)
 
-data Expr i w = Expr { fv_ :: FV, expr'_ :: Expr' i w }
+data Expr i w = Expr {
+                  fv_   :: FV,
+                  expr_ :: Expr' i w
+                }
   deriving (Typeable, Data)
 type FV       = M.Map Lid Integer
 data Expr' i w = ExId Ident
@@ -242,9 +247,6 @@ pv (PaStr _)          = S.empty
 pv (PaInt _)          = S.empty
 pv (PaAs x y)         = pv x `S.union` S.singleton y
 
-expr' :: Expr i w -> Expr' i w
-expr'  = expr'_
-
 exStr :: String -> Expr i w
 exStr  = Expr M.empty . ExStr
 
@@ -258,7 +260,7 @@ exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
 exCase e clauses = Expr {
   fv_    = fv e |*|
            foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
-  expr'_ = ExCase e clauses
+  expr_  = ExCase e clauses
 }
 
 exLetRec :: [Binding i w] -> Expr i w -> Expr i w
@@ -267,7 +269,7 @@ exLetRec bs e2 = Expr {
                vs  = map bnvar  bs
                pot = foldr (|*|) (fv e2) (map fv es)
            in foldl (|-|) pot vs,
-  expr'_ = ExLetRec bs e2
+  expr_  = ExLetRec bs e2
 }
 
 exId :: Ident -> Expr i w
@@ -275,43 +277,43 @@ exId x = Expr {
   fv_    = case x of
              Var y -> M.singleton y 1
              Con _ -> M.empty,
-  expr'_ = ExId x
+  expr_  = ExId x
 }
 
 exPair :: Expr i w -> Expr i w -> Expr i w
 exPair e1 e2 = Expr {
   fv_    = fv e1 |*| fv e2,
-  expr'_ = ExPair e1 e2
+  expr_  = ExPair e1 e2
 }
 
 exAbs :: Patt -> Type i w -> Expr i w -> Expr i w
 exAbs x t e = Expr {
   fv_    = fv e |--| pv x,
-  expr'_ = ExAbs x t e
+  expr_  = ExAbs x t e
 }
 
 exApp :: Expr i w -> Expr i w -> Expr i w
 exApp e1 e2 = Expr {
   fv_    = fv e1 |*| fv e2,
-  expr'_ = ExApp e1 e2
+  expr_  = ExApp e1 e2
 }
 
 exTAbs :: TyVar -> Expr i w -> Expr i w
 exTAbs tv e = Expr {
   fv_    = fv e,
-  expr'_ = ExTAbs tv e
+  expr_  = ExTAbs tv e
 }
 
 exTApp :: Expr i w -> Type i w -> Expr i w
 exTApp e1 t2 = Expr {
   fv_    = fv e1,
-  expr'_ = ExTApp e1 t2
+  expr_  = ExTApp e1 t2
 }
 
 exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
   fv_    = fv e,
-  expr'_ = ExCast e t1 t2
+  expr_  = ExCast e t1 t2
 }
 
 exVar :: Lid -> Expr i w
@@ -412,6 +414,10 @@ data TypeTW = TypeTC (TypeT C)
 
 typeTW :: Language w => TypeT w -> TypeTW
 typeTW t = langCase t TypeTC TypeTA
+
+instance Viewable (Expr i w) where
+  type View (Expr i w) = Expr' i w
+  view = expr_
 
 -- On TypeTW, we define simple alpha equality, which we then use
 -- to keep track of where we've been when we define type equality
@@ -920,7 +926,7 @@ atype2ctype (TyMu tv t)
 atype2ctype t         = tyA t
 
 syntacticValue :: Expr i w -> Bool
-syntacticValue e = case expr' e of
+syntacticValue e = case view e of
   ExId _       -> True
   ExStr _      -> True
   ExInt _      -> True
@@ -932,7 +938,7 @@ syntacticValue e = case expr' e of
   _            -> False
 
 syntacticConstructor :: Expr i w -> Bool
-syntacticConstructor e = case expr' e of
+syntacticConstructor e = case view e of
   ExId (Con _) -> True
   ExTApp e1 _  -> syntacticConstructor e1
   ExApp e1 e2  -> syntacticConstructor e1 && syntacticValue e2
@@ -959,7 +965,7 @@ prog2decls (Prog ds Nothing)  = ds
 
 unfoldExAbs :: Expr i w -> ([Either (Patt, Type i w) TyVar], Expr i w)
 unfoldExAbs  = unscanr each where
-  each e = case expr' e of
+  each e = case view e of
     ExAbs x t e' -> Just (Left (x, t), e')
     ExTAbs tv e' -> Just (Right tv, e')
     _            -> Nothing
@@ -971,13 +977,13 @@ unfoldTyAll  = unscanr each where
 
 unfoldExTApp :: Expr i w -> ([Type i w], Expr i w)
 unfoldExTApp  = unscanl each where
-  each e = case expr' e of
+  each e = case view e of
     ExTApp e' t  -> Just (t, e')
     _            -> Nothing
 
 unfoldExApp :: Expr i w -> ([Expr i w], Expr i w)
 unfoldExApp  = unscanl each where
-  each e = case expr' e of
+  each e = case view e of
     ExApp e1 e2 -> Just (e2, e1)
     _           -> Nothing
 

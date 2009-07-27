@@ -46,7 +46,7 @@ transMod menv m                  =
 transExpr :: Language w => MEnvT -> Party -> ExprT w -> ExprT C
 transExpr menv neg = te where
   tem menv' = transExpr menv' neg
-  te e0 = case expr' e0 of
+  te e0 = case view e0 of
     ExId i    -> case i of
       Con k   -> exCon k
       Var x   -> transVar (reifyLang1 e0) menv neg x
@@ -274,12 +274,12 @@ exUnit  = exCon (Uid "()")
 --
 -- This is always safe to do.
 exLet' :: Patt -> Expr i w -> Expr i w -> Expr i w
-exLet' x e1 e2 = case (x, expr' e2) of
+exLet' x e1 e2 = case (x, view e2) of
   (PaVar y, ExId (Var y'))
     | y == y'                        -> e1
   (PaPair (PaVar y) (PaVar z), ExPair ey ez)
-    | ExId (Var y') <- expr' ey,
-      ExId (Var z') <- expr' ez,
+    | ExId (Var y') <- view ey,
+      ExId (Var z') <- view ez,
       y == y' && z == z'             -> e1
   _                                  -> exLet x e1 e2
 
@@ -292,8 +292,8 @@ exLetVar'  = exLet' . PaVar
 --
 -- This eta-contraction is always safe, because f has no effect
 exAbs' :: Patt -> Type i w -> Expr i w -> Expr i w
-exAbs' x t e = case expr' e of
-  ExApp e1 e2 -> case (x, expr' e1, expr' e2) of
+exAbs' x t e = case view e of
+  ExApp e1 e2 -> case (x, view e1, view e2) of
     (PaVar y, ExId (Var f), ExId (Var y')) |
       y == y' && y /= f -> exVar f
     _                   -> exAbs x t e
@@ -308,8 +308,8 @@ exAbsVar'  = exAbs' . PaVar
 --
 -- This should always be safe, because f has no effect
 exTAbs' :: TyVar -> Expr i w -> Expr i w
-exTAbs' tv e = case expr' e of
-  ExTApp e1 t2 -> case (expr' e1, t2) of
+exTAbs' tv e = case view e of
+  ExTApp e1 t2 -> case (view e1, t2) of
     (ExId (Var f), TyVar tv') |
       tv == tv'  -> exVar f
     _            -> exTAbs tv e

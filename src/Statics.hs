@@ -266,7 +266,7 @@ tysubsts ps ts t =
 tcExprC :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
 tcExprC = tc where
   tc :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
-  tc e0 = case expr' e0 of
+  tc e0 = case view e0 of
     ExId x -> do
       tx <- getVar x
       return (tx, exId x)
@@ -342,7 +342,7 @@ tcExprC = tc where
 tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
   tc :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
-  tc e0 = case expr' e0 of
+  tc e0 = case view e0 of
     ExId x -> do
       tx <- getVar x
       return (tx, exId x)
