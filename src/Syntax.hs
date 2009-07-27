@@ -51,6 +51,7 @@ module Syntax (
 ) where
 
 import Util
+import Loc as Loc
 import Viewable
 import Env
 
@@ -192,6 +193,7 @@ data AbsTy   = AbsTyC {
   deriving (Typeable, Data)
 
 data Expr i w = Expr {
+                  eloc_ :: Loc,
                   fv_   :: FV,
                   expr_ :: Expr' i w
                 }
@@ -248,16 +250,17 @@ pv (PaInt _)          = S.empty
 pv (PaAs x y)         = pv x `S.union` S.singleton y
 
 exStr :: String -> Expr i w
-exStr  = Expr M.empty . ExStr
+exStr  = Expr bogus M.empty . ExStr
 
 exInt :: Integer -> Expr i w
-exInt  = Expr M.empty . ExInt
+exInt  = Expr bogus M.empty . ExInt
 
 exFloat :: Double -> Expr i w
-exFloat  = Expr M.empty . ExFloat
+exFloat  = Expr bogus M.empty . ExFloat
 
 exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
 exCase e clauses = Expr {
+  eloc_  = getLoc (e, clauses),
   fv_    = fv e |*|
            foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
   expr_  = ExCase e clauses
@@ -265,6 +268,7 @@ exCase e clauses = Expr {
 
 exLetRec :: [Binding i w] -> Expr i w -> Expr i w
 exLetRec bs e2 = Expr {
+  eloc_  = getLoc (bs, e2),
   fv_    = let es  = map bnexpr bs
                vs  = map bnvar  bs
                pot = foldr (|*|) (fv e2) (map fv es)
@@ -274,6 +278,7 @@ exLetRec bs e2 = Expr {
 
 exId :: Ident -> Expr i w
 exId x = Expr {
+  eloc_  = bogus,
   fv_    = case x of
              Var y -> M.singleton y 1
              Con _ -> M.empty,
@@ -282,36 +287,42 @@ exId x = Expr {
 
 exPair :: Expr i w -> Expr i w -> Expr i w
 exPair e1 e2 = Expr {
+  eloc_  = getLoc (e1, e2),
   fv_    = fv e1 |*| fv e2,
   expr_  = ExPair e1 e2
 }
 
 exAbs :: Patt -> Type i w -> Expr i w -> Expr i w
 exAbs x t e = Expr {
+  eloc_  = getLoc (x, t, e),
   fv_    = fv e |--| pv x,
   expr_  = ExAbs x t e
 }
 
 exApp :: Expr i w -> Expr i w -> Expr i w
 exApp e1 e2 = Expr {
+  eloc_  = getLoc (e1, e2),
   fv_    = fv e1 |*| fv e2,
   expr_  = ExApp e1 e2
 }
 
 exTAbs :: TyVar -> Expr i w -> Expr i w
 exTAbs tv e = Expr {
+  eloc_  = getLoc e,
   fv_    = fv e,
   expr_  = ExTAbs tv e
 }
 
 exTApp :: Expr i w -> Type i w -> Expr i w
 exTApp e1 t2 = Expr {
+  eloc_  = getLoc (e1, t2),
   fv_    = fv e1,
   expr_  = ExTApp e1 t2
 }
 
 exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
+  eloc_  = getLoc (e, t1, t2),
   fv_    = fv e,
   expr_  = ExCast e t1 t2
 }
@@ -418,6 +429,22 @@ typeTW t = langCase t TypeTC TypeTA
 instance Viewable (Expr i w) where
   type View (Expr i w) = Expr' i w
   view = expr_
+
+instance Locatable (Expr i w) where
+  getLoc       = eloc_
+  setLoc e loc = e { eloc_ = loc }
+
+instance Locatable (Type i w) where
+  getLoc = const bogus
+  setLoc = const
+
+instance Locatable (Binding i w) where
+  getLoc = const bogus
+  setLoc = const
+
+instance Locatable Patt where
+  getLoc = const bogus
+  setLoc = const
 
 -- On TypeTW, we define simple alpha equality, which we then use
 -- to keep track of where we've been when we define type equality
