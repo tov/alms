@@ -16,7 +16,7 @@ module Syntax (
   TyTag(..), Variance(..),
   Type(..), tyC, tyA, TypeT, TEnv,
   Prog(..), ProgT,
-  Decl(..), DeclT,
+  Decl(..), DeclT, dcMod, dcTyp, dcAbs,
   Mod(..), ModT, TyDec(..), AbsTy(..),
 
   TypeTW(..), typeTW,
@@ -136,10 +136,19 @@ type TEnv w = Env Lid (TypeT w)
 data Prog i = Prog [Decl i] (Maybe (Expr i C))
   deriving (Typeable, Data)
 
-data Decl i = DcMod (Mod i)
-            | DcTyp TyDec
-            | DcAbs AbsTy [Decl i]
+data Decl i = DcMod Loc (Mod i)
+            | DcTyp Loc TyDec
+            | DcAbs Loc AbsTy [Decl i]
   deriving (Typeable, Data)
+
+dcMod :: Mod i -> Decl i
+dcMod  = DcMod bogus
+
+dcTyp :: TyDec -> Decl i
+dcTyp  = DcTyp bogus
+
+dcAbs :: AbsTy -> [Decl i] -> Decl i
+dcAbs  = DcAbs bogus
 
 data Mod i  = MdA Lid (Maybe (Type i A)) (Expr i A)
             | MdC Lid (Maybe (Type i C)) (Expr i C)
@@ -260,7 +269,7 @@ exFloat  = Expr bogus M.empty . ExFloat
 
 exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
 exCase e clauses = Expr {
-  eloc_  = getLoc (e, clauses),
+  eloc_  = getLoc (e, map snd clauses),
   fv_    = fv e |*|
            foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
   expr_  = ExCase e clauses
@@ -294,7 +303,7 @@ exPair e1 e2 = Expr {
 
 exAbs :: Patt -> Type i w -> Expr i w -> Expr i w
 exAbs x t e = Expr {
-  eloc_  = getLoc (x, t, e),
+  eloc_  = getLoc e,
   fv_    = fv e |--| pv x,
   expr_  = ExAbs x t e
 }
@@ -315,14 +324,14 @@ exTAbs tv e = Expr {
 
 exTApp :: Expr i w -> Type i w -> Expr i w
 exTApp e1 t2 = Expr {
-  eloc_  = getLoc (e1, t2),
+  eloc_  = getLoc e1,
   fv_    = fv e1,
   expr_  = ExTApp e1 t2
 }
 
 exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
-  eloc_  = getLoc (e, t1, t2),
+  eloc_  = getLoc e,
   fv_    = fv e,
   expr_  = ExCast e t1 t2
 }
@@ -432,19 +441,22 @@ instance Viewable (Expr i w) where
 
 instance Locatable (Expr i w) where
   getLoc       = eloc_
+
+instance Relocatable (Expr i w) where
   setLoc e loc = e { eloc_ = loc }
 
-instance Locatable (Type i w) where
-  getLoc = const bogus
-  setLoc = const
+instance Locatable (Decl i) where
+  getLoc (DcMod loc _)   = loc
+  getLoc (DcTyp loc _)   = loc
+  getLoc (DcAbs loc _ _) = loc
+
+instance Relocatable (Decl i) where
+  setLoc (DcMod _ m)     loc = DcMod loc m
+  setLoc (DcTyp _ td)    loc = DcTyp loc td
+  setLoc (DcAbs _ at ds) loc = DcAbs loc at ds
 
 instance Locatable (Binding i w) where
-  getLoc = const bogus
-  setLoc = const
-
-instance Locatable Patt where
-  getLoc = const bogus
-  setLoc = const
+  getLoc = getLoc . bnexpr
 
 -- On TypeTW, we define simple alpha equality, which we then use
 -- to keep track of where we've been when we define type equality
@@ -985,8 +997,10 @@ modName (MdC x _ _)   = x
 modName (MdInt x _ _) = x
 
 prog2decls :: Prog i -> [Decl i]
-prog2decls (Prog ds (Just e)) = ds ++ [DcMod (MdC (Lid "it") Nothing e)]
-prog2decls (Prog ds Nothing)  = ds
+prog2decls (Prog ds (Just e))
+  = ds ++ [DcMod (getLoc e) (MdC (Lid "it") Nothing e)]
+prog2decls (Prog ds Nothing)
+  = ds
 
 -- Unfolding various sequences
 

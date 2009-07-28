@@ -124,9 +124,9 @@ evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl i -> DDecl
-evalDecl (DcMod m)    = evalMod m
-evalDecl (DcTyp _)    = return
-evalDecl (DcAbs _ ds) = evalDecls ds
+evalDecl (DcMod _ m)    = evalMod m
+evalDecl (DcTyp _ _)    = return
+evalDecl (DcAbs _ _ ds) = evalDecls ds
 
 evalMod :: Mod i -> DDecl
 evalMod (MdC x _ e)   env = do

@@ -76,9 +76,9 @@ instance Ppr (Prog i) where
                            (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
-  pprPrec p (DcMod m)     = pprPrec p m
-  pprPrec p (DcTyp td)    = pprPrec p td
-  pprPrec p (DcAbs at ds) =
+  pprPrec p (DcMod _ m)     = pprPrec p m
+  pprPrec p (DcTyp _ td)    = pprPrec p td
+  pprPrec p (DcAbs _ at ds) =
     vcat [
       text "abstype" <> pprPrec p at <+> text "with",
       nest 2 $ vcat (map (pprPrec p) ds),

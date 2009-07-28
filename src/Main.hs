@@ -195,7 +195,7 @@ interactive opt rs0 = do
       mapM_ print docs
         where
       dispatch :: (ReplState, [Doc]) -> Decl i -> IO (ReplState, [Doc])
-      dispatch (rs, docs) (DcMod m) = do
+      dispatch (rs, docs) (DcMod _ m) = do
         let e = rsDynamics rs
         mv   <- case e =.= modName m of
                   Nothing -> return Nothing
@@ -205,8 +205,8 @@ interactive opt rs0 = do
                     MdA x t _   -> val "A" x t mv
                     MdInt x t _ -> val "A" x (Just t) mv
         return (rs { rsDynamics = e =-= modName m }, doc : docs)
-      dispatch (rs, docs) (DcTyp td) = return (rs, ppr td : docs)
-      dispatch (rs, docs) (DcAbs at ds) =
+      dispatch (rs, docs) (DcTyp _ td) = return (rs, ppr td : docs)
+      dispatch (rs, docs) (DcAbs _ at ds) =
         foldrM dispatch (rs, (text "abstype" <> ppr at) : docs) ds
       val :: (Ppr x, Ppr t, Ppr v) =>
              String -> x -> Maybe t -> Maybe v -> Doc

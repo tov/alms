@@ -1,4 +1,7 @@
-{-# LANGUAGE DeriveDataTypeable, ScopedTypeVariables #-}
+{-# LANGUAGE
+      DeriveDataTypeable,
+      ImplicitParams,
+      ScopedTypeVariables #-}
 module Statics (
   S, env0,
   tcProg, tcDecls,
@@ -8,6 +11,7 @@ module Statics (
 
 import Util
 import Syntax
+import Loc
 import Env as Env
 import Ppr ()
 
@@ -57,7 +61,7 @@ data TCEnv w = TCEnv (G w, G (OtherLang w)) (I w, I (OtherLang w)) (D, D)
 instance Monad m => Monad (TC w m) where
   m >>= k = TC (unTC m >>= unTC . k)
   return  = TC . return
-  fail    = TC . fail . ("Type error: "++)
+  fail    = TC . fail
 
 asksM :: M.R.MonadReader r m => (r -> m a) -> m a
 asksM  = (M.R.ask >>=)
@@ -139,7 +143,7 @@ withVars :: Monad m => G w -> TC w m a -> TC w m a
 withVars g' = TC . M.R.local add . unTC where
   add (TCEnv (g, gw) ii dd) = TCEnv (g =+= g', gw) ii dd
 
-withTypes :: Monad m => I w -> TC w m a -> TC w m a
+withTypes :: (?loc :: Loc, Monad m) => I w -> TC w m a -> TC w m a
 withTypes i' = TC . M.R.local add . unTC where
   add (TCEnv g (i, iw) dd) = TCEnv g (i =+= i', iw) dd
 
@@ -160,13 +164,13 @@ withReplacedTyTags tag = TC . M.R.local replace . unTC where
       (\_ -> TCEnv (r g, r g') (r i, r i') dd)
   r a = replaceTyTags tag a
 
-getTV :: Monad m => TyVar -> TC w m TyVar
+getTV :: (?loc :: Loc, Monad m) => TyVar -> TC w m TyVar
 getTV tv = TC $ asksM check where
   check (TCEnv _ _ (d, _)) = case d =.= tv of
     Just tv' -> return tv'
-    _        -> fail $ "Free type variable: " ++ show tv
+    _        -> terr $ "Free type variable: " ++ show tv
 
-getVar :: Monad m => Ident -> TC w m (TypeT w)
+getVar :: (?loc :: Loc, Monad m) => Ident -> TC w m (TypeT w)
 getVar x = TC $ asksM get where
   get (TCEnv (g, _) _ _) = g =.= x
     |! "Unbound variable: " ++ show x
@@ -175,47 +179,58 @@ tryGetVar :: Monad m => Ident -> TC w m (Maybe (TypeT w))
 tryGetVar x = TC $ asksM get where
   get (TCEnv (g, _) _ _) = return (g =.= x)
 
-getType :: Monad m => Lid -> TC w m (TyInfo w)
+getType :: (?loc :: Loc, Monad m) => Lid -> TC w m (TyInfo w)
 getType n = TC $ asksM get where
   get (TCEnv _ (i, _) _) = i =.= n
     |! "Unbound type constructor: " ++ show n
 
-getTypeTag :: Monad m => String -> Lid -> TC w m TyTag
+getTypeTag :: (?loc :: Loc, Monad m) => String -> Lid -> TC w m TyTag
 getTypeTag who n = do
   ti <- getType n
   case ti of
     TiAbs td     -> return td
-    TiSyn _ _    -> fail $
+    TiSyn _ _    -> terr $
       who ++ " expects an abstract or data type, but " ++
       "got type synonym: " ++ show n
     TiDat td _ _ -> return td
 
+-- Raise a type error
+terr :: (?loc :: Loc, Monad m) => String -> m a
+terr  = fail . (label ++)
+  where label = "Type error: " ++ if isBogus ?loc
+                                    then ""
+                                    else show ?loc ++ ": "
+
 -- A type checking "assertion" raises a type error if the
 -- asserted condition is false.
-tassert :: Monad m => Bool -> String -> m ()
+tassert :: (?loc :: Loc, Monad m) =>
+           Bool -> String -> m ()
 tassert True  _ = return ()
-tassert False s = fail s
+tassert False s = terr s
 
 -- A common form of type error
-tgot :: Monad m => String -> Type i w -> String -> m a
-tgot who got expected = fail $ who ++ " got " ++ show got ++
+tgot :: (?loc :: Loc, Monad m) =>
+        String -> Type i w -> String -> m a
+tgot who got expected = terr $ who ++ " got " ++ show got ++
                                " where " ++ expected ++ " expected"
 
 -- Combination of tassert and tgot
-tassgot :: Monad m => Bool -> String -> Type i w -> String -> m ()
+tassgot :: (?loc :: Loc, Monad m) =>
+           Bool -> String -> Type i w -> String -> m ()
 tassgot False = tgot
 tassgot True  = \_ _ _ -> return ()
 
 -- Run a partial computation, and if it fails, substitute
 -- the given failure message.
-(|!) :: Monad m => Maybe a -> String -> m a
+(|!) :: (?loc :: Loc, Monad m) => Maybe a -> String -> m a
 m |! s = case m of
   Just r  -> return r
-  _       -> fail s
+  _       -> terr s
 infix 1 |!
 
 -- Check type for closed-ness and and defined-ness, and add info
-tcType :: (Language w, Monad m) => Type i w -> TC w m (TypeT w)
+tcType :: (?loc :: Loc, Language w, Monad m) =>
+          Type i w -> TC w m (TypeT w)
 tcType = tc where
   tc :: (Language w, Monad m) => Type i w -> TC w m (TypeT w)
   tc (TyVar tv)   = do
@@ -266,7 +281,7 @@ tysubsts ps ts t =
 tcExprC :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
 tcExprC = tc where
   tc :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
-  tc e0 = case view e0 of
+  tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
       tx <- getVar x
       return (tx, exId x)
@@ -342,7 +357,7 @@ tcExprC = tc where
 tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
   tc :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
-  tc e0 = case view e0 of
+  tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
       tx <- getVar x
       return (tx, exId x)
@@ -439,7 +454,7 @@ tcExprA = tc where
              Nothing -> False)
          (M.keys (fv e))
 
-tcExApp :: (Language w, Monad m) =>
+tcExApp :: (?loc :: Loc, Language w, Monad m) =>
            (TypeT w -> TypeT w -> Bool) ->
            (Expr i w -> TC w m (TypeT w, ExprT w)) ->
            Expr i w -> TC w m (TypeT w, ExprT w)
@@ -477,7 +492,7 @@ tcExApp (<::) tc e0 = do
   tr <- foralls t1 ts
   return (tr, foldl exApp e1' es')
 
-tapply :: (Language w, Monad m) =>
+tapply :: (?loc :: Loc, Language w, Monad m) =>
           TypeT w -> TypeT w -> m (TypeT w)
 tapply (TyAll tv t1') t2 = do
   langCase t2
@@ -489,7 +504,7 @@ tapply (TyAll tv t1') t2 = do
   return (tysubst tv t2 t1')
 tapply t1 _ = tgot "type application" t1 "(for)all type"
 
-tcPatt :: (Monad m, Language w) =>
+tcPatt :: (?loc :: Loc, Monad m, Language w) =>
           TypeT w -> Patt -> TC w m (G w, Patt)
 tcPatt t x0 = case x0 of
   PaWild     -> return (empty, PaWild)
@@ -510,7 +525,7 @@ tcPatt t x0 = case x0 of
                   return (gx1, PaCon u (Just x1'))
                 _ -> tgot "Pattern" t "different arity"
           _ ->
-            fail $ "Pattern " ++ show x0 ++ " for type not in scope"
+            terr $ "Pattern " ++ show x0 ++ " for type not in scope"
       _ -> tgot "Pattern" t ("constructor " ++ show u)
   PaPair x y -> do
     case t of
@@ -540,7 +555,7 @@ tcPatt t x0 = case x0 of
 -- Given a list of type variables tvs, an type t in which tvs
 -- may be free, and a type t', tries to substitute for tvs in t
 -- to produce a type that *might* unify with t'
-tryUnify :: (Monad m, Language w) =>
+tryUnify :: (?loc :: Loc, Monad m, Language w) =>
             [TyVar] -> TypeT w -> TypeT w -> m [TypeT w]
 tryUnify [] _ _        = return []
 tryUnify (tv:tvs) t t' =
@@ -549,7 +564,7 @@ tryUnify (tv:tvs) t t' =
                   let subst' = tysubst tv tguess
                   tguesses <- tryUnify tvs (subst' t) t'
                   return (tguess : tguesses)
-    _        -> fail $
+    _        -> terr $
                   "Cannot guess type t such that (" ++ show t ++
                   ")[t/" ++ show tv ++ "] ~ " ++ show t'
 
@@ -593,17 +608,17 @@ findSubst tv = chk True [] where
                    = chk b seen t' (tysubst a (TyMu a t) t)
   cmp _ _ _ _        = []
 
-indexQuals :: Monad m =>
+indexQuals :: (?loc :: Loc, Monad m) =>
               Lid -> [TyVar] -> [Either TyVar Q] -> TC w m [Either Int Q]
 indexQuals name tvs = mapM each where
   each (Left tv) = case tv `elemIndex` tvs of
-    Nothing -> fail $ "unbound tyvar " ++ show tv ++
+    Nothing -> terr $ "unbound tyvar " ++ show tv ++
                       " in qualifier list for type " ++ show name
     Just n  -> return (Left n)
   each (Right q) = return (Right q)
 
-withTyDec :: (Language w, Monad m) =>
-           TyDec -> (TyDec -> TC w m a) -> TC w m a
+withTyDec :: (?loc :: Loc, Language w, Monad m) =>
+             TyDec -> (TyDec -> TC w m a) -> TC w m a
 withTyDec (TdAbsA name params variances quals) k = intoA $ do
   index  <- newIndex
   quals' <- indexQuals name params quals
@@ -666,7 +681,7 @@ withTyDec (TdDatA name params alts) k = intoA $ do
     withVars (alts2env name params tag alts') $
       (outofA . k $ TdDatA name params alts)
 
-fixDataType :: Monad m =>
+fixDataType :: (?loc :: Loc, Monad m) =>
                Lid -> [TyVar] -> [(Uid, Maybe (Type () A))] ->
                TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
 fixDataType name params alts = loop where
@@ -746,8 +761,8 @@ typeQual d0 = finish . loop where
   loop (TyMu tv t)  = S.delete (Left tv) (loop t)
   loop _            = S.empty
 
-withMod :: (Language w, Monad m) =>
-         Mod i -> (ModT -> TC w m a) -> TC w m a
+withMod :: (?loc :: Loc, Language w, Monad m) =>
+           Mod i -> (ModT -> TC w m a) -> TC w m a
 withMod (MdC x mt e) k = intoC $ do
   (te, e') <- tcExprC e
   t' <- case mt of
@@ -798,9 +813,12 @@ withMod (MdInt x t y) k = do
 
 withDecl :: Monad m =>
             Decl i -> (DeclT -> TC C m a) -> TC C m a
-withDecl (DcMod m)     k = withMod m (k . DcMod)
-withDecl (DcTyp td)    k = withTyDec td (k . DcTyp)
-withDecl (DcAbs at ds) k = withAbsTy at ds (k . DcAbs at)
+withDecl (DcMod loc m)     k = withMod m (k . DcMod loc)
+  where ?loc = loc
+withDecl (DcTyp loc td)    k = withTyDec td (k . DcTyp loc)
+  where ?loc = loc
+withDecl (DcAbs loc at ds) k = withAbsTy at ds (k .  DcAbs loc at)
+  where ?loc = loc
 
 withDecls :: Monad m => [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withDecls []     k = k []
@@ -808,7 +826,7 @@ withDecls (d:ds) k = withDecl d $ \d' ->
                        withDecls ds $ \ds' ->
                          k (d':ds')
 
-withAbsTy :: Monad m =>
+withAbsTy :: (?loc :: Loc, Monad m) =>
              AbsTy -> [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withAbsTy at ds k = case at of
   AbsTyC name params alts ->
@@ -860,8 +878,10 @@ tcDecls gg ds = runTC gg $
                     return (gg', ds')
 
 -- For adding types of primitives to the environment
-addVal :: (Language w, Monad m) => S -> Ident -> Type i w -> m S
+addVal :: (Language w, Monad m) =>
+          S -> Ident -> Type i w -> m S
 addVal gg x t = runTC gg $ do
+  let ?loc = bogus
   t' <- tcType t
   withVars (x =:= t') saveTC
 

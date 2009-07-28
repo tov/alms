@@ -8,6 +8,7 @@ module Parser (
 import Util
 import Prec
 import Syntax
+import Loc
 import Lexer
 
 import Text.ParserCombinators.Parsec
@@ -19,6 +20,15 @@ type P a = CharParser St a
 
 (>>!) :: P a -> (a -> b) -> P b
 (>>!)  = flip fmap
+
+curLoc :: P Loc
+curLoc  = getPosition >>! fromSourcePos
+
+addLoc :: Relocatable a => P a -> P a
+addLoc p = do
+  loc <- curLoc
+  a   <- p
+  return (a <<@ loc)
 
 delimList :: P pre -> (P [a] -> P [a]) -> P sep -> P a -> P [a]
 delimList before around delim each =
@@ -81,7 +91,7 @@ tyvarp  = do
   return (TV x q)
 
 identp :: P (Expr () w)
-identp  = do
+identp  = addLoc $ do
   s <- identifier
   if isUpperIdentifier s
     then return (exCon (Uid s))
@@ -155,22 +165,22 @@ declsp  = choice [
             do
               sharpLoad
               base <- sourceName `liftM` getPosition
-              file <- inDirectoryOf base `liftM` stringLiteral
-              let contents = unsafePerformIO $ readFile file
-              ds <- case parse parseProg file contents of
+              path <- inDirectoryOf base `liftM` stringLiteral
+              let contents = unsafePerformIO $ readFile path
+              ds <- case parse parseProg path contents of
                 Left e   -> fail (show e)
                 Right p  -> return (prog2decls p)
               ds' <- declsp
               return (ds ++ ds'),
             return []
           ]
-  where inDirectoryOf "-"  file = file
-        inDirectoryOf base file = dropFileName base </> file
+  where inDirectoryOf "-"  path = path
+        inDirectoryOf base path = dropFileName base </> path
 
 declp :: P (Decl ())
-declp  = choice [
-           tyDecp >>! DcTyp,
-           modp   >>! DcMod,
+declp  = addLoc $ choice [
+           tyDecp >>! dcTyp,
+           modp   >>! dcMod,
            do
              reserved "abstype"
              lang <- brackets languagep
@@ -178,7 +188,7 @@ declp  = choice [
              reserved "with"
              ds <- declsp
              reserved "end"
-             return (DcAbs at ds)
+             return (dcAbs at ds)
          ]
 
 tyDecp :: P TyDec
@@ -307,7 +317,7 @@ languagep  = choice
 
 exprp :: Language w => P (Expr () w)
 exprp = expr0 where
-  expr0 = choice
+  expr0 = addLoc $ choice
     [ do reserved "let"
          let finishLet makeLet = do
                reservedOp "="
@@ -362,28 +372,29 @@ exprp = expr0 where
          arrow
          expr0 >>! build,
       expr1 ]
-  expr1 = do e1 <- expr3
-             choice
-               [ do semi
-                    e2 <- expr0
-                    return (exSeq e1 e2),
-                 return e1 ]
+  expr1 = addLoc $ do
+            e1 <- expr3
+            choice
+              [ do semi
+                   e2 <- expr0
+                   return (exSeq e1 e2),
+                return e1 ]
   expr3 = chainl1last expr4 (opappp (Left 3))  expr0
   expr4 = chainr1last expr5 (opappp (Right 4)) expr0
   expr5 = chainl1last expr6 (opappp (Left 5))  expr0
   expr6 = chainl1last expr7 (opappp (Left 6))  expr0
   expr7 = chainr1last expr8 (opappp (Right 7)) expr0
   expr8 = expr9
-  expr9 = chainl1 expr10 (return exApp)
+  expr9 = chainl1 expr10 (addLoc (return exApp))
   expr10 = do
-    ops <- many (oplevelp (Right 10))
+    ops <- many $ addLoc $ oplevelp (Right 10) >>! exVar
     arg <- expr11
-    return (foldr (\op arg' -> exVar op `exApp` arg') arg ops)
+    return (foldr exApp arg ops)
   expr11 = do
              e  <- exprA
              ts <- many . brackets $ commaSep1 typep
              return (foldl exTApp e (concat ts))
-  exprA = choice
+  exprA = addLoc $ choice
     [ identp,
       integerOrFloat >>! either exInt exFloat,
       charLiteral    >>! (exInt . fromIntegral . fromEnum),
@@ -391,7 +402,7 @@ exprp = expr0 where
       operatorp      >>! exVar,
       parens (exprN1 <|> return (exCon (Uid "()")))
     ]
-  exprN1 = do
+  exprN1 = addLoc $ do
     e1 <- expr0
     choice
       [ do colon
@@ -407,8 +418,9 @@ exprp = expr0 where
 -- Parse an infix operator at given precedence
 opappp :: Prec -> P (Expr () w -> Expr () w -> Expr () w)
 opappp p = do
-  op <- oplevelp p
-  return (\e1 e2 -> (exVar op `exApp` e1) `exApp` e2)
+  loc <- curLoc
+  op  <- oplevelp p
+  return (\e1 e2 -> (exVar op <<@ loc `exApp` e1) `exApp` e2)
 
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
@@ -444,8 +456,9 @@ vargp :: Language w =>
          (Type () w -> Type () w -> Type () w) ->
          P (Type () w -> Type () w, Expr () w -> Expr () w)
 vargp arrcon = do
+  loc    <- curLoc
   (p, t) <- paty
-  return (arrcon t, exAbs p t)
+  return (arrcon t, exAbs p t <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
 paty :: Language w => P (Patt, Type () w)
@@ -505,8 +518,11 @@ pamty  = parens $ choice
 tyargp :: Language w =>
           P (Type () w -> Type () w, Expr () w -> Expr () w)
 tyargp  = do
-  tvs <- liftM return tyvarp <|> brackets (commaSep1 tyvarp)
-  return (\t -> foldr TyAll t tvs, \e -> foldr exTAbs e tvs)
+  tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
+  return (\t -> foldr (\(_,   tv) -> TyAll tv) t tvs,
+          \e -> foldr (\(loc, tv) -> exTAbs tv <<@ loc) e tvs)
+    where
+  loctv = liftM2 (,) curLoc tyvarp
 
 pattp :: P Patt
 pattp  = patt0 where
