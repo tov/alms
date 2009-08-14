@@ -333,6 +333,8 @@ tcExprC = tc where
       tcExApp (==) tc e0
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
+        tassert (syntacticValue e) $
+          "Not a syntactic value under type abstraction: " ++ show e0
         (t, e') <- tc e
         return (TyAll tv' t, exTAbs tv' e')
     ExTApp e1 t2  -> do
@@ -417,6 +419,8 @@ tcExprA = tc where
       tcExApp (<:) tc e0
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
+        tassert (syntacticValue e) $
+          "Not a syntactic value under type abstraction: " ++ show e0
         (t, e') <- tc e
         return (TyAll tv' t, exTAbs tv' e')
     ExTApp e1 t2  -> do

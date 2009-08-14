@@ -973,7 +973,7 @@ syntacticValue e = case view e of
   ExAbs _ _ _  -> True
   ExApp e1 e2  -> syntacticConstructor e1 && syntacticValue e2
   ExTAbs _ _   -> True
-  ExTApp e1 _  -> syntacticConstructor e1
+  ExTApp e1 _  -> syntacticValue e1
   _            -> False
 
 syntacticConstructor :: Expr i w -> Bool

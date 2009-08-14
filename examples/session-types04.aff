@@ -21,12 +21,12 @@ let[C] string_of_plane (Plane(a, b, c, d): plane) =
     string_of a ^ "x + " ^ string_of b ^ "y + " ^
     string_of c ^ "z + " ^ string_of d ^ " > 0"
 
-let[C] revC['a] : 'a list -> 'a list =
+let[C] revC['a] (lst: 'a list) : 'a list =
     let rec rev_acc (acc: 'a list) (xs: 'a list) : 'a list =
               match xs with
               | Nil         -> acc
               | Cons(x,xs') -> rev_acc (Cons(x,acc)) xs'
-     in rev_acc Nil['a]
+     in rev_acc Nil['a] lst
 
 let[A] revA['<a] (xs: '<a list) : '<a list =
     let rec rev_acc (acc: '<a list)| (xs: '<a list) : '<a list =
@@ -118,8 +118,8 @@ let[C] maybeC['a,'r] (some: 'a -> 'r) (none: 'r) (opt: 'a option): 'r =
   | Some a -> some a
   | None   -> none
 
-let[A] copt2aopt['a] : {{'a} option} -> 'a option =
-  maybeC Some['a] None['a]
+let[A] copt2aopt['a] (opt: {{'a} option}) : 'a option =
+  maybeC Some['a] None['a] opt
 
 --
 -- In sublanguage A, our protocol is to send an unbounded

@@ -355,8 +355,10 @@ srcBasis  = unlines [
   "        | Cons(x,xs) -> foldl f (f x z) xs",
   "   in foldl",
   "let[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
-  "  fun 'a -> foldrA (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a]",
+  "  fun 'a (lst: {{'a} list}) ->",
+  "    foldrA (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
   "let[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
-  "  fun 'a -> foldrC (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a]",
+  "  fun 'a (lst: {{'a} list}) ->",
+  "    foldrC (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
   ""
   ]

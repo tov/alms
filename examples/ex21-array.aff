@@ -66,9 +66,9 @@ let[A] iter ((start, limit): range)
    in loop 0 z
 
 let[A] copyFromTo (range: range)
-                  ['a,'tsrc] (src: ('a, 'tsrc) array)
-                  ['tdst]    (dst: ('a, 'tdst) array)
-                  ['csrc] =
+                  ['a,'tsrc,'tdst,'csrc]
+                  (src: ('a, 'tsrc) array)
+                  (dst: ('a, 'tdst) array) =
   iter range
     (fun (i: int)
          ((capsrc, capdst) : ('tsrc, 'csrc) readcap * 'tdst writecap) ->
@@ -81,10 +81,8 @@ let[A] crazy['a]
   (range: range)
   (depth: int)
   (leaf: all 't. ('a, 't) array -> 't writecap -> 't writecap)
-  (branch: all 't. ('a, 't) array ->
-           all 's. ('a, 's) array ->
-           all 'r. ('a, 'r) array ->
-           all 'c 'd.
+  (branch: all 't 's 'r 'c 'd.
+             ('a, 't) array -> ('a, 's) array -> ('a, 'r) array ->
              't writecap * ('s, 'c) readcap * ('r, 'd) readcap ->
              't writecap * ('s, 'c) readcap * ('r, 'd) readcap) =
   let rec loop (i: int)
@@ -132,10 +130,10 @@ let[A] main (width: int) (depth: int) : unit =
     putStrLn "]";
     cap in
   let leaf['t] (a: (int, 't) array) (cap: 't writecap) = cap in
-  let branch ['t] (out: (int, 't) array)
-             ['s] (lft: (int, 's) array)
-             ['r] (rgt: (int, 'r) array)
-             ['c, 'd] =
+  let branch ['t,'s,'r,'c,'d]
+             (out: (int, 't) array)
+             (lft: (int, 's) array)
+             (rgt: (int, 'r) array) =
     iter range
       (fun (i: int)
            ((capout, caplft, caprgt)

@@ -67,7 +67,7 @@ let[A] reduceSkewness ['t]
     | Cons(T(_, ft) as t, ts)
           -> let ((sk1, t1), (sk2, t2), c) =
                par
-                 (fun 'c -> find['c] (ix + 1) ts)
+                 (fun 'c (c: ('t, 'c) readcap) -> find['c] (ix + 1) ts c)
                  (fun 'c (c: ('t, 'c) readcap) ->
                    mapA ft a c
                      (fun 's (b: (float, 's) array) (d: 's writecap)
