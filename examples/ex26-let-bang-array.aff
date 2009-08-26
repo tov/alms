@@ -1,0 +1,84 @@
+(* An encoding of Wadler's let! construct.
+   Allows temporarily viewing an array as unlimited/read-only. *)
+
+#load "libarray-A.aff"
+
+abstype[A] ('t, 'c) ureadcap_rep qualifier A
+  = Available of ('t, 'c) readcap
+  | CheckedOut
+  | Defunct
+with
+  abstype[A] ('t, 'c) ureadcap qualifier U
+    = MkCap of ('t, 'c) ureadcap_rep ref
+  with
+
+    (* We represent this thing with (essentially) as a spinlock.
+       Acquire the spinlock: *)
+    let[A] acquireBang['t, 'c] (r: ('t, 'c) ureadcap_rep ref) =
+      let rec loop (): ('t, 'c) readcap =
+        match r <- CheckedOut with
+        | Available c -> c
+        | CheckedOut  -> loop ()
+        | Defunct     -> failwith[('t, 'c) readcap]
+            "letBang: attempt to use defunct ureadcap"
+      in loop ()
+
+    (* Given a capability, create a temporary, unlimited read capability
+       and pass that to a call-back.  Return the result of the callback
+       and the restored capability. *)
+    let[A] letBang['t, 'c, '<a] (c: ('t, 'c) readcap)|
+                                (k: ('t, 'c) ureadcap -o '<a)
+                                : '<a * ('t, 'c) readcap =
+      let r  = ref (Available c) in
+      let uc = MkCap r in
+      let a  = k uc in
+      let c  = acquireBang r in
+        r <- Defunct;
+        (a, c)
+
+    let[A] applyBang['t,'c,'<r]
+             (k: ('t, 'c) readcap -o '<r * ('t, 'c) readcap)|
+             (MkCap r: ('t, 'c) ureadcap)
+             : '<r =
+      let (result, c) = k (acquireBang r) in
+        r <- Available c;
+        result
+
+    let[A] liftBang['t,'c,'<r]
+             (k: ('t, 'c) readcap -> '<r * ('t, 'c) readcap)
+             (MkCap r: ('t, 'c) ureadcap)
+             : '<r =
+      let (result, c) = k (acquireBang r) in
+        r <- Available c;
+        result
+
+    let[A] atAU['a,'t,'c] (a: ('a, 't) array) (ix: int) =
+      liftBang (atA['a,'t,'c] a ix)
+
+    let[A] updateAU['a,'t] (a: ('a, 't) array) (ix: int) (new: 'a) =
+      let f (cap: 't writecap) = ((), updateA['a,'t] a ix new cap) in
+        liftBang f
+  end
+end
+
+type[A] 't uwritecap = ('t, unit) ureadcap
+
+let[A] test () =
+  let n = 10 in
+  let k 't (a: (int, 't) array) (cap: 't writecap) =
+    let rec loop (i: int) (cap: 't writecap): 't writecap =
+      if i >= n
+        then cap
+        else loop (i + 1) (updateA a i (i * i) cap) in
+    let cap = loop 0 cap in
+    let (r, cap) = letBang cap
+      (fun (cap: 't uwritecap) ->
+         atAU a 1 cap + atAU a 3 cap + atAU a 5 cap) in
+      updateA a 0 (-1) cap;
+      r
+  in withNewA n k
+
+in print (test ())
+
+
+
