@@ -14,6 +14,7 @@ module Syntax (
   Lid(..), Uid(..), Ident(..), TyVar(..),
 
   TyTag(..), Variance(..),
+  QualSet, qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
   Type(..), tyC, tyA, TypeT, TEnv,
   Prog(..), ProgT,
   Decl(..), DeclT, dcMod, dcTyp, dcAbs,
@@ -56,7 +57,9 @@ import Viewable
 import Env
 
 import Control.Monad.State (State, evalState, get, put)
+import Control.Monad.Identity (runIdentity)
 import Data.Char (isAlpha, isDigit)
+import Data.List (elemIndex)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -99,12 +102,15 @@ data Variance = Invariant
               | Omnivariant
   deriving (Eq, Ord, Typeable, Data)
 
+data QualSet = QualSet Q (S.Set Int)
+  deriving (Typeable, Data)
+
 -- Info about a type constructor (for language A)
 data TyTag =
   TyTag {
     ttId    :: Integer,
     ttArity :: [Variance], -- The variance of each of its parameters
-    ttQual  :: [Either Int Q],
+    ttQual  :: QualSet,
                            -- The qualifier of the type is the lub of
                            -- the qualifiers of the named parameters and
                            -- possibly some constants
@@ -458,6 +464,11 @@ instance Relocatable (Decl i) where
 instance Locatable (Binding i w) where
   getLoc = getLoc . bnexpr
 
+instance Eq QualSet where
+  QualSet q ixs == QualSet q' ixs'
+    | q == maxBound && q' == maxBound = True
+    | otherwise                       = q == q' && ixs == ixs'
+
 -- On TypeTW, we define simple alpha equality, which we then use
 -- to keep track of where we've been when we define type equality
 -- that understands mu.
@@ -528,6 +539,10 @@ instance Show Variance where
   showsPrec _ Contravariant = ('-':)
   showsPrec _ Omnivariant   = ('0':)
 
+instance Show QualSet where
+  show (QualSet q ixs) =
+    show q ++ " \\/ bigVee " ++ show (S.toList ixs)
+
 instance Show Lid where
   showsPrec _ (Lid s) = case s of
     '_':_             -> (s++)
@@ -556,6 +571,10 @@ instance Bounded Variance where
 instance Bounded Q where
   minBound = Qu
   maxBound = Qa
+
+instance Bounded QualSet where
+  minBound = QualSet minBound S.empty
+  maxBound = QualSet maxBound S.empty
 
 bigVee :: (Bounded a, PO a) => [a] -> a
 bigVee  = foldr (\/) minBound
@@ -591,6 +610,7 @@ class Eq a => PO a where
 
   (<:)  :: a -> a -> Bool
   x <: y = Just x == (x /\? y)
+        || Just y == (x \/? y)
 
 infixl 7 /\, /\?
 infixl 6 \/, \/?
@@ -622,6 +642,21 @@ instance PO Q where
   _  \/ _  = Qa
   Qa /\ Qa = Qa
   _  /\ _  = Qu
+
+instance Ord a => PO (S.Set a) where
+  (\/) = S.union
+  (/\) = S.intersection
+
+instance PO QualSet where
+  qs /\? qs'
+    | qs == minBound || qs' == minBound = return minBound
+    | qs == maxBound && qs' == maxBound = return maxBound
+    | otherwise                         = fail $
+      "GLB " ++ show qs ++ " /\\ " ++ show qs' ++ " does not exist"
+  QualSet q ixs \/ QualSet q' ixs'
+    | q == maxBound  = QualSet maxBound S.empty
+    | q' == maxBound = QualSet maxBound S.empty
+    | otherwise      = QualSet (q \/ q') (ixs \/ ixs')
 
   -- Special cases for dual session types:
 instance  PO (Type TyTag A) where
@@ -847,25 +882,52 @@ dualSessionType  = d where
     = TyMu tv (d t)
   d t = t
 
+qsConst :: Q -> QualSet
+qsConst  = flip QualSet S.empty
+
+qsVar   :: Int -> QualSet
+qsVar    = qsVars . return
+
+qsVars  :: [Int] -> QualSet
+qsVars   = QualSet minBound . S.fromList
+
+qsFromListM :: (Eq tv, Monad m) => (tv -> m QualSet) ->
+               [tv] -> [Either tv Q] -> m QualSet
+qsFromListM unbound tvs qs = bigVee `liftM` mapM each qs where
+  each (Left tv) = case tv `elemIndex` tvs of
+    Nothing -> unbound tv
+    Just n  -> return (qsVar n)
+  each (Right q) = return (qsConst q)
+
+qsFromList :: Eq tv => [tv] -> [Either tv Q] -> QualSet
+qsFromList tvs qs = runIdentity (qsFromListM (\_ -> return minBound) tvs qs)
+
+qsToList   :: Eq tv => [tv] -> QualSet -> [Either tv Q]
+qsToList _ qs | qs == minBound
+  = []
+qsToList tvs (QualSet q ixs) 
+  = Right q : [ Left (tvs !! ix) | ix <- S.toList ixs ]
+
 tdUnit, tdBool, tdInt, tdFloat, tdString,
   tdArr, tdLol, tdTuple :: TyTag
 
-tdUnit       = TyTag (-1)  []          []                True
-tdBool       = TyTag (-2)  []          []                True
-tdInt        = TyTag (-3)  []          []                True
-tdFloat      = TyTag (-4)  []          []                True
-tdString     = TyTag (-5)  []          []                True
-tdArr        = TyTag (-6)  [-1, 1]     []                False
-tdLol        = TyTag (-7)  [-1, 1]     [Right Qa]        False
-tdTuple      = TyTag (-8)  [1, 1]      [Left 0, Left 1]  True
+tdUnit       = TyTag (-1)  []          minBound          True
+tdBool       = TyTag (-2)  []          minBound          True
+tdInt        = TyTag (-3)  []          minBound          True
+tdFloat      = TyTag (-4)  []          minBound          True
+tdString     = TyTag (-5)  []          minBound          True
+tdArr        = TyTag (-6)  [-1, 1]     minBound          False
+tdLol        = TyTag (-7)  [-1, 1]     maxBound          False
+tdTuple      = TyTag (-8)  [1, 1]      qualSet           True
+  where qualSet = QualSet minBound (S.fromList [0, 1])
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:
-tdDual       = TyTag (-11) [-1] []                False
-tdSend       = TyTag (-12) [1]  []                False
-tdRecv       = TyTag (-13) [-1] []                False
-tdSelect     = TyTag (-14) [1]  []                False
-tdFollow     = TyTag (-15) [1]  []                False
+tdDual       = TyTag (-11) [-1] minBound          False
+tdSend       = TyTag (-12) [1]  minBound          False
+tdRecv       = TyTag (-13) [-1] minBound          False
+tdSelect     = TyTag (-14) [1]  minBound          False
+tdFollow     = TyTag (-15) [1]  minBound          False
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon (Lid s) [] ()
@@ -898,11 +960,10 @@ infixr 8 `tyArrT`, `tyLolT`
 infixl 7 `tyTupleT`
 
 qualifier     :: TypeT A -> Q
-qualifier (TyCon _ ps td) = foldl max minBound qs' where
-  qs = map qualifier ps
-  toQ (Left ix) = qs !! ix
-  toQ (Right q) = q
-  qs' = map toQ (ttQual td)
+qualifier (TyCon _ ps td) = bigVee qs' where
+  qs  = map qualifier ps
+  qs' = q : map (qs !!) (S.toList ixs)
+  QualSet q ixs = ttQual td
 qualifier (TyVar (TV _ q))   = q
 qualifier (TyAll _ t)        = qualifier t
 qualifier (TyMu _ t)         = qualifier t

@@ -15,7 +15,6 @@ import Loc
 import Env as Env
 import Ppr ()
 
-import Data.List (elemIndex)
 import Data.Data (Typeable, Data)
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -613,13 +612,10 @@ findSubst tv = chk True [] where
   cmp _ _ _ _        = []
 
 indexQuals :: (?loc :: Loc, Monad m) =>
-              Lid -> [TyVar] -> [Either TyVar Q] -> TC w m [Either Int Q]
-indexQuals name tvs = mapM each where
-  each (Left tv) = case tv `elemIndex` tvs of
-    Nothing -> terr $ "unbound tyvar " ++ show tv ++
+              Lid -> [TyVar] -> [Either TyVar Q] -> TC w m QualSet
+indexQuals name = qsFromListM unbound where
+  unbound tv = terr $ "unbound tyvar " ++ show tv ++
                       " in qualifier list for type " ++ show name
-    Just n  -> return (Left n)
-  each (Right q) = return (Right q)
 
 withTyDec :: (?loc :: Loc, Language w, Monad m) =>
              TyDec -> (TyDec -> TC w m a) -> TC w m a
@@ -638,7 +634,7 @@ withTyDec (TdAbsC name params) k = intoC $ do
   withTypes (name =:= TiAbs TyTag {
                ttId    = index,
                ttArity = map (const Invariant) params,
-               ttQual  = [],
+               ttQual  = minBound,
                ttTrans = False
              })
     (outofC . k $ TdAbsC name params)
@@ -655,7 +651,7 @@ withTyDec (TdDatC name params alts) k = intoC $ do
   let tag = TyTag {
               ttId    = index,
               ttArity = map (const Invariant) params,
-              ttQual  = [],
+              ttQual  = minBound,
               ttTrans = False
             }
   (params', alts') <-
@@ -677,7 +673,7 @@ withTyDec (TdDatA name params alts) k = intoA $ do
   let tag0 = TyTag {
                ttId    = index,
                ttArity = map (const 0) params,
-               ttQual  = [],
+               ttQual  = minBound,
                ttTrans = False
              }
   (tag, alts') <- fixDataType name params alts tag0
@@ -745,21 +741,15 @@ typeVariances d0 = finish . loop where
   loopC (TyA t)        = M.map (const Invariant) (loop t)
   loopC _              = error "Can't get TyC here"
 
-typeQual :: [TyVar] -> TypeT A -> [Either Int Q]
-typeQual d0 = finish . loop where
-  finish es = [ e | Just e <-
-                  [ case e of
-                      Right q -> Just (Right q)
-                      Left tv -> fmap Left (elemIndex tv d0)
-                  | e <- S.toList es ] ]
-
+typeQual :: [TyVar] -> TypeT A -> QualSet
+typeQual d0 = qsFromList d0 . S.toList . loop where
   loop :: TypeT A -> S.Set (Either TyVar Q)
   loop (TyCon _ ts info)
                     = S.unions
                         [ case qual of
                             Right q -> S.singleton (Right q)
-                            Left i  -> loop (ts !! i)
-                        | qual <- ttQual info ]
+                            Left t  -> loop t
+                        | qual <- qsToList ts (ttQual info) ]
   loop (TyVar tv)   = S.singleton (Left tv)
   loop (TyAll tv t) = S.delete (Left tv) (loop t)
   loop (TyMu tv t)  = S.delete (Left tv) (loop t)
@@ -849,8 +839,8 @@ withAbsTy at ds k = case at of
   AbsTyA name params arity quals alts ->
     withTyDec (TdDatA name params alts) $ \_ ->
       withDecls ds $ \ds' -> intoA $ do
-      tag    <- getTypeTag "abstract-with-end" name
-      quals' <- indexQuals name params quals
+      tag     <- getTypeTag "abstract-with-end" name
+      qualSet <- indexQuals name params quals
       tassert (length params == length (ttArity tag)) $
         "abstract-with-end: " ++ show (length params) ++
         " given for type " ++ show name ++
@@ -859,16 +849,11 @@ withAbsTy at ds k = case at of
         "abstract-with-end: declared arity for type " ++ show name ++
         ", " ++ show arity ++
         ", is more general than actual arity " ++ show (ttArity tag)
-      let oldIndices  = [ ix | Left ix <- ttQual tag ]
-          newIndices  = [ ix | Left ix <- quals' ]
-          oldConstant = bigVee [ q | Right q <- ttQual tag ]
-          newConstant = bigVee [ q | Right q <- quals' ]
-      tassert (oldConstant <: newConstant &&
-               all (`elem` newIndices) oldIndices) $
+      tassert (ttQual tag <: qualSet) $ 
         "abstract-with-end: declared qualifier for type " ++ show name ++
-        ", " ++ show quals ++
-        ", is more general than actual qualifier"
-      let tag' = TyTag (ttId tag) arity quals' False
+        ", " ++ show qualSet ++
+        ", is more general than actual qualifier " ++ show (ttQual tag)
+      let tag' = TyTag (ttId tag) arity qualSet False
       withoutConstructors tag' .
         withReplacedTyTags tag' .
           withTypes (name =:= TiAbs tag') .
