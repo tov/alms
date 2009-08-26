@@ -1,0 +1,14 @@
+#load "libarray-A.aff"
+
+abstype[A] 'a exists qualifier A =
+  Ex of all 'r. (all 't. ('a, 't) array -> 't writecap -> 'r) -o 'r
+with
+  let[A] pack['a, 't] (a: ('a, 't) array) (c: 't writecap) =
+    Ex (fun 'r (k : all 't. ('a, 't) array -> 't writecap -> 'r) -> k['t] a c)
+
+  let[A] unpack['a, 'r] (Ex ex: 'a exists)
+                        (k: all 't. ('a, 't) array -> 't writecap -> 'r) =
+    ex k
+end
+
+
