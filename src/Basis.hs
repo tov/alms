@@ -17,7 +17,7 @@ import Syntax
 import Basis.Channels
 
 import IO (hFlush, stdout)
-import Data.IORef (IORef, newIORef, readIORef, writeIORef, atomicModifyIORef)
+import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
 import qualified Control.Concurrent as CC
 import qualified Control.Concurrent.MVar as MV
@@ -135,27 +135,31 @@ primBasis  = [
 
     -- References
     typeC "'a ref",
-    typeA "'a ref qualifier A",
+    typeA "'<a ref qualifier U",
+    typeA "'<a aref qualifier A",
     pfun 1 "ref" -: "all 'a. 'a -> 'a ref"
                  -: "all '<a. '<a -> '<a ref"
       -= (\v -> Ref `fmap` newIORef v),
-    pfun 2 "swap" -: ""
-                  -: "all '<a '<b. '<a ref * '<b -> '<b ref * '<a"
-      -= (\(vr, v1) -> do
-            v0 <- atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))
-            return (vr, v0)),
+    pfun 1 "aref" -: ""
+                  -: "all '<a. '<a -> '<a aref"
+      -= (\v -> Ref `fmap` newIORef v),
+
     pfun 1 "!" -: "all 'a. 'a ref -> 'a"
-                     -: "all '<a. '<a ref -> '<a"
+               -: "all 'a. 'a ref -> 'a"
       -= (\r -> readIORef (unRef r)),
-    pfun 1 "!!" -:: "all 'a. 'a ref -> 'a ref * 'a"
+    pfun 1 "!!" -: ""
+                -: "all 'a. 'a aref -> 'a aref * 'a"
       -= (\r -> do
            v <- readIORef (unRef r)
            return (r, v)),
-    pfun 1 "<-" -: "all 'a. 'a ref -> 'a -> 'a ref"
-                      -: "all '<a. '<a ref -> '<a -o '<a ref"
+    pfun 1 "<-" -: "all 'a. 'a ref -> 'a -> 'a"
+                -: "all '<a. '<a ref -> '<a -o '<a"
       -= (\r v -> do
-           writeIORef (unRef r) v
-           return r),
+           atomicModifyIORef (unRef r) (\v' -> (v, v'))),
+    pfun 1 "<-!" -: ""
+                 -: "all '<a '<b. '<a aref -> '<b -o '<b aref * '<a"
+      -= (\r v -> do
+           atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
     -- Threads
     typeA "thread qualifier A",
