@@ -427,17 +427,18 @@ opappp p = do
 afargsp :: Language w =>
            P (Type () w -> Type () w, Expr () w -> Expr () w)
 afargsp = loop tyArr where
-  loop arrcon0 = choice
-    [ do (tvt, tve) <- tyargp
-         (ft, fe) <- loop arrcon0
-         return (tvt . ft, tve . fe),
-      do arrcon <- option arrcon0 $ do
-           reservedOp "|"
-           return tyLol
-         (ft,  fe)  <- vargp arrcon
-         (fts, fes) <- loop arrcon
-         return (ft . fts, fe . fes),
-      return (id, id) ]
+  loop arrcon0 = do
+    arrcon <- option arrcon0 $ do
+      reservedOp "|"
+      return tyLol
+    choice
+      [ do (tvt, tve) <- tyargp
+           (ft, fe) <- loop arrcon
+           return (tvt . ft, tve . fe),
+        do (ft,  fe)  <- vargp arrcon
+           (fts, fes) <- loop arrcon
+           return (ft . fts, fe . fes),
+        return (id, id) ]
 
 -- One or more of (pat:typ, ...), (), tyvar
 argsp1 :: Language w => P (Expr () w -> Expr () w)

@@ -648,10 +648,9 @@ instance Ord a => PO (S.Set a) where
   (/\) = S.intersection
 
 instance PO QualSet where
-  qs /\? qs'
-    | qs == minBound || qs' == minBound = return minBound
-    | qs == maxBound && qs' == maxBound = return maxBound
-    | otherwise                         = fail $
+  QualSet q ixs /\? QualSet q' ixs'
+    | q == q' = return (QualSet q (ixs /\ ixs'))
+  qs /\? qs'  = fail $
       "GLB " ++ show qs ++ " /\\ " ++ show qs' ++ " does not exist"
   QualSet q ixs \/ QualSet q' ixs'
     | q == maxBound  = QualSet maxBound S.empty
