@@ -54,13 +54,13 @@ instance Ppr (Type i w) where
                                 sep [ parens (pprPrec p ts),
                                       ppr n ]
   pprPrec p (TyVar x)     = pprPrec p x
-  pprPrec p (TyAll x t)   = parensIf (p > precDot) $
-                              text "all" <+>
+  pprPrec p (TyQu u x t)  = parensIf (p > precDot) $
+                              ppr u <+>
                               fsep (map (pprPrec (precDot + 1))
                                         tvs) <>
                               char '.'
                                 >+> pprPrec precDot body
-      where (tvs, body) = unfoldTyAll (TyAll x t)
+      where (tvs, body) = unfoldTyQu u (TyQu u x t)
   pprPrec p (TyMu x t)    = parensIf (p > precDot) $
                               text "mu" <+>
                               pprPrec (precDot + 1) x <>
@@ -229,6 +229,11 @@ instance Ppr (Expr i w) where
                 map (pprPrec precCom) args ]
       where 
         (args, op) = unfoldExTApp e0
+    ExPack t1 t2 e ->
+      parensIf (p > precApp) $
+        text "Pack" <> brackets (ppr t1) <+>
+        parens (sep [ pprPrec (precCom + 1) t2 <> comma,
+                      pprPrec (precCom + 1) e ])
     ExCast e t1 t2 ->
       parensIf (p > precCast) $
         sep [ pprPrec (precCast + 2) e,
@@ -294,6 +299,10 @@ instance Ppr Patt where
   pprPrec p (PaAs x lid)         = parensIf (p > precDot) $
                                      pprPrec (precDot + 1) x <+>
                                      text "as" <+> ppr lid
+  pprPrec p (PaPack tv x)        = parensIf (p > precApp) $
+                                     text "Pack" <+> parens (sep pair)
+    where pair = [ pprPrec (precCom + 1) tv <> comma,
+                   pprPrec (precCom + 1) x ]
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
@@ -306,6 +315,7 @@ instance Show (Type i w) where showsPrec = showFromPpr
 
 instance Ppr Q         where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
+instance Ppr Quant     where pprPrec = pprFromShow
 instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
 instance Ppr Ident     where pprPrec = pprFromShow

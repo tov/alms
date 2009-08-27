@@ -102,17 +102,15 @@ typep   = typepP 0
 
 typepP :: Language w => Int -> P (Type () w)
 typepP 0 = choice
-           [ do reserved "all"
-                tvs <- many tyvarp
-                dot
-                t   <- typepP 0
-                return (foldr TyAll t tvs),
-             do reserved "mu"
-                tv  <- tyvarp
-                dot
-                t   <- typepP 0
-                return (TyMu tv t),
-             typepP 5 ]
+  [ do tc <- choice
+         [ reserved "all" >> return tyAll,
+           reserved "ex"  >> return tyEx,
+           reserved "mu"  >> return TyMu ]
+       tvs <- many tyvarp
+       dot
+       t   <- typepP 0
+       return (foldr tc t tvs),
+    typepP 5 ]
 typepP 1 = typepP 2
 typepP 2 = typepP 3
 typepP 3 = typepP 4
@@ -385,7 +383,17 @@ exprp = expr0 where
   expr6 = chainl1last expr7 (opappp (Left 6))  expr0
   expr7 = chainr1last expr8 (opappp (Right 7)) expr0
   expr8 = expr9
-  expr9 = chainl1 expr10 (addLoc (return exApp))
+  expr9 = choice
+            [ chainl1 expr10 (addLoc (return exApp)),
+              do
+                reserved "Pack"
+                t1 <- brackets typep
+                parens $ do
+                  t2 <- typep
+                  comma
+                  e  <- expr0
+                  return (exPack t1 t2 e)
+                ]
   expr10 = do
     ops <- many $ addLoc $ oplevelp (Right 10) >>! exVar
     arg <- expr11
@@ -520,7 +528,7 @@ tyargp :: Language w =>
           P (Type () w -> Type () w, Expr () w -> Expr () w)
 tyargp  = do
   tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
-  return (\t -> foldr (\(_,   tv) -> TyAll tv) t tvs,
+  return (\t -> foldr (\(_,   tv) -> tyAll tv) t tvs,
           \e -> foldr (\(loc, tv) -> exTAbs tv <<@ loc) e tvs)
     where
   loctv = liftM2 (,) curLoc tyvarp
@@ -538,6 +546,13 @@ pattp  = patt0 where
       ]
   patt9 = choice
     [ do
+        reserved "Pack"
+        parens $ do
+          tv <- tyvarp
+          comma
+          x  <- patt0
+          return (PaPack tv x),
+      do
         u <- uidp
         x <- optionMaybe (try pattA)
         return (PaCon u x),

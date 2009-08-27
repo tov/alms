@@ -15,7 +15,8 @@ module Syntax (
 
   TyTag(..), Variance(..),
   QualSet, qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
-  Type(..), tyC, tyA, TypeT, TEnv,
+  Type(..), tyC, tyA, tyAll, tyEx, TypeT, TEnv,
+  Quant(..),
   Prog(..), ProgT,
   Decl(..), DeclT, dcMod, dcTyp, dcAbs,
   Mod(..), ModT, TyDec(..), AbsTy(..),
@@ -25,7 +26,7 @@ module Syntax (
   Expr(), ExprT, Expr'(..),
   fv,
   exId, exStr, exInt, exFloat, exCase, exLetRec, exPair,
-  exAbs, exApp, exTAbs, exTApp, exCast,
+  exAbs, exApp, exTAbs, exTApp, exPack, exCast,
   exVar, exCon, exLet, exSeq, -- <== synthetic
   Binding(..), BindingT, Patt(..),
   pv,
@@ -45,7 +46,7 @@ module Syntax (
   ctype2atype, atype2ctype, cgetas, agetcs, replaceTyTags,
 
   syntacticValue, castableType, modName, prog2decls,
-  unfoldExAbs, unfoldTyAll, unfoldExTApp, unfoldExApp, unfoldTyFun,
+  unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
 
   module Viewable,
   dumpType
@@ -123,11 +124,14 @@ data Type i w where
           tyargs :: [Type i w],
           tyinfo :: i } :: Type i w
   TyVar :: TyVar -> Type i w
-  TyAll :: TyVar -> Type i w -> Type i w
+  TyQu  :: Quant -> TyVar -> Type i w -> Type i w
   TyMu  :: TyVar -> Type i w -> Type i w
   TyC   :: Type i C -> Type i A
   TyA   :: Type i A -> Type i C
   deriving Typeable
+
+data Quant = Forall | Exists
+  deriving (Typeable, Data, Eq)
 
 tyC :: Type i C -> Type i A
 tyC (TyA t) = t
@@ -136,6 +140,10 @@ tyC t       = TyC t
 tyA :: Type i A -> Type i C
 tyA (TyC t) = t
 tyA t       = TyA t
+
+tyAll, tyEx :: TyVar -> Type i w -> Type i w
+tyAll = TyQu Forall
+tyEx  = TyQu Exists
 
 type TEnv w = Env Lid (TypeT w)
 
@@ -225,6 +233,7 @@ data Expr' i w = ExId Ident
                | ExApp (Expr i w) (Expr i w)
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
+               | ExPack (Type i w) (Type i w) (Expr i w)
                | ExCast (Expr i w) (Type i w) (Type i A)
   deriving (Typeable, Data)
 
@@ -242,6 +251,7 @@ data Patt = PaWild
           | PaStr String
           | PaInt Integer
           | PaAs Patt Lid
+          | PaPack TyVar Patt
   deriving (Typeable, Data)
 
 type ExprT    = Expr TyTag
@@ -263,6 +273,7 @@ pv (PaPair x y)       = pv x `S.union` pv y
 pv (PaStr _)          = S.empty
 pv (PaInt _)          = S.empty
 pv (PaAs x y)         = pv x `S.union` S.singleton y
+pv (PaPack _ x)       = pv x
 
 exStr :: String -> Expr i w
 exStr  = Expr bogus M.empty . ExStr
@@ -335,6 +346,13 @@ exTApp e1 t2 = Expr {
   expr_  = ExTApp e1 t2
 }
 
+exPack :: Type i w -> Type i w -> Expr i w -> Expr i w
+exPack t1 t2 e = Expr {
+  eloc_  = getLoc e,
+  fv_    = fv e,
+  expr_  = ExPack t1 t2 e
+}
+
 exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
   eloc_  = getLoc e,
@@ -387,7 +405,7 @@ ty_A  = mkDataType "Syntax.A" [ ]
 instance (Language w, Data i, Data w) => Data (Type i w) where
    gfoldl k z (TyCon a b c) = z TyCon `k` a `k` b `k` c
    gfoldl k z (TyVar a)     = z TyVar `k` a
-   gfoldl k z (TyAll a b)   = z TyAll `k` a `k` b
+   gfoldl k z (TyQu u a b)  = z TyQu  `k` u `k` a `k` b
    gfoldl k z (TyMu a b)    = z TyMu  `k` a `k` b
    gfoldl k z (TyC a)       = z TyC   `k` a
    gfoldl k z (TyA a)       = z TyA   `k` a
@@ -395,7 +413,7 @@ instance (Language w, Data i, Data w) => Data (Type i w) where
    gunfold k z c = case constrIndex c of
                        1 -> k $ k $ k $ z TyCon
                        2 -> k $ z TyVar
-                       3 -> k $ k $ z TyAll
+                       3 -> k $ k $ k $ z TyQu
                        4 -> k $ k $ z TyMu
                        5 -> k $ z unTyC
                        6 -> k $ z unTyA
@@ -403,7 +421,7 @@ instance (Language w, Data i, Data w) => Data (Type i w) where
 
    toConstr (TyCon _ _ _) = con_TyCon
    toConstr (TyVar _)     = con_TyVar
-   toConstr (TyAll _ _)   = con_TyAll
+   toConstr (TyQu _ _ _)  = con_TyQu
    toConstr (TyMu _ _)    = con_TyMu
    toConstr (TyC _)       = con_TyC
    toConstr (TyA _)       = con_TyA
@@ -420,17 +438,17 @@ unTyA t = case reifyLang :: LangRep w of
             C -> tyA t
             A -> t
 
-con_TyCon, con_TyVar, con_TyAll, con_TyMu, con_TyC, con_TyA
+con_TyCon, con_TyVar, con_TyQu, con_TyMu, con_TyC, con_TyA
         :: Constr
 ty_Type :: DataType
 con_TyCon = mkConstr ty_Type "TyCon" [] Prefix
 con_TyVar = mkConstr ty_Type "TyVar" [] Prefix
-con_TyAll = mkConstr ty_Type "TyAll" [] Prefix
+con_TyQu  = mkConstr ty_Type "TyQu"  [] Prefix
 con_TyMu  = mkConstr ty_Type "TyMu"  [] Prefix
 con_TyC   = mkConstr ty_Type "TyC"   [] Prefix
 con_TyA   = mkConstr ty_Type "TyA"   [] Prefix
 ty_Type = mkDataType "Syntax.Type"
-            [ con_TyCon, con_TyVar, con_TyAll, con_TyMu, con_TyC, con_TyA ]
+            [ con_TyCon, con_TyVar, con_TyQu, con_TyMu, con_TyC, con_TyA ]
 
 instance Eq TyTag where
   td == td' = ttId td == ttId td'
@@ -485,8 +503,8 @@ instance Eq TypeTW where
       TyA t         === TyA t'   = t === t'
       TyC t         === TyC t'   = t === t'
       TyVar x       === TyVar x' = x == x'
-      TyAll x t     === TyAll x' t'
-        | tvqual x == tvqual x' =
+      TyQu u x t    === TyQu u' x' t'
+        | u == u' && tvqual x == tvqual x' =
           tysubst1 x a t === tysubst1 x' a t'
             where a = TyVar (freshTyVar x (ftv [t, t']))
       TyMu x t      === TyMu x' t'
@@ -519,8 +537,8 @@ instance Language w => Eq (Type TyTag w) where
     TyA t          `cmp` TyA t'          = t `chk` t'
     TyC t          `cmp` TyC t'          = t `chk` t'
     TyVar x        `cmp` TyVar x'        = return (x == x')
-    TyAll x t      `cmp` TyAll x' t' 
-      | tvqual x == tvqual x'            = 
+    TyQu u x t     `cmp` TyQu u' x' t' 
+      | u == u' && tvqual x == tvqual x' = 
         tysubst1 x a t `chk` tysubst1 x' a t'
           where a = TyVar (freshTyVar x (ftv [t, t']))
     _            `cmp` _               = return False
@@ -542,6 +560,10 @@ instance Show Variance where
 instance Show QualSet where
   show (QualSet q ixs) =
     show q ++ " \\/ bigVee " ++ show (S.toList ixs)
+
+instance Show Quant where
+  show Forall = "all"
+  show Exists = "ex"
 
 instance Show Lid where
   showsPrec _ (Lid s) = case s of
@@ -663,7 +685,7 @@ instance  PO (Type TyTag A) where
     clean :: TypeT w -> TypeT w
     clean (TyCon c ps td)  = TyCon c (map clean ps) td
     clean (TyVar a)        = TyVar a
-    clean (TyAll a t)      = TyAll a (clean t)
+    clean (TyQu u a t)     = TyQu u a (clean t)
     clean (TyMu a t)
       | a `M.member` ftv t = TyMu a (clean t)
       | otherwise          = clean t
@@ -711,12 +733,12 @@ instance  PO (Type TyTag A) where
              | p'  <- ps' ]
         return (TyCon tc params td)
       else fail "\\/? or /\\?: Does not exist"
-    cmp seen b (TyAll a t)   (TyAll a' t')  = do
+    cmp seen b (TyQu u a t) (TyQu u' a' t') | u == u' = do
       qual <- ifMJ (not b) (tvqual a) (tvqual a')
       let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
           t1  = tysubst1 a (TyVar a1) t
           t'1 = tysubst1 a' (TyVar a1) t'
-      TyAll a1 `liftM` chk seen b t1 t'1
+      TyQu u a1 `liftM` chk seen b t1 t'1
     cmp seen b (TyMu a t) t' = chk seen b (tysubst a (TyMu a t) t) t'
     cmp seen b t' (TyMu a t) = chk seen b t' (tysubst a (TyMu a t) t)
     cmp _    _ t t' =
@@ -790,7 +812,7 @@ instance Ftv (Type TyTag w) where
                          | var <- ttArity td
                          | m   <- map ftv ts ]
   ftv (TyVar tv)     = M.singleton tv 1
-  ftv (TyAll tv t)   = M.delete tv (ftv t)
+  ftv (TyQu _ tv t)  = M.delete tv (ftv t)
   ftv (TyMu tv t)    = M.delete tv (ftv t)
   ftv (TyC t)        = M.map (const Invariant)
                              (M.unions (map ftv (cgetas t)))
@@ -840,15 +862,15 @@ tysubst a t = ts where
                         then t0
                         else TyVar a')
                     (TyVar a')
-  ts (TyAll a' t')
+  ts (TyQu u a' t')
                 = sameLang t' t
                     (\_ _ ->
                       if a' == a
-                        then TyAll a' t'
+                        then TyQu u a' t'
                         else
                           let a'' = freshTyVar a' (ftv [t, t'])
-                           in TyAll a'' (ts (tysubst1 a' (TyVar a'') t')))
-                    (TyAll a' (ts t'))
+                           in TyQu u a'' (ts (tysubst1 a' (TyVar a'') t')))
+                    (TyQu u a' (ts t'))
   ts (TyMu a' t')
                 = sameLang t' t
                     (\_ _ ->
@@ -964,7 +986,7 @@ qualifier (TyCon _ ps td) = bigVee qs' where
   qs' = q : map (qs !!) (S.toList ixs)
   QualSet q ixs = ttQual td
 qualifier (TyVar (TV _ q))   = q
-qualifier (TyAll _ t)        = qualifier t
+qualifier (TyQu _ _ t)       = qualifier t
 qualifier (TyMu _ t)         = qualifier t
 qualifier _                  = Qu
 
@@ -975,7 +997,7 @@ funtypes     = [tdArr, tdLol]
 cgetas :: Type i C -> [Type i A]
 cgetas (TyCon _ ts _) = concatMap cgetas ts
 cgetas (TyVar _)      = []
-cgetas (TyAll _ t)    = cgetas t
+cgetas (TyQu _ _ t)   = cgetas t
 cgetas (TyMu _ t)     = cgetas t
 cgetas (TyA t)        = [t]
 cgetas _              = [] -- can't happen
@@ -983,7 +1005,7 @@ cgetas _              = [] -- can't happen
 agetcs :: Type i A -> [Type i C]
 agetcs (TyCon _ ts _) = concatMap agetcs ts
 agetcs (TyVar _)      = []
-agetcs (TyAll _ t)    = agetcs t
+agetcs (TyQu _ _ t)   = agetcs t
 agetcs (TyMu _ t)     = agetcs t
 agetcs (TyC t)        = [t]
 agetcs _              = [] -- can't happen
@@ -999,8 +1021,8 @@ ctype2atype (TyCon n ps td) | ttTrans td
   = TyCon n (map ctype2atype ps) td
 ctype2atype (TyCon _ [td, tr] d) | d == tdArr
   = TyCon (Lid "->") [ctype2atype td, ctype2atype tr] tdArr
-ctype2atype (TyAll tv t)
-                      = TyAll tv' (ctype2atype t')
+ctype2atype (TyQu u tv t)
+                      = TyQu u tv' (ctype2atype t')
                         where t'  = tysubst tv (tyA (TyVar tv')) t
                               tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 ctype2atype (TyMu tv t)
@@ -1014,8 +1036,8 @@ atype2ctype (TyCon n ps td) | ttTrans td
   = TyCon n (map atype2ctype ps) td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
   = TyCon (Lid "->") [atype2ctype td, atype2ctype tr] tdArr
-atype2ctype (TyAll tv t)
-                      = TyAll tv' (atype2ctype t')
+atype2ctype (TyQu u tv t)
+                      = TyQu u tv' (atype2ctype t')
                         where t' = tysubst tv (tyC (TyVar tv')) t
                               tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 atype2ctype (TyMu tv t)
@@ -1046,7 +1068,7 @@ syntacticConstructor e = case view e of
 castableType :: TypeT w -> Bool
 castableType (TyVar _)      = False
 castableType (TyCon _ _ td) = td `elem` funtypes
-castableType (TyAll _ t)    = castableType t
+castableType (TyQu _ _ t)   = castableType t
 castableType (TyMu _ t)     = castableType t
 castableType (TyC _)        = False
 castableType (TyA _)        = False
@@ -1071,10 +1093,10 @@ unfoldExAbs  = unscanr each where
     ExTAbs tv e' -> Just (Right tv, e')
     _            -> Nothing
 
-unfoldTyAll :: Type i w -> ([TyVar], Type i w)
-unfoldTyAll  = unscanr each where
-  each (TyAll x t) = Just (x, t)
-  each _           = Nothing
+unfoldTyQu  :: Quant -> Type i w -> ([TyVar], Type i w)
+unfoldTyQu u = unscanr each where
+  each (TyQu u' x t) | u == u' = Just (x, t)
+  each _                       = Nothing
 
 unfoldExTApp :: Expr i w -> ([Type i w], Expr i w)
 unfoldExTApp  = unscanl each where
@@ -1102,8 +1124,8 @@ dumpType i t0 = do
       mapM_ (dumpType (i + 2)) ps
       putStrLn (replicate i ' ' ++ "}")
     TyVar tv -> print tv
-    TyAll a t -> do
-      print $ "all " ++ show a ++ ". {"
+    TyQu u a t -> do
+      print $ show u ++ " " ++ show a ++ ". {"
       dumpType (i + 2) t
       putStrLn (replicate i ' ' ++ "}")
     TyMu a t -> do

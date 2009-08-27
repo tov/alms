@@ -66,6 +66,7 @@ transExpr menv neg = te where
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
+    ExPack t1 t2 e -> exPack (type2ctype t1) (type2ctype t2) (te e)
     ExCast e1 t ta -> transCast neg (te e1) t ta
 
 type2ctype :: Language w => TypeT w -> TypeT C
@@ -139,12 +140,14 @@ ca neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
     exPair (ca neg pos y s1) (ca neg pos z s2)
   where y = x /./ "y"
         z = x /./ "z"
-ca neg pos x (TyAll tv t) =
+ca neg pos x (TyQu Forall tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
       ca neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
+ca neg pos x (TyQu Exists _ t) =
+  ca neg pos x t
 ca _   _   x (TyCon _ _ td)
   | ttTrans td         = exVar x
 ca _   _   x (TyVar tv)
@@ -177,12 +180,14 @@ ac neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
     exPair (ac neg pos y s1) (ac neg pos z s2)
   where y = x /./ "y"
         z = x /./ "z"
-ac neg pos x (TyAll tv t) =
+ac neg pos x (TyQu Forall tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
       ac neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
+ac neg pos x (TyQu Exists _ t) =
+  ac neg pos x t
 ac _   _   x (TyCon _ _ td)
   | ttTrans td         = exVar x
 ac _   _   x (TyVar tv)
@@ -218,12 +223,14 @@ cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
       exSeq (checkContract u neg "passed one-shot value twice") $
         exApp (exVar x) exUnit
   where u = x /./ "u"
-cc neg pos x (TyAll tv t) =
+cc neg pos x (TyQu Forall tv t) =
   exTAbs' tv' $
     exLetVar' u (exTApp (exVar x) (TyVar tv')) $
       cc neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
   where tv' = TV (tvname tv /./ "v") Qu
         u   = tvname tv /./ "u"
+cc neg pos x (TyQu Exists _ t) =
+  cc neg pos x t
 cc _   _   x _ = exVar x
 
 -- Generate an expression to create an initial (blessed) cell

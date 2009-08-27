@@ -200,6 +200,8 @@ valOf e env = case view e of
       VaSus _ f -> f
       VaCon _ _ -> return v'
       _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
+  ExPack _ _ e1          ->
+    valOf e1 env
   ExCast e1 _ _          ->
     valOf e1 env
 
@@ -220,6 +222,7 @@ bindPatt x0 v env = case x0 of
   PaInt z      -> if v == vinj z
                     then return env
                     else perr
+  PaPack _ x   -> bindPatt x v env
   PaAs x lid   -> do
     env' <- bindPatt x v env
     return (env' =+= lid =:= return v)
