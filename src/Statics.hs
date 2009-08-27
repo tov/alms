@@ -294,9 +294,7 @@ tcExprC = tc where
     ExCase e1 clauses -> do
       (t1, e1') <- tc e1
       (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
-        (di, gi, xi') <- tcPatt t1 xi
-        (ti, ei')     <- withDG di gi $ tc ei
-        tcType ti
+        (_, xi', ti, ei') <- withPatt t1 xi $ tc ei
         return (ti, (xi', ei'))
       forM_ tis $ \ti' ->
         tassert (ti == ti') $
@@ -330,9 +328,7 @@ tcExprC = tc where
       return (TyCon (Lid "*") [t1, t2] tdTuple, exPair e1' e2')
     ExAbs x t e     -> do
       t' <- tcType t
-      (dx, gx, x') <- tcPatt t' x
-      (te, e')     <- withDG dx gx $ tc e
-      tcType te
+      (_, x', te, e') <- withPatt t' x $ tc e
       return (tyArrT t' te, exAbs x' t' e')
     ExApp _ _     -> do
       tcExApp (==) tc e0
@@ -387,10 +383,8 @@ tcExprA = tc where
     ExCase e clauses -> do
       (t0, e') <- tc e
       (t1:ts, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
-        (di, gi, xi') <- tcPatt t0 xi
+        (gi, xi', ti, ei') <- withPatt t0 xi $ tc ei
         checkSharing "match" gi ei
-        (ti, ei') <- withDG di gi $ tc ei
-        tcType ti
         return (ti, (xi', ei'))
       tr <- foldM (\ti' ti -> ti' \/? ti
                       |! "Mismatch in match/let: " ++ show ti ++
@@ -427,10 +421,8 @@ tcExprA = tc where
       return (TyCon (Lid "*") [t1, t2] tdTuple, exPair e1' e2')
     ExAbs x t e     -> do
       t' <- tcType t
-      (dx, gx, x') <- tcPatt t' x
+      (gx, x', te, e') <- withPatt t' x $ tc e
       checkSharing "lambda" gx e
-      (te, e') <- withDG dx gx $ tc e
-      tcType te
       unworthy <- isUnworthy e0
       if unworthy
         then return (tyLolT t' te, exAbs x' t' e')
@@ -605,6 +597,15 @@ tcPatt t x0 = case x0 of
             "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
           return (dx =+= tv =:= tv', gx, PaPack tv' x')
       _ -> tgot "Pattern" t "existential type"
+
+withPatt :: (?loc :: Loc, Monad m, Language w) =>
+            TypeT w -> Patt -> TC w m (TypeT w, e) ->
+            TC w m (G w, Patt, TypeT w, e)
+withPatt t x m = do
+  (d, g, x') <- tcPatt t x
+  (t', e')   <- withDG d g m
+  tcType t'
+  return (g, x', t', e')
 
 -- Given a list of type variables tvs, an type t in which tvs
 -- may be free, and a type t', tries to substitute for tvs in t
