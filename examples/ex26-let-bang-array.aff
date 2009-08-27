@@ -65,7 +65,7 @@ type[A] 't uwritecap = ('t, unit) ureadcap
 
 let[A] test () =
   let n = 10 in
-  let k 't (a: (int, 't) array) (cap: 't writecap) =
+  let Pack('t, a, cap) = newA[int] n in
     let rec loop (i: int) (cap: 't writecap): 't writecap =
       if i >= n
         then cap
@@ -76,9 +76,6 @@ let[A] test () =
          atAU a 1 cap + atAU a 3 cap + atAU a 5 cap) in
       updateA a 0 (-1) cap;
       r
-  in withNewA n k
 
 in print (test ())
-
-
 

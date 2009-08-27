@@ -6,7 +6,6 @@
 (*
   type variables:
     '<a                 stored value
-    '<r                 result of continuation/callback
     't                  region name
 
   variables:
@@ -16,7 +15,6 @@
   T[[ { p |-> t } ]]     = (p, T[[ t ]]) region1
   T[[ { p |->^w t } ]]   = (p, T[[ t ]]) region
   T[[ Ptr t ]]           = T[[ t ]] ptr
-  T[[ exist 't. t ]]     = all '<r. (all 't. t -o '<r) -o '<r
 
 *)
 
@@ -52,9 +50,9 @@ let[A] swapN['<a] (ix: int) (y: '<a) | (xs: '<a list)
 abstype[A] ('t, '<a) region qualifier A = Rgn of '<a list with
   abstype[A] ('t, '<a) region1 qualifier A = Rgn1 of '<a with
     abstype[A] 't ptr qualifier U = Ptr of int with
-      let[A] newRgn['<a,'<r] (k: all 't. ('t, '<a) region -o '<r) : '<r =
-        k (Rgn[unit] (Nil['<a]))
-      let[A] freeRgn['<a,'t] (rgn: ('t, '<a) region) = ()
+      let[A] newRgn['<a] () =
+        Pack[ex 't. ('t, '<a) region] (unit, Rgn[unit] (Nil['<a]))
+      let[A] freeRgn['<a,'t] (_: ('t, '<a) region) = ()
 
       let[A] mallocIn['<a,'t] (Rgn xs: ('t, '<a) region) | (a: '<a)
              : 't ptr * ('t, '<a) region =
@@ -66,13 +64,14 @@ abstype[A] ('t, '<a) region qualifier A = Rgn of '<a list with
         let (y, xs) = swapN ix x xs in
           (y, Rgn['t] xs)
 
-      let[A] malloc['<r] (k: all 't. ('t, unit) region1 -o 't ptr -o '<r)
-                          : '<r =
-        k (Rgn1[unit] ()) (Ptr[unit] 0)
+      let[A] malloc () =
+        Pack[ex 't. ('t, unit) region1 * 't ptr]
+            (unit, Rgn1[unit] (), Ptr[unit] 0)
       let[A] swap1['<a,'<b,'t] (Rgn1 x: ('t, '<a) region1) |
                                (_: 't ptr) (y: '<b)
                                : '<a * ('t, '<b) region1 =
         (x, Rgn1['t] y)
+      let[A] free['<a, 't] (_: ('t, '<a) region1) = ()
 
       let[A] adopt['<a,'t1,'t2] (rgn: ('t1, '<a) region) |
                                 (Rgn1 x: ('t2, '<a) region1)
@@ -80,34 +79,18 @@ abstype[A] ('t, '<a) region qualifier A = Rgn of '<a list with
                                 : 't1 ptr * ('t1, '<a) region =
         mallocIn rgn x
 
-      let[A] focus['<a,'t,'<r]
+      let[A] focus['<a,'t]
                (Rgn xs: ('t, '<a) region) |
                (Ptr ix: 't ptr)
-               (k: all 't1. ('t1, '<a) region1 -o
-                            't1 ptr -o
-                            (('t1, '<a) region1 -o ('t, '<a) region) -o
-                            '<r)
-               : '<r =
+               : ex 't1. ('t1, '<a) region1 * 't1 ptr *
+                         (('t1, '<a) region1 -o ('t, '<a) region) =
          let (Cons (x, xs), acc) = revAppN ix xs Nil['<a] in
-           k (Rgn1[unit] x) (Ptr[unit] 0)
-             (fun (Rgn1 y: (unit, '<a) region1) ->
-                let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
-                  Rgn['t] xs)
-
-      let[A] packRgn['<a,'t] (rgn: ('t, '<a) region) |
-                    ['<r]    (k: all 't. ('t, '<a) region -o '<r) : '<r =
-        k rgn
-      let[A] packPtr['<a,'t] (rgn: ('t, '<a) region1) |
-                             (ptr: 't ptr)
-                       ['<r] (k: all 't. ('t, '<a) region1 -o 't ptr -o '<r)
-                             : '<r =
-        k rgn ptr
-      let[A] packPtrs['<a,'t] (rgn: ('t, '<a) region1) |
-                              (ptrs: 't ptr list)
-                        ['<r] (k: all 't. ('t, '<a) region1 -o
-                                          't ptr list -o '<r)
-                              : '<r =
-        k rgn ptrs
+           Pack[ex 't1. ('t1, '<a) region1 * 't1 ptr *
+                        (('t1, '<a) region1 -o ('t, '<a) region)]
+               (unit, Rgn1[unit] x, Ptr[unit] 0,
+                fun (Rgn1 y: (unit, '<a) region1) ->
+                  let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
+                    Rgn['t] xs)
     end
   end
 end
