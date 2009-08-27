@@ -8,11 +8,9 @@ abstype[A] ('a, 't) array = Array of {{'a} array} with
   abstype[A] ('t, 'c) readcap qualifier A = MkCap with
     type[A] 't writecap = ('t, unit) readcap
 
-    let[A] withNewA['a, '<r]
-              (size: int)
-              (kont: all 't. ('a, 't) array -o 't writecap -o '<r)
-              : '<r =
-      kont (Array['a,unit] (newArray['a] size)) MkCap[unit,unit]
+    let[A] newA['a] (size: int) : ex 't. ('a, 't) array * 't writecap =
+      Pack[ex 't. ('a, 't) array * 't writecap]
+          (unit, (Array['a,unit] (newArray['a] size), MkCap[unit,unit]))
 
     let[A] splitA['t,'c] (_: ('t, 'c) readcap)
                : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap =
@@ -60,19 +58,15 @@ let[A] foldA ['a,'t,'c,'<r]
       else (z, c)
    in loop 0 z c
 
-let[A] mapA ['a,'t,'c,'b,'<r]
+let[A] mapA ['a,'t,'c,'b]
             (f: 'a -> 'b)
-            (a: ('a, 't) array) (c: ('t, 'c) readcap) |
-            (k: all 's. ('b, 's) array -o 's writecap -o
-                        ('t, 'c) readcap -o '<r)
-            : '<r =
-  withNewA (sizeA a)
-    (fun['s] (b: ('b, 's) array) (d: 's writecap) ->
-      let ((_, d), c) =
-            foldA (fun (x: 'a) (i: int, d: 's writecap) ->
-                     (i + 1, updateA b i (f x) d))
-                  (0, d) a c
-       in k b d c)
+            (a: ('a, 't) array) (c: ('t, 'c) readcap)
+            : (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap =
+  let Pack('s, (b, d)) = newA['b] (sizeA a) in
+  let ((_, d), c)      = foldA (fun (x: 'a) (i: int, d: 's writecap) ->
+                                  (i + 1, updateA b i (f x) d))
+                               (0, d) a c in
+    (Pack[ex 't. ('b, 't) array * 't writecap]('s, (b, d)), c)
 
 let[A] putA['a,'t,'c] (a: ('a, 't) array) (c: ('t, 'c) readcap) =
   putStr "[";

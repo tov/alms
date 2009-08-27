@@ -64,11 +64,9 @@ let[A] reduceSkewness ['t]
                par
                  (fun 'c (c: ('t, 'c) readcap) -> find['c] (ix + 1) ts c)
                  (fun 'c (c: ('t, 'c) readcap) ->
-                   mapA ft a c
-                     (fun 's (b: (float, 's) array) (d: 's writecap)
-                             (c: ('t, 'c) readcap) ->
-                       let (sk, d) = skewness b d in
-                         (sk, t, c)))
+                   let (Pack('s, b, d), c) = mapA ft a c in
+                   let (sk, d) = skewness b d in
+                     (sk, t, c))
                  c
               in if absf sk2 <. absf sk1
                    then (sk2, t2, c)
@@ -76,15 +74,14 @@ let[A] reduceSkewness ['t]
   let (sk, t, c) = find 0 ts c0 in
     (sk, t, replace 0 t c)
 
-let[A] withNewDistribution['<r]
-         (n: int) (T(_, gen): transformation)
-         (k: all 't. (float, 't) array -> 't writecap -> '<r) : '<r =
-  withNewA n (fun 't (a: (float, 't) array) (c: 't writecap) ->
+let[A] newDistribution (n: int) (T(_, gen): transformation)
+                       : ex 't. (float, 't) array * 't writecap =
+  let Pack('t, a, c) = newA[float] n in
     let rec loop (i: int) (c: 't writecap): 't writecap =
       if i < n
         then loop (i + 1) (updateA a i (gen (float_of_int (i + 1))) c)
         else c in
-      k a (loop 0 c))
+      Pack[ex 't. (float, 't) array * 't writecap]('t, a, loop 0 c)
 
 let[A] (^:) '<a (t: '<a) (ts: '<a list) = Cons(t, ts)
 
@@ -102,15 +99,14 @@ let[A] functions (n: int) =
   Nil
 
 let[A] testCase (n: int) (T(name, _) as t: transformation) =
-  withNewDistribution n t
-    (fun 't (a: (float, 't) array) (c: 't writecap) ->
-      let (sk0, c)       = skewness a c in
-      let (sk, T(name', _), c) = reduceSkewness (functions n) a c in
-      putStrLn ("Distribution:      " ^ name);
-      putStrLn ("Original skewness: " ^ string_of sk0);
-      putStrLn ("Improved skewness: " ^ string_of sk);
-      putStrLn ("Winning function:  " ^ name');
-      putStrLn "")
+  let Pack('t, a, c)       = newDistribution n t in
+  let (sk0, c)             = skewness a c in
+  let (sk, T(name', _), c) = reduceSkewness (functions n) a c in
+    putStrLn ("Distribution:      " ^ name);
+    putStrLn ("Original skewness: " ^ string_of sk0);
+    putStrLn ("Improved skewness: " ^ string_of sk);
+    putStrLn ("Winning function:  " ^ name');
+    putStrLn ""
 
 let[A] tests (n: int) =
   foldlA (fun (t: transformation) () -> testCase n t)

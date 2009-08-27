@@ -233,7 +233,7 @@ instance Ppr (Expr i w) where
       parensIf (p > precApp) $
         text "Pack" <> brackets (ppr t1) <+>
         parens (sep [ pprPrec (precCom + 1) t2 <> comma,
-                      pprPrec (precCom + 1) e ])
+                      pprPrec precCom e ])
     ExCast e t1 t2 ->
       parensIf (p > precCast) $
         sep [ pprPrec (precCast + 2) e,
@@ -302,7 +302,7 @@ instance Ppr Patt where
   pprPrec p (PaPack tv x)        = parensIf (p > precApp) $
                                      text "Pack" <+> parens (sep pair)
     where pair = [ pprPrec (precCom + 1) tv <> comma,
-                   pprPrec (precCom + 1) x ]
+                   pprPrec precCom x ]
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr

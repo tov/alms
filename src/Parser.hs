@@ -391,7 +391,7 @@ exprp = expr0 where
                 parens $ do
                   t2 <- typep
                   comma
-                  e  <- expr0
+                  e  <- exprN1
                   return (exPack t1 t2 e)
                 ]
   expr10 = do
@@ -550,7 +550,7 @@ pattp  = patt0 where
         parens $ do
           tv <- tyvarp
           comma
-          x  <- patt0
+          x  <- pattN1
           return (PaPack tv x),
       do
         u <- uidp
