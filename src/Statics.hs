@@ -8,7 +8,6 @@ module Statics (
   addVal, addTyTag
 ) where
 
-
 import Util
 import Syntax
 import Loc
@@ -40,7 +39,7 @@ data TyInfo w = TiAbs TyTag
   deriving (Data, Typeable)
 
 -- Type environments
-type D   = Env TyVar TyVar     -- tyvars in scope, with renaming
+type D   = Env TyVar TyVar     -- tyvars in scope, with idempot. renaming
 type G w = Env Ident (TypeT w) -- types of variables in scope
 type I w = Env Lid (TyInfo w)  -- type constructors in scope
 
@@ -134,9 +133,9 @@ withTVs tvs m = TC $ do
       rename :: TyVar -> (D, [TyVar]) -> (D, [TyVar])
       rename tv (d, tvs') =
         let tv' = case d =.= tv of
-              Nothing -> tv
-              Just _  -> tv `freshTyVar` unEnv d
-        in (d =+= tv =:= tv', tv':tvs')
+                    Nothing -> tv
+                    Just _  -> tv `freshTyVar` unEnv d
+        in (d =+= tv =:+= tv', tv':tvs')
 
 withVars :: Monad m => G w -> TC w m a -> TC w m a
 withVars g' = TC . M.R.local add . unTC where
@@ -595,7 +594,7 @@ tcPatt t x0 = case x0 of
           (dx, gx, x') <- tcPatt te' x
           tassert (dx =.= tv == Nothing) $
             "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
-          return (dx =+= tv =:= tv', gx, PaPack tv' x')
+          return (dx =+= tv =:+= tv', gx, PaPack tv' x')
       _ -> tgot "Pattern" t "existential type"
 
 withPatt :: (?loc :: Loc, Monad m, Language w) =>

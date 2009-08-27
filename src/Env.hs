@@ -3,7 +3,7 @@
 module Env (
   Env(unEnv),
   empty, isEmpty,
-  (=:=), (=::=), (=+=), (=-=), (=--=), (=.=), (=|=),
+  (=:=), (=::=), (=:+=), (=+=), (=-=), (=--=), (=.=), (=|=),
   mapAccum, mapAccumM,
   toList, fromList, contents
 ) where
@@ -33,6 +33,8 @@ v =:= a   = Env (M.singleton v a)
 (=::=)  :: (Monad m, Ord v) => v -> a -> Env v (m a)
 x =::= v = x =:= return v
 
+(=:+=)   :: Ord v => v -> v -> Env v v
+v =:+= v' = v =:= v' =+= v' =:= v'
 
 -- union
 (=+=)    :: Ord v => Env v a -> Env v a -> Env v a
