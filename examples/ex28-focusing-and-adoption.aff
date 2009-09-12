@@ -2,17 +2,8 @@
 
 (*
   type variables:
-    '<a                 stored value
-    't                  region name
-
-  variables:
-    x, y: '<a           stored value
-    xs: '<a list        region representation
-
-  T[[ { p |-> t } ]]     = (p, T[[ t ]]) region1
-  T[[ { p |->^w t } ]]   = (p, T[[ t ]]) region
-  T[[ Ptr t ]]           = T[[ t ]] ptr
-
+    '<a '<b             stored value
+    't 's               capability name
 *)
 
 let[A] length['<a] (xs: '<a list) : int * '<a list =
@@ -50,11 +41,11 @@ abstype[A] 't tr qualifier U = Tr with
   with
     abstype[A] ('t, '<a) guarded qualifier U =
                  Guarded of ('<a * (unit -o unit) list) option ref with
-      let[A] new['<a] (x: '<a) =
+      let[A] new['<a] (x: '<a) : ex 't. ('t, '<a) cap * 't tr =
                Pack[ex 't. ('t, '<a) cap * 't tr]
                    (unit, Cap[unit, '<a] (x, Nil[unit -o unit]), Tr[unit])
-      let[A] swap['<a,'<b,'t] ((Cap (x, fs), _): ('t, '<a) cap * 't tr) |
-                              (y: '<b)
+      let[A] swap['<a,'<b,'t] ((Cap (x, fs), _) : ('t, '<a) cap * 't tr) |
+                              (y                : '<b)
                               : ('t, '<b) cap * '<a =
         (Cap['t] (y, fs), x)
       let[A] free['<a, 't] (Cap (_, fs): ('t, '<a) cap) =
@@ -68,8 +59,7 @@ abstype[A] 't tr qualifier U = Tr with
              ((Cap adoptee, _)                : ('ta, '<a) cap * 'ta tr) |
              ((Cap (adoptor, destructors), _) : ('tb, '<b) cap * 'tb tr)
              (destroy                         : ('ta, '<a) cap -o unit)
-             : ('tb, '<b) cap * ('tb, '<a) guarded
-             =
+             : ('tb, '<b) cap * ('tb, '<a) guarded =
         let r    = ref (Some adoptee) in
         let g () = match r <- None with
                    | None   -> failwith[unit] "Can't happen"
