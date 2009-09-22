@@ -37,7 +37,8 @@ with
         (a, c)
 
     let[A] applyBang['t,'c,'<r]
-             (k: ('t, 'c) readcap -o '<r * ('t, 'c) readcap)|
+             (k: ('t, 'c) readcap -o '<r * ('t, 'c) readcap)
+             |
              (MkCap r: ('t, 'c) ureadcap)
              : '<r =
       let (result, c) = k (acquireBang r) in
