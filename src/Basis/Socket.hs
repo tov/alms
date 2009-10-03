@@ -182,9 +182,9 @@ entries  = [
       -= S.socketToHandle,
     fun "inet_addr" -: "string -> hostAddress" -: ""
       -= S.inet_addr,
-    fun "send" -: "socket -> string -> int" -: ""
+    fun "sock_send" -: "socket -> string -> int" -: ""
       -= S.send,
-    fun "recv" -: "socket -> int -> string" -: ""
+    fun "sock_recv" -: "socket -> int -> string" -: ""
       -= S.recv
   ]
 

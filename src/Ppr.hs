@@ -76,7 +76,7 @@ instance Ppr (Prog i) where
                            (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
-  pprPrec p (DcMod _ m)     = pprPrec p m
+  pprPrec p (DcLet _ m)     = pprPrec p m
   pprPrec p (DcTyp _ td)    = pprPrec p td
   pprPrec p (DcAbs _ at ds) =
     vcat [
@@ -85,55 +85,80 @@ instance Ppr (Decl i) where
       text "end"
     ]
 
-instance Ppr (Mod i) where
-  ppr (MdC x Nothing e) = sep
-    [ text "module[C]" <+> ppr x,
+instance Ppr (Let i) where
+  ppr (LtC tl x Nothing e) = sep
+    [ text "let" <> pprLang tl C <+> ppr x,
       nest 2 $ equals <+> ppr e ]
-  ppr (MdA x Nothing e) = sep
-    [ text "module[A]" <+> ppr x,
+  ppr (LtA tl x Nothing e) = sep
+    [ text "let" <> pprLang tl A <+> ppr x,
       nest 2 $ equals <+> ppr e ]
-  ppr (MdC x (Just t) e) = sep
-    [ text "module[C]" <+>
-        ppr x,
+  ppr (LtC tl x (Just t) e) = sep
+    [ text "let" <> pprLang tl C <+> ppr x,
       nest 2 $ colon <+> ppr t,
       nest 4 $ equals <+> ppr e ]
-  ppr (MdA x (Just t) e) = sep
-    [ text "module[A]" <+>
-        ppr x,
+  ppr (LtA tl x (Just t) e) = sep
+    [ text "let" <> pprLang tl A <+> ppr x,
       nest 2 $ colon <+> ppr t,
       nest 4 $ equals <+> ppr e ]
-  ppr (MdInt x t y)      = sep
-    [ text "interface" <+> ppr x,
+  ppr (LtInt _ x t y) = sep
+    [ text "let interface" <+> ppr x,
       nest 2 $ text ":>" <+> ppr t,
       nest 4 $ equals <+> ppr y ]
 
 instance Ppr TyDec where
-  ppr (TdAbsA n ps vs qs) =
-    text "type[A]" <?> pprParamsV vs ps <?> ppr n
-      >?> pprQuals qs
+  ppr (TyDecA _ []) = empty
+  ppr (TyDecC _ []) = empty
+  ppr (TyDecA tl (td:tds)) =
+    let lang   = pprLang tl A
+        indent = 1 + length (show lang) in
+      vcat $
+        text "type" <> lang <+> ppr td :
+        [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
+  ppr (TyDecC tl (td:tds)) =
+    let lang   = pprLang tl C
+        indent = 1 + length (show lang) in
+      vcat $
+        text "type" <> lang <+> ppr td :
+        [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
+
+instance Ppr TyDecC where
   ppr (TdAbsC n ps) =
-    text "type[C]" <?> pprParams ps <?> ppr n
-  ppr (TdSynA n ps rhs) =
-    text "type[A]" <?> pprParams ps <?> ppr n
-      >?> equals <+> ppr rhs
+     pprParams ps <?> ppr n
   ppr (TdSynC n ps rhs) =
-    text "type[C]" <?> pprParams ps <?> ppr n
+    pprParams ps <?> ppr n
       >?> equals <+> ppr rhs
   ppr (TdDatC n ps alts) =
-    text "type[C]" <?> pprParams ps <?> ppr n
+    pprParams ps <?> ppr n
       >?> pprAlternatives alts
+
+instance Ppr TyDecA where
+  ppr (TdAbsA n ps vs qs) =
+    pprParamsV vs ps <?> ppr n
+      >?> pprQuals qs
+  ppr (TdSynA n ps rhs) =
+    pprParams ps <?> ppr n
+      >?> equals <+> ppr rhs
   ppr (TdDatA n ps alts) =
-    text "type[A]" <?> pprParams ps <?> ppr n
+    pprParams ps <?> ppr n
       >?> pprAlternatives alts
 
 instance Ppr AbsTy where
-  ppr (AbsTyC name params alts) =
-    text "[C]" <?> pprParams params <?> ppr name <?> pprAlternatives alts
-  ppr (AbsTyA name params variances qual alts) =
-    text "[A]" <?>
-      (pprParamsV variances params <?> ppr name
-         >?> pprQuals qual
-         >?> pprAlternatives alts)
+  ppr (AbsTyC tl decls) =
+    let lang = pprLang tl C <> space in
+    case map ppr decls of
+      [] -> lang
+      d:ds -> lang <> d $$ vcat (map (text "and" <+>) ds)
+  ppr (AbsTyA tl decls) =
+    let lang = pprLang tl A <> space in
+    case map each decls of
+      [] -> lang
+      d:ds -> lang <> d $$ vcat (map (text "and" <+>) ds)
+    where
+    each (variances, qual, TdDatA name params alts) =
+      pprParamsV variances params <?> ppr name
+        >?> pprQuals qual
+        >?> pprAlternatives alts
+    each (_, _, td) = ppr td -- shouldn't happen (yet)
 
 pprParams    :: [TyVar] -> Doc
 pprParams tvs = delimList parens comma (map ppr tvs)
@@ -304,9 +329,14 @@ instance Ppr Patt where
     where pair = [ pprPrec (precCom + 1) tv <> comma,
                    pprPrec precCom x ]
 
+pprLang :: Bool -> LangRep w -> Doc
+pprLang False _ = empty
+pprLang True  C = text "[C]"
+pprLang True  A = text "[A]"
+
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
-instance Show (Mod i)    where showsPrec = showFromPpr
+instance Show (Let i)    where showsPrec = showFromPpr
 instance Show TyDec      where showsPrec = showFromPpr
 instance Show AbsTy      where showsPrec = showFromPpr
 instance Show (Expr i w) where showsPrec = showFromPpr

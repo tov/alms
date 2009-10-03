@@ -160,18 +160,18 @@ evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl i -> DDecl
-evalDecl (DcMod _ m)    = evalMod m
+evalDecl (DcLet _ m)    = evalLet m
 evalDecl (DcTyp _ _)    = return
 evalDecl (DcAbs _ _ ds) = evalDecls ds
 
-evalMod :: Mod i -> DDecl
-evalMod (MdC x _ e)   env = do
+evalLet :: Let i -> DDecl
+evalLet (LtC _ x _ e)   env = do
   v <- valOf e env
   return (env =+= x =:= return v)
-evalMod (MdA x _ e)   env = do
+evalLet (LtA _ x _ e)   env = do
   v <- valOf e env
   return (env =+= x =:= return v)
-evalMod (MdInt x _ y) env = do
+evalLet (LtInt _ x _ y) env = do
   case env =.= y of
     Just v  -> return (env =+= x =:= v)
     Nothing -> fail $ "BUG! Unknown module: " ++ show y

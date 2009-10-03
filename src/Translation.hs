@@ -6,7 +6,7 @@ module Translation (
 import Syntax
 import Env
 
-type MEnv i = Env Lid (Mod i)
+type MEnv i = Env Lid (Let i)
 type MEnvT  = MEnv TyTag
 
 -- Parties to contracts are module names, but it's worth
@@ -21,26 +21,26 @@ translate menv0 (Prog ds e) =
 
 transDecls :: MEnvT -> [DeclT] -> (MEnvT, [DeclT])
 transDecls menv = foldl each (menv, []) where
-  each (env, ds) (DcMod loc m)      = let (env', m') = transMod env m
-                                       in (env', ds ++ [DcMod loc m'])
+  each (env, ds) (DcLet loc m)      = let (env', m') = transLet env m
+                                       in (env', ds ++ [DcLet loc m'])
   each (env, ds) (DcTyp loc td)     = (env, ds ++ [DcTyp loc td])
   each (env, ds) (DcAbs loc at ds0) = let (env', ds0') = transDecls env ds0
                                        in (env', ds ++ [DcAbs loc at ds0'])
 
-transMod :: MEnvT -> ModT -> (MEnvT, ModT)
-transMod menv m@(MdC x (Just t) e) =
+transLet :: MEnvT -> LetT -> (MEnvT, LetT)
+transLet menv m@(LtC tl x (Just t) e) =
   (menv =+= x =:= m,
-   MdC x (Just t) (transExpr menv (Party x) e))
-transMod menv m@(MdA x (Just t) e) =
+   LtC tl x (Just t) (transExpr menv (Party x) e))
+transLet menv m@(LtA tl x (Just t) e) =
   (menv =+= x =:= m,
-   MdC x (Just (atype2ctype t)) (transExpr menv (Party x) e))
-transMod menv m@(MdInt x t y)      =
+   LtC tl x (Just (atype2ctype t)) (transExpr menv (Party x) e))
+transLet menv m@(LtInt tl x t y)      =
   (menv =+= x =:= m,
-   MdC x (Just (atype2ctype t)) $
+   LtC tl x (Just (atype2ctype t)) $
      exLetVar' z (transExpr menv (Party x) (exVar y :: ExprT C)) $
        ac (Party y) (Party x) z t)
     where z = y /./ "z"
-transMod menv m                  =
+transLet menv m                  =
   (menv =+= modName m =:= m, m)
 
 transExpr :: Language w => MEnvT -> Party -> ExprT w -> ExprT C
@@ -80,15 +80,15 @@ reifyLang1 _ = reifyLang
 transVar :: LangRep w -> MEnvT -> Party -> Lid -> ExprT C
 transVar lang menv neg x =
   case (lang, menv =.= x) of
-    (C, Just (MdC _ (Just t) _)) -> addName C x $ cc neg (Party x) x t
-    (C, Just (MdA _ (Just t) _)) -> addName A x $ ca neg (Party x) x t
-    (C, Just (MdInt _ t _))      -> addName A x $ ca neg (Party x) x t
-    (A, Just (MdC _ (Just t) _)) -> addName C x $ ac neg (Party x) x
-                                                     (ctype2atype t)
-    _                            -> exVar x
+    (C, Just (LtC _ _ (Just t) _)) -> addName C x $ cc neg (Party x) x t
+    (C, Just (LtA _ _ (Just t) _)) -> addName A x $ ca neg (Party x) x t
+    (C, Just (LtInt _ _ t _))      -> addName A x $ ca neg (Party x) x t
+    (A, Just (LtC _ _ (Just t) _)) -> addName C x $ ac neg (Party x) x
+                                                       (ctype2atype t)
+    _                              -> exVar x
 
 addName :: LangRep w -> Lid -> ExprT C -> ExprT C
-addName lang (Lid name) e = exLet (PaVar name') e (exVar name') where
+addName lang (Lid name) e = exLet' (PaVar name') e (exVar name') where
   name' = Lid (name ++ "[" ++ show lang ++ "]")
 
 -- Translate a cast ("dynamic promotion")

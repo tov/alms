@@ -20,11 +20,12 @@ import qualified Data.Set as S
 
 import qualified Control.Monad.Reader as M.R
 import qualified Control.Monad.State  as M.S
+import qualified Control.Monad.RWS    as RWS
 
 -- import System.IO.Unsafe (unsafePerformIO)
--- p :: (Show a, Monad m) => a -> TC w m ()
--- p = return . unsafePerformIO . print
--- p = const (return ())
+-- p :: (Show a) => a -> b -> b
+-- p a b = unsafePerformIO (print a) `seq` b
+-- p = const
 
 -- Get the usage (sharing) of a variable in an expression:
 usage :: Lid -> Expr i A -> Q
@@ -667,10 +668,117 @@ indexQuals :: (?loc :: Loc, Monad m) =>
 indexQuals name = qsFromListM unbound where
   unbound tv = terr $ "unbound tyvar " ++ show tv ++
                       " in qualifier list for type " ++ show name
+-- BEGIN type decl checking
 
 withTyDec :: (?loc :: Loc, Language w, Monad m) =>
              TyDec -> (TyDec -> TC w m a) -> TC w m a
-withTyDec (TdAbsA name params variances quals) k = intoA $ do
+withTyDec (TyDecC tl tds0) k0 = intoC $ do
+  tassert (unique (map tdcName tds0)) $
+    "Duplicate type(s) in recursive type declaration"
+  let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
+  stds <- topSort getEdge stds0
+  -- We need to:
+  --  1) Add stubs for datatypes
+  --  2) Visit all types in order:
+  --     a) abstract
+  --     b) synonyms, topologically sorted
+  --     c) datatypes again
+  mapCont_ withStub dtds $
+    mapCont withTyDecC (atds ++ stds ++ dtds) $
+      \tds' -> outofC $
+        k0 (TyDecC tl tds')
+  where
+    withStub (TdDatC name params _) k = do
+      index <- newIndex
+      let tag = TyTag {
+                  ttId    = index,
+                  ttArity = map (const Invariant) params,
+                  ttQual  = minBound,
+                  ttTrans = False
+                }
+      withTypes (name =:= TiDat tag params empty) k
+    withStub _           k = k
+    getEdge (TdSynC name _ ty)   = (name, tyConsOfType True ty)
+    getEdge (TdAbsC name _)      = (name, S.empty)
+    getEdge (TdDatC name _ alts) = (name, names) where
+       names = S.unions [ tyConsOfType True ty | (_, Just ty) <- alts ]
+    partition td (atds, stds, dtds) =
+      case td of
+        TdAbsC _ _   -> (td : atds, stds, dtds)
+        TdSynC _ _ _ -> (atds, td : stds, dtds)
+        TdDatC _ _ _ -> (atds, stds, td : dtds)
+withTyDec (TyDecA tl tds0) k0 = intoA $ do
+  tassert (unique (map tdaName tds0)) $
+    "Duplicate type(s) in recursive type declaration"
+  let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
+  stds <- topSort getEdge stds0
+  mapCont_ withStub dtds $
+    let loop =
+          mapCont withTyDecA (atds ++ stds ++ dtds) $
+            \tds'changed ->
+              if any snd tds'changed
+                then loop
+                else outofA $ k0 (TyDecA tl (map fst tds'changed))
+     in loop
+  where
+    withStub (TdDatA name params _) k = do
+      index <- newIndex
+      let tag = TyTag {
+                  ttId    = index,
+                  ttArity = map (const Omnivariant) params,
+                  ttQual  = minBound,
+                  ttTrans = False
+                }
+      withTypes (name =:= TiDat tag params empty) k
+    withStub _           k = k
+    getEdge (TdSynA name _ ty)   = (name, tyConsOfType True ty)
+    getEdge (TdAbsA name _ _ _)  = (name, S.empty)
+    getEdge (TdDatA name _ alts) = (name, names) where
+       names = S.unions [ tyConsOfType True ty | (_, Just ty) <- alts ]
+    partition td (atds, stds, dtds) =
+      case td of
+        TdAbsA _ _ _ _ -> (td : atds, stds, dtds)
+        TdSynA _ _ _   -> (atds, td : stds, dtds)
+        TdDatA _ _ _   -> (atds, stds, td : dtds)
+
+withTyDecC :: (?loc :: Loc, Monad m) =>
+              TyDecC -> (TyDecC -> TC C m a) -> TC C m a
+withTyDecC (TdAbsC name params) k = do
+  index <- newIndex
+  withTypes (name =:= TiAbs TyTag {
+               ttId    = index,
+               ttArity = map (const Invariant) params,
+               ttQual  = minBound,
+               ttTrans = False
+             })
+    (k $ TdAbsC name params)
+withTyDecC (TdSynC name params rhs) k = do
+  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
+  withTypes (name =:= t')
+    (k $ TdSynC name params rhs)
+withTyDecC (TdDatC name params alts) k = do
+  TiDat tag _ _ <- getType name
+  (params', alts') <-
+    withTVs params $ \params' -> do
+      alts' <- sequence
+        [ case mt of
+            Nothing -> return (cons, Nothing)
+            Just t  -> do
+              t' <- tcType t
+              return (cons, Just t')
+        | (cons, mt) <- alts ]
+      return (params', alts')
+  withTypes (name =:= TiDat tag params' (fromList alts')) $
+    withVars (alts2env name params' tag alts') $
+      (k $ TdDatC name params alts)
+
+-- withTyDecA types an A type declaration, but in addition to
+-- return (in CPS) a declaration, it returns a boolean that indicates
+-- whether the type metadata has changed, which allows for iterating
+-- to a fixpoint.
+withTyDecA :: (?loc :: Loc, Monad m) =>
+              TyDecA -> ((TyDecA, Bool) -> TC A m a) -> TC A m a
+withTyDecA (TdAbsA name params variances quals) k = do
   index  <- newIndex
   quals' <- indexQuals name params quals
   withTypes (name =:= TiAbs TyTag {
@@ -679,85 +787,36 @@ withTyDec (TdAbsA name params variances quals) k = intoA $ do
                ttQual  = quals',
                ttTrans = False
              })
-    (outofA . k $ TdAbsA name params variances quals)
-withTyDec (TdAbsC name params) k = intoC $ do
-  index <- newIndex
-  withTypes (name =:= TiAbs TyTag {
-               ttId    = index,
-               ttArity = map (const Invariant) params,
-               ttQual  = minBound,
-               ttTrans = False
-             })
-    (outofC . k $ TdAbsC name params)
-withTyDec (TdSynC name params rhs) k = intoC $ do
+    (k (TdAbsA name params variances quals, False))
+withTyDecA (TdSynA name params rhs) k = do
   t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
   withTypes (name =:= t')
-    (outofC . k $ TdSynC name params rhs)
-withTyDec (TdSynA name params rhs) k = intoA $ do
-  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
-  withTypes (name =:= t')
-    (outofA . k $ TdSynA name params rhs)
-withTyDec (TdDatC name params alts) k = intoC $ do
-  index <- newIndex
-  let tag = TyTag {
-              ttId    = index,
-              ttArity = map (const Invariant) params,
-              ttQual  = minBound,
-              ttTrans = False
-            }
+    (k (TdSynA name params rhs, False))
+withTyDecA (TdDatA name params alts) k = do
+  TiDat tag _ _ <- getType name
   (params', alts') <-
-    withTVs params $ \params' ->
-      withTypes (name =:= TiDat tag params' empty) $ do
-        alts' <- sequence
-          [ case mt of
-              Nothing -> return (cons, Nothing)
-              Just t  -> do
-                t' <- tcType t
-                return (cons, Just t')
-          | (cons, mt) <- alts ]
-        return (params', alts')
-  withTypes (name =:= TiDat tag params' (fromList alts')) $
-    withVars (alts2env name params' tag alts') $
-      (outofC . k $ TdDatC name params alts)
-withTyDec (TdDatA name params alts) k = intoA $ do
-  index <- newIndex
-  let tag0 = TyTag {
-               ttId    = index,
-               ttArity = map (const 0) params,
-               ttQual  = minBound,
-               ttTrans = False
-             }
-  (tag, alts') <- fixDataType name params alts tag0
-  withTypes (name =:= TiDat tag params (fromList alts')) $
-    withVars (alts2env name params tag alts') $
-      (outofA . k $ TdDatA name params alts)
+    withTVs params $ \params' -> do
+      alts' <- sequence
+        [ case mt of
+            Nothing -> return (cons, Nothing)
+            Just t  -> do
+              t' <- tcType t
+              return (cons, Just t')
+        | (cons, mt) <- alts ]
+      return (params', alts')
+  let t'      = foldl tyTupleT tyUnitT [ t | (_, Just t) <- alts' ]
+      arity   = typeVariances params' t'
+      qual    = typeQual params' t'
+      changed = arity /= ttArity tag || qual /= ttQual tag
+      tag'    = tag { ttArity = arity, ttQual = qual }
+  withTypes (name =:= TiDat tag' params' (fromList alts')) $
+    withVars (alts2env name params' tag' alts') $
+      (k (TdDatA name params alts, changed))
 
-fixDataType :: (?loc :: Loc, Monad m) =>
-               Lid -> [TyVar] -> [(Uid, Maybe (Type () A))] ->
-               TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
-fixDataType name params alts = loop where
-  loop :: Monad m => TyTag -> TC A m (TyTag, [(Uid, Maybe (TypeT A))])
-  loop tag = do
-    (params', alts') <-
-      withTVs params $ \params' ->
-        withTypes (name =:= TiDat tag params' empty) $ do
-          alts' <- sequence
-            [ case mt of
-                Nothing -> return (k, Nothing)
-                Just t  -> do
-                  t' <- tcType t
-                  return (k, Just t')
-            | (k, mt) <- alts ]
-          return (params', alts')
-    let t'    = foldl tyTupleT tyUnitT [ t | (_, Just t) <- alts' ]
-        arity = typeVariances params' t'
-        qual  = typeQual params' t'
-    if arity == ttArity tag && qual == ttQual tag
-      then return (tag, alts')
-      else loop tag {
-             ttArity = arity,
-             ttQual  = qual
-           }
+unique :: Ord a => [a] -> Bool
+unique  = loop S.empty where
+  loop _    []     = True
+  loop seen (x:xs) = x `S.notMember` seen && loop (S.insert x seen) xs
 
 alts2env :: Lid -> [TyVar] -> TyTag -> [(Uid, Maybe (TypeT w))] -> G w
 alts2env name params tag = fromList . map each where
@@ -806,9 +865,53 @@ typeQual d0 = qsFromList d0 . S.toList . loop where
   loop (TyMu tv t)   = S.delete (Left tv) (loop t)
   loop _             = S.empty
 
-withMod :: (?loc :: Loc, Language w, Monad m) =>
-           Mod i -> (ModT -> TC w m a) -> TC w m a
-withMod (MdC x mt e) k = intoC $ do
+topSort :: forall node m a.
+           (?loc :: Loc, Monad m, Ord node, Show node) =>
+           (a -> (node, S.Set node)) -> [a] -> m [a]
+topSort getEdge edges = do
+  (_, w) <- RWS.execRWST visitAll S.empty S.empty
+  return w
+  where
+    visitAll = mapM_ visit (M.keys graph)
+
+    visit :: node -> RWS.RWST (S.Set node) [a] (S.Set node) m ()
+    visit node = do
+      stack <- RWS.ask
+      tassert (not (node `S.member` stack)) $
+        "unproductive cycle in type definitions, via type " ++ show node
+      seen <- RWS.get
+      if node `S.member` seen
+        then return ()
+        else do
+          RWS.put (S.insert node seen)
+          case M.lookup node graph of
+            Just (succs, info) -> do
+              RWS.local (S.insert node) $
+                mapM_ visit succs
+              RWS.tell [info]
+            Nothing ->
+              return ()
+
+    graph :: M.Map node ([node], a)
+    graph = M.fromList [ let (node, succs) = getEdge info
+                          in (node, (S.toList succs, info))
+                       | info <- edges ]
+
+-- END type decl checking
+
+tyConsOfType :: Bool -> Type i w -> S.Set Lid
+tyConsOfType here (TyCon lid ts _) =
+  (if here then S.singleton lid else S.empty)
+  `S.union` S.unions (map (tyConsOfType here) ts)
+tyConsOfType _    (TyVar _)        = S.empty
+tyConsOfType here (TyQu _ _ ty)    = tyConsOfType here ty
+tyConsOfType here (TyMu _ ty)      = tyConsOfType here ty
+tyConsOfType here (TyC ty)         = tyConsOfType (not here) ty
+tyConsOfType here (TyA ty)         = tyConsOfType (not here) ty
+
+withLet :: (?loc :: Loc, Language w, Monad m) =>
+           Let i -> (LetT -> TC w m a) -> TC w m a
+withLet (LtC tl x mt e) k = intoC $ do
   (te, e') <- tcExprC e
   t' <- case mt of
     Just t  -> do
@@ -822,8 +925,8 @@ withMod (MdC x mt e) k = intoC $ do
     intoA .
       withVars (Var x =:= ctype2atype t') .
         outofA .
-          k $ MdC x (Just t') e'
-withMod (MdA x mt e) k = intoA $ do
+          k $ LtC tl x (Just t') e'
+withLet (LtA tl x mt e) k = intoA $ do
   (te, e') <- tcExprA e
   t' <- case mt of
     Just t  -> do
@@ -842,8 +945,8 @@ withMod (MdA x mt e) k = intoA $ do
     intoC .
       withVars (Var x =:= atype2ctype t') .
         outofC .
-          k $ MdA x (Just t') e'
-withMod (MdInt x t y) k = do
+          k $ LtA tl x (Just t') e'
+withLet (LtInt tl x t y) k = do
   ty <- intoC $ getVar (Var y)
   t' <- intoA $ tcType t
   tassert (ty == atype2ctype t') $
@@ -854,11 +957,11 @@ withMod (MdInt x t y) k = do
       intoC .
         withVars (Var x =:= atype2ctype t') .
           outofC .
-            k $ MdInt x t' y
+            k $ LtInt tl x t' y
 
 withDecl :: Monad m =>
             Decl i -> (DeclT -> TC C m a) -> TC C m a
-withDecl (DcMod loc m)     k = withMod m (k . DcMod loc)
+withDecl (DcLet loc m)     k = withLet m (k . DcLet loc)
   where ?loc = loc
 withDecl (DcTyp loc td)    k = withTyDec td (k . DcTyp loc)
   where ?loc = loc
@@ -873,43 +976,53 @@ withDecls (d:ds) k = withDecl d $ \d' ->
 
 withAbsTy :: (?loc :: Loc, Monad m) =>
              AbsTy -> [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
-withAbsTy at ds k = case at of
-  AbsTyC name params alts ->
-    withTyDec (TdDatC name params alts) $ \_ ->
+withAbsTy at ds k0 = case at of
+  AbsTyC tl tds ->
+    withTyDec (TyDecC tl tds) $ \_ ->
       withDecls ds $ \ds' -> do
+        mapCont absDecl tds $ \tags' ->
+          k0 (foldr replaceTyTags ds' tags')
+    where
+      absDecl (TdDatC name params _) k = do
         tag <- getTypeTag "abstract-with-end" name
         tassert (length params == length (ttArity tag)) $
-          "abstract-with-end: " ++ show (length params) ++
+          "abstype-with-end: " ++ show (length params) ++
           " given for type " ++ show name ++
           " which has " ++ show (length (ttArity tag))
         let tag' = tag
         withoutConstructors tag' .
           withReplacedTyTags tag' .
             withTypes (name =:= TiAbs tag') $
-              k (replaceTyTags tag' ds')
-  AbsTyA name params arity quals alts ->
-    withTyDec (TdDatA name params alts) $ \_ ->
+              k tag'
+      absDecl _ _ = terr "(BUG) Can't abstract non-datatypes"
+  AbsTyA tl atds -> 
+    let (_, _, tds) = unzip3 atds in
+    withTyDec (TyDecA tl tds) $ \_ ->
       withDecls ds $ \ds' -> intoA $ do
-      tag     <- getTypeTag "abstract-with-end" name
-      qualSet <- indexQuals name params quals
-      tassert (length params == length (ttArity tag)) $
-        "abstract-with-end: " ++ show (length params) ++
-        " given for type " ++ show name ++
-        " which has " ++ show (length (ttArity tag))
-      tassert (all2 (<:) (ttArity tag) arity) $
-        "abstract-with-end: declared arity for type " ++ show name ++
-        ", " ++ show arity ++
-        ", is more general than actual arity " ++ show (ttArity tag)
-      tassert (ttQual tag <: qualSet) $ 
-        "abstract-with-end: declared qualifier for type " ++ show name ++
-        ", " ++ show qualSet ++
-        ", is more general than actual qualifier " ++ show (ttQual tag)
-      let tag' = TyTag (ttId tag) arity qualSet False
-      withoutConstructors tag' .
-        withReplacedTyTags tag' .
-          withTypes (name =:= TiAbs tag') .
-            outofA $
-              k (replaceTyTags tag' ds')
+        mapCont absDecl atds $ \tags' ->
+          outofA $ k0 (foldr replaceTyTags ds' tags')
+    where
+      absDecl (arity, quals, TdDatA name params _) k = do
+        tag     <- getTypeTag "abstract-with-end" name
+        qualSet <- indexQuals name params quals
+        tassert (length params == length (ttArity tag)) $
+          "abstract-with-end: " ++ show (length params) ++
+          " given for type " ++ show name ++
+          " which has " ++ show (length (ttArity tag))
+        tassert (all2 (<:) (ttArity tag) arity) $
+          "abstract-with-end: declared arity for type " ++ show name ++
+          ", " ++ show arity ++
+          ", is more general than actual arity " ++ show (ttArity tag)
+        tassert (ttQual tag <: qualSet) $ 
+          "abstract-with-end: declared qualifier for type " ++ show name ++
+          ", " ++ show qualSet ++
+          ", is more general than actual qualifier " ++ show (ttQual tag)
+        let tag' = TyTag (ttId tag) arity qualSet False
+        withoutConstructors tag' .
+          withReplacedTyTags tag' .
+            withTypes (name =:= TiAbs tag') $
+              k tag'
+      absDecl _ _ = terr "(BUG) Can't abstract non-datatypes"
 
 tcDecls :: Monad m => S -> [Decl i] -> m (S, [DeclT])
 tcDecls gg ds = runTC gg $

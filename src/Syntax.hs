@@ -18,8 +18,11 @@ module Syntax (
   Type(..), tyC, tyA, tyAll, tyEx, TypeT, TEnv,
   Quant(..),
   Prog(..), ProgT,
-  Decl(..), DeclT, dcMod, dcTyp, dcAbs,
-  Mod(..), ModT, TyDec(..), AbsTy(..),
+
+  Decl(..), DeclT, dcLet, dcTyp, dcAbs,
+  Let(..), LetT,
+  TyDec(..), TyDecC(..), TyDecA(..),
+  AbsTy(..),
 
   TypeTW(..), typeTW,
 
@@ -150,13 +153,13 @@ type TEnv w = Env Lid (TypeT w)
 data Prog i = Prog [Decl i] (Maybe (Expr i C))
   deriving (Typeable, Data)
 
-data Decl i = DcMod Loc (Mod i)
+data Decl i = DcLet Loc (Let i)
             | DcTyp Loc TyDec
             | DcAbs Loc AbsTy [Decl i]
   deriving (Typeable, Data)
 
-dcMod :: Mod i -> Decl i
-dcMod  = DcMod bogus
+dcLet :: Let i -> Decl i
+dcLet  = DcLet bogus
 
 dcTyp :: TyDec -> Decl i
 dcTyp  = DcTyp bogus
@@ -164,56 +167,58 @@ dcTyp  = DcTyp bogus
 dcAbs :: AbsTy -> [Decl i] -> Decl i
 dcAbs  = DcAbs bogus
 
-data Mod i  = MdA Lid (Maybe (Type i A)) (Expr i A)
-            | MdC Lid (Maybe (Type i C)) (Expr i C)
-            | MdInt Lid (Type i A) Lid
+data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
+            | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
+            | LtInt Bool Lid (Type i A) Lid
   deriving (Typeable, Data)
 
-data TyDec   = TdAbsC {
-                 tdName      :: Lid,
-                 tdParams    :: [TyVar]
-               }
-             | TdAbsA {
-                 tdName      :: Lid,
-                 tdParams    :: [TyVar],
-                 tdVariances :: [Variance],
-                 tdQual      :: [Either TyVar Q]
+data TyDec   = TyDecC Bool [TyDecC]
+             | TyDecA Bool [TyDecA]
+  deriving (Typeable, Data)
+
+data TyDecC  = TdAbsC {
+                 tdcName      :: Lid,
+                 tdcParams    :: [TyVar]
                }
              | TdSynC {
-                 tdName      :: Lid,
-                 tdParams    :: [TyVar],
+                 tdcName      :: Lid,
+                 tdcParams    :: [TyVar],
                  tdcRHS      :: Type () C
              }
-             | TdSynA {
-                 tdName      :: Lid,
-                 tdParams    :: [TyVar],
-                 tdaRHS      :: Type () A
-             }
              | TdDatC {
-                 tdName      :: Lid,
-                 tdParams    :: [TyVar],
+                 tdcName      :: Lid,
+                 tdcParams    :: [TyVar],
                  tdcAlts     :: [(Uid, Maybe (Type () C))]
              }
+  deriving (Typeable, Data)
+data TyDecA  = TdAbsA {
+                 tdaName      :: Lid,
+                 tdaParams    :: [TyVar],
+                 tdaVariances :: [Variance],
+                 tdaQual      :: [Either TyVar Q]
+               }
+             | TdSynA {
+                 tdaName      :: Lid,
+                 tdaParams    :: [TyVar],
+                 tdaRHS      :: Type () A
+             }
              | TdDatA {
-                 tdName      :: Lid,
-                 tdParams    :: [TyVar],
-                 tdaAlts     :: [(Uid, Maybe (Type () A))]
+                 tdaName      :: Lid,
+                 tdaParams    :: [TyVar],
+                 tdaAlts      :: [(Uid, Maybe (Type () A))]
              }
   deriving (Typeable, Data)
 
 data AbsTy   = AbsTyC {
-                 atName      :: Lid,
-                 atParams    :: [TyVar],
-                 atcAlts     :: [(Uid, Maybe (Type () C))]
+                 atTopLevel    :: Bool,
+                 atTyDecC      :: [TyDecC]
                }
              | AbsTyA {
-                 atName      :: Lid,
-                 atParams    :: [TyVar],
-                 atVariances :: [Variance],
-                 atQual      :: [Either TyVar Q],
-                 atAlts      :: [(Uid, Maybe (Type () A))]
+                 atTopLevel    :: Bool,
+                 atTyDecA      :: [AbsTyADat]
                }
   deriving (Typeable, Data)
+type AbsTyADat = ([Variance], [Either TyVar Q], TyDecA)
 
 data Expr i w = Expr {
                   eloc_ :: Loc,
@@ -257,7 +262,7 @@ data Patt = PaWild
 type ExprT    = Expr TyTag
 type TypeT    = Type TyTag
 type DeclT    = Decl TyTag
-type ModT     = Mod TyTag
+type LetT     = Let TyTag
 type BindingT = Binding TyTag
 type ProgT    = Prog TyTag
 
@@ -470,12 +475,12 @@ instance Relocatable (Expr i w) where
   setLoc e loc = e { eloc_ = loc }
 
 instance Locatable (Decl i) where
-  getLoc (DcMod loc _)   = loc
+  getLoc (DcLet loc _)   = loc
   getLoc (DcTyp loc _)   = loc
   getLoc (DcAbs loc _ _) = loc
 
 instance Relocatable (Decl i) where
-  setLoc (DcMod _ m)     loc = DcMod loc m
+  setLoc (DcLet _ m)     loc = DcLet loc m
   setLoc (DcTyp _ td)    loc = DcTyp loc td
   setLoc (DcAbs _ at ds) loc = DcAbs loc at ds
 
@@ -1073,14 +1078,14 @@ castableType (TyMu _ t)     = castableType t
 castableType (TyC _)        = False
 castableType (TyA _)        = False
 
-modName :: Mod i -> Lid
-modName (MdA x _ _)   = x
-modName (MdC x _ _)   = x
-modName (MdInt x _ _) = x
+modName :: Let i -> Lid
+modName (LtA _ x _ _)   = x
+modName (LtC _ x _ _)   = x
+modName (LtInt _ x _ _) = x
 
 prog2decls :: Prog i -> [Decl i]
 prog2decls (Prog ds (Just e))
-  = ds ++ [DcMod (getLoc e) (MdC (Lid "it") Nothing e)]
+  = ds ++ [DcLet (getLoc e) (LtC True (Lid "it") Nothing e)]
 prog2decls (Prog ds Nothing)
   = ds
 

@@ -4,6 +4,7 @@ module Util (
   foldl2, foldr2, all2, any2,
   char2integer, integer2char,
   unscanr, unscanl,
+  mapCont, mapCont_,
   module Control.Arrow,
   module Control.Monad
 ) where
@@ -70,3 +71,14 @@ unscanl f = loop [] where
   loop acc b = case f b of
     Just (a, b') -> loop (a : acc) b'
     Nothing      -> (acc, b)
+
+mapCont :: (a -> (b -> r) -> r) -> [a] -> ([b] -> r) -> r
+mapCont _ []     k = k []
+mapCont f (x:xs) k = f x $ \x' ->
+                     mapCont f xs $ \xs' ->
+                       k (x' : xs')
+
+mapCont_ :: (a -> r -> r) -> [a] -> r -> r
+mapCont_ _ []     k = k
+mapCont_ f (x:xs) k = f x $ mapCont_ f xs $ k
+

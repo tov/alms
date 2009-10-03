@@ -1,8 +1,8 @@
 module Parser (
   P, parse,
   parseProg, parseDecls, parseDecl,
-    parseMod, parseTyDec, parseType, parseExpr, parsePatt,
-  pp, pds, pd, pm, ptd, pt, pe, px
+    parseLet, parseTyDec, parseType, parseExpr, parsePatt,
+  pp, pds, pd, pl, ptd, pt, pe, px
 ) where
 
 import Util
@@ -190,12 +190,13 @@ declsp  = choice [
 declp :: P (Decl ())
 declp  = addLoc $ choice [
            tyDecp >>! dcTyp,
-           modp   >>! dcMod,
+           letp   >>! dcLet,
            do
              reserved "abstype"
+             tl   <- toplevelp
              lang <- languagep
              withState (Just lang) $ do
-               at   <- abstyp lang
+               at   <- abstyp tl lang
                reserved "with"
                ds <- declsp
                reserved "end"
@@ -205,9 +206,17 @@ declp  = addLoc $ choice [
 tyDecp :: P TyDec
 tyDecp  = do
   reserved "type"
-  lang   <- languagep
+  tl   <- toplevelp
+  lang <- languagep
   case lang of
     LC -> do
+      tds <- sepBy1 tyDecCp (reserved "and")
+      return (TyDecC tl tds)
+    LA -> do
+      tds <- sepBy1 tyDecAp (reserved "and")
+      return (TyDecA tl tds)
+  where
+    tyDecCp = do
       tvs  <- paramsp
       name <- lidp
       choice [
@@ -218,7 +227,7 @@ tyDecp  = do
             typep >>! TdSynC name tvs ],
         do
           return (TdAbsC name tvs) ]
-    LA -> do
+    tyDecAp = do
       (arity, tvs) <- paramsVp
       name         <- lidp
       choice [
@@ -232,28 +241,28 @@ tyDecp  = do
           quals <- qualsp
           return (TdAbsA name tvs arity quals) ]
 
-modp :: P (Mod ())
-modp  = choice
-  [ do lang <- try $ do
-         reserved "let"
-         languagep
-       case lang of
-         LC -> modbodyp MdC
-         LA -> modbodyp MdA,
-    do try $ do
-         reserved "let"
-         reserved "interface"
+letp :: P (Let ())
+letp  =  do
+  reserved "let"
+  tl   <- toplevelp
+  choice [
+    do reserved "interface"
        x    <- varp
        reservedOp ":>"
        t    <- typep
        reservedOp "="
        y    <- varp
-       return (MdInt x t y) ]
+       return (LtInt tl x t y),
+    do lang <- languagep
+       case lang of
+         LC -> letbodyp (LtC tl)
+         LA -> letbodyp (LtA tl)
+    ]
   where
-    modbodyp :: Language w =>
-                (Lid -> Maybe (Type () w) -> Expr () w -> Mod ()) ->
-                P (Mod ())
-    modbodyp build = do
+    letbodyp :: Language w =>
+                (Lid -> Maybe (Type () w) -> Expr () w -> Let ()) ->
+                P (Let ())
+    letbodyp build = do
       f <- varp
       (fixt, fixe) <- afargsp
       t <- optionMaybe $ colon >> typep
@@ -261,20 +270,24 @@ modp  = choice
       e <- exprp
       return (build f (fmap fixt t) (fixe e))
 
-abstyp :: Lang -> P AbsTy
-abstyp LC = do
-  tvs  <- paramsp
-  name <- lidp
-  reservedOp "="
-  alts <- altsp
-  return (AbsTyC name tvs alts)
-abstyp LA = do
-  (arity, tvs) <- paramsVp
-  name         <- lidp
-  quals        <- qualsp
-  reservedOp "="
-  alts         <- altsp
-  return (AbsTyA name tvs arity quals alts)
+abstyp :: Bool -> Lang -> P AbsTy
+abstyp tl LC = do
+  tds <- flip sepBy (reserved "and") $ do
+    tvs  <- paramsp
+    name <- lidp
+    reservedOp "="
+    alts <- altsp
+    return (TdDatC name tvs alts)
+  return (AbsTyC tl tds)
+abstyp tl LA = do
+  tds <- flip sepBy (reserved "and") $ do
+    (arity, tvs) <- paramsVp
+    name         <- lidp
+    quals        <- qualsp
+    reservedOp "="
+    alts         <- altsp
+    return (arity, quals, TdDatA name tvs alts)
+  return (AbsTyA tl tds)
 
 paramsp  :: P [TyVar]
 paramsp   = delimList (return ()) parens comma tyvarp
@@ -319,6 +332,9 @@ altp   = do
     reserved "of"
     typep
   return (k, t)
+
+toplevelp :: P Bool
+toplevelp  = maybe True (const False) `fmap` getState
 
 languagep :: P Lang
 languagep  = do
@@ -597,7 +613,7 @@ finish p = do
 parseProg     :: P (Prog ())
 parseDecls    :: P [Decl ()]
 parseDecl     :: P (Decl ())
-parseMod      :: P (Mod ())
+parseLet      :: P (Let ())
 parseTyDec    :: P TyDec
 parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
@@ -605,7 +621,7 @@ parsePatt     :: P Patt
 parseProg      = finish progp
 parseDecls     = finish declsp
 parseDecl      = finish declp
-parseMod       = finish modp
+parseLet       = finish letp
 parseTyDec     = finish tyDecp
 parseType      = finish typep
 parseExpr      = finish exprp
@@ -622,8 +638,8 @@ pds  = makeQaD parseDecls
 pd  :: String -> Decl ()
 pd   = makeQaD parseDecl
 
-pm  :: String -> Mod ()
-pm   = makeQaD parseMod
+pl  :: String -> Let ()
+pl   = makeQaD parseLet
 
 ptd :: String -> TyDec
 ptd  = makeQaD parseTyDec

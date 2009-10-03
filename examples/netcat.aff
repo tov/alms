@@ -2,7 +2,7 @@
 
 let[C] pushString (sock: socket) (c: char) =
   let rec loop (): unit =
-    let len = send sock (implode (Cons (c, Nil[char]))) in
+    let len = sock_send sock (implode (Cons (c, Nil[char]))) in
       if len == 0 then loop () else () in
   loop ()
 
@@ -17,7 +17,7 @@ let[C] sendThread (sock: socket) =
 
 let[C] recvThread (sock: socket) =
   let rec loop (): unit =
-    let s = recv sock 1 in
+    let s = sock_recv sock 1 in
       hPutStr stdout s;
       loop ()
   in loop ()
