@@ -24,5 +24,6 @@ Executable affine
                         parsec >= 2.1,
                         mtl >= 1.1,
                         filepath >= 1.1,
+                        network >= 2.2,
                         editline
   CPP-Options:        -DUSE_READLINE=System.Console.Editline.Readline
