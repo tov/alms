@@ -7,48 +7,48 @@
 *)
 
 abstype[C] 'a array = Array of (int -> 'a) ref with
-  let[C] newArray['a] (default: 'a): 'a array =
+  let newArray['a] (default: 'a): 'a array =
     Array (ref (fun ix: int -> default))
 
-  let[C] at['a] (Array r: 'a array) (ix: int): 'a = !r ix
+  let at['a] (Array r: 'a array) (ix: int): 'a = !r ix
 
-  let[C] update['a] (Array r: 'a array) (ix: int) (new: 'a): unit =
+  let update['a] (Array r: 'a array) (ix: int) (new: 'a): unit =
     let oldf = !r in
       (r <- fun ix': int -> if ix == ix' then new else oldf ix');
       ()
 end
 
 abstype[A] ('a, 't) array = AfArray of {{'a} array} with
-  abstype[A] ('t, 'c) readcap qualifier A = MkCap with
-    type[A] 't writecap = ('t, unit) readcap
+  abstype ('t, 'c) readcap qualifier A = MkCap with
+    type 't writecap = ('t, unit) readcap
 
-    let[A] withNewArray['a] (default: 'a)
-                       ['r] (kont: all 't.
-                                     ('a, 't) array -o
-                                     't writecap -o
-                                     'r): 'r =
+    let withNewArray['a] (default: 'a)
+                    ['r] (kont: all 't.
+                                  ('a, 't) array -o
+                                  't writecap -o
+                                  'r): 'r =
       kont[unit] (AfArray['a,unit] (newArray default)) MkCap[unit,unit]
 
-    let[A] split['t,'c] (_: ('t, 'c) readcap)
-               : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap
-             = (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
+    let split['t,'c] (_: ('t, 'c) readcap)
+            : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap
+          = (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
 
-    let[A] join['t,'c]
-               (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
-               : ('t, 'c) readcap
-             = MkCap['t, 'c]
+    let join['t,'c]
+            (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
+            : ('t, 'c) readcap
+          = MkCap['t, 'c]
   end
 
-  type[A] 't writecap = ('t, unit) readcap
+  type 't writecap = ('t, unit) readcap
 
-  let[A] read['a,'t] (AfArray arr: ('a, 't) array) (ix: int)
-             ['c] (cap : ('t, 'c) readcap) : 'a * ('t, 'c) readcap =
-           (at arr ix, cap)
+  let read['a,'t] (AfArray arr: ('a, 't) array) (ix: int)
+          ['c] (cap : ('t, 'c) readcap) : 'a * ('t, 'c) readcap =
+        (at arr ix, cap)
 
-  let[A] write['a,'t] (AfArray arr: ('a, 't) array) (ix: int) (new: 'a)
-                      (cap : 't writecap) : 't writecap =
-           update arr ix new;
-           cap
+  let write['a,'t] (AfArray arr: ('a, 't) array) (ix: int) (new: 'a)
+                   (cap : 't writecap) : 't writecap =
+        update arr ix new;
+        cap
 end
 
 type[C] range = int * int

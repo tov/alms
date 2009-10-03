@@ -11,15 +11,27 @@ import Syntax
 import Loc
 import Lexer
 
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec hiding (parse)
 import System.IO.Unsafe (unsafePerformIO)
 import System.FilePath ((</>), dropFileName)
 
-type St  = ()
-type P a = CharParser St a
+data Lang = LC | LA deriving (Eq, Show, Ord)
+type St   = Maybe Lang
+type P a  = CharParser St a
 
 (>>!) :: P a -> (a -> b) -> P b
 (>>!)  = flip fmap
+
+parse   :: P a -> SourceName -> String -> Either ParseError a
+parse p  = runParser p Nothing
+
+withState :: St -> P a -> P a
+withState st p = do
+  st0 <- getState
+  setState st
+  r <- p
+  setState st0
+  return r
 
 curLoc :: P Loc
 curLoc  = getPosition >>! fromSourcePos
@@ -181,18 +193,19 @@ declp  = addLoc $ choice [
            modp   >>! dcMod,
            do
              reserved "abstype"
-             lang <- brackets languagep
-             at   <- abstyp lang
-             reserved "with"
-             ds <- declsp
-             reserved "end"
-             return (dcAbs at ds)
+             lang <- languagep
+             withState (Just lang) $ do
+               at   <- abstyp lang
+               reserved "with"
+               ds <- declsp
+               reserved "end"
+               return (dcAbs at ds)
          ]
 
 tyDecp :: P TyDec
 tyDecp  = do
   reserved "type"
-  lang   <- brackets languagep
+  lang   <- languagep
   case lang of
     LC -> do
       tvs  <- paramsp
@@ -222,8 +235,8 @@ tyDecp  = do
 modp :: P (Mod ())
 modp  = choice
   [ do lang <- try $ do
-         optional (reserved "let")
-         brackets languagep
+         reserved "let"
+         languagep
        case lang of
          LC -> modbodyp MdC
          LA -> modbodyp MdA,
@@ -307,11 +320,14 @@ altp   = do
     typep
   return (k, t)
 
-data Lang = LC | LA deriving (Eq, Show, Ord)
 languagep :: P Lang
-languagep  = choice
-  [ do langC; return LC,
-    do langA; return LA ]
+languagep  = do
+  st <- getState
+  case st of
+    Nothing   -> brackets $ choice
+                 [ do langC; return LC,
+                   do langA; return LA ]
+    Just lang -> return lang
 
 exprp :: Language w => P (Expr () w)
 exprp = expr0 where
@@ -623,5 +639,4 @@ px   = makeQaD parsePatt
 
 makeQaD :: P a -> String -> a
 makeQaD parser =
-  either (error . show) id . runParser parser () "<string>"
-
+  either (error . show) id . parse parser "<string>"

@@ -5,34 +5,34 @@
 #load "libarray-C.aff"
 
 abstype[A] ('a, 't) array = Array of {{'a} array} with
-  abstype[A] ('t, 'c) readcap qualifier A = MkCap with
-    type[A] 't writecap = ('t, unit) readcap
+  abstype ('t, 'c) readcap qualifier A = MkCap with
+    type 't writecap = ('t, unit) readcap
 
-    let[A] newA['a] (size: int) : ex 't. ('a, 't) array * 't writecap =
+    let newA['a] (size: int) : ex 't. ('a, 't) array * 't writecap =
       Pack[ex 't. ('a, 't) array * 't writecap]
           (unit, (Array['a,unit] (newArray['a] size), MkCap[unit,unit]))
 
-    let[A] splitA['t,'c] (_: ('t, 'c) readcap)
-               : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap =
+    let splitA['t,'c] (_: ('t, 'c) readcap)
+            : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap =
       (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
 
-    let[A] joinA['t,'c]
-               (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
-               : ('t, 'c) readcap =
+    let joinA['t,'c]
+            (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
+            : ('t, 'c) readcap =
       MkCap['t, 'c]
   end
 
-  let[A] atA['a,'t,'c] (Array arr: ('a, 't) array) (ix: int)
-                       (cap : ('t, 'c) readcap)
-                       : 'a * ('t, 'c) readcap =
+  let atA['a,'t,'c] (Array arr: ('a, 't) array) (ix: int)
+                    (cap : ('t, 'c) readcap)
+                    : 'a * ('t, 'c) readcap =
     (at arr ix, cap)
 
-  let[A] updateA['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
-                        (cap : 't writecap) : 't writecap =
+  let updateA['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
+                     (cap : 't writecap) : 't writecap =
     update arr ix new;
     cap
 
-  let[A] sizeA['a,'t] (Array arr: ('a, 't) array): int =
+  let sizeA['a,'t] (Array arr: ('a, 't) array): int =
     size arr
 end
 

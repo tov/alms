@@ -3,27 +3,27 @@
 *)
 
 abstype[C] 'a array = Array of int * (int -> 'a) ref with
-  let[C] newArray['a] (size : int): 'a array =
+  let newArray['a] (size : int): 'a array =
     Array (size, ref (fun ix: int ->
-                        failwith['a] "array element unitialized"))
+                        failwith['a] "array element uninitialized"))
 
-  let[C] checkIndex (size: int) (ix: int): unit =
+  let checkIndex (size: int) (ix: int): unit =
     if ix < 0
       then failwith[unit] "array index too low"
     else if ix >= size
       then failwith[unit] "array index too high"
     else ()
 
-  let[C] at['a] (Array (size, r): 'a array) (ix: int): 'a =
+  let at['a] (Array (size, r): 'a array) (ix: int): 'a =
     checkIndex size ix;
     !r ix
 
-  let[C] update['a] (Array (size, r): 'a array) (ix: int) (new: 'a): unit =
+  let update['a] (Array (size, r): 'a array) (ix: int) (new: 'a): unit =
     checkIndex size ix;
     let oldf = !r in
       (r <- fun ix': int -> if ix == ix' then new else oldf ix');
       ()
 
-  let[C] size['a] (Array (size, _): 'a array) = size
+  let size['a] (Array (size, _): 'a array) = size
 end
 

@@ -48,42 +48,42 @@ let[A] swapN['<a] (ix: int) (y: '<a) | (xs: '<a list)
     (x, xs)
 
 abstype[A] ('t, '<a) region qualifier A = Rgn of '<a list with
-  abstype[A] ('t, '<a) region1 qualifier A = Rgn1 of '<a with
-    abstype[A] 't ptr qualifier U = Ptr of int with
-      let[A] newRgn['<a] () =
+  abstype ('t, '<a) region1 qualifier A = Rgn1 of '<a with
+    abstype 't ptr qualifier U = Ptr of int with
+      let newRgn['<a] () =
         Pack[ex 't. ('t, '<a) region] (unit, Rgn[unit] (Nil['<a]))
-      let[A] freeRgn['<a,'t] (_: ('t, '<a) region) = ()
+      let freeRgn['<a,'t] (_: ('t, '<a) region) = ()
 
-      let[A] mallocIn['<a,'t] (Rgn xs: ('t, '<a) region) | (a: '<a)
-             : 't ptr * ('t, '<a) region =
+      let mallocIn['<a,'t] (Rgn xs: ('t, '<a) region) | (a: '<a)
+          : 't ptr * ('t, '<a) region =
         let (ix, xs) = length xs in
           (Ptr['t] ix, Rgn['t] (snoc a xs))
-      let[A] swap['<a,'t] (Rgn xs: ('t, '<a) region) |
-                          (Ptr ix: 't ptr) (x: '<a)
-                          : '<a * ('t, '<a) region =
+      let swap['<a,'t] (Rgn xs: ('t, '<a) region) |
+                       (Ptr ix: 't ptr) (x: '<a)
+                       : '<a * ('t, '<a) region =
         let (y, xs) = swapN ix x xs in
           (y, Rgn['t] xs)
 
-      let[A] malloc () =
+      let malloc () =
         Pack[ex 't. ('t, unit) region1 * 't ptr]
             (unit, Rgn1[unit] (), Ptr[unit] 0)
-      let[A] swap1['<a,'<b,'t] (Rgn1 x: ('t, '<a) region1) |
-                               (_: 't ptr) (y: '<b)
-                               : '<a * ('t, '<b) region1 =
+      let swap1['<a,'<b,'t] (Rgn1 x: ('t, '<a) region1) |
+                            (_: 't ptr) (y: '<b)
+                            : '<a * ('t, '<b) region1 =
         (x, Rgn1['t] y)
-      let[A] free['<a, 't] (_: ('t, '<a) region1) = ()
+      let free['<a, 't] (_: ('t, '<a) region1) = ()
 
-      let[A] adopt['<a,'t1,'t2] (rgn: ('t1, '<a) region) |
-                                (Rgn1 x: ('t2, '<a) region1)
-                                (_: 't2 ptr)
-                                : 't1 ptr * ('t1, '<a) region =
+      let adopt['<a,'t1,'t2] (rgn: ('t1, '<a) region) |
+                             (Rgn1 x: ('t2, '<a) region1)
+                             (_: 't2 ptr)
+                             : 't1 ptr * ('t1, '<a) region =
         mallocIn rgn x
 
-      let[A] focus['<a,'t]
-               (Rgn xs: ('t, '<a) region) |
-               (Ptr ix: 't ptr)
-               : ex 't1. ('t1, '<a) region1 * 't1 ptr *
-                         (('t1, '<a) region1 -o ('t, '<a) region) =
+      let focus['<a,'t]
+            (Rgn xs: ('t, '<a) region) |
+            (Ptr ix: 't ptr)
+            : ex 't1. ('t1, '<a) region1 * 't1 ptr *
+                      (('t1, '<a) region1 -o ('t, '<a) region) =
          let (Cons (x, xs), acc) = revAppN ix xs Nil['<a] in
            Pack[ex 't1. ('t1, '<a) region1 * 't1 ptr *
                         (('t1, '<a) region1 -o ('t, '<a) region)]
