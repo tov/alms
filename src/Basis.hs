@@ -16,7 +16,7 @@ import Syntax
 
 import Basis.Channels
 
-import IO (hFlush, stdout)
+import qualified IO
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
 import qualified Control.Concurrent as CC
@@ -37,6 +37,8 @@ primBasis  = [
     -- "unit" built in
     -- "bool" built in
     "int"    `primtype` tdInt,
+    typeC "char = int",
+    typeA "char = int",
     "float"  `primtype` tdFloat,
     "string" `primtype` tdString,
 
@@ -125,7 +127,7 @@ primBasis  = [
     fun "getChar"  -:: "unit -> int"
       -= \() -> fmap char2integer getChar,
     fun "flush"    -:: "unit -> unit"
-      -= \() -> hFlush stdout,
+      -= \() -> IO.hFlush IO.stdout,
     fun "putStr"   -:: "string -> unit"
       -= putStr,
     fun "putStrLn" -:: "string -> unit"
@@ -261,6 +263,29 @@ primBasis  = [
              then return (Left c)
              else return (Right c),
 
+    -- File operations
+    typeC "handle",
+    typeC "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
+    fun "openFile"        -: "string -> ioMode -> handle" -: ""
+      -= \s (VaCon (Uid m) _) ->
+           IO.openFile s $ case m of
+             "ReadWriteMode" -> IO.ReadWriteMode
+             "AppendMode"    -> IO.AppendMode
+             "WriteMode"     -> IO.WriteMode
+             _               -> IO.ReadMode,
+    fun "hGetChar"        -: "handle -> char" -: ""
+      -= fmap char2integer . IO.hGetChar,
+    fun "hGetLine"        -: "handle -> string" -: ""
+      -= IO.hGetLine,
+    fun "hIsEOF"          -: "handle -> bool" -: ""
+      -= IO.hIsEOF,
+    fun "hPutChar"        -: "handle -> char -> unit" -: ""
+      -= \h -> IO.hPutChar h . integer2char,
+    fun "hPutStr"         -: "handle -> string -> unit" -: ""
+      -= IO.hPutStr,
+    fun "hClose"          -: "handle -> unit" -: ""
+      -= IO.hClose,
+
     -- Unsafe coercions
     pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
       -= (id :: Value -> Value),
@@ -278,6 +303,10 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO ()
   ]
+
+instance Valuable IO.Handle where
+  veq = (==)
+  vpprPrec _ _ = text "#<handle>"
 
 newtype Ref = Ref { unRef :: IORef Value }
   deriving (Eq, Typeable)
