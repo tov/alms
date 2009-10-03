@@ -1,6 +1,6 @@
 #!/bin/sh
 
-host=frogger.ccs.neu.edu
+host=spelunker.ccs.neu.edu
 remote=public_html/pubs/affine-contracts
 
 if [ -z "$1" ]; then
