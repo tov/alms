@@ -1,4 +1,7 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE
+  DeriveDataTypeable,
+  FlexibleInstances
+ #-}
 module BasisUtils (
   Entry, Nonce(..), Vinj(..),
   MkFun(..), baseMkFun,
@@ -6,6 +9,7 @@ module BasisUtils (
   typeC, typeA, primtype, src,
   vapp,
   (-:), (-::), (-=),
+  text, Uid(..),
   basis2venv, basis2tenv
 ) where
 
@@ -13,7 +17,7 @@ import Util
 import Dynamics
 import Statics (S, env0, tcDecls, addVal, addTyTag)
 import Env (Env, fromList)
-import Syntax (Ident(..), Lid(..), Type, TyTag(..), C, A)
+import Syntax (Ident(..), Lid(..), Uid(..), Type, TyTag(..), C, A)
 import Parser (pt, pds)
 
 import Data.Typeable (Typeable)
@@ -92,17 +96,23 @@ mkTyAbs entry =
             VaSus (hang (text "#<sus") 4 $ vppr v <> char '>')
                   (return v) }
 
-typeC     :: String -> Entry
-typeC      = DecEn . ("type[C] " ++)
+class TypeBuilder r where
+  typeA :: String -> r
+  typeC :: String -> r
+  src   :: String -> r
 
-typeA     :: String -> Entry
-typeA      = DecEn . ("type[A] " ++)
+instance TypeBuilder Entry where
+  typeC      = DecEn . ("type[C] " ++)
+  typeA      = DecEn . ("type[A] " ++)
+  src        = DecEn
+
+instance TypeBuilder r => TypeBuilder (String -> r) where
+  typeC s    = typeC . (s ++) . ('\n' :)
+  typeA s    = typeA . (s ++) . ('\n' :)
+  src s      = src   . (s ++) . ('\n' :)
 
 primtype  :: String -> TyTag -> Entry
 primtype   = TypEn
-
-src       :: String -> Entry
-src        = DecEn
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)

@@ -16,7 +16,8 @@ import Syntax (Prog, ProgT, Decl(..), DeclT, Mod(..),
 import Env (empty, (=.=), (=-=))
 
 import Control.Monad (when, unless)
-import System (getArgs, getProgName, exitFailure)
+import System.Exit (exitFailure)
+import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
 import IO (readFile, hPutStr, hPutStrLn, stderr)
 
@@ -36,7 +37,7 @@ data Option = Don'tExecute
 main :: IO ()
 main  = do
   args <- getArgs
-  let (opts, mmsrc, filename) = processArgs [] args
+  processArgs [] args $ \opts mmsrc filename -> do
   g0  <- basis2tenv primBasis
   e0  <- basis2venv primBasis
   st0 <- loadSource (RS g0 empty e0) "basis" srcBasis
@@ -230,23 +231,33 @@ errorString :: IOError -> String
 errorString e | isUserError e = ioeGetErrorString e
               | otherwise     = show e
 
-processArgs :: [Option] -> [String] -> ([Option], Maybe (IO String), String)
-processArgs opts []          = (opts, Nothing, "-")
-processArgs opts ["-"]       = (opts, Just getContents, "-")
-processArgs opts (('-':c:d:e):r)
-                             = processArgs opts (['-',c]:('-':d:e):r)
-processArgs opts ("-t":r)    = processArgs (Don'tType:opts) r
-processArgs opts ("-x":r)    = processArgs (Don'tExecute:opts) r
-processArgs opts ("-c":r)    = processArgs (Don'tCoerce:opts) r
-processArgs opts ("-r":r)    = processArgs (ReType:opts) r
-processArgs opts ("-v":r)    = processArgs (Verbose:opts) r
-processArgs opts (('-':_):_) = (opts, Just usage, "")
-processArgs opts [name]      = (opts, Just (readFile name), name)
-processArgs opts _           = (opts, Just usage, "")
+processArgs :: [Option] -> [String] ->
+               ([Option] -> Maybe (IO String) -> String -> IO a) ->
+               IO a
+processArgs opts0 args0 k = loop opts0 args0 where
+  loop opts []          = go "-" [] opts Nothing
+  loop opts ("-":args)
+                        = go "-" args opts (Just getContents)
+  loop opts ("--":name:args) 
+                        = go name args opts (Just (readFile name))
+  loop opts (('-':c:d:e):r)
+                        = loop opts (['-',c]:('-':d:e):r)
+  loop opts ("-t":r)    = loop (Don'tType:opts) r
+  loop opts ("-x":r)    = loop (Don'tExecute:opts) r
+  loop opts ("-c":r)    = loop (Don'tCoerce:opts) r
+  loop opts ("-r":r)    = loop (ReType:opts) r
+  loop opts ("-v":r)    = loop (Verbose:opts) r
+  loop _    (('-':_):_) = usage
+  loop opts (name:args) = go name args opts (Just (readFile name))
+
+  go name args opts mmsrc =
+    withProgName name $
+      withArgs args $
+        k opts mmsrc name
 
 usage :: IO a
 usage  = do
-  hPutStrLn stderr "Usage: affine [OPTIONS...] [FILENAME]"
+  hPutStrLn stderr "Usage: affine [OPTIONS...] [--] [FILENAME] [OPTIONS...]"
   hPutStrLn stderr ""
   hPutStrLn stderr "Options:"
   hPutStrLn stderr "  -t   Don't type check (implies -c)"

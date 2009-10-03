@@ -6,7 +6,8 @@ module Dynamics (
   E, Result,
   eval, evalDecls,
   Valuable(..),
-  FunName(..), Value(..), vaInt, vaUnit
+  FunName(..), Value(..), vaInt, vaUnit,
+  vinjEnum, vprjEnum, vinjProd, vprjProd, vinjStruct, vprjStruct
 ) where
 
 import Util
@@ -88,6 +89,41 @@ vaInt   = vinj
 -- The unit value
 vaUnit :: Value
 vaUnit  = vinj ()
+
+-- Deal with algebraic datatypes
+vprjEnum  :: (Monad m, Read a) => Value -> m a
+vprjEnum v = do
+  let VaCon (Uid s) _ = v
+      (r,_):_         = reads s
+  return r
+
+vinjEnum :: Show a => a -> Value
+vinjEnum d = VaCon (Uid (show d)) Nothing
+
+vinjProd :: [Value] -> Value
+vinjProd [] = vinj ()
+vinjProd vs = foldl1 (\x y -> vinj (x, y)) vs
+
+vprjProd :: Monad m => Integer -> Value -> m [Value]
+vprjProd  = loop [] where
+  loop acc 0 _ = return acc
+  loop acc 1 v = return (v:acc)
+  loop acc n v = do
+    (xs, x) <- vprjM v
+    loop (x:acc) (n - 1) xs
+
+vinjStruct :: String -> [Value] -> Value
+vinjStruct name [] = VaCon (Uid name) Nothing
+vinjStruct name vs = VaCon (Uid name) (Just (vinjProd vs))
+
+vprjStruct :: Monad m => Integer -> Value -> m (String, [Value])
+vprjStruct 0 (VaCon (Uid name) _)        = return (name, [])
+vprjStruct n (VaCon (Uid name) (Just v)) = do
+  fields <- vprjProd n v
+  return (name, fields)
+vprjStruct _ _ = fail "vprjStruct (bug): not a constructor"
+
+-- Ppr instances
 
 instance Ppr FunName where
   pprPrec _ (FNAnonymous doc) = hang (text "#<closure") 4 $
@@ -239,6 +275,12 @@ instance Valuable a => Valuable [a] where
   vpprPrec = vpprPrecList
   vinj     = vinjList
   vprjM    = vprjListM
+
+instance Valuable Int where
+  veq        = (==)
+  vpprPrec _ = text . show
+  vinj       = vinj . toInteger
+  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
 
 instance Valuable Integer where
   veq        = (==)

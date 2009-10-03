@@ -15,8 +15,11 @@ import Ppr (text)
 import Syntax
 
 import Basis.Channels
+import qualified Basis.IO
+import qualified Basis.Socket
 
 import qualified IO
+import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
 import qualified Control.Concurrent as CC
@@ -101,6 +104,10 @@ primBasis  = [
       -= (show :: Double -> String),
     fun "float_of_string" -:: "string -> float"
       -= (read :: String -> Double),
+    fun "string_of_int" -:: "int -> string"
+      -= (show :: Integer -> String),
+    fun "int_of_string" -:: "string -> int"
+      -= (read :: String -> Integer),
 
     -- Strings
     fun "explode"  -:: "string -> int list"
@@ -111,6 +118,8 @@ primBasis  = [
       -= ((++) :: String -> String -> String),
     pfun 1 "string_of" -:: "all 'a. 'a -> string"
       -= (return . show :: Value -> IO String),
+    fun "string_length" -:: "string -> int"
+      -= \s -> toInteger (length (s :: String)),
 
     -- "Magic" equality and print; failure
     pfun 1 "==" -:: "all 'a. 'a -> 'a -> bool"
@@ -134,6 +143,16 @@ primBasis  = [
       -= putStrLn,
     fun "getLine"  -:: "unit -> string"
       -= \() -> getLine,
+
+    -- The environment
+    fun "getArgs" -:: "unit -> string list"
+      -= \() -> Env.getArgs,
+    fun "getProgName" -:: "unit -> string"
+      -= \() -> Env.getProgName,
+    fun "getEnv" -:: "string -> string"
+      -= Env.getEnv,
+    fun "getEnvironment" -:: "unit -> (string * string) list"
+      -= \() -> Env.getEnvironment,
 
     -- References
     typeC "'a ref",
@@ -263,29 +282,6 @@ primBasis  = [
              then return (Left c)
              else return (Right c),
 
-    -- File operations
-    typeC "handle",
-    typeC "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
-    fun "openFile"        -: "string -> ioMode -> handle" -: ""
-      -= \s (VaCon (Uid m) _) ->
-           IO.openFile s $ case m of
-             "ReadWriteMode" -> IO.ReadWriteMode
-             "AppendMode"    -> IO.AppendMode
-             "WriteMode"     -> IO.WriteMode
-             _               -> IO.ReadMode,
-    fun "hGetChar"        -: "handle -> char" -: ""
-      -= fmap char2integer . IO.hGetChar,
-    fun "hGetLine"        -: "handle -> string" -: ""
-      -= IO.hGetLine,
-    fun "hIsEOF"          -: "handle -> bool" -: ""
-      -= IO.hIsEOF,
-    fun "hPutChar"        -: "handle -> char -> unit" -: ""
-      -= \h -> IO.hPutChar h . integer2char,
-    fun "hPutStr"         -: "handle -> string -> unit" -: ""
-      -= IO.hPutStr,
-    fun "hClose"          -: "handle -> unit" -: ""
-      -= IO.hClose,
-
     -- Unsafe coercions
     pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
       -= (id :: Value -> Value),
@@ -303,10 +299,8 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO ()
   ]
-
-instance Valuable IO.Handle where
-  veq = (==)
-  vpprPrec _ _ = text "#<handle>"
+  ++ Basis.IO.entries
+  ++ Basis.Socket.entries
 
 newtype Ref = Ref { unRef :: IORef Value }
   deriving (Eq, Typeable)

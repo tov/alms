@@ -1,0 +1,51 @@
+(* Poor programmer's telnet *)
+
+let[C] pushString (sock: socket) (c: char) =
+  let rec loop (): unit =
+    let len = send sock (implode (Cons (c, Nil[char]))) in
+      if len == 0 then loop () else () in
+  loop ()
+
+let[C] sendThread (sock: socket) =
+  let rec loop (): unit =
+    if hIsEOF stdin
+      then ()
+      else let c = hGetChar stdin
+            in pushString sock c;
+               loop ()
+  in loop ()
+
+let[C] recvThread (sock: socket) =
+  let rec loop (): unit =
+    let s = recv sock 1 in
+      hPutStr stdout s;
+      loop ()
+  in loop ()
+
+let[C] setupConnection (addr: sockAddr): socket =
+  let s = socket AF_INET Stream defaultProtocol in
+    connect s addr; s
+
+let[C] getAddr (): sockAddr =
+  let argv = getArgs () in
+  match argv with
+  | Cons(hoststring, Cons(portstring, Nil))
+      -> let addrInfo = AddrInfo(Nil[addrInfoFlag], AF_INET,
+                                 Stream, defaultProtocol,
+                                 SockAddrInet(0, 0), None[string]) in
+         let addrInfo = getAddrInfo(Some addrInfo)
+                                   (Some hoststring)
+                                   (Some portstring) in
+         match addrInfo with
+         | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
+         | _ -> failwith[sockAddr] ("Could not resolve address " ^
+                                    hoststring ^ ":" ^ portstring)
+      -- SockAddrInet(int_of_string portstring, inet_addr hoststring)
+  | _ -> failwith[sockAddr] ("Usage: " ^ getProgName () ^ " HOST SERVICE")
+
+let[A] main () =
+  let sock = setupConnection (getAddr ()) in
+    threadFork (fun () -> recvThread sock);
+    sendThread sock
+
+in main ()
