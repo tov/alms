@@ -11,7 +11,7 @@ let[C] putAny 'a (x: 'a) = putStr (string_of x)
 type[C] point = Point of float * float * float
 type[C] plane = Plane of float * float * float * float
 
--- We use the plane Plane(a, b, c, d) to represent the open semi-space
+-- We use the plane Plane(a, b, c, d) to represent the open half-space
 -- { Point(x, y, z) | ax + by + cz + d > 0 }
 
 let[C] string_of_point (Point(x, y, z): point) =
@@ -86,7 +86,7 @@ let[C] parsePlane (s: string) : plane =
 -- Is the point above the plane?  (i.e., in the semi-space)
 let[C] isPointAbovePlane (Point(x, y, z): point)
                          (Plane(a, b, c, d): plane): bool =
-  not (a *. x +. b *. y +. c *. z +. d <=. float_of_string "0")
+  a *. x +. b *. y +. c *. z +. d >. 0.0
 
 -- Does the line segment between the two points intersect the plane,
 -- and if so, where?
