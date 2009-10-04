@@ -6,7 +6,7 @@
       MultiParamTypeClasses
     #-}
 module Dynamics (
-  E(..), (=++=), Result,
+  E, (=++=), Result,
   eval, evalDecls,
   Valuable(..),
   FunName(..), Value(..), vaInt, vaUnit,
@@ -148,12 +148,19 @@ instance Show Value where
 --
 
 type Result   = IO Value
-data E        = E { ve :: VE, me :: ME }
+data Scope    = Scope {
+                  ve :: VE,
+                  me :: ME
+                }
+type E        = [Scope]
 type VE       = Env Lid (IO Value)
-type ME       = Env Uid E
+type ME       = Env Uid Scope
 
 type D        = E -> Result
 type DDecl    = E -> IO E
+
+emptyscope :: Scope
+emptyscope  = Scope empty empty
 
 -- Add the given name to an anonymous function
 nameFun :: Lid -> Value -> Value
@@ -161,28 +168,26 @@ nameFun (Lid x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
 
-instance PathLookup E QLid (IO Value) where
-  env =..= QLid []         n = env =..= n
-  env =..= QLid (uid:uids) n = do
-    env' <- me env =.= uid
-    env' =..= QLid uids n
+instance PathLookup Scope [Uid] Scope where
+  (=..=) = foldM (\scope' u -> me scope' =.= u)
+instance PathLookup Scope QLid (IO Value) where
+  scope =..= QLid us n = scope =..= us >>= (=.= n) . ve
+instance PathLookup Scope QUid Scope where
+  scope =..= QUid us n = scope =..= us >>= (=.= n) . me
+instance PathLookup Scope Lid (IO Value) where
+  scope =..= n = ve scope =.= n
+instance PathLookup Scope Uid Scope where
+  scope =..= n = me scope =.= n
 
-instance PathLookup E Lid (IO Value) where
-  env =..= n  =  ve env =.= n
+instance PathExtend Scope (Env Lid (IO Value)) where
+  env =++= venv = env { ve = ve env =+= venv }
+instance PathExtend Scope (Env Uid Scope) where
+  env =++= menv = env { me = me env =+= menv }
 
-instance PathLookup E QUid E where
-  env =..= QUid []         n = env =..= n
-  env =..= QUid (uid:uids) n = do
-    env' <- me env =.= uid
-    env' =..= QUid uids n
+(=:!=) :: Ord v => v -> a -> Env v (IO a)
+(=:!=)  = (=::=)
 
-instance PathLookup E Uid E where
-  env =..= n  =  me env =.= n
-
-(=++=) :: E -> VE -> E
-env =++= venv = env { ve = ve env =+= venv }
-
-infixr 5 =++=
+infix 6 =:!=
 
 evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
@@ -191,18 +196,36 @@ evalDecl :: Decl i -> DDecl
 evalDecl (DcLet _ m)    = evalLet m
 evalDecl (DcTyp _ _)    = return
 evalDecl (DcAbs _ _ ds) = evalDecls ds
+evalDecl (DcMod _ m)    = evalMod m
 
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
   v <- valOf e env
-  return (env =++= x =:= return v)
+  return (env =++= x =:!= v)
 evalLet (LtA _ x _ e)   env = do
   v <- valOf e env
-  return (env =++= x =:= return v)
+  return (env =++= x =:!= v)
 evalLet (LtInt _ x _ y) env = do
   case env =..= y of
     Just v  -> return (env =++= x =:= v)
-    Nothing -> fail $ "BUG! Unknown module: " ++ show y
+    Nothing -> fail $ "BUG! Unknown variable: " ++ show y
+
+evalMod :: Mod i -> DDecl
+evalMod (ModC _ x b)   env = do
+  e <- evalModExp b env
+  return (env =++= x =:= e)
+evalMod (ModA _ x b)   env = do
+  e <- evalModExp b env
+  return (env =++= x =:= e)
+
+evalModExp :: ModExp i -> E -> IO Scope
+evalModExp (MeDecls ds) env = do
+  scope:_ <- evalDecls ds (emptyscope:env)
+  return scope
+evalModExp (MeName n)   env = do
+  case env =..= n of
+    Just scope -> return scope
+    Nothing    -> fail $ "BUG! Unknown module: " ++ show n
 
 eval :: E -> Prog i -> Result
 eval env0 (Prog ds (Just e0)) = evalDecls ds env0 >>= valOf e0
@@ -272,7 +295,7 @@ valOf e env = case view e of
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
-  PaVar lid    -> return (env =++= lid =:= return (lid `nameFun` v))
+  PaVar lid    -> return (env =++= lid =:!= lid `nameFun` v)
   PaCon uid mx -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
@@ -289,7 +312,7 @@ bindPatt x0 v env = case x0 of
   PaPack _ x   -> bindPatt x v env
   PaAs x lid   -> do
     env' <- bindPatt x v env
-    return (env' =++= lid =:= return v)
+    return (env' =++= lid =:!= v)
   where perr = fail $
                  "Pattern match failure: " ++ show x0 ++
                  " does not match " ++ show v

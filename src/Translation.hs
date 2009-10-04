@@ -1,68 +1,107 @@
-{-# LANGUAGE MultiParamTypeClasses, PatternGuards #-}
-module Translation (
-  translate, transDecls, MEnv, MEnvT
-) where
+{-# LANGUAGE
+      FlexibleInstances,
+      ImplicitParams,
+      MultiParamTypeClasses,
+      PatternGuards #-}
+module Translation {-(
+  translate, transDecls, TEnv
+)-} where
 
+import Util
 import Syntax
 import Env
 
-type MEnv i = Env QLid (Let i)
-type MEnvT  = MEnv TyTag
+data Scope = Scope {
+               le :: Env Lid (Let TyTag),
+               me :: Env Uid Scope
+             }
+type TEnv  = [Scope]
+
+emptyscope :: Scope
+emptyscope  = Scope empty empty
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.
 newtype Party = Party Ident
+type Path     = [Uid]
 
 -- Translate a program by adding contracts.
-translate :: MEnvT -> ProgT -> ProgT
-translate menv0 (Prog ds e) =
-  Prog ds' (transExpr menv (party (Uid "*Main*")) `fmap` e)
-  where (menv, ds') = transDecls menv0 ds
+translate :: TEnv -> ProgT -> ProgT
+translate tenv0 (Prog ds e) =
+  let ?path       = [] in
+  let (tenv, ds') = transDecls tenv0 ds in
+    Prog ds' (transExpr tenv (party (Uid "*Main*")) `fmap` e)
 
-transDecls :: MEnvT -> [DeclT] -> (MEnvT, [DeclT])
-transDecls menv = foldl each (menv, []) where
+transDecls :: (?path :: Path) => TEnv -> [DeclT] -> (TEnv, [DeclT])
+transDecls tenv = foldl each (tenv, []) where
   each (env, ds) (DcLet loc m)      = let (env', m') = transLet env m
                                        in (env', ds ++ [DcLet loc m'])
   each (env, ds) (DcTyp loc td)     = (env, ds ++ [DcTyp loc td])
   each (env, ds) (DcAbs loc at ds0) = let (env', ds0') = transDecls env ds0
                                        in (env', ds ++ [DcAbs loc at ds0'])
+  each (env, ds) (DcMod loc m)      = let (env', m') = transMod env m
+                                       in (env', ds ++ [DcMod loc m']) 
 
-transLet :: MEnvT -> LetT -> (MEnvT, LetT)
-transLet menv m@(LtC tl x (Just t) e) =
-  (menv =+= x =:= m,
-   LtC tl x (Just t) (transExpr menv (party x) e))
-transLet menv m@(LtA tl x (Just t) e) =
-  (menv =+= x =:= m,
-   LtC tl x (Just (atype2ctype t)) (transExpr menv (party x) e))
-transLet menv m@(LtInt tl x t y)      =
-  (menv =+= x =:= m,
+transLet :: (?path :: Path) => TEnv -> LetT -> (TEnv, LetT)
+transLet tenv m@(LtC tl x (Just t) e) =
+  (tenv =++= x =:= m,
+   LtC tl x (Just t) (transExpr tenv (getNeg x) e))
+transLet tenv m@(LtA tl x (Just t) e) =
+  (tenv =++= x =:= m,
+   LtC tl x (Just (atype2ctype t)) (transExpr tenv (getNeg x) e))
+transLet tenv m@(LtInt tl x t y)      =
+  (tenv =++= x =:= m,
    LtC tl x (Just (atype2ctype t)) $
-     exLetVar' z (transExpr menv (party x) (exVar y :: ExprT C)) $
-       ac (party y) (party x) z t)
+     exLetVar' z (transExpr tenv (getNeg x) (exVar y :: ExprT C)) $
+       ac (party y) (getNeg x) z t)
     where z = y /./ "z"
-transLet menv m                  =
-  (menv =+= letName m =:= m, m)
+transLet tenv m                  =
+  (tenv =++= letName m =:= m, m)
 
-transExpr :: Language w => MEnvT -> Party -> ExprT w -> ExprT C
-transExpr menv neg = te where
-  tem menv' = transExpr menv' neg
+transMod :: (?path :: Path) => TEnv -> ModT -> (TEnv, ModT)
+transMod tenv (ModC tl x b) =
+  let (scope, b') = descend x $ transModExp tenv b in
+    (tenv =++= x =:= scope, ModC tl x b')
+transMod tenv (ModA tl x b) =
+  let (scope, b') = descend x $ transModExp tenv b in
+    (tenv =++= x =:= scope, ModA tl x b')
+
+transModExp :: (?path :: Path) => TEnv -> ModExpT -> (Scope, ModExpT)
+transModExp tenv (MeName n) = case tenv =..= n of
+  Just scope -> (scope, MeName n)
+  Nothing    -> error "Bug! transModExp"
+transModExp tenv (MeDecls ds) =
+  let (scope:_, ds') = transDecls (emptyscope:tenv) ds
+   in (scope, MeDecls ds')
+
+getNeg :: (?path :: Path, Culpable p) => p -> Party
+getNeg def = case ?path of
+  []   -> party def
+  p:ps -> party (QUid (reverse ps) p)
+
+descend    :: (?path :: Path) => Uid -> a -> a
+descend p a = let ?path = p : ?path in a
+
+transExpr :: Language w => TEnv -> Party -> ExprT w -> ExprT C
+transExpr tenv neg = te where
+  tem tenv' = transExpr tenv' neg
   te e0 = case view e0 of
     ExId i    -> case i of
       Con k   -> exCon k
-      Var x   -> transVar (reifyLang1 e0) menv neg x
+      Var x   -> transVar (reifyLang1 e0) tenv neg x
     ExStr s   -> exStr s
     ExInt z   -> exInt z
     ExFloat f -> exFloat f
     ExCase e1 clauses -> exCase (te e1)
-                                [ (xi, tem (menv =--= pv xi) ei)
+                                [ (xi, tem (tenv =\\= pv xi) ei)
                                 | (xi, ei) <- clauses ]
-    ExLetRec bs e2 -> let rec = tem (foldl (=-=) menv (map bnvar bs))
+    ExLetRec bs e2 -> let rec = tem (foldl (=\=) tenv (map bnvar bs))
                       in exLetRec
                            [ Binding x (type2ctype t) (rec e)
                            | Binding x t e <- bs ]
                            (rec e2)
     ExPair e1 e2 -> exPair (te e1) (te e2)
-    ExAbs x t e -> exAbs x (type2ctype t) (tem (menv =--= pv x) e)
+    ExAbs x t e -> exAbs x (type2ctype t) (tem (tenv =\\= pv x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
@@ -77,14 +116,17 @@ reifyLang1 :: Language w => f w -> LangRep w
 reifyLang1 _ = reifyLang
 
 -- How do we refer to a variable from a given language?
-transVar :: LangRep w -> MEnvT -> Party -> QLid -> ExprT C
-transVar lang menv neg x =
-  case (lang, menv =.= x) of
-    (C, Just (LtC _ _ (Just t) _)) -> addName C x $ \x' -> cc neg (party x) x' t
-    (C, Just (LtA _ _ (Just t) _)) -> addName A x $ \x' -> ca neg (party x) x' t
-    (C, Just (LtInt _ _ t _))      -> addName A x $ \x' -> ca neg (party x) x' t
-    (A, Just (LtC _ _ (Just t) _)) -> addName C x $ \x' -> ac neg (party x) x'
-                                                       (ctype2atype t)
+transVar :: LangRep w -> TEnv -> Party -> QLid -> ExprT C
+transVar lang tenv neg x =
+  case (lang, tenv =..= x) of
+    (C, Just (LtC _ _ (Just t) _)) ->
+      addName C x $ \x' -> cc neg (party x) x' t
+    (C, Just (LtA _ _ (Just t) _)) ->
+      addName A x $ \x' -> ca neg (party x) x' t
+    (C, Just (LtInt _ _ t _))      ->
+      addName A x $ \x' -> ca neg (party x) x' t
+    (A, Just (LtC _ _ (Just t) _)) ->
+      addName C x $ \x' -> ac neg (party x) x' (ctype2atype t)
     _                              -> exVar x
 
 addName :: LangRep w -> QLid -> (Lid -> ExprT C) -> ExprT C
@@ -356,3 +398,41 @@ exTAbs' tv e = case view e of
     _            -> exTAbs tv e
   _            -> exTAbs tv e
 
+
+instance PathLookup Scope [Uid] Scope where
+  (=..=) = foldM (\scope' u -> me scope' =.= u)
+instance PathLookup Scope QLid (Let TyTag) where
+  scope =..= QLid us n = scope =..= us >>= (=.= n) . le
+instance PathLookup Scope QUid Scope where
+  scope =..= QUid us n = scope =..= us >>= (=.= n) . me
+instance PathLookup Scope Lid (Let TyTag) where
+  scope =..= n = le scope =.= n
+instance PathLookup Scope Uid Scope where
+  scope =..= n = me scope =.= n
+
+instance PathExtend Scope (Env Lid (Let TyTag)) where
+  env =++= lenv = env { le = le env =+= lenv }
+instance PathExtend Scope (Env Uid Scope) where
+  env =++= tenv = env { me = me env =+= tenv }
+
+instance PathRemove Scope Lid where
+  env =\= n = env { le = le env =\= n }
+instance PathRemove Scope Uid where
+  env =\= n = env { me = me env =\= n }
+instance PathRemove Scope QLid where
+  env =\= QLid us n = atDepth us (=\= n) env
+instance PathRemove Scope QUid where
+  env =\= QUid us n = atDepth us (=\= n) env
+
+atDepth :: [Uid] -> (Scope -> Scope) -> (Scope -> Scope)
+atDepth []     f scope = f scope
+atDepth (u:us) f scope = case scope =..= u of
+  Nothing     -> scope
+  Just scope' -> scope =++= u =:= atDepth us f scope'
+
+{-
+remove :: Keyable QLid k => TEnv -> k -> TEnv
+remove k = map eachScope where
+  eachScope (Scope 
+
+-}

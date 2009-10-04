@@ -177,6 +177,8 @@ data Decl i = DcLet Loc (Let i)
             | DcTyp Loc TyDec
             | DcAbs Loc AbsTy [Decl i]
             | DcMod Loc (Mod i)
+            -- | DcOpn Loc QUid
+            -- | DcLoc Loc [Decl i] [Decl i]
   deriving (Typeable, Data)
 
 dcLet :: Let i -> Decl i
@@ -272,6 +274,7 @@ data Expr' i w = ExId Ident
                | ExFloat Double
                | ExCase (Expr i w) [(Patt, Expr i w)]
                | ExLetRec [Binding i w] (Expr i w)
+               -- | ExLetMod Uid (ModExp i)
                | ExPair (Expr i w) (Expr i w)
                | ExAbs Patt (Type i w) (Expr i w)
                | ExApp (Expr i w) (Expr i w)

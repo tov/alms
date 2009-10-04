@@ -2,13 +2,15 @@
       DeriveDataTypeable,
       FlexibleInstances,
       FunctionalDependencies,
-      MultiParamTypeClasses #-}
+      MultiParamTypeClasses,
+      UndecidableInstances #-}
 module Env (
   Env(unEnv),
-  Keyable(..), PathLookup(..),
+  Keyable(..),
+  PathLookup(..), PathExtend(..), PathRemove(..),
   empty, isEmpty,
   (=:=), (=::=), (=:+=), (=+=), (=-=), (=--=), (=.=), (=|=),
-  mapAccum, mapAccumM,
+  mapEnv, mapAccum, mapAccumM,
   toList, fromList, contents
 ) where
 
@@ -68,6 +70,9 @@ m =.= y   = M.lookup (liftKey y) (unEnv m)
 (=|=)    :: Keyable x y => Env x a -> Env y b -> Env x (a, b)
 m =|= n   = Env (M.intersectionWith (,) (unEnv m) (unEnv (liftEnv n)))
 
+mapEnv :: Ord v => (a -> b) -> Env v a -> Env v b
+mapEnv f = Env . M.map f . unEnv
+
 mapAccum :: Ord v => (a -> b -> (b, c)) -> b -> Env v a -> (b, Env v c)
 mapAccum f z m = case M.mapAccum (flip f) z (unEnv m) of
                    (c, m') -> (c, Env m')
@@ -101,10 +106,39 @@ instance (Ord v, Show v, Show a) => Show (Env v a) where
     [ shows v . (" : "++) . shows a . ('\n':)
     | (v, a) <- M.toList (unEnv env) ]
 
+instance Keyable k k' => PathLookup (Env k v) k' v where
+  (=..=) = (=.=)
+
 class PathLookup e k v | e k -> v where
   (=..=) :: e -> k -> Maybe v
 
-instance Keyable k k => PathLookup (Env k v) k v where
-  (=..=) = (=.=)
+instance PathLookup e k v => PathLookup [e] k v where
+  []     =..= _ = Nothing
+  (s:ss) =..= k = case s =..= k of
+                    Just a  -> return a
+                    Nothing -> ss =..= k
+
+class PathExtend e e' where
+  (=++=)   :: e -> e' -> e
+
+instance Keyable k k' => PathExtend (Env k v) (Env k' v) where
+  (=++=) = (=+=)
+
+instance PathExtend e e' => PathExtend [e] e' where
+  []     =++= _  = []
+  (e:es) =++= e' = (e =++= e') : es
+
+class PathRemove e k where
+  (=\=)  :: e -> k -> e
+  (=\\=) :: e -> S.Set k -> e
+  e =\\= set = foldl (=\=) e (S.toList set)
+
+instance PathRemove e k => PathRemove [e] k where
+  es =\= k = map (=\= k) es
+
+instance Keyable k k' => PathRemove (Env k v) k' where
+  (=\=) = (=-=)
 
 infix 6 =..=
+infixr 5 =++=
+infixl 5 =\=, =\\=
