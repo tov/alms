@@ -60,10 +60,12 @@ transLet tenv m                  =
 
 transMod :: (?path :: Path) => TEnv -> ModT -> (TEnv, ModT)
 transMod tenv (ModC tl x b) =
-  let (scope, b') = descend x $ transModExp tenv b in
+  let ?path       = x : ?path in
+  let (scope, b') = transModExp tenv b in
     (tenv =++= x =:= scope, ModC tl x b')
 transMod tenv (ModA tl x b) =
-  let (scope, b') = descend x $ transModExp tenv b in
+  let ?path       = x : ?path in
+  let (scope, b') = transModExp tenv b in
     (tenv =++= x =:= scope, ModA tl x b')
 
 transModExp :: (?path :: Path) => TEnv -> ModExpT -> (Scope, ModExpT)
@@ -78,9 +80,6 @@ getNeg :: (?path :: Path, Culpable p) => p -> Party
 getNeg def = case ?path of
   []   -> party def
   p:ps -> party (QUid (reverse ps) p)
-
-descend    :: (?path :: Path) => Uid -> a -> a
-descend p a = let ?path = p : ?path in a
 
 transExpr :: Language w => TEnv -> Party -> ExprT w -> ExprT C
 transExpr tenv neg = te where
