@@ -2,7 +2,7 @@ module Util (
   fromJust, (?:),
   foldrM, anyM, allM, anyM2, allM2,
   foldl2, foldr2, all2, any2,
-  char2integer, integer2char,
+  char2integer, integer2char, splitBy,
   unscanr, unscanl,
   mapCont, mapCont_,
   module Control.Arrow,
@@ -54,6 +54,11 @@ char2integer  = fromIntegral . ord
 
 integer2char :: Integer -> Char
 integer2char  = chr . fromIntegral
+
+splitBy :: (a -> Bool) -> [a] -> [[a]]
+splitBy _ [] = []
+splitBy p xs = let (ys, zs) = break p xs 
+                in ys : splitBy p zs
 
 (?:) :: Maybe a -> [a] -> [a]
 Nothing ?: xs = xs

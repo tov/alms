@@ -1,9 +1,12 @@
 {-# LANGUAGE
       ExistentialQuantification,
-      DeriveDataTypeable
+      DeriveDataTypeable,
+      FlexibleInstances,
+      FunctionalDependencies,
+      MultiParamTypeClasses
     #-}
 module Dynamics (
-  E, Result,
+  E(..), (=++=), Result,
   eval, evalDecls,
   Valuable(..),
   FunName(..), Value(..), vaInt, vaUnit,
@@ -145,7 +148,9 @@ instance Show Value where
 --
 
 type Result   = IO Value
-type E        = Env Lid (IO Value)
+data E        = E { ve :: VE, me :: ME }
+type VE       = Env Lid (IO Value)
+type ME       = Env Uid E
 
 type D        = E -> Result
 type DDecl    = E -> IO E
@@ -155,6 +160,29 @@ nameFun :: Lid -> Value -> Value
 nameFun (Lid x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
+
+instance PathLookup E QLid (IO Value) where
+  env =..= QLid []         n = env =..= n
+  env =..= QLid (uid:uids) n = do
+    env' <- me env =.= uid
+    env' =..= QLid uids n
+
+instance PathLookup E Lid (IO Value) where
+  env =..= n  =  ve env =.= n
+
+instance PathLookup E QUid E where
+  env =..= QUid []         n = env =..= n
+  env =..= QUid (uid:uids) n = do
+    env' <- me env =.= uid
+    env' =..= QUid uids n
+
+instance PathLookup E Uid E where
+  env =..= n  =  me env =.= n
+
+(=++=) :: E -> VE -> E
+env =++= venv = env { ve = ve env =+= venv }
+
+infixr 5 =++=
 
 evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
@@ -167,13 +195,13 @@ evalDecl (DcAbs _ _ ds) = evalDecls ds
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
   v <- valOf e env
-  return (env =+= x =:= return v)
+  return (env =++= x =:= return v)
 evalLet (LtA _ x _ e)   env = do
   v <- valOf e env
-  return (env =+= x =:= return v)
+  return (env =++= x =:= return v)
 evalLet (LtInt _ x _ y) env = do
-  case env =.= y of
-    Just v  -> return (env =+= x =:= v)
+  case env =..= y of
+    Just v  -> return (env =++= x =:= v)
     Nothing -> fail $ "BUG! Unknown module: " ++ show y
 
 eval :: E -> Prog i -> Result
@@ -183,10 +211,10 @@ eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
 -- The meaning of an expression
 valOf :: Expr i w -> D
 valOf e env = case view e of
-  ExId (Var x)           -> case env =.= x of
+  ExId (Var x)           -> case env =..= x of
     Just v  -> v
     Nothing -> fail $ "BUG! unbound identifier: " ++ show x
-  ExId (Con c)           -> return (VaCon c Nothing)
+  ExId (Con (QUid _ c))  -> return (VaCon c Nothing)
   ExStr s                -> return (vinj s)
   ExInt z                -> return (vinj z)
   ExFloat f              -> return (vinj f)
@@ -202,7 +230,7 @@ valOf e env = case view e of
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
-          return (envI =+= bnvar b =:= join (readIORef r), r : rs)
+          return (envI =++= bnvar b =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
       (\r b -> do
@@ -244,7 +272,7 @@ valOf e env = case view e of
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
-  PaVar lid    -> return (env =+= lid =:= return (lid `nameFun` v))
+  PaVar lid    -> return (env =++= lid =:= return (lid `nameFun` v))
   PaCon uid mx -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
@@ -261,7 +289,7 @@ bindPatt x0 v env = case x0 of
   PaPack _ x   -> bindPatt x v env
   PaAs x lid   -> do
     env' <- bindPatt x v env
-    return (env' =+= lid =:= return v)
+    return (env' =++= lid =:= return v)
   where perr = fail $
                  "Pattern match failure: " ++ show x0 ++
                  " does not match " ++ show v

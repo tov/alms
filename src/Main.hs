@@ -11,9 +11,9 @@ import Translation (translate, transDecls, MEnvT)
 import Dynamics (eval, evalDecls, E)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Prog, ProgT, Decl(..), DeclT, Let(..),
-               prog2decls, modName)
-import Env (empty, (=.=), (=-=))
+import Syntax (Prog, Lid, ProgT, Decl(..), DeclT, Let(..),
+               prog2decls, letName)
+import Env (empty, PathLookup(..))
 
 import Control.Monad (when, unless)
 import System.Exit (exitFailure)
@@ -192,23 +192,26 @@ interactive opt rs0 = do
                     loop ((line, derr) : acc)
     printResult :: (ReplState, [Decl i]) -> IO ()
     printResult (st, ds0) = do
-      (_, docs) <- foldrM dispatch (st, []) ds0
+      (_, docs, _) <- foldrM dispatch (st, [], []) ds0
       mapM_ print docs
         where
-      dispatch :: (ReplState, [Doc]) -> Decl i -> IO (ReplState, [Doc])
-      dispatch (rs, docs) (DcLet _ m) = do
+      dispatch :: (ReplState, [Doc], [Lid]) ->
+                  Decl i -> IO (ReplState, [Doc], [Lid])
+      dispatch (rs, docs, seen) (DcLet _ m)     = do
         let e = rsDynamics rs
-        mv   <- case e =.= modName m of
-                  Nothing -> return Nothing
-                  Just v  -> Just `fmap` v
+            n = letName m
+        mv   <- case (e =..= n, n `elem` seen) of
+                  (Just v, False) -> Just `fmap` v
+                  _               -> return Nothing
         let doc = case m of
                     LtC _ x t _   -> val "C" x t mv
                     LtA _ x t _   -> val "A" x t mv
                     LtInt _ x t _ -> val "A" x (Just t) mv
-        return (rs { rsDynamics = e =-= modName m }, doc : docs)
-      dispatch (rs, docs) (DcTyp _ td) = return (rs, ppr td : docs)
-      dispatch (rs, docs) (DcAbs _ at ds) =
-        foldrM dispatch (rs, (text "abstype" <> ppr at) : docs) ds
+        return (rs, doc : docs, n : seen)
+      dispatch (rs, docs, seen) (DcTyp _ td)    =
+        return (rs, ppr td : docs, seen)
+      dispatch (rs, docs, seen) (DcAbs _ at ds) =
+        foldrM dispatch (rs, (text "abstype" <> ppr at) : docs, seen) ds
       val :: (Ppr x, Ppr t, Ppr v) =>
              String -> x -> Maybe t -> Maybe v -> Doc
       val lang x mt mv =

@@ -35,6 +35,7 @@ tok = T.makeTokenParser T.LanguageDef {
                         "let", "rec", "and", "in",
                         "Pack",
                         "interface", "abstype", "end",
+                        "module", "struct",
                         "all", "ex", "mu", "of",
                         "type", "qualifier"],
     T.reservedOpNames = ["|", "=", ":", ":>", "->"],

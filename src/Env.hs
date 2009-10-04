@@ -1,7 +1,11 @@
 {-# LANGUAGE
-      DeriveDataTypeable #-}
+      DeriveDataTypeable,
+      FlexibleInstances,
+      FunctionalDependencies,
+      MultiParamTypeClasses #-}
 module Env (
   Env(unEnv),
+  Keyable(..), PathLookup(..),
   empty, isEmpty,
   (=:=), (=::=), (=:+=), (=+=), (=-=), (=--=), (=.=), (=|=),
   mapAccum, mapAccumM,
@@ -20,6 +24,14 @@ infixl 5 =-=, =--=, =|=
 newtype Env v a = Env { unEnv:: M.Map v a }
   deriving (Typeable, Data)
 
+class (Ord x, Ord y) => Keyable x y where
+  liftKey :: y -> x
+  liftEnv :: Env y a -> Env x a
+  liftEnv (Env m) = Env (M.mapKeys liftKey m)
+
+instance Keyable [Char] [Char] where
+  liftKey = id
+
 empty    :: Env v a
 empty     = Env M.empty
 
@@ -30,30 +42,31 @@ isEmpty   = M.null . unEnv
 (=:=)    :: Ord v => v -> a -> Env v a
 v =:= a   = Env (M.singleton v a)
 
+-- monad bind
 (=::=)  :: (Monad m, Ord v) => v -> a -> Env v (m a)
 x =::= v = x =:= return v
 
-(=:+=)   :: Ord v => v -> v -> Env v v
+(=:+=)   :: Keyable v v => v -> v -> Env v v
 v =:+= v' = v =:= v' =+= v' =:= v'
 
 -- union
-(=+=)    :: Ord v => Env v a -> Env v a -> Env v a
-m =+= n   = Env (M.unionWith (\_ x -> x) (unEnv m) (unEnv n)) where
+(=+=)    :: Keyable x y => Env x a -> Env y a -> Env x a
+m =+= n   = m `mappend` liftEnv n
 
 -- difference
-(=-=)    :: Ord v => Env v a -> v -> Env v a
-m =-= v   = Env (M.delete v (unEnv m))
+(=-=)    :: Keyable x y => Env x a -> y -> Env x a
+m =-= y   = Env (M.delete (liftKey y) (unEnv m))
 
-(=--=)   :: Ord v => Env v a -> S.Set v -> Env v a
-m =--= vs = Env (S.fold M.delete (unEnv m) vs)
+(=--=)   :: Keyable x y => Env x a -> S.Set y -> Env x a
+m =--= ys = Env (S.fold (M.delete . liftKey) (unEnv m) ys)
 
 -- lookup
-(=.=)    :: Ord v => Env v a -> v -> Maybe a
-m =.= v   = M.lookup v (unEnv m)
+(=.=)    :: Keyable x y => Env x a -> y -> Maybe a
+m =.= y   = M.lookup (liftKey y) (unEnv m)
 
 -- intersection
-(=|=)    :: Ord v => Env v a -> Env v b -> Env v (a, b)
-m =|= n   = Env (M.intersectionWith (,) (unEnv m) (unEnv n))
+(=|=)    :: Keyable x y => Env x a -> Env y b -> Env x (a, b)
+m =|= n   = Env (M.intersectionWith (,) (unEnv m) (unEnv (liftEnv n)))
 
 mapAccum :: Ord v => (a -> b -> (b, c)) -> b -> Env v a -> (b, Env v c)
 mapAccum f z m = case M.mapAccum (flip f) z (unEnv m) of
@@ -70,20 +83,28 @@ mapAccumM f z m = do
       (b, c) <- f a u
       helper b ((v, c) : acc) rest
 
-toList   :: Ord v => Env v a -> [(v, a)]
+toList   :: Ord x => Env x a -> [(x, a)]
 toList    = M.toList . unEnv
 
-fromList :: Ord v => [(v, a)] -> Env v a
+fromList :: Ord x => [(x, a)] -> Env x a
 fromList  = Env . M.fromList
 
 contents :: Ord v => Env v a -> [a]
 contents  = M.elems . unEnv
 
-instance (Eq a, Ord v) => Monoid (Env v a) where
-  mempty  = empty
-  mappend = (=+=)
+instance Ord v => Monoid (Env v a) where
+  mempty      = empty
+  mappend m n = Env (M.unionWith (\_ x -> x) (unEnv m) (unEnv n))
 
 instance (Ord v, Show v, Show a) => Show (Env v a) where
   showsPrec _ env = foldr (.) id
     [ shows v . (" : "++) . shows a . ('\n':)
     | (v, a) <- M.toList (unEnv env) ]
+
+class PathLookup e k v | e k -> v where
+  (=..=) :: e -> k -> Maybe v
+
+instance Keyable k k => PathLookup (Env k v) k v where
+  (=..=) = (=.=)
+
+infix 6 =..=

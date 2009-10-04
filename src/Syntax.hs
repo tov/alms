@@ -4,6 +4,7 @@
       FlexibleContexts,
       FlexibleInstances,
       GADTs,
+      MultiParamTypeClasses,
       ParallelListComp,
       RankNTypes,
       ScopedTypeVariables,
@@ -11,18 +12,22 @@
 module Syntax (
   Language(..), A, C, LangRep(..),
   Q(..),
-  Lid(..), Uid(..), Ident(..), TyVar(..),
+
+  Lid(..), Uid(..), Ident(..),
+  QLid(..), QUid(..), BIdent(..),
+  TyVar(..),
 
   TyTag(..), Variance(..),
   QualSet, qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
-  Type(..), tyC, tyA, tyAll, tyEx, TypeT, TEnv,
+  Type(..), tyC, tyA, tyAll, tyEx, TypeT,
   Quant(..),
   Prog(..), ProgT,
 
-  Decl(..), DeclT, dcLet, dcTyp, dcAbs,
+  Decl(..), DeclT, dcLet, dcTyp, dcAbs, dcMod,
   Let(..), LetT,
   TyDec(..), TyDecC(..), TyDecA(..),
   AbsTy(..),
+  Mod(..), ModExp(..), ModT, ModExpT,
 
   TypeTW(..), typeTW,
 
@@ -30,7 +35,8 @@ module Syntax (
   fv,
   exId, exStr, exInt, exFloat, exCase, exLetRec, exPair,
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
-  exVar, exCon, exLet, exSeq, -- <== synthetic
+  exVar, exCon, exBVar, exBCon, exLet, exSeq, -- <== synthetic
+  qlid, quid,
   Binding(..), BindingT, Patt(..),
   pv,
 
@@ -48,7 +54,7 @@ module Syntax (
   funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs, replaceTyTags,
 
-  syntacticValue, castableType, modName, prog2decls,
+  syntacticValue, castableType, letName, prog2decls,
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
 
   module Viewable,
@@ -56,9 +62,9 @@ module Syntax (
 ) where
 
 import Util
+import Env (Keyable(..))
 import Loc as Loc
 import Viewable
-import Env
 
 import Control.Monad.State (State, evalState, get, put)
 import Control.Monad.Identity (runIdentity)
@@ -88,11 +94,27 @@ data Q = Qa | Qu
 newtype Lid = Lid { unLid :: String }
   deriving (Eq, Ord, Typeable, Data)
 
+data QLid = QLid {
+              qlPath :: [Uid],
+              qlName :: Lid
+            }
+  deriving (Eq, Ord, Typeable, Data)
+
 newtype Uid = Uid { unUid :: String }
   deriving (Eq, Ord, Typeable, Data)
 
-data Ident = Var { unVar :: Lid }
-           | Con { unCon :: Uid }
+data QUid = QUid {
+              quPath :: [Uid],
+              quName :: Uid
+            }
+  deriving (Eq, Ord, Typeable, Data)
+
+data Ident = Var { unVar :: QLid }
+           | Con { unCon :: QUid }
+  deriving (Eq, Ord, Typeable, Data)
+
+data BIdent = BVar { unBVar :: Lid }
+            | BCon { unBCon :: Uid }
   deriving (Eq, Ord, Typeable, Data)
 
 -- Type variables
@@ -123,7 +145,7 @@ data TyTag =
   deriving (Show, Typeable, Data)
 
 data Type i w where
-  TyCon { tycon  :: Lid,
+  TyCon { tycon  :: QLid,
           tyargs :: [Type i w],
           tyinfo :: i } :: Type i w
   TyVar :: TyVar -> Type i w
@@ -148,14 +170,13 @@ tyAll, tyEx :: TyVar -> Type i w -> Type i w
 tyAll = TyQu Forall
 tyEx  = TyQu Exists
 
-type TEnv w = Env Lid (TypeT w)
-
 data Prog i = Prog [Decl i] (Maybe (Expr i C))
   deriving (Typeable, Data)
 
 data Decl i = DcLet Loc (Let i)
             | DcTyp Loc TyDec
             | DcAbs Loc AbsTy [Decl i]
+            | DcMod Loc (Mod i)
   deriving (Typeable, Data)
 
 dcLet :: Let i -> Decl i
@@ -167,9 +188,12 @@ dcTyp  = DcTyp bogus
 dcAbs :: AbsTy -> [Decl i] -> Decl i
 dcAbs  = DcAbs bogus
 
+dcMod :: Mod i -> Decl i
+dcMod  = DcMod bogus
+
 data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
             | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
-            | LtInt Bool Lid (Type i A) Lid
+            | LtInt Bool Lid (Type i A) QLid
   deriving (Typeable, Data)
 
 data TyDec   = TyDecC Bool [TyDecC]
@@ -183,12 +207,12 @@ data TyDecC  = TdAbsC {
              | TdSynC {
                  tdcName      :: Lid,
                  tdcParams    :: [TyVar],
-                 tdcRHS      :: Type () C
+                 tdcRHS       :: Type () C
              }
              | TdDatC {
                  tdcName      :: Lid,
                  tdcParams    :: [TyVar],
-                 tdcAlts     :: [(Uid, Maybe (Type () C))]
+                 tdcAlts      :: [(Uid, Maybe (Type () C))]
              }
   deriving (Typeable, Data)
 data TyDecA  = TdAbsA {
@@ -200,7 +224,7 @@ data TyDecA  = TdAbsA {
              | TdSynA {
                  tdaName      :: Lid,
                  tdaParams    :: [TyVar],
-                 tdaRHS      :: Type () A
+                 tdaRHS       :: Type () A
              }
              | TdDatA {
                  tdaName      :: Lid,
@@ -220,13 +244,28 @@ data AbsTy   = AbsTyC {
   deriving (Typeable, Data)
 type AbsTyADat = ([Variance], [Either TyVar Q], TyDecA)
 
+data Mod i   = ModC {
+                 mdTopLevel    :: Bool,
+                 mdName        :: Uid,
+                 mdBody        :: ModExp i
+               }
+             | ModA {
+                 mdTopLevel    :: Bool,
+                 mdName        :: Uid,
+                 mdBody        :: ModExp i
+               }
+  deriving (Typeable, Data)
+
+data ModExp i = MeDecls [Decl i] | MeName QUid
+  deriving (Typeable, Data)
+
 data Expr i w = Expr {
                   eloc_ :: Loc,
                   fv_   :: FV,
                   expr_ :: Expr' i w
                 }
   deriving (Typeable, Data)
-type FV       = M.Map Lid Integer
+type FV        = M.Map QLid Integer
 data Expr' i w = ExId Ident
                | ExStr String
                | ExInt Integer
@@ -263,21 +302,23 @@ type ExprT    = Expr TyTag
 type TypeT    = Type TyTag
 type DeclT    = Decl TyTag
 type LetT     = Let TyTag
+type ModT     = Mod TyTag
+type ModExpT  = ModExp TyTag
 type BindingT = Binding TyTag
 type ProgT    = Prog TyTag
 
 fv :: Expr i w -> FV
 fv  = fv_
 
-pv :: Patt -> S.Set Lid
+pv :: Patt -> S.Set QLid
 pv PaWild             = S.empty
-pv (PaVar x)          = S.singleton x
+pv (PaVar x)          = S.singleton (QLid [] x)
 pv (PaCon _ Nothing)  = S.empty
 pv (PaCon _ (Just x)) = pv x
 pv (PaPair x y)       = pv x `S.union` pv y
 pv (PaStr _)          = S.empty
 pv (PaInt _)          = S.empty
-pv (PaAs x y)         = pv x `S.union` S.singleton y
+pv (PaAs x y)         = pv x `S.union` S.singleton (QLid [] y)
 pv (PaPack _ x)       = pv x
 
 exStr :: String -> Expr i w
@@ -301,7 +342,7 @@ exLetRec :: [Binding i w] -> Expr i w -> Expr i w
 exLetRec bs e2 = Expr {
   eloc_  = getLoc (bs, e2),
   fv_    = let es  = map bnexpr bs
-               vs  = map bnvar  bs
+               vs  = map (QLid [] . bnvar) bs
                pot = foldr (|*|) (fv e2) (map fv es)
            in foldl (|-|) pot vs,
   expr_  = ExLetRec bs e2
@@ -312,7 +353,7 @@ exId x = Expr {
   eloc_  = bogus,
   fv_    = case x of
              Var y -> M.singleton y 1
-             Con _ -> M.empty,
+             _     -> M.empty,
   expr_  = ExId x
 }
 
@@ -365,11 +406,17 @@ exCast e t1 t2 = Expr {
   expr_  = ExCast e t1 t2
 }
 
-exVar :: Lid -> Expr i w
+exVar :: QLid -> Expr i w
 exVar  = exId . Var
 
-exCon :: Uid -> Expr i w
+exCon :: QUid -> Expr i w
 exCon  = exId . Con
+
+exBVar :: Lid -> Expr i w
+exBVar  = exId . Var . QLid []
+
+exBCon :: Uid -> Expr i w
+exBCon  = exId . Con . QUid []
 
 exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
 exLet x e1 e2 = exCase e1 [(x, e2)]
@@ -377,14 +424,24 @@ exLet x e1 e2 = exCase e1 [(x, e2)]
 exSeq :: Expr i w -> Expr i w -> Expr i w
 exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 
+qlid :: String -> QLid
+qlid s = case reverse (splitBy (=='.') s) of
+           []   -> QLid [] (Lid "")
+           x:xs -> QLid (map Uid (reverse xs)) (Lid x)
+
+quid :: String -> QUid
+quid s = case reverse (splitBy (=='.') s) of
+           []   -> QUid [] (Uid "")
+           x:xs -> QUid (map Uid (reverse xs)) (Uid x)
+
 (|*|), (|+|) :: FV -> FV -> FV
 (|*|) = M.unionWith (+)
 (|+|) = M.unionWith max
 
-(|-|) :: FV -> Lid -> FV
+(|-|) :: FV -> QLid -> FV
 (|-|)  = flip M.delete
 
-(|--|) :: FV -> S.Set Lid -> FV
+(|--|) :: FV -> S.Set QLid -> FV
 (|--|)  = S.fold M.delete
 
 -----
@@ -455,6 +512,29 @@ con_TyA   = mkConstr ty_Type "TyA"   [] Prefix
 ty_Type = mkDataType "Syntax.Type"
             [ con_TyCon, con_TyVar, con_TyQu, con_TyMu, con_TyC, con_TyA ]
 
+instance Keyable TyVar TyVar   where liftKey = id
+instance Keyable Lid Lid       where liftKey = id
+instance Keyable Uid Uid       where liftKey = id
+instance Keyable QLid QLid     where liftKey = id
+instance Keyable QUid QUid     where liftKey = id
+instance Keyable Ident Ident   where liftKey = id
+instance Keyable BIdent BIdent where liftKey = id
+
+instance Keyable QLid Lid      where liftKey = QLid []
+instance Keyable QUid Uid      where liftKey = QUid []
+instance Keyable BIdent Lid    where liftKey = BVar
+instance Keyable BIdent Uid    where liftKey = BCon
+instance Keyable Ident QLid    where liftKey = Var
+instance Keyable Ident QUid    where liftKey = Con
+
+instance Keyable Ident Lid     where
+   liftKey = liftKey . (liftKey :: Lid -> QLid)
+instance Keyable Ident Uid     where
+   liftKey = liftKey . (liftKey :: Uid -> QUid)
+instance Keyable Ident BIdent  where
+  liftKey (BVar x) = liftKey x
+  liftKey (BCon x) = liftKey x
+
 instance Eq TyTag where
   td == td' = ttId td == ttId td'
 
@@ -478,11 +558,13 @@ instance Locatable (Decl i) where
   getLoc (DcLet loc _)   = loc
   getLoc (DcTyp loc _)   = loc
   getLoc (DcAbs loc _ _) = loc
+  getLoc (DcMod loc _)   = loc
 
 instance Relocatable (Decl i) where
   setLoc (DcLet _ m)     loc = DcLet loc m
   setLoc (DcTyp _ td)    loc = DcTyp loc td
   setLoc (DcAbs _ at ds) loc = DcAbs loc at ds
+  setLoc (DcMod _ m)     loc = DcMod loc m
 
 instance Locatable (Binding i w) where
   getLoc = getLoc . bnexpr
@@ -570,6 +652,14 @@ instance Show Quant where
   show Forall = "all"
   show Exists = "ex"
 
+instance Show QLid where
+  showsPrec _ (QLid uids lid) =
+    foldr (\u r -> shows u . ('.':) . r) (shows lid) uids
+
+instance Show QUid where
+  showsPrec _ (QUid uids uid) =
+    foldr (\u r -> shows u . ('.':) . r) (shows uid) uids
+
 instance Show Lid where
   showsPrec _ (Lid s) = case s of
     '_':_             -> (s++)
@@ -579,6 +669,10 @@ instance Show Lid where
 
 instance Show Uid where
   show = unUid
+
+instance Show BIdent where
+  show (BVar x) = show x
+  show (BCon k) = show k
 
 instance Show Ident where
   show (Var x) = show x
@@ -721,8 +815,8 @@ instance  PO (Type TyTag A) where
       | (td == tdArr && td' == tdLol) || (td == tdLol && td' == tdArr)
                                     = chk seen b (build ps) (build ps')
           where build ps0 = if b
-                              then TyCon (Lid "-o") ps0 tdLol
-                              else TyCon (Lid "->") ps0 tdArr
+                              then TyCon (qlid "-o") ps0 tdLol
+                              else TyCon (qlid "->") ps0 tdArr
     -- Otherwise:
     cmp seen b (TyCon tc ps td) (TyCon _ ps' td') =
       if td == td' then do
@@ -896,14 +990,18 @@ tysubst a t = ts where
 -- express this direction in the type system)
 dualSessionType :: TypeT w -> TypeT w
 dualSessionType  = d where
-  d (TyCon (Lid "->") [TyCon (Lid "send") [ta] _, tr] _)
-    = TyCon (Lid "->") [TyCon (Lid "recv") [ta] tdRecv, d tr] tdArr
-  d (TyCon (Lid "->") [TyCon (Lid "recv") [ta] _, tr] _)
-    = TyCon (Lid "->") [TyCon (Lid "send") [ta] tdSend, d tr] tdArr
-  d (TyCon (Lid "select") [TyCon (Lid "*") [t1, t2] _] _)
-    = TyCon (Lid "follow") [TyCon (Lid "*") [d t1, d t2] tdTuple] tdFollow
-  d (TyCon (Lid "follow") [TyCon (Lid "*") [t1, t2] _] _)
-    = TyCon (Lid "select") [TyCon (Lid "*") [d t1, d t2] tdTuple] tdSelect
+  d (TyCon (QLid [] (Lid "->"))
+       [TyCon (QLid [] (Lid "send")) [ta] _, tr] _)
+    = TyCon (qlid "->") [TyCon (qlid "recv") [ta] tdRecv, d tr] tdArr
+  d (TyCon (QLid [] (Lid "->"))
+       [TyCon (QLid [] (Lid "recv")) [ta] _, tr] _)
+    = TyCon (qlid "->") [TyCon (qlid "send") [ta] tdSend, d tr] tdArr
+  d (TyCon (QLid [] (Lid "select"))
+       [TyCon (QLid [] (Lid "*")) [t1, t2] _] _)
+    = TyCon (qlid "follow") [TyCon (qlid "*") [d t1, d t2] tdTuple] tdFollow
+  d (TyCon (QLid [] (Lid "follow"))
+       [TyCon (QLid [] (Lid "*")) [t1, t2] _] _)
+    = TyCon (qlid "select") [TyCon (qlid "*") [d t1, d t2] tdTuple] tdSelect
   d (TyMu tv t)
     = TyMu tv (d t)
   d t = t
@@ -956,31 +1054,31 @@ tdSelect     = TyTag (-14) [1]  minBound          False
 tdFollow     = TyTag (-15) [1]  minBound          False
 
 tyGround      :: String -> Type () w
-tyGround s     = TyCon (Lid s) [] ()
+tyGround s     = TyCon (qlid s) [] ()
 
 tyArr         :: Type () w -> Type () w -> Type () w
-tyArr a b      = TyCon (Lid "->") [a, b] ()
+tyArr a b      = TyCon (qlid "->") [a, b] ()
 
 tyLol         :: Type () w -> Type () w -> Type () w
-tyLol a b      = TyCon (Lid "-o") [a, b] ()
+tyLol a b      = TyCon (qlid "-o") [a, b] ()
 
 tyTuple       :: Type () w -> Type () w -> Type () w
-tyTuple a b    = TyCon (Lid "*") [a, b] ()
+tyTuple a b    = TyCon (qlid "*") [a, b] ()
 
 tyUnitT        :: TypeT w
-tyUnitT         = TyCon (Lid "unit") [] tdUnit
+tyUnitT         = TyCon (qlid "unit") [] tdUnit
 
 tyBoolT        :: TypeT w
-tyBoolT         = TyCon (Lid "bool") [] tdBool
+tyBoolT         = TyCon (qlid "bool") [] tdBool
 
 tyArrT         :: TypeT w -> TypeT w -> TypeT w
-tyArrT a b      = TyCon (Lid "->") [a, b] tdArr
+tyArrT a b      = TyCon (qlid "->") [a, b] tdArr
 
 tyLolT         :: TypeT w -> TypeT w -> TypeT w
-tyLolT a b      = TyCon (Lid "-o") [a, b] tdLol
+tyLolT a b      = TyCon (qlid "-o") [a, b] tdLol
 
 tyTupleT       :: TypeT w -> TypeT w -> TypeT w
-tyTupleT a b    = TyCon (Lid "*") [a, b] tdTuple
+tyTupleT a b    = TyCon (qlid "*") [a, b] tdTuple
 
 infixr 8 `tyArrT`, `tyLolT`
 infixl 7 `tyTupleT`
@@ -1025,7 +1123,7 @@ ctype2atype :: TypeT C -> TypeT A
 ctype2atype (TyCon n ps td) | ttTrans td
   = TyCon n (map ctype2atype ps) td
 ctype2atype (TyCon _ [td, tr] d) | d == tdArr
-  = TyCon (Lid "->") [ctype2atype td, ctype2atype tr] tdArr
+  = TyCon (qlid "->") [ctype2atype td, ctype2atype tr] tdArr
 ctype2atype (TyQu u tv t)
                       = TyQu u tv' (ctype2atype t')
                         where t'  = tysubst tv (tyA (TyVar tv')) t
@@ -1040,7 +1138,7 @@ atype2ctype :: TypeT A -> TypeT C
 atype2ctype (TyCon n ps td) | ttTrans td
   = TyCon n (map atype2ctype ps) td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
-  = TyCon (Lid "->") [atype2ctype td, atype2ctype tr] tdArr
+  = TyCon (qlid "->") [atype2ctype td, atype2ctype tr] tdArr
 atype2ctype (TyQu u tv t)
                       = TyQu u tv' (atype2ctype t')
                         where t' = tysubst tv (tyC (TyVar tv')) t
@@ -1078,10 +1176,10 @@ castableType (TyMu _ t)     = castableType t
 castableType (TyC _)        = False
 castableType (TyA _)        = False
 
-modName :: Let i -> Lid
-modName (LtA _ x _ _)   = x
-modName (LtC _ x _ _)   = x
-modName (LtInt _ x _ _) = x
+letName :: Let i -> Lid
+letName (LtA _ x _ _)   = x
+letName (LtC _ x _ _)   = x
+letName (LtInt _ x _ _) = x
 
 prog2decls :: Prog i -> [Decl i]
 prog2decls (Prog ds (Just e))

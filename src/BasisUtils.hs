@@ -16,8 +16,8 @@ module BasisUtils (
 import Util
 import Dynamics
 import Statics (S, env0, tcDecls, addVal, addTyTag)
-import Env (Env, fromList)
-import Syntax (Ident(..), Lid(..), Uid(..), Type, TyTag(..), C, A)
+import Env (fromList)
+import Syntax
 import Parser (pt, pds)
 
 import Data.Typeable (Typeable)
@@ -149,20 +149,22 @@ vapp :: Valuable a => Value -> a -> IO Value
 vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
-basis2venv :: Monad m => [Entry] -> m (Env Lid (IO Value))
-basis2venv es = return $
-  fromList [ (Lid s, return v)
-           | ValEn { enName = s, enValue = v } <- es ]
+basis2venv :: Monad m => [Entry] -> m E
+basis2venv es = return (E venv menv)
+  where
+    venv = fromList [ (Lid s, return v)
+                    | ValEn { enName = s, enValue = v } <- es ]
+    menv = fromList [ ]
 
 basis2tenv :: Monad m => [Entry] -> m S
 basis2tenv  = foldM each env0 where
   each gg0 (ValEn { enName = s, enCType = ct, enAType = at }) = do
     gg1 <- if null ct
       then return gg0
-      else addVal gg0 (Var (Lid s)) (pt ct :: Type () C)
+      else addVal gg0 (BVar (Lid s)) (pt ct :: Type () C)
     gg2 <- if null at
       then return gg1
-      else addVal gg1 (Var (Lid s)) (pt at :: Type () A)
+      else addVal gg1 (BVar (Lid s)) (pt at :: Type () A)
     return gg2
   each gg0 (DecEn { enSrc = s }) =
     fst `liftM` tcDecls gg0 (pds s)

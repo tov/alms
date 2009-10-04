@@ -34,15 +34,15 @@ instance (Ppr a, Separator a) => Ppr [a] where
 
 instance Ppr (Type i w) where
   -- Print sugar for arrow types:
-  pprPrec p (TyCon (Lid "->") [t1, t2] _)
+  pprPrec p (TyCon (QLid [] (Lid "->")) [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "->" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon (Lid "-o") [t1, t2] _)
+  pprPrec p (TyCon (QLid [] (Lid "-o")) [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "-o" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon (Lid "*") [t1, t2] _)
+  pprPrec p (TyCon (QLid [] (Lid "*")) [t1, t2] _)
                   = parensIf (p > precStar) $
                       sep [ pprPrec precStar t1,
                         text "*" <+> pprPrec (precStar + 1) t2 ]
@@ -84,6 +84,7 @@ instance Ppr (Decl i) where
       nest 2 $ vcat (map (pprPrec p) ds),
       text "end"
     ]
+  pprPrec p (DcMod _ m)     = pprPrec p m
 
 instance Ppr (Let i) where
   ppr (LtC tl x Nothing e) = sep
@@ -181,6 +182,18 @@ pprAlternatives (a:as) = sep $
     alt (Uid s, Nothing) = text s
     alt (Uid s, Just t)  = text s <+> text "of" <+> pprPrec precDot t
 
+instance Ppr (Mod i) where
+  pprPrec _ (ModC tl n mexp) = pprMod (pprLang tl C) n mexp
+  pprPrec _ (ModA tl n mexp) = pprMod (pprLang tl A) n mexp
+
+pprMod :: Doc -> Uid -> ModExp i -> Doc
+pprMod lang name (MeDecls ds) =
+  (text "module" <> lang) <+> ppr name <+> equals <+> text "struct"
+  $$ nest 2 (vcat (map ppr ds))
+  $$ text "end"
+pprMod lang name (MeName n) =
+  (text "module" <> lang) <+> ppr name <+> equals <+> ppr n
+
 instance Ppr (Expr i w) where
   pprPrec p e0 = case view e0 of
     ExId x    -> ppr x
@@ -229,14 +242,14 @@ instance Ppr (Expr i w) where
               pprPrec (precCom + 1) e2 ]
     ExAbs _ _ _ -> pprAbs p e0
     ExApp e1 e2
-      | ExId (Var (Lid x)) <- view e1,
-        Right p'           <- precOp x,
+      | ExId (Var (QLid [] (Lid x))) <- view e1,
+        Right p' <- precOp x,
         p' == 10
           -> parensIf (p > p') $
                text x <+> pprPrec p' e2
-      | ExApp e11 e12      <- view e1,
-        ExId (Var (Lid x)) <- view e11,
-        (pl, pr, p')       <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
+      | ExApp e11 e12 <- view e1,
+        ExId (Var (QLid [] (Lid x))) <- view e11,
+        (pl, pr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
         p' < 9
           -> parensIf (p > p') $
                sep [ pprPrec (p' + pl) e12,
@@ -286,14 +299,14 @@ pprAbs p e = parensIf (p > precDot) $
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         argsDoc = case args of
-          [Left (PaWild, TyCon (Lid "unit") [] _)]
+          [Left (PaWild, TyCon (QLid [] (Lid "unit")) [] _)]
                         -> parens empty
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
 pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
-  eachArg (Left (PaWild, TyCon (Lid "unit") [] _))
+  eachArg (Left (PaWild, TyCon (QLid [] (Lid "unit")) [] _))
                           = parens empty
   eachArg (Left (x, t))   = parens $
                               ppr x
@@ -348,7 +361,10 @@ instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Quant     where pprPrec = pprFromShow
 instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
+instance Ppr QLid      where pprPrec = pprFromShow
+instance Ppr QUid      where pprPrec = pprFromShow
 instance Ppr Ident     where pprPrec = pprFromShow
+instance Ppr BIdent    where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
 
 instance Show TypeTW where

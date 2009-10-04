@@ -78,21 +78,55 @@ chainr1last each sep final = start where
                      b       <- final
                      return (\a -> a `build` b) ]
 
+-- Just uppercase identifiers
+--  - datacons in patterns
 uidp :: P Uid
 uidp  = uid >>! Uid
 
+-- Just lowercase identifiers
 lidp :: P Lid
 lidp  = lid >>! Lid
 
+-- Just operators
 operatorp :: P Lid
 operatorp  = try (parens operator) >>! Lid
 
-oplevelp :: Prec -> P Lid
-oplevelp  = liftM Lid . opP
+-- Add a path before something
+pathp :: P ([Uid] -> b) -> P b
+pathp p = try $ do
+  path <- many $ try $ liftM2 const uidp dot
+  make <- p
+  return (make path)
 
+-- Qualified uppercase identifiers:
+--  - module names occurences
+quidp :: P QUid
+quidp  = pathp (uidp >>! flip QUid)
+
+-- Qualified lowercase identifiers:
+--  - tycon ocurences
+qlidp :: P QLid
+qlidp  = pathp (lidp >>! flip QLid)
+
+-- Lowercase identifiers and operators
+--  - variable bindings
 varp :: P Lid
 varp  = lidp <|> operatorp
 
+-- Qualified lowercase identifers and operators
+--  - variable occurences
+qvarp :: P QLid
+qvarp  = pathp (varp >>! flip QLid)
+
+-- Identifier expressions
+identp :: P (Expr () w)
+identp  = addLoc $ pathp $ choice
+  [ do v <- varp
+       return $ \path -> exVar (QLid path v),
+    do c <- uidp
+       return $ \path -> exCon (QUid path c) ]
+
+-- Type variables
 tyvarp :: P TyVar
 tyvarp  = do
   char '\''
@@ -102,12 +136,8 @@ tyvarp  = do
   x <- lidp
   return (TV x q)
 
-identp :: P (Expr () w)
-identp  = addLoc $ do
-  s <- identifier
-  if isUpperIdentifier s
-    then return (exCon (Uid s))
-    else return (exVar (Lid s))
+oplevelp :: Prec -> P Lid
+oplevelp  = liftM Lid . opP
 
 typep  :: Language w => P (Type () w)
 typep   = typepP 0
@@ -143,17 +173,17 @@ typepP 7 = tyarg >>= tyapp'
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
-             do tc   <- lidp
+             do tc   <- qlidp
                 return [TyCon tc [] ()],
              do t <- braces (langMapType (typepP 0))
                 return [t] ]
 
   tyapp' :: [Type () w] -> P (Type () w)
   tyapp' [t] = option t $ do
-                 tc <- lidp
+                 tc <- qlidp
                  tyapp' [TyCon tc [t] ()]
   tyapp' ts  = do
-                 tc <- lidp
+                 tc <- qlidp
                  tyapp' [TyCon tc ts ()]
 typepP _ = typepP 0
 
@@ -191,6 +221,7 @@ declp :: P (Decl ())
 declp  = addLoc $ choice [
            tyDecp >>! dcTyp,
            letp   >>! dcLet,
+           modp   >>! dcMod,
            do
              reserved "abstype"
              tl   <- toplevelp
@@ -202,6 +233,28 @@ declp  = addLoc $ choice [
                reserved "end"
                return (dcAbs at ds)
          ]
+
+modp :: P (Mod ())
+modp  = do
+  reserved "module"
+  tl   <- toplevelp
+  lang <- languagep
+  name <- uidp
+  reservedOp "="
+  mexp <- withState (Just lang) modexpp
+  case lang of
+    LC -> return (ModC tl name mexp)
+    LA -> return (ModA tl name mexp)
+
+modexpp :: P (ModExp ())
+modexpp  = choice [
+             do
+               reserved "struct"
+               ds <- declsp
+               reserved "end"
+               return (MeDecls ds),
+             quidp >>! MeName
+           ]
 
 tyDecp :: P TyDec
 tyDecp  = do
@@ -251,7 +304,7 @@ letp  =  do
        reservedOp ":>"
        t    <- typep
        reservedOp "="
-       y    <- varp
+       y    <- qvarp
        return (LtInt tl x t y),
     do lang <- languagep
        case lang of
@@ -427,7 +480,7 @@ exprp = expr0 where
                   return (exPack t1 t2 e)
                 ]
   expr10 = do
-    ops <- many $ addLoc $ oplevelp (Right 10) >>! exVar
+    ops <- many $ addLoc $ oplevelp (Right 10) >>! exBVar
     arg <- expr11
     return (foldr exApp arg ops)
   expr11 = do
@@ -439,8 +492,7 @@ exprp = expr0 where
       integerOrFloat >>! either exInt exFloat,
       charLiteral    >>! (exInt . fromIntegral . fromEnum),
       stringLiteral  >>! exStr,
-      operatorp      >>! exVar,
-      parens (exprN1 <|> return (exCon (Uid "()")))
+      parens (exprN1 <|> return (exBCon (Uid "()")))
     ]
   exprN1 = addLoc $ do
     e1 <- expr0
@@ -460,7 +512,7 @@ opappp :: Prec -> P (Expr () w -> Expr () w -> Expr () w)
 opappp p = do
   loc <- curLoc
   op  <- oplevelp p
-  return (\e1 e2 -> (exVar op <<@ loc `exApp` e1) `exApp` e2)
+  return (\e1 e2 -> (exBVar op <<@ loc `exApp` e1) `exApp` e2)
 
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
@@ -508,8 +560,8 @@ paty  = do
   case (p, mt) of
     (_, Just t) -> return (p, t)
     (PaCon (Uid "()") Nothing, Nothing)
-                 -> return (p, tyGround "unit")
-    _            -> pzero <?> ":"
+                -> return (p, tyGround "unit")
+    _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
 pamty :: Language w => P (Patt, Maybe (Type () w))
