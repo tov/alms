@@ -3,9 +3,9 @@
       ImplicitParams,
       MultiParamTypeClasses,
       PatternGuards #-}
-module Translation {-(
+module Translation (
   translate, transDecls, TEnv
-)-} where
+) where
 
 import Util
 import Syntax
