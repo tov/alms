@@ -34,15 +34,15 @@ instance (Ppr a, Separator a) => Ppr [a] where
 
 instance Ppr (Type i w) where
   -- Print sugar for arrow types:
-  pprPrec p (TyCon (QLid [] (Lid "->")) [t1, t2] _)
+  pprPrec p (TyCon (J [] (Lid "->")) [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "->" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon (QLid [] (Lid "-o")) [t1, t2] _)
+  pprPrec p (TyCon (J [] (Lid "-o")) [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "-o" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon (QLid [] (Lid "*")) [t1, t2] _)
+  pprPrec p (TyCon (J [] (Lid "*")) [t1, t2] _)
                   = parensIf (p > precStar) $
                       sep [ pprPrec precStar t1,
                         text "*" <+> pprPrec (precStar + 1) t2 ]
@@ -242,13 +242,13 @@ instance Ppr (Expr i w) where
               pprPrec (precCom + 1) e2 ]
     ExAbs _ _ _ -> pprAbs p e0
     ExApp e1 e2
-      | ExId (Var (QLid [] (Lid x))) <- view e1,
+      | ExId (J [] (Var (Lid x))) <- view e1,
         Right p' <- precOp x,
         p' == 10
           -> parensIf (p > p') $
                text x <+> pprPrec p' e2
       | ExApp e11 e12 <- view e1,
-        ExId (Var (QLid [] (Lid x))) <- view e11,
+        ExId (J [] (Var (Lid x))) <- view e11,
         (pl, pr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
         p' < 9
           -> parensIf (p > p') $
@@ -299,14 +299,14 @@ pprAbs p e = parensIf (p > precDot) $
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         argsDoc = case args of
-          [Left (PaWild, TyCon (QLid [] (Lid "unit")) [] _)]
+          [Left (PaWild, TyCon (J [] (Lid "unit")) [] _)]
                         -> parens empty
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
 pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
-  eachArg (Left (PaWild, TyCon (QLid [] (Lid "unit")) [] _))
+  eachArg (Left (PaWild, TyCon (J [] (Lid "unit")) [] _))
                           = parens empty
   eachArg (Left (x, t))   = parens $
                               ppr x
@@ -361,11 +361,9 @@ instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Quant     where pprPrec = pprFromShow
 instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
-instance Ppr QLid      where pprPrec = pprFromShow
-instance Ppr QUid      where pprPrec = pprFromShow
-instance Ppr Ident     where pprPrec = pprFromShow
 instance Ppr BIdent    where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
+instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 
 instance Show TypeTW where
   showsPrec p (TypeTA t) = showsPrec p t

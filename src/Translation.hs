@@ -4,35 +4,32 @@
       MultiParamTypeClasses,
       PatternGuards #-}
 module Translation (
-  translate, transDecls, TEnv
+  translate, translateDecls, TEnv
 ) where
 
 import Util
 import Syntax
 import Env
 
-data Scope = Scope {
-               le :: Env Lid (Let TyTag),
-               me :: Env Uid Scope
-             }
+type Scope = PEnv Uid (Env Lid (Let TyTag))
 type TEnv  = [Scope]
-
-emptyscope :: Scope
-emptyscope  = Scope empty empty
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.
 newtype Party = Party Ident
-type Path     = [Uid]
+type Trail    = [Uid]
 
 -- Translate a program by adding contracts.
 translate :: TEnv -> ProgT -> ProgT
 translate tenv0 (Prog ds e) =
-  let ?path       = [] in
+  let ?trail      = [] in
   let (tenv, ds') = transDecls tenv0 ds in
     Prog ds' (transExpr tenv (party (Uid "*Main*")) `fmap` e)
 
-transDecls :: (?path :: Path) => TEnv -> [DeclT] -> (TEnv, [DeclT])
+translateDecls :: TEnv -> [DeclT] -> (TEnv, [DeclT])
+translateDecls  = transDecls where ?trail = []
+
+transDecls :: (?trail :: Trail) => TEnv -> [DeclT] -> (TEnv, [DeclT])
 transDecls tenv = foldl each (tenv, []) where
   each (env, ds) (DcLet loc m)      = let (env', m') = transLet env m
                                        in (env', ds ++ [DcLet loc m'])
@@ -42,59 +39,60 @@ transDecls tenv = foldl each (tenv, []) where
   each (env, ds) (DcMod loc m)      = let (env', m') = transMod env m
                                        in (env', ds ++ [DcMod loc m']) 
 
-transLet :: (?path :: Path) => TEnv -> LetT -> (TEnv, LetT)
+transLet :: (?trail :: Trail) => TEnv -> LetT -> (TEnv, LetT)
 transLet tenv m@(LtC tl x (Just t) e) =
-  (tenv =++= x =:= m,
+  (tenv =+= x =:= m,
    LtC tl x (Just t) (transExpr tenv (getNeg x) e))
 transLet tenv m@(LtA tl x (Just t) e) =
-  (tenv =++= x =:= m,
+  (tenv =+= x =:= m,
    LtC tl x (Just (atype2ctype t)) (transExpr tenv (getNeg x) e))
 transLet tenv m@(LtInt tl x t y)      =
-  (tenv =++= x =:= m,
+  (tenv =+= x =:= m,
    LtC tl x (Just (atype2ctype t)) $
      exLetVar' z (transExpr tenv (getNeg x) (exVar y :: ExprT C)) $
        ac (party y) (getNeg x) z t)
     where z = y /./ "z"
 transLet tenv m                  =
-  (tenv =++= letName m =:= m, m)
+  (tenv =+= letName m =:= m, m)
 
-transMod :: (?path :: Path) => TEnv -> ModT -> (TEnv, ModT)
+transMod :: (?trail :: Trail) => TEnv -> ModT -> (TEnv, ModT)
 transMod tenv (ModC tl x b) =
-  let ?path       = x : ?path in
+  let ?trail       = x : ?trail in
   let (scope, b') = transModExp tenv b in
-    (tenv =++= x =:= scope, ModC tl x b')
+    (tenv =+= x =:= scope, ModC tl x b')
 transMod tenv (ModA tl x b) =
-  let ?path       = x : ?path in
+  let ?trail       = x : ?trail in
   let (scope, b') = transModExp tenv b in
-    (tenv =++= x =:= scope, ModA tl x b')
+    (tenv =+= x =:= scope, ModA tl x b')
 
-transModExp :: (?path :: Path) => TEnv -> ModExpT -> (Scope, ModExpT)
+transModExp :: (?trail :: Trail) => TEnv -> ModExpT -> (Scope, ModExpT)
 transModExp tenv (MeName n) = case tenv =..= n of
   Just scope -> (scope, MeName n)
   Nothing    -> error "Bug! transModExp"
 transModExp tenv (MeDecls ds) =
-  let (scope:_, ds') = transDecls (emptyscope:tenv) ds
+  let (scope:_, ds') = transDecls (genEmpty:tenv) ds
    in (scope, MeDecls ds')
 
-getNeg :: (?path :: Path, Culpable p) => p -> Party
-getNeg def = case ?path of
+getNeg :: (?trail :: Trail, Culpable p) => p -> Party
+getNeg def = case ?trail of
   []   -> party def
-  p:ps -> party (QUid (reverse ps) p)
+  p:ps -> party (J (reverse ps) p)
 
 transExpr :: Language w => TEnv -> Party -> ExprT w -> ExprT C
 transExpr tenv neg = te where
   tem tenv' = transExpr tenv' neg
   te e0 = case view e0 of
-    ExId i    -> case i of
-      Con k   -> exCon k
-      Var x   -> transVar (reifyLang1 e0) tenv neg x
+    ExId i    -> case view i of
+      Left x   -> transVar (reifyLang1 e0) tenv neg x
+      Right k  -> exCon k
     ExStr s   -> exStr s
     ExInt z   -> exInt z
     ExFloat f -> exFloat f
     ExCase e1 clauses -> exCase (te e1)
                                 [ (xi, tem (tenv =\\= pv xi) ei)
                                 | (xi, ei) <- clauses ]
-    ExLetRec bs e2 -> let rec = tem (foldl (=\=) tenv (map bnvar bs))
+    ExLetRec bs e2 -> let ROOT tenv' = foldl (=\=) (ROOT tenv) (map bnvar bs)
+                          rec        = tem tenv'
                       in exLetRec
                            [ Binding x (type2ctype t) (rec e)
                            | Binding x t e <- bs ]
@@ -313,32 +311,25 @@ class Renamable a b where
 instance Renamable Lid Lid where
   Lid n /./ s = Lid (n ++ '#' : s)
 
-instance Renamable Lid QLid where
-  n /./ s = QLid [] (n /./ s)
+instance Renamable k k => Renamable k (Path p k) where
+  n /./ s = J [] (n /./ s)
 
-instance Renamable QLid Lid where
+instance Show n => Renamable (Path Uid n) Lid where
   n /./ s = Lid ('_' : show n) /./ s
-
-instance Renamable QUid Lid where
-  n /./ s = Lid ('_' : show n) /./ s
-
-instance Renamable QLid QLid where
-  QLid uids lid /./ s = QLid uids (lid /./ s)
 
 instance Renamable Party Lid where
-  Party (Con n) /./ s = n /./ s
-  Party (Var n) /./ s = n /./ s
+  Party n /./ s = n /./ s
 
 instance Renamable Party Party where
-  Party (Con (QUid ns n)) /./ s = party (QUid ns (Uid (show n ++ s)))
-  Party (Var (QLid ns n)) /./ s = party (QLid ns (Lid (show n ++ s)))
+  Party (J ns (Con n)) /./ s = Party (J ns (Con (Uid (show n ++ s))))
+  Party (J ns (Var n)) /./ s = Party (J ns (Var (Lid (show n ++ s))))
 
-class Culpable a        where party :: a -> Party
-instance Culpable Ident where party = Party
-instance Culpable QUid  where party = party . Con
-instance Culpable QLid  where party = party . Var
-instance Culpable Uid   where party = party . QUid []
-instance Culpable Lid   where party = party . QLid []
+class Culpable a where party :: a -> Party
+instance Culpable Lid where party = party . J ([] :: [Uid])
+instance Culpable Uid where party = party . J ([] :: [Uid])
+instance Culpable (Path Uid Lid) where party = party . fmap Var
+instance Culpable (Path Uid Uid) where party = party . fmap Con
+instance Culpable (Path Uid BIdent) where party = Party
 
 exUnit :: Expr i C
 exUnit  = exCon (quid "()")
@@ -356,11 +347,11 @@ exUnit  = exCon (quid "()")
 -- This is always safe to do.
 exLet' :: Patt -> Expr i w -> Expr i w -> Expr i w
 exLet' x e1 e2 = case (x, view e2) of
-  (PaVar y, ExId (Var (QLid [] y')))
+  (PaVar y, ExId (J [] (Var y')))
     | y == y'                        -> e1
   (PaPair (PaVar y) (PaVar z), ExPair ey ez)
-    | ExId (Var (QLid [] y')) <- view ey,
-      ExId (Var (QLid [] z')) <- view ez,
+    | ExId (J [] (Var y')) <- view ey,
+      ExId (J [] (Var z')) <- view ez,
       y == y' && z == z'             -> e1
   _                                  -> exLet x e1 e2
 
@@ -375,9 +366,9 @@ exLetVar'  = exLet' . PaVar
 exAbs' :: Patt -> Type i w -> Expr i w -> Expr i w
 exAbs' x t e = case view e of
   ExApp e1 e2 -> case (x, view e1, view e2) of
-    (PaVar y, ExId (Var f), ExId (Var y')) |
-      QLid [] y == y' && QLid [] y /= f 
-              -> exVar f
+    (PaVar y, ExId (J p (Var f)), ExId (J [] (Var y'))) |
+      y == y' && J [] y /= J p f
+              -> exVar (J p f)
     _         -> exAbs x t e
   _           -> exAbs x t e
 
@@ -392,46 +383,10 @@ exAbsVar'  = exAbs' . PaVar
 exTAbs' :: TyVar -> Expr i w -> Expr i w
 exTAbs' tv e = case view e of
   ExTApp e1 t2 -> case (view e1, t2) of
-    (ExId (Var f), TyVar tv') |
-      tv == tv'  -> exVar f
+    (ExId (J p (Var f)), TyVar tv') |
+      tv == tv'  -> exVar (J p f)
     _            -> exTAbs tv e
   _            -> exTAbs tv e
 
-
-instance PathLookup Scope [Uid] Scope where
-  (=..=) = foldM (\scope' u -> me scope' =.= u)
-instance PathLookup Scope QLid (Let TyTag) where
-  scope =..= QLid us n = scope =..= us >>= (=.= n) . le
-instance PathLookup Scope QUid Scope where
-  scope =..= QUid us n = scope =..= us >>= (=.= n) . me
-instance PathLookup Scope Lid (Let TyTag) where
-  scope =..= n = le scope =.= n
-instance PathLookup Scope Uid Scope where
-  scope =..= n = me scope =.= n
-
-instance PathExtend Scope (Env Lid (Let TyTag)) where
-  env =++= lenv = env { le = le env =+= lenv }
-instance PathExtend Scope (Env Uid Scope) where
-  env =++= tenv = env { me = me env =+= tenv }
-
-instance PathRemove Scope Lid where
-  env =\= n = env { le = le env =\= n }
-instance PathRemove Scope Uid where
-  env =\= n = env { me = me env =\= n }
-instance PathRemove Scope QLid where
-  env =\= QLid us n = atDepth us (=\= n) env
-instance PathRemove Scope QUid where
-  env =\= QUid us n = atDepth us (=\= n) env
-
-atDepth :: [Uid] -> (Scope -> Scope) -> (Scope -> Scope)
-atDepth []     f scope = f scope
-atDepth (u:us) f scope = case scope =..= u of
-  Nothing     -> scope
-  Just scope' -> scope =++= u =:= atDepth us f scope'
-
-{-
-remove :: Keyable QLid k => TEnv -> k -> TEnv
-remove k = map eachScope where
-  eachScope (Scope 
-
--}
+instance GenRemove (ROOT [Scope]) Lid where
+  ROOT env =\= lid = ROOT (map (unROOT . (=\= lid) . ROOT) env)

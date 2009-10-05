@@ -101,12 +101,12 @@ pathp p = try $ do
 -- Qualified uppercase identifiers:
 --  - module names occurences
 quidp :: P QUid
-quidp  = pathp (uidp >>! flip QUid)
+quidp  = pathp (uidp >>! flip J)
 
 -- Qualified lowercase identifiers:
 --  - tycon ocurences
 qlidp :: P QLid
-qlidp  = pathp (lidp >>! flip QLid)
+qlidp  = pathp (lidp >>! flip J)
 
 -- Lowercase identifiers and operators
 --  - variable bindings
@@ -116,15 +116,15 @@ varp  = lidp <|> operatorp
 -- Qualified lowercase identifers and operators
 --  - variable occurences
 qvarp :: P QLid
-qvarp  = pathp (varp >>! flip QLid)
+qvarp  = pathp (varp >>! flip J)
 
 -- Identifier expressions
 identp :: P (Expr () w)
 identp  = addLoc $ pathp $ choice
   [ do v <- varp
-       return $ \path -> exVar (QLid path v),
+       return $ \path -> exVar (J path v),
     do c <- uidp
-       return $ \path -> exCon (QUid path c) ]
+       return $ \path -> exCon (J path c) ]
 
 -- Type variables
 tyvarp :: P TyVar

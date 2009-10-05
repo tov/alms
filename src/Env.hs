@@ -6,15 +6,18 @@
       OverlappingInstances,
       ScopedTypeVariables,
       UndecidableInstances #-}
-module Env {-(
+module Env (
   Env(unEnv),
   (:>:)(..),
   empty, isEmpty,
   (-:-), (-::-), (-:+-), (-+-), (-\-), (-\\-), (-.-), (-|-),
-  mapEnv, mapAccum, mapAccumM,
-  toList, fromList, contents-- ,
---   PathLookup(..), PathExtend(..), PathRemove(..),
-)-} where
+  mapAccum, mapAccumM,
+  toList, fromList, contents,
+
+  PEnv(..), Path(..), ROOT(..),
+  GenEmpty(..), GenLookup(..), GenRemove(..), GenModify(..),
+  GenExtend(..), (=:=), (=::=), (=:+=), (=++=)
+) where
 
 import Util
 import qualified Data.Map as M
@@ -78,8 +81,8 @@ m -.- y   = M.lookup (liftKey y) (unEnv m)
 (-|-)    :: (k :>: k') => Env k v -> Env k' w -> Env k (v, w)
 m -|- n   = Env (M.intersectionWith (,) (unEnv m) (unEnv (liftEnv n)))
 
-mapEnv :: Ord k => (v -> w) -> Env k v -> Env k w
-mapEnv f = Env . M.map f . unEnv
+instance Ord k => Functor (Env k) where
+  fmap f = Env . M.map f . unEnv
 
 mapAccum :: Ord k => (v -> a -> (a, w)) -> a -> Env k v -> (a, Env k w)
 mapAccum f z m = case M.mapAccum (flip f) z (unEnv m) of
@@ -131,10 +134,6 @@ class GenModify e k v where
 class GenEmpty e where
   genEmpty :: e
 
-instance GenLookup e k v => GenLookup (Maybe e) k v where
-  Just e  =..= k  = e =..= k
-  Nothing =..= _  = Nothing
-
 (=:=)  :: Ord k => k -> v -> Env k v
 (=::=) :: (Ord k, Monad m) => k -> v -> Env k (m v)
 (=:+=) :: Ord k => k -> k -> Env k k
@@ -156,86 +155,155 @@ instance (k :>: k') => GenModify (Env k v) k' v where
     Just v  -> e =+= k -:- fv v
 instance GenEmpty (Env k v) where genEmpty = empty
 
-data NEnv p e = NEnv {
-                  envenv :: Env p (NEnv p e),
+data PEnv p e = PEnv {
+                  envenv :: Env p (PEnv p e),
                   valenv :: e
                 }
-  deriving Show
+  deriving (Show, Typeable, Data)
 
-data Qual p k = Q {
-                  qualpath :: [p],
-                  qualname :: k
+data Path p k = J {
+                  jpath :: [p],
+                  jname :: k
                 }
-  deriving (Eq, Ord, Show)
+  deriving (Eq, Ord, Typeable, Data)
 
-instance GenEmpty e => GenEmpty (NEnv p e) where
-  genEmpty = NEnv genEmpty genEmpty
+newtype ROOT e = ROOT { unROOT :: e }
+  deriving (Eq, Ord, Show, Typeable, Data)
+
+-- Utility instances
+
+instance Ord p => Functor (PEnv p) where
+  fmap f (PEnv envs vals) = PEnv (fmap (fmap f) envs) (f vals)
+
+instance (Show p, Show k) => Show (Path p k) where
+  showsPrec _ (J ps k) = foldr (\p r -> shows p . ('.':) . r) (shows k) ps
+
+instance Functor (Path p) where
+  fmap f (J p k) = J p (f k)
+
+instance Functor ROOT where
+  fmap f (ROOT x) = ROOT (f x)
+
+instance Monad ROOT where
+  return       = ROOT
+  ROOT x >>= f = f x
+
+-- Some structural rules:
+
+instance GenLookup e k v => GenLookup (Maybe e) k v where
+  Just e  =..= k  = e =..= k
+  Nothing =..= _  = Nothing
+
+instance GenLookup e k v => GenLookup [e] k v where
+  es =..= k  = foldr (\e r -> maybe r Just (e =..= k)) Nothing es
+
+instance (GenEmpty e, GenExtend e e') => GenExtend [e] e' where
+  (e:es) =+= e'  =  (e =+= e') : es
+  []     =+= e'  =  [ (genEmpty :: e) =+= e' ]
+
+instance GenEmpty e => GenEmpty [e] where
+  genEmpty = [genEmpty]
+
+instance GenRemove e k => GenRemove [e] k where
+  e =\= k = map (=\= k) e
 
 -- We can extend a nested env with
 --  - some subenvs
 --  - a value env
 --  - another nested env (preferring the right)
 --  - (=++=) unions subenvs rather than replacing
-instance Ord p => GenExtend (NEnv p e) (Env p (NEnv p e)) where
-  nenv =+= e = nenv { envenv = envenv nenv =+= e }
+instance Ord p => GenExtend (PEnv p e) (Env p (PEnv p e)) where
+  penv =+= e = penv { envenv = envenv penv =+= e }
 
-instance Ord p => GenExtend (NEnv p e) (Env p e) where
-  nenv =+= e = nenv =+= mapEnv (NEnv (empty :: Env p (NEnv p e))) e
+instance Ord p => GenExtend (PEnv p e) (Env p e) where
+  penv =+= e = penv =+= fmap (PEnv (empty :: Env p (PEnv p e))) e
 
-instance GenExtend e e => GenExtend (NEnv p e) e where
-  nenv =+= e = nenv { valenv = valenv nenv =+= e }
+instance GenExtend e e' =>
+         GenExtend (PEnv p e) e' where
+  penv =+= e = penv { valenv = valenv penv =+= e }
 
 instance (Ord p, GenExtend e e) =>
-         GenExtend (NEnv p e) (NEnv p e) where
-  NEnv es vs =+= NEnv es' vs' = NEnv (es =+= es') (vs =+= vs')
+         GenExtend (PEnv p e) (PEnv p e) where
+  PEnv es vs =+= PEnv es' vs' = PEnv (es =+= es') (vs =+= vs')
+
+instance (Ord p, Ord k, GenEmpty e, GenExtend e (Env k v)) =>
+         GenExtend (PEnv p e) (Env (Path p k) v) where
+  penv =+= env = foldr (flip (=+=)) penv (toList env)
+
+instance (Ord p, Ord k, GenEmpty e, GenExtend e (Env k v)) =>
+         GenExtend (PEnv p e) (Path p k, v) where
+  PEnv ee ve =+= (J ps0 k, v) = case ps0 of
+    []   -> PEnv ee (ve =+= k =:= v)
+    p:ps -> let penv' = maybe genEmpty id (ee =..= p) =+= (J ps k, v)
+             in PEnv (ee =+= p =:= penv') ve
+
+{-
+path2penv :: (Ord p, GenEmpty e) => [p] -> e -> PEnv p e
+path2penv []     e = PEnv empty e
+path2penv (p:ps) e = PEnv (p =:= path2penv ps e) genEmpty
+-}
 
 -- tree-wise union:
-(=++=) :: (Ord p, GenExtend e e) => NEnv p e -> NEnv p e -> NEnv p e
-NEnv (Env m) e =++= NEnv (Env m') e' =
-  NEnv (Env (M.unionWith (=++=) m m')) (e =+= e')
+(=++=) :: (Ord p, GenExtend e e) => PEnv p e -> PEnv p e -> PEnv p e
+PEnv (Env m) e =++= PEnv (Env m') e' =
+  PEnv (Env (M.unionWith (=++=) m m')) (e =+= e')
 
 -- We can lookup in a nested env by
 --  - one path component
---  - one key
 --  - a path
 --  - a path to a key
-instance Ord p => GenLookup (NEnv p e) p (NEnv p e) where
-  nenv =..= p = envenv nenv =..= p
+--  - a path to a path component
+--  - one key (ROOT)
+instance Ord p => GenLookup (PEnv p e) p (PEnv p e) where
+  penv =..= p = envenv penv =..= p
 
-instance Ord p => GenLookup (NEnv p e) [p] (NEnv p e) where
+instance Ord p => GenLookup (PEnv p e) [p] (PEnv p e) where
   (=..=) = foldM (=..=)
 
-instance (Ord p, GenLookup e k v) =>
-         GenLookup (NEnv p e) (Qual p k) v where
-  nenv =..= Q path k = nenv =..= path >>= (=.= k)
+instance Ord p => GenLookup (PEnv p e) (Path p p) (PEnv p e) where
+  penv =..= J ps p = penv =..= (ps++[p])
 
--- look up a simple key
-(=.=) :: GenLookup e k v => NEnv p e -> k -> Maybe v
-nenv =.= k = valenv nenv =..= k
+instance (Ord p, GenLookup e k v) =>
+         GenLookup (PEnv p e) (Path p k) v where
+  penv =..= J path k = penv =..= path >>= (=.= k)
+
+instance GenLookup e k v => GenLookup (ROOT (PEnv p e)) k v where
+  ROOT penv =..= k = valenv penv =..= k    
+
+-- alias for looking up a simple key
+(=.=) :: GenLookup e k v => PEnv p e -> k -> Maybe v
+(=.=)  = (=..=) . ROOT
 
 -- We can modify a nested env at
 --  - one path component
 --  - a path to a nested env
 --  - a path to an env
 --  - a path to a key
+--  - a single key (ROOT)
 
-instance Ord p => GenModify (NEnv p e) p (NEnv p e) where
-  genModify nenv p f  =  genModify nenv [p] f
+instance Ord p => GenModify (PEnv p e) p (PEnv p e) where
+  genModify penv p f  =  genModify penv [p] f
 
-instance Ord p => GenModify (NEnv p e) [p] (NEnv p e) where
-  genModify nenv [] f     = f nenv
-  genModify nenv (p:ps) f = case envenv nenv =..= p of
-    Nothing    -> nenv
-    Just nenv' -> nenv =+= p =:= genModify nenv' ps f
+instance Ord p => GenModify (PEnv p e) [p] (PEnv p e) where
+  genModify penv [] f     = f penv
+  genModify penv (p:ps) f = case envenv penv =..= p of
+    Nothing    -> penv
+    Just penv' -> penv =+= p =:= genModify penv' ps f
 
-instance Ord p => GenModify (NEnv p e) [p] e where
-  genModify nenv path fe = genModify nenv path fnenv where
-    fnenv      :: NEnv p e -> NEnv p e
-    fnenv nenv' = nenv' { valenv = fe (valenv nenv') }
+instance Ord p => GenModify (PEnv p e) [p] e where
+  genModify penv path fe = genModify penv path fpenv where
+    fpenv      :: PEnv p e -> PEnv p e
+    fpenv penv' = penv' { valenv = fe (valenv penv') }
 
 instance (Ord p, GenModify e k v) =>
-         GenModify (NEnv p e) (Qual p k) v where
-  genModify nenv (Q path k) fv = genModify nenv path fe where
+         GenModify (PEnv p e) (Path p k) v where
+  genModify penv (J path k) fv = genModify penv path fe where
+    fe  :: e -> e
+    fe e = genModify e k fv
+
+instance GenModify e k v => GenModify (ROOT (PEnv p e)) k v where
+  genModify (ROOT penv) k fv = ROOT (penv { valenv = fe (valenv penv) })
+    where
     fe  :: e -> e
     fe e = genModify e k fv
 
@@ -243,16 +311,24 @@ instance (Ord p, GenModify e k v) =>
 --  - a single path component
 --  - a path to a key
 --  - a path to a path
-instance Ord p => GenRemove (NEnv p e) p where
-  nenv =\= p = nenv { envenv = envenv nenv =\= p }
+--  - a single key (ROOT)
+instance Ord p => GenRemove (PEnv p e) p where
+  penv =\= p = penv { envenv = envenv penv =\= p }
 
-instance (Ord p, GenRemove e k) => GenRemove (NEnv p e) (Qual p k) where
-  nenv =\= Q path k = genModify nenv path fe where
+instance (Ord p, GenRemove e k) => GenRemove (PEnv p e) (Path p k) where
+  penv =\= J path k = genModify penv path fe where
     fe :: e -> e
     fe  = (=\= k)
 
-instance Ord p => GenRemove (NEnv p e) (Qual p p) where
-  nenv =\= Q path p = genModify nenv path fnenv where
-    fnenv :: NEnv p e -> NEnv p e
-    fnenv  = (=\= p)
+instance Ord p => GenRemove (PEnv p e) (Path p p) where
+  penv =\= J path p = genModify penv path fpenv where
+    fpenv :: PEnv p e -> PEnv p e
+    fpenv  = (=\= p)
+
+instance GenRemove e k => GenRemove (ROOT (PEnv p e)) k where
+  ROOT penv =\= k = ROOT (penv { valenv = valenv penv =\= k })
+
+-- we can make empty PEnvs if we can put an empty env in it
+instance GenEmpty e => GenEmpty (PEnv p e) where
+  genEmpty = PEnv genEmpty genEmpty
 

@@ -7,13 +7,13 @@ import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
 import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S)
-import Translation (translate, transDecls, MEnvT)
-import Dynamics (eval, evalDecls, E)
+import Translation (translate, translateDecls, TEnv)
+import Dynamics (eval, addDecls, E)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
 import Syntax (Prog, Lid, ProgT, Decl(..), DeclT, Let(..),
                prog2decls, letName)
-import Env (empty, PathLookup(..))
+import Env (empty, GenLookup(..), GenEmpty(..))
 
 import Control.Monad (when, unless)
 import System.Exit (exitFailure)
@@ -40,7 +40,7 @@ main  = do
   processArgs [] args $ \opts mmsrc filename -> do
   g0  <- basis2tenv primBasis
   e0  <- basis2venv primBasis
-  st0 <- loadSource (RS g0 empty e0) "basis" srcBasis
+  st0 <- loadSource (RS g0 genEmpty e0) "basis" srcBasis
   maybe interactive (batch filename) mmsrc (`elem` opts) st0
     `catch`
       \err -> do
@@ -100,7 +100,7 @@ batch filename msrc opt st0 = do
 
 data ReplState = RS {
   rsStatics     :: S,
-  rsTranslation :: MEnvT,
+  rsTranslation :: TEnv,
   rsDynamics    :: E
 }
 
@@ -113,11 +113,11 @@ statics (rs, ast) = do
   return (rs { rsStatics = g' }, ast')
 
 translation (rs, ast) = do
-  let (menv', ast') = transDecls (rsTranslation rs) ast
+  let (menv', ast') = translateDecls (rsTranslation rs) ast
   return (rs { rsTranslation = menv' }, ast')
 
 dynamics (rs, ast) = do
-  e' <- evalDecls ast (rsDynamics rs)
+  e' <- addDecls (rsDynamics rs) ast
   return (rs { rsDynamics = e' }, ast)
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
@@ -191,7 +191,7 @@ interactive opt rs0 = do
                   Left derr ->
                     loop ((line, derr) : acc)
     printResult :: (ReplState, [Decl i]) -> IO ()
-    printResult (st, ds0) = do
+    printResult (st, ds0) = return () {- do
       (_, docs, _) <- foldrM dispatch (st, [], []) ds0
       mapM_ print docs
         where
@@ -223,6 +223,7 @@ interactive opt rs0 = do
         add '=' mv $
           add ':' mt $
             text "val[" <> text lang <> text "]" <+> ppr x
+            -}
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)

@@ -10,6 +10,7 @@ import qualified IO
 import Data.Typeable (Typeable)
 import BasisUtils
 import Dynamics
+import Ppr (text)
 import Util
 
 instance Valuable IO.Handle where

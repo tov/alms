@@ -7,6 +7,7 @@ module BasisUtils (
   MkFun(..), baseMkFun,
   fun, binArith, val, pval, pfun,
   typeC, typeA, primtype, src,
+  submod,
   vapp,
   (-:), (-::), (-=),
   text, Uid(..),
@@ -15,18 +16,21 @@ module BasisUtils (
 
 import Util
 import Dynamics
-import Statics (S, env0, tcDecls, addVal, addTyTag)
-import Env (fromList)
+import Statics (S, env0, tcDecls, addVal, addType, addMod)
+import Env (GenEmpty(..))
 import Syntax
 import Parser (pt, pds)
 
 import Data.Typeable (Typeable)
 import Ppr (ppr, text, hang, char, (<>))
 
--- Basis entries are either values with names and types, or
--- abstract type constructors.
+-- A basis entry is one of:
+-- -- a value with name and types
+-- -- source of a declaration to eval
+-- -- an abstract type constructor
+-- -- a module
 data Entry = ValEn {
-               enName  :: String,
+               enName  :: Lid,
                enCType :: String,
                enAType :: String,
                enValue :: Value
@@ -35,8 +39,12 @@ data Entry = ValEn {
                enSrc   :: String
              }
            | TypEn {
-               enName  :: String,
+               enName  :: Lid,
                enTyTag :: TyTag
+             }
+           | ModEn {
+               enModName :: Uid,
+               enEnts    :: [Entry]
              }
 
 -- Type class for making Values out of Haskell functions
@@ -75,10 +83,10 @@ baseMkFun n f = VaFun n $ \v -> vprjM v >>= return . vinj . f
 
 fun :: (MkFun r, Valuable v) =>
        String -> String -> String -> (v -> r) -> Entry
-fun name cty aty f = ValEn name cty aty (mkFun (FNNamed [text name]) f)
+fun name cty aty f = ValEn (Lid name) cty aty (mkFun (FNNamed [text name]) f)
 
 val :: Valuable v => String -> String -> String -> v -> Entry
-val name cty aty v = ValEn name cty aty (vinj v)
+val name cty aty v = ValEn (Lid name) cty aty (vinj v)
 
 pval :: Valuable v => Int -> String -> String -> String -> v -> Entry
 pval 0 name cty aty v = val name cty aty v
@@ -111,8 +119,11 @@ instance TypeBuilder r => TypeBuilder (String -> r) where
   typeA s    = typeA . (s ++) . ('\n' :)
   src s      = src   . (s ++) . ('\n' :)
 
+submod :: String -> [Entry] -> Entry
+submod  = ModEn . Uid
+
 primtype  :: String -> TyTag -> Entry
-primtype   = TypEn
+primtype   = TypEn . Lid
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
@@ -150,23 +161,28 @@ vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
 basis2venv :: Monad m => [Entry] -> m E
-basis2venv es = return (E venv menv)
-  where
-    venv = fromList [ (Lid s, return v)
-                    | ValEn { enName = s, enValue = v } <- es ]
-    menv = fromList [ ]
+basis2venv es = foldM add genEmpty es where
+  add :: Monad m => E -> Entry -> m E
+  add e (ValEn { enName = n, enValue = v })
+          = return (Dynamics.addVal e n v)
+  add e (ModEn { enModName = n, enEnts = es })
+          = Dynamics.addMod e n `liftM` basis2venv es
+  add e _ = return e
 
 basis2tenv :: Monad m => [Entry] -> m S
 basis2tenv  = foldM each env0 where
-  each gg0 (ValEn { enName = s, enCType = ct, enAType = at }) = do
+  each gg0 (ValEn { enName = n, enCType = ct, enAType = at }) = do
     gg1 <- if null ct
       then return gg0
-      else addVal gg0 (BVar (Lid s)) (pt ct :: Type () C)
+      else Statics.addVal gg0 n (pt ct :: Type () C)
     gg2 <- if null at
       then return gg1
-      else addVal gg1 (BVar (Lid s)) (pt at :: Type () A)
+      else Statics.addVal gg1 n (pt at :: Type () A)
     return gg2
   each gg0 (DecEn { enSrc = s }) =
     fst `liftM` tcDecls gg0 (pds s)
-  each gg0 (TypEn { enName = s, enTyTag = i }) =
-    return (addTyTag gg0 (Lid s) i)
+  each gg0 (TypEn { enName = n, enTyTag = i }) =
+    return (Statics.addType gg0 n i)
+  each gg0 (ModEn { enModName = n, enEnts = es }) =
+    Statics.addMod gg0 n $ \gg' -> foldM each gg' es
+

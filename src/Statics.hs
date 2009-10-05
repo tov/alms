@@ -5,11 +5,12 @@
       ImplicitParams,
       MultiParamTypeClasses,
       ScopedTypeVariables,
+      TypeSynonymInstances,
       UndecidableInstances #-}
 module Statics (
   S, env0,
   tcProg, tcDecls,
-  addVal, addTyTag
+  addVal, addType, addMod
 ) where
 
 import Util
@@ -46,71 +47,66 @@ data TyInfo w = TiAbs TyTag
 -- Type environments
 type D = Env TyVar TyVar       -- tyvars in scope, with idempot. renaming
 
--- A scope has bindings for:
-data Scope w = Scope {
-                 ve :: V w,  -- values
-                 te :: T w,  -- types
-                 me :: M w   -- modules
+type V w     = Env BIdent (TypeT w) -- value env
+type T w     = Env Lid (TyInfo w)   -- type env
+data Level w = Level {
+                 ve :: V w, -- values
+                 te :: T w  -- types
                }
-  deriving (Data, Typeable)
-type E w = [Scope w]            -- environment is stack of scopes
-type V w = Env BIdent (TypeT w) -- value env
-type T w = Env Lid (TyInfo w)   -- type env
-type M w = Env Uid (Scope w)    -- module env
+  deriving (Typeable, Data)
+type Scope w = PEnv Uid (Level w)   -- path env includes modules
+type E w = [Scope w]
+
+emptyPath :: [Uid]
+emptyPath  = []
+
+instance GenEmpty (Level w) where
+  genEmpty = Level empty empty
+
+instance GenExtend (Level w) (Level w) where
+  Level ve te =+= Level ve' te' = Level (ve =+= ve') (te =+= te')
+instance GenExtend (Level w) (V w) where
+  level =+= ve' = level =+= Level ve' empty
+instance GenExtend (Level w) (T w) where
+  level =+= te' = level =+= Level empty te'
+instance GenLookup (Level w) BIdent (TypeT w) where
+  level =..= k = ve level =..= k
+instance GenLookup (Level w) Lid (TyInfo w) where
+  level =..= k = te level =..= k
 
 data S   = S {
-             cEnv    :: Scope C,
-             aEnv    :: Scope A,
+             cEnv    :: E C,
+             aEnv    :: E A,
              currIx  :: Integer
            }
 
-collapse :: E w -> Scope w
-collapse = foldr combine emptyScope where
-  combine (Scope v' t' m') (Scope v t m) =
-    Scope (v =+= v') (t =+= t') (m =+= m')
-
-emptyScope :: Scope w
-emptyScope  = Scope empty empty empty
+-- collapse :: E w -> Scope w
+-- collapse = foldr (flip (=+=)) genEmpty
 
 -- The type checking monad
 newtype TC w m a =
   TC { unTC :: M.R.ReaderT (TCEnv w) (M.S.StateT Integer m) a }
 data TCEnv w = TCEnv (E w, E (OtherLang w)) (D, D)
 
-instance PathLookup (Scope w) [Uid] (Scope w) where
-  (=..=) = foldM (\scope' u -> me scope' =.= u)
-instance PathLookup (Scope w) QUid (Scope w) where
-  scope =..= QUid us n = scope =..= us >>= (=.= n) . me
-instance PathLookup (Scope w) QLid (TyInfo w) where
-  scope =..= QLid us n = scope =..= us >>= (=.= n) . te
-instance PathLookup (Scope w) Ident (Type TyTag w) where
-  scope =..= Con (QUid us n) = scope =..= us >>= (=.= BCon n) . ve
-  scope =..= Var (QLid us n) = scope =..= us >>= (=.= BVar n) . ve
-
-instance PathExtend (Scope w) (Env BIdent (Type TyTag w)) where
-  scope =++= venv = scope { ve = ve scope =+= venv }
-instance PathExtend (Scope w) (Env Lid (TyInfo w)) where
-  scope =++= tenv = scope { te = te scope =+= tenv }
-instance PathExtend (Scope w) (Env Uid (Scope w)) where
-  scope =++= menv = scope { me = me scope =+= menv }
-
-instance PathLookup (TCEnv w) QUid (Scope w) where
+instance GenLookup (TCEnv w) QUid (Scope w) where
   TCEnv (e, _) _ =..= k = e =..= k
-instance PathLookup (TCEnv w) QLid (TyInfo w) where
+instance GenLookup (TCEnv w) QLid (TyInfo w) where
   TCEnv (e, _) _ =..= k = e =..= k
-instance PathLookup (TCEnv w) Ident (Type TyTag w) where
+instance GenLookup (TCEnv w) Ident (TypeT w) where
   TCEnv (e, _) _ =..= k = e =..= k
-instance PathLookup (TCEnv w) TyVar TyVar where
+instance GenLookup (TCEnv w) TyVar TyVar where
   TCEnv _ (d, _) =..= k = d =..= k
 
-instance PathExtend (TCEnv w) (Env Uid (Scope w)) where
-  TCEnv (e, e') dd =++= venv = TCEnv (e =++= venv, e') dd
-instance PathExtend (TCEnv w) (Env Lid (TyInfo w)) where
-  TCEnv (e, e') dd =++= tenv = TCEnv (e =++= tenv, e') dd
-instance PathExtend (TCEnv w) (Env BIdent (Type TyTag w)) where
-  TCEnv (e, e') dd =++= menv = TCEnv (e =++= menv, e') dd
-instance PathExtend (TCEnv w) (Env TyVar TyVar) where
-  TCEnv ee (d, d') =++= tvs  = TCEnv ee (d =++= tvs, d')
+instance GenExtend (TCEnv w) (Env Ident (TypeT w)) where
+  TCEnv (e, e') dd =+= venv = TCEnv (e =+= venv, e') dd
+instance GenExtend (TCEnv w) (Env Uid (Scope w)) where
+  TCEnv (e, e') dd =+= menv = TCEnv (e =+= menv, e') dd
+instance GenExtend (TCEnv w) (T w) where
+  TCEnv (e, e') dd =+= tenv = TCEnv (e =+= Level empty tenv, e') dd
+instance GenExtend (TCEnv w) (V w) where
+  TCEnv (e, e') dd =+= venv = TCEnv (e =+= Level venv empty, e') dd
+instance GenExtend (TCEnv w) D where
+  TCEnv ee (d, d') =+= tvs  = TCEnv ee (d =+= tvs, d')
 
 instance Monad m => Monad (TC w m) where
   m >>= k = TC (unTC m >>= unTC . k)
@@ -125,8 +121,8 @@ saveTC  = intoC . TC $ do
   TCEnv (e, e') _ <- M.R.ask
   index           <- M.S.get
   return S {
-    cEnv   = collapse e,
-    aEnv   = collapse e',
+    cEnv   = e,
+    aEnv   = e',
     currIx = index
   }
 
@@ -137,10 +133,10 @@ runTC :: Monad m => S -> TC C m a -> m a
 runTC gg0 m0 = runTCw (cEnv, aEnv) gg0 m0
   where
     runTCw :: (Language w, Monad m) =>
-              (S -> Scope w, S -> Scope (OtherLang w)) ->
+              (S -> E w, S -> E (OtherLang w)) ->
               S -> TC w m a -> m a
     runTCw (getScope, getScope') gg (TC m) = do
-      let r0 = TCEnv ([getScope gg], [getScope' gg])
+      let r0 = TCEnv (getScope gg, getScope' gg)
                      (empty, empty)
           s0 = currIx gg
       M.S.evalStateT (M.R.runReaderT m r0) s0
@@ -181,14 +177,14 @@ withTVs tvs m = TC $ do
     where
       rename :: TyVar -> (D, [TyVar]) -> (D, [TyVar])
       rename tv (d, tvs') =
-        let tv' = case d =.= tv of
+        let tv' = case d =..= tv of
                     Nothing -> tv
                     Just _  -> tv `freshTyVar` unEnv d
         in (d =+= tv =:+= tv', tv':tvs')
 
-withAny :: (Monad m, PathExtend (TCEnv w) e') =>
+withAny :: (Monad m, GenExtend (TCEnv w) e') =>
            e' -> TC w m a -> TC w m a
-withAny e' = TC . M.R.local (=++= e') . unTC
+withAny e' = TC . M.R.local (=+= e') . unTC
 
 withVars :: Monad m => V w -> TC w m a -> TC w m a
 withVars  = withAny
@@ -198,23 +194,35 @@ withTypes = withAny
 
 pushScope :: (Monad m, Language w) => TC w m a -> TC w m a
 pushScope = TC . M.R.local push . unTC where
-  push (TCEnv (e, ew) dd) = TCEnv (emptyScope : e, ew) dd
+  push (TCEnv (e, ew) dd) = TCEnv (genEmpty : e, genEmpty : ew) dd
+
+squishScope :: (Monad m, Language w) => TC w m a -> TC w m a
+squishScope = TC . M.R.local squish . unTC where
+  squish (TCEnv (e, e') dd) = TCEnv (pop e, pop e') dd
+  pop (e0 : e1 : es) = ((e1 =+= e0) : es)
+  pop es             = es
 
 askScope :: (Monad m, Language w) => TC w m (Scope w)
 askScope  = TC $ do
   TCEnv (e, _) _ <- M.R.ask
   case e of
     s:_ -> return s
-    []  -> return emptyScope
+    []  -> return genEmpty
 
-withoutConstructors :: Monad m => TyTag -> TC w m a -> TC w m a
+withoutConstructors :: forall m w a. Monad m => TyTag -> TC w m a -> TC w m a
 withoutConstructors tag = TC . M.R.local clean . unTC where
+  -- Note: only filters immediate scope -- should be right.
   clean (TCEnv (e, ew) dd) = TCEnv (map eachScope e, ew) dd
-  eachScope scope = scope { ve = eachVe (ve scope) }
+  eachScope      :: Scope w -> Scope w
+  eachScope scope = genModify scope emptyPath flevel
+  flevel         :: Level w -> Level w
+  flevel level    = level { ve = eachVe (ve level) }
+  eachVe         :: V w -> V w
   eachVe          = fromList . filter keep . toList
-  keep (BCon _, TyCon _ [_, TyCon _ _ tag'] _) = tag' /= tag
-  keep (BCon _, TyCon _ _ tag')                = tag' /= tag
-  keep _                                       = True
+  keep           :: (BIdent, TypeT w) -> Bool
+  keep (Con _, TyCon _ [_, TyCon _ _ tag'] _) = tag' /= tag
+  keep (Con _, TyCon _ _ tag')                = tag' /= tag
+  keep _                                      = True
 
 withReplacedTyTags :: (Language w, Data w, Monad m) =>
                       TyTag -> TC w m a -> TC w m a
@@ -225,7 +233,7 @@ withReplacedTyTags tag = TC . M.R.local replace . unTC where
       (\_ -> TCEnv (r e, r e') dd)
   r a = replaceTyTags tag a
 
-getAny :: (?loc :: Loc, Monad m, PathLookup (TCEnv w) k v, Show k) =>
+getAny :: (?loc :: Loc, Monad m, GenLookup (TCEnv w) k v, Show k) =>
           String -> k -> TC w m v
 getAny msg k = TC $ asksM get where
   get tce = tce =..= k
@@ -531,15 +539,15 @@ tcExprA = tc where
   checkSharing name g e =
     forM_ (toList g) $ \(x, tx) ->
       case x of
-        BVar x' ->
-          tassert (qualifier tx <: usage (QLid [] x') e) $
+        Var x' ->
+          tassert (qualifier tx <: usage (J [] x') e) $
             "Affine variable " ++ show x' ++ " : " ++
             show tx ++ " duplicated in " ++ name ++ " body"
         _ -> return ()
 
   isUnworthy e =
     anyM (\x -> do
-           mtx <- tryGetVar (Var x)
+           mtx <- tryGetVar (fmap Var x)
            return $ case mtx of
              Just tx -> qualifier tx == Qa
              Nothing -> False)
@@ -601,14 +609,14 @@ tcPatt :: (?loc :: Loc, Monad m, Language w) =>
           TypeT w -> Patt -> TC w m (D, V w, Patt)
 tcPatt t x0 = case x0 of
   PaWild     -> return (empty, empty, PaWild)
-  PaVar x    -> return (empty, BVar x =:= t, PaVar x)
+  PaVar x    -> return (empty, Var x =:= t, PaVar x)
   PaCon u mx -> do
     case t of
       TyCon name ts tag -> do
         tcon <- getType name
         case tcon of
           TiDat tag' params alts | tag == tag' -> do
-            case alts =.= u of
+            case alts =..= u of
               Nothing -> tgot "Pattern" t ("constructor " ++ show u)
               Just mt -> case (mt, mx) of
                 (Nothing, Nothing) -> return (empty, empty, PaCon u Nothing)
@@ -622,13 +630,13 @@ tcPatt t x0 = case x0 of
       _ -> tgot "Pattern" t ("constructor " ++ show u)
   PaPair x y -> do
     case t of
-      TyCon (QLid [] (Lid "*")) [tx, ty] td | td == tdTuple
+      TyCon (J [] (Lid "*")) [tx, ty] td | td == tdTuple
         -> do
           (dx, gx, x') <- tcPatt tx x
           (dy, gy, y') <- tcPatt ty y
-          tassert (isEmpty (gx =|= gy)) $
+          tassert (isEmpty (gx -|- gy)) $
             "Pattern " ++ show x0 ++ " binds variable twice"
-          tassert (isEmpty (dx =|= dy)) $
+          tassert (isEmpty (dx -|- dy)) $
             "Pattern " ++ show x0 ++ " binds type variable twice"
           return (dx =+= dy, gx =+= gy, PaPair x' y')
       _ -> tgot "Pattern" t "pair type"
@@ -643,7 +651,7 @@ tcPatt t x0 = case x0 of
   PaAs x y   -> do
     (dx, gx, x') <- tcPatt t x
     let gy        = y =:= t
-    tassert (isEmpty (gx =|= gy)) $
+    tassert (isEmpty (gx -|- gy)) $
       "Pattern " ++ show x0 ++ " binds " ++ show y ++ " twice"
     return (dx, gx =+= gy, PaAs x' y)
   PaPack tv x -> do
@@ -655,7 +663,7 @@ tcPatt t x0 = case x0 of
         withTVs [tv] $ \[tv'] -> do
           let te' = tysubst1 tve (TyVar tv') te
           (dx, gx, x') <- tcPatt te' x
-          tassert (dx =.= tv == Nothing) $
+          tassert (dx =..= tv == Nothing) $
             "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
           return (dx =+= tv =:+= tv', gx, PaPack tv' x')
       _ -> tgot "Pattern" t "existential type"
@@ -819,7 +827,7 @@ withTyDecC (TdSynC name params rhs) k = do
   withTypes (name =:= t')
     (k $ TdSynC name params rhs)
 withTyDecC (TdDatC name params alts) k = do
-  TiDat tag _ _ <- getType (QLid [] name)
+  TiDat tag _ _ <- getType (J [] name)
   (params', alts') <-
     withTVs params $ \params' -> do
       alts' <- sequence
@@ -855,7 +863,7 @@ withTyDecA (TdSynA name params rhs) k = do
   withTypes (name =:= t')
     (k (TdSynA name params rhs, False))
 withTyDecA (TdDatA name params alts) k = do
-  TiDat tag _ _ <- getType (QLid [] name)
+  TiDat tag _ _ <- getType (J [] name)
   (params', alts') <-
     withTVs params $ \params' -> do
       alts' <- sequence
@@ -882,10 +890,10 @@ unique  = loop S.empty where
 
 alts2env :: Lid -> [TyVar] -> TyTag -> [(Uid, Maybe (TypeT w))] -> V w
 alts2env name params tag = fromList . map each where
-  each (uid, Nothing) = (BCon uid, alls result)
-  each (uid, Just t)  = (BCon uid, alls (t `tyArrT` result))
+  each (uid, Nothing) = (Con uid, alls result)
+  each (uid, Just t)  = (Con uid, alls (t `tyArrT` result))
   alls t              = foldr tyAll t params
-  result              = TyCon (QLid [] name) (map TyVar params) tag
+  result              = TyCon (J [] name) (map TyVar params) tag
 
 typeVariances :: [TyVar] -> TypeT A -> [Variance]
 typeVariances d0 = finish . loop where
@@ -962,8 +970,8 @@ topSort getEdge edges = do
 tyConsOfType :: Bool -> Type i w -> S.Set Lid
 tyConsOfType here (TyCon n ts _) =
   (case (here, n) of
-    (True, QLid [] lid) -> S.singleton lid
-    _                   -> S.empty)
+    (True, J [] lid) -> S.singleton lid
+    _                -> S.empty)
   `S.union` S.unions (map (tyConsOfType here) ts)
 tyConsOfType _    (TyVar _)        = S.empty
 tyConsOfType here (TyQu _ _ ty)    = tyConsOfType here ty
@@ -985,9 +993,9 @@ withLet (LtC tl x mt e) k = intoC $ do
         " doesn't match actual type " ++ show te
       return t'
     Nothing -> return te
-  withVars (BVar x =:= t') .
+  withVars (Var x =:= t') .
     intoA .
-      withVars (BVar x =:= ctype2atype t') .
+      withVars (Var x =:= ctype2atype t') .
         outofA .
           k $ LtC tl x (Just t') e'
 withLet (LtA tl x mt e) k = intoA $ do
@@ -1005,21 +1013,21 @@ withLet (LtA tl x mt e) k = intoA $ do
       tassert (qualifier te == Qu) $
         "Type of module " ++ show x ++ " is not unlimited"
       return te
-  withVars (BVar x =:= t') .
+  withVars (Var x =:= t') .
     intoC .
-      withVars (BVar x =:= atype2ctype t') .
+      withVars (Var x =:= atype2ctype t') .
         outofC .
           k $ LtA tl x (Just t') e'
 withLet (LtInt tl x t y) k = do
-  ty <- intoC $ getVar (Var y)
+  ty <- intoC $ getVar (fmap Var y)
   t' <- intoA $ tcType t
   tassert (ty == atype2ctype t') $
     "Declared type of interface " ++ show x ++ " :> " ++
     show t' ++ " not compatible with RHS type: " ++ show ty
   intoA .
-    withVars (BVar x =:= t') .
+    withVars (Var x =:= t') .
       intoC .
-        withVars (BVar x =:= atype2ctype t') .
+        withVars (Var x =:= atype2ctype t') .
           outofC .
             k $ LtInt tl x t' y
 
@@ -1049,10 +1057,10 @@ tcModExp (MeName n)   = do
   scope <- getModule n
   return (MeName n, scope)
 
-mapModule :: (TypeT w -> TypeT w') -> Scope w -> Scope w'
-mapModule f (Scope ve _ me) = Scope ve' empty me' where
-  ve' = mapEnv f ve
-  me' = mapEnv (mapModule f) me
+mapModule :: forall w w'. (TypeT w -> TypeT w') -> Scope w -> Scope w'
+mapModule f scope = fmap mapLevel scope where
+  mapLevel :: Level w -> Level w'
+  mapLevel level = Level { ve = fmap f (ve level), te = empty }
 
 withDecl :: (Language w, Monad m) =>
             Decl i -> (DeclT -> TC w m a) -> TC w m a
@@ -1082,7 +1090,7 @@ withAbsTy at ds k0 = case at of
           outofC $ k0 (foldr replaceTyTags ds' tags')
     where
       absDecl (TdDatC name params _) k = do
-        tag <- getTypeTag "abstract-with-end" (QLid [] name)
+        tag <- getTypeTag "abstract-with-end" (J [] name)
         tassert (length params == length (ttArity tag)) $
           "abstype-with-end: " ++ show (length params) ++
           " given for type " ++ show name ++
@@ -1101,7 +1109,7 @@ withAbsTy at ds k0 = case at of
           outofA $ k0 (foldr replaceTyTags ds' tags')
     where
       absDecl (arity, quals, TdDatA name params _) k = do
-        tag     <- getTypeTag "abstract-with-end" (QLid [] name)
+        tag     <- getTypeTag "abstract-with-end" (J [] name)
         qualSet <- indexQuals name params quals
         tassert (length params == length (ttArity tag)) $
           "abstract-with-end: " ++ show (length params) ++
@@ -1124,24 +1132,44 @@ withAbsTy at ds k0 = case at of
 
 tcDecls :: Monad m => S -> [Decl i] -> m (S, [DeclT])
 tcDecls gg ds = runTC gg $
-                  withDecls ds $ \ds' -> do
-                    gg' <- saveTC
-                    return (gg', ds')
+                  pushScope $
+                    withDecls ds $ \ds' ->
+                      squishScope $ do
+                        gg' <- saveTC
+                        return (gg', ds')
 
 -- For adding types of primitives to the environment
-addVal :: (Language w, Monad m) =>
-          S -> BIdent -> Type i w -> m S
+addVal :: (Ident :>: k, Language w, Monad m) =>
+          S -> k -> Type i w -> m S
 addVal gg x t = runTC gg $ outofC $ do
   let ?loc = bogus
   t' <- tcType t
-  withVars (x =:= t') saveTC
+  withAny (x' =:= t') saveTC
+    where x' :: Ident = liftKey x
 
-addTyTag :: S -> Lid -> TyTag -> S
-addTyTag gg n td =
+addType :: (QLid :>: k) => S -> k -> TyTag -> S
+addType gg n td =
+  let n' :: QLid = liftKey n in
   gg {
-    cEnv = cEnv gg =++= n =:= (TiAbs td :: TyInfo C),
-    aEnv = aEnv gg =++= n =:= (TiAbs td :: TyInfo A)
+    cEnv = cEnv gg =+= n' =:= (TiAbs td :: TyInfo C),
+    aEnv = aEnv gg =+= n' =:= (TiAbs td :: TyInfo A)
   }
+
+addMod :: (Monad m) => S -> Uid -> (S -> m S) -> m S
+addMod gg0 x k = do
+  let cEnv0 = cEnv gg0
+      aEnv0 = aEnv gg0
+      gg1 = gg0 { cEnv = genEmpty : cEnv0,
+                  aEnv = genEmpty : aEnv0 }
+  gg2 <- k gg1
+  let modC:_ = cEnv gg2
+      modA:_ = aEnv gg2
+      gg3    = S { currIx = currIx gg2,
+                   cEnv   = cEnv0 =+= x =:= modC,
+                   aEnv   = aEnv0 =+= x =:= modA }
+  return gg3
+
+-- addTypeMod :: Monad m => S -> 
 
 -- Type check a program
 tcProg :: Monad m => S -> Prog i -> m (TypeT C, ProgT)
@@ -1157,20 +1185,19 @@ tcProg gg (Prog ds me) =
       return (t, Prog ds' e')
 
 env0 :: S
-env0 = S scope0 scope0 0 where
-  scope0 :: Scope w
-  scope0  = Scope venv0 tenv0 menv0
-  venv0  :: V w
-  venv0   = BCon (Uid "()")    =:= tyUnitT =+=
-            BCon (Uid "true")  =:= tyBoolT =+=
-            BCon (Uid "false") =:= tyBoolT
-  tenv0  :: T w
-  tenv0   = Lid "unit" =:= TiDat tdUnit [] (
-              Uid "()"    =:= Nothing
-            ) =+=
-            Lid "bool" =:= TiDat tdBool [] (
-              Uid "true"  =:= Nothing =+=
-              Uid "false" =:= Nothing
-            )
-  menv0  :: M w
-  menv0   = empty
+env0  = S e0 e0 0 where
+  e0 :: forall w. Language w => E w
+  e0  = genEmpty =+= Level venv0 tenv0 where
+    venv0  :: V w
+    venv0   = Con (Uid "()")    -:- tyUnitT -+-
+              Con (Uid "true")  -:- tyBoolT -+-
+              Con (Uid "false") -:- tyBoolT
+    tenv0  :: T w
+    tenv0   = Lid "unit" -:- TiDat tdUnit [] (
+                Uid "()"    -:- Nothing
+              ) -+-
+              Lid "bool" -:- TiDat tdBool [] (
+                Uid "true"  -:- Nothing -+-
+                Uid "false" -:- Nothing
+              )
+

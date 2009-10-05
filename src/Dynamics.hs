@@ -6,8 +6,11 @@
       MultiParamTypeClasses
     #-}
 module Dynamics (
-  E, (=++=), Result,
-  eval, evalDecls,
+  -- Static API
+  E, addVal, addMod,
+  -- Dynamic API
+  eval, addDecls, Result,
+  -- Value API
   Valuable(..),
   FunName(..), Value(..), vaInt, vaUnit,
   vinjEnum, vprjEnum, vinjProd, vprjProd, vinjStruct, vprjStruct
@@ -148,41 +151,19 @@ instance Show Value where
 --
 
 type Result   = IO Value
-data Scope    = Scope {
-                  ve :: VE,
-                  me :: ME
-                }
+
 type E        = [Scope]
+type Scope    = PEnv Uid VE
 type VE       = Env Lid (IO Value)
-type ME       = Env Uid Scope
 
 type D        = E -> Result
 type DDecl    = E -> IO E
-
-emptyscope :: Scope
-emptyscope  = Scope empty empty
 
 -- Add the given name to an anonymous function
 nameFun :: Lid -> Value -> Value
 nameFun (Lid x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
 nameFun _       value  = value
-
-instance PathLookup Scope [Uid] Scope where
-  (=..=) = foldM (\scope' u -> me scope' =.= u)
-instance PathLookup Scope QLid (IO Value) where
-  scope =..= QLid us n = scope =..= us >>= (=.= n) . ve
-instance PathLookup Scope QUid Scope where
-  scope =..= QUid us n = scope =..= us >>= (=.= n) . me
-instance PathLookup Scope Lid (IO Value) where
-  scope =..= n = ve scope =.= n
-instance PathLookup Scope Uid Scope where
-  scope =..= n = me scope =.= n
-
-instance PathExtend Scope (Env Lid (IO Value)) where
-  env =++= venv = env { ve = ve env =+= venv }
-instance PathExtend Scope (Env Uid Scope) where
-  env =++= menv = env { me = me env =+= menv }
 
 (=:!=) :: Ord v => v -> a -> Env v (IO a)
 (=:!=)  = (=::=)
@@ -201,26 +182,26 @@ evalDecl (DcMod _ m)    = evalMod m
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
   v <- valOf e env
-  return (env =++= x =:!= v)
+  return (env =+= x =:!= v)
 evalLet (LtA _ x _ e)   env = do
   v <- valOf e env
-  return (env =++= x =:!= v)
+  return (env =+= x =:!= v)
 evalLet (LtInt _ x _ y) env = do
   case env =..= y of
-    Just v  -> return (env =++= x =:= v)
+    Just v  -> return (env =+= x =:= v)
     Nothing -> fail $ "BUG! Unknown variable: " ++ show y
 
 evalMod :: Mod i -> DDecl
 evalMod (ModC _ x b)   env = do
   e <- evalModExp b env
-  return (env =++= x =:= e)
+  return (env =+= x =:= e)
 evalMod (ModA _ x b)   env = do
   e <- evalModExp b env
-  return (env =++= x =:= e)
+  return (env =+= x =:= e)
 
 evalModExp :: ModExp i -> E -> IO Scope
 evalModExp (MeDecls ds) env = do
-  scope:_ <- evalDecls ds (emptyscope:env)
+  scope:_ <- evalDecls ds (genEmpty:env)
   return scope
 evalModExp (MeName n)   env = do
   case env =..= n of
@@ -234,13 +215,14 @@ eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
 -- The meaning of an expression
 valOf :: Expr i w -> D
 valOf e env = case view e of
-  ExId (Var x)           -> case env =..= x of
-    Just v  -> v
-    Nothing -> fail $ "BUG! unbound identifier: " ++ show x
-  ExId (Con (QUid _ c))  -> return (VaCon c Nothing)
-  ExStr s                -> return (vinj s)
-  ExInt z                -> return (vinj z)
-  ExFloat f              -> return (vinj f)
+  ExId ident -> case view ident of
+    Left x     -> case env =..= x of
+      Just v     -> v
+      Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
+    Right c    -> return (VaCon (jname c) Nothing)
+  ExStr s    -> return (vinj s)
+  ExInt z    -> return (vinj z)
+  ExFloat f  -> return (vinj f)
   ExCase e1 clauses -> do
     v1 <- valOf e1 env
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
@@ -253,7 +235,7 @@ valOf e env = case view e of
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
-          return (envI =++= bnvar b =:= join (readIORef r), r : rs)
+          return (envI =+= bnvar b =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
       (\r b -> do
@@ -295,7 +277,7 @@ valOf e env = case view e of
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
-  PaVar lid    -> return (env =++= lid =:!= lid `nameFun` v)
+  PaVar lid    -> return (env =+= lid =:!= (lid `nameFun` v))
   PaCon uid mx -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
@@ -312,7 +294,7 @@ bindPatt x0 v env = case x0 of
   PaPack _ x   -> bindPatt x v env
   PaAs x lid   -> do
     env' <- bindPatt x v env
-    return (env' =++= lid =:!= v)
+    return (env' =+= lid =:!= v)
   where perr = fail $
                  "Pattern match failure: " ++ show x0 ++
                  " does not match " ++ show v
@@ -408,4 +390,19 @@ instance Valuable a => Valuable (Maybe a) where
   vprjM (VaCon (Uid "Some") (Just v))  = liftM Just (vprjM v)
   vprjM (VaCon (Uid "None") Nothing)   = return Nothing
   vprjM _                              = fail "vprjM: not an option"
+
+collapse :: E -> Scope
+collapse = foldr (flip (=+=)) genEmpty
+
+-- Public API
+
+addDecls :: E -> [Decl i] -> IO E
+addDecls env decls = evalDecls decls env' where
+  env' = genEmpty : [collapse env]
+
+addVal :: E -> Lid -> Value -> E
+addVal e n v     = e =+= n =:= (return v :: IO Value)
+
+addMod :: E -> Uid -> E -> E
+addMod e n e' = e =+= n =:= collapse e'
 

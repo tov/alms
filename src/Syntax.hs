@@ -13,8 +13,9 @@ module Syntax (
   Language(..), A, C, LangRep(..),
   Q(..),
 
-  Lid(..), Uid(..), Ident(..),
-  QLid(..), QUid(..), BIdent(..),
+  Path(..),
+  Lid(..), Uid(..), BIdent(..),
+  Ident, QLid, QUid,
   TyVar(..),
 
   TyTag(..), Variance(..),
@@ -62,7 +63,7 @@ module Syntax (
 ) where
 
 import Util
-import Env (Keyable(..))
+import Env ((:>:)(..), Path(..))
 import Loc as Loc
 import Viewable
 
@@ -86,7 +87,7 @@ data LangRep w where
   A :: LangRep A
   C :: LangRep C
 
--- Qualifiers
+-- Usage Qualifiers
 data Q = Qa | Qu
   deriving (Eq, Typeable, Data)
 
@@ -94,28 +95,16 @@ data Q = Qa | Qu
 newtype Lid = Lid { unLid :: String }
   deriving (Eq, Ord, Typeable, Data)
 
-data QLid = QLid {
-              qlPath :: [Uid],
-              qlName :: Lid
-            }
-  deriving (Eq, Ord, Typeable, Data)
-
 newtype Uid = Uid { unUid :: String }
   deriving (Eq, Ord, Typeable, Data)
 
-data QUid = QUid {
-              quPath :: [Uid],
-              quName :: Uid
-            }
+data BIdent = Var { unVar :: Lid }
+            | Con { unCon :: Uid }
   deriving (Eq, Ord, Typeable, Data)
 
-data Ident = Var { unVar :: QLid }
-           | Con { unCon :: QUid }
-  deriving (Eq, Ord, Typeable, Data)
-
-data BIdent = BVar { unBVar :: Lid }
-            | BCon { unBCon :: Uid }
-  deriving (Eq, Ord, Typeable, Data)
+type QUid  = Path Uid Uid
+type QLid  = Path Uid Lid
+type Ident = Path Uid BIdent
 
 -- Type variables
 data TyVar = TV { tvname :: Lid, tvqual :: Q }
@@ -315,13 +304,13 @@ fv  = fv_
 
 pv :: Patt -> S.Set QLid
 pv PaWild             = S.empty
-pv (PaVar x)          = S.singleton (QLid [] x)
+pv (PaVar x)          = S.singleton (J [] x)
 pv (PaCon _ Nothing)  = S.empty
 pv (PaCon _ (Just x)) = pv x
 pv (PaPair x y)       = pv x `S.union` pv y
 pv (PaStr _)          = S.empty
 pv (PaInt _)          = S.empty
-pv (PaAs x y)         = pv x `S.union` S.singleton (QLid [] y)
+pv (PaAs x y)         = pv x `S.union` S.singleton (J [] y)
 pv (PaPack _ x)       = pv x
 
 exStr :: String -> Expr i w
@@ -345,7 +334,7 @@ exLetRec :: [Binding i w] -> Expr i w -> Expr i w
 exLetRec bs e2 = Expr {
   eloc_  = getLoc (bs, e2),
   fv_    = let es  = map bnexpr bs
-               vs  = map (QLid [] . bnvar) bs
+               vs  = map (J [] . bnvar) bs
                pot = foldr (|*|) (fv e2) (map fv es)
            in foldl (|-|) pot vs,
   expr_  = ExLetRec bs e2
@@ -354,9 +343,9 @@ exLetRec bs e2 = Expr {
 exId :: Ident -> Expr i w
 exId x = Expr {
   eloc_  = bogus,
-  fv_    = case x of
-             Var y -> M.singleton y 1
-             _     -> M.empty,
+  fv_    = case view x of
+             Left y -> M.singleton y 1
+             _      -> M.empty,
   expr_  = ExId x
 }
 
@@ -410,16 +399,16 @@ exCast e t1 t2 = Expr {
 }
 
 exVar :: QLid -> Expr i w
-exVar  = exId . Var
+exVar  = exId . fmap Var
 
 exCon :: QUid -> Expr i w
-exCon  = exId . Con
+exCon  = exId . fmap Con
 
 exBVar :: Lid -> Expr i w
-exBVar  = exId . Var . QLid []
+exBVar  = exId . J [] . Var
 
 exBCon :: Uid -> Expr i w
-exBCon  = exId . Con . QUid []
+exBCon  = exId . J [] . Con
 
 exLet :: Patt -> Expr i w -> Expr i w -> Expr i w
 exLet x e1 e2 = exCase e1 [(x, e2)]
@@ -429,13 +418,13 @@ exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 
 qlid :: String -> QLid
 qlid s = case reverse (splitBy (=='.') s) of
-           []   -> QLid [] (Lid "")
-           x:xs -> QLid (map Uid (reverse xs)) (Lid x)
+           []   -> J [] (Lid "")
+           x:xs -> J (map Uid (reverse xs)) (Lid x)
 
 quid :: String -> QUid
 quid s = case reverse (splitBy (=='.') s) of
-           []   -> QUid [] (Uid "")
-           x:xs -> QUid (map Uid (reverse xs)) (Uid x)
+           []   -> J [] (Uid "")
+           x:xs -> J (map Uid (reverse xs)) (Uid x)
 
 (|*|), (|+|) :: FV -> FV -> FV
 (|*|) = M.unionWith (+)
@@ -515,28 +504,10 @@ con_TyA   = mkConstr ty_Type "TyA"   [] Prefix
 ty_Type = mkDataType "Syntax.Type"
             [ con_TyCon, con_TyVar, con_TyQu, con_TyMu, con_TyC, con_TyA ]
 
-instance Keyable TyVar TyVar   where liftKey = id
-instance Keyable Lid Lid       where liftKey = id
-instance Keyable Uid Uid       where liftKey = id
-instance Keyable QLid QLid     where liftKey = id
-instance Keyable QUid QUid     where liftKey = id
-instance Keyable Ident Ident   where liftKey = id
-instance Keyable BIdent BIdent where liftKey = id
-
-instance Keyable QLid Lid      where liftKey = QLid []
-instance Keyable QUid Uid      where liftKey = QUid []
-instance Keyable BIdent Lid    where liftKey = BVar
-instance Keyable BIdent Uid    where liftKey = BCon
-instance Keyable Ident QLid    where liftKey = Var
-instance Keyable Ident QUid    where liftKey = Con
-
-instance Keyable Ident Lid     where
-   liftKey = liftKey . (liftKey :: Lid -> QLid)
-instance Keyable Ident Uid     where
-   liftKey = liftKey . (liftKey :: Uid -> QUid)
-instance Keyable Ident BIdent  where
-  liftKey (BVar x) = liftKey x
-  liftKey (BCon x) = liftKey x
+instance (Ord p, (:>:) k k') =>
+         (:>:) (Path p k) k'  where liftKey = J [] . liftKey
+instance (:>:) BIdent Lid     where liftKey = Var
+instance (:>:) BIdent Uid     where liftKey = Con
 
 instance Eq TyTag where
   td == td' = ttId td == ttId td'
@@ -546,6 +517,11 @@ data TypeTW = TypeTC (TypeT C)
 
 typeTW :: Language w => TypeT w -> TypeTW
 typeTW t = langCase t TypeTC TypeTA
+
+instance Viewable (Path Uid BIdent) where
+  type View Ident = Either QLid QUid
+  view (J p (Var n)) = Left (J p n)
+  view (J p (Con n)) = Right (J p n)
 
 instance Viewable (Expr i w) where
   type View (Expr i w) = Expr' i w
@@ -655,14 +631,6 @@ instance Show Quant where
   show Forall = "all"
   show Exists = "ex"
 
-instance Show QLid where
-  showsPrec _ (QLid uids lid) =
-    foldr (\u r -> shows u . ('.':) . r) (shows lid) uids
-
-instance Show QUid where
-  showsPrec _ (QUid uids uid) =
-    foldr (\u r -> shows u . ('.':) . r) (shows uid) uids
-
 instance Show Lid where
   showsPrec _ (Lid s) = case s of
     '_':_             -> (s++)
@@ -674,10 +642,6 @@ instance Show Uid where
   show = unUid
 
 instance Show BIdent where
-  show (BVar x) = show x
-  show (BCon k) = show k
-
-instance Show Ident where
   show (Var x) = show x
   show (Con k) = show k
 
@@ -993,17 +957,17 @@ tysubst a t = ts where
 -- express this direction in the type system)
 dualSessionType :: TypeT w -> TypeT w
 dualSessionType  = d where
-  d (TyCon (QLid [] (Lid "->"))
-       [TyCon (QLid [] (Lid "send")) [ta] _, tr] _)
+  d (TyCon (J [] (Lid "->"))
+       [TyCon (J [] (Lid "send")) [ta] _, tr] _)
     = TyCon (qlid "->") [TyCon (qlid "recv") [ta] tdRecv, d tr] tdArr
-  d (TyCon (QLid [] (Lid "->"))
-       [TyCon (QLid [] (Lid "recv")) [ta] _, tr] _)
+  d (TyCon (J [] (Lid "->"))
+       [TyCon (J [] (Lid "recv")) [ta] _, tr] _)
     = TyCon (qlid "->") [TyCon (qlid "send") [ta] tdSend, d tr] tdArr
-  d (TyCon (QLid [] (Lid "select"))
-       [TyCon (QLid [] (Lid "*")) [t1, t2] _] _)
+  d (TyCon (J [] (Lid "select"))
+       [TyCon (J [] (Lid "*")) [t1, t2] _] _)
     = TyCon (qlid "follow") [TyCon (qlid "*") [d t1, d t2] tdTuple] tdFollow
-  d (TyCon (QLid [] (Lid "follow"))
-       [TyCon (QLid [] (Lid "*")) [t1, t2] _] _)
+  d (TyCon (J [] (Lid "follow"))
+       [TyCon (J [] (Lid "*")) [t1, t2] _] _)
     = TyCon (qlid "select") [TyCon (qlid "*") [d t1, d t2] tdTuple] tdSelect
   d (TyMu tv t)
     = TyMu tv (d t)
@@ -1166,10 +1130,10 @@ syntacticValue e = case view e of
 
 syntacticConstructor :: Expr i w -> Bool
 syntacticConstructor e = case view e of
-  ExId (Con _) -> True
-  ExTApp e1 _  -> syntacticConstructor e1
-  ExApp e1 e2  -> syntacticConstructor e1 && syntacticValue e2
-  _            -> False
+  ExId (J [] (Con _)) -> True
+  ExTApp e1 _         -> syntacticConstructor e1
+  ExApp e1 e2         -> syntacticConstructor e1 && syntacticValue e2
+  _                   -> False
 
 castableType :: TypeT w -> Bool
 castableType (TyVar _)      = False
