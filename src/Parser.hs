@@ -2,8 +2,8 @@
 module Parser (
   P, parse,
   parseProg, parseDecls, parseDecl,
-    parseLet, parseTyDec, parseType, parseExpr, parsePatt,
-  pp, pds, pd, pl, ptd, pt, pe, px
+    parseTyDec, parseType, parseExpr, parsePatt,
+  pp, pds, pd, ptd, pt, pe, px
 ) where
 
 import Util
@@ -221,7 +221,7 @@ declsp  = choice [
 declp :: P (Decl ())
 declp  = addLoc $ choice [
            tyDecp  >>! dcTyp,
-           letp    >>! dcLet,
+           letp,
            do
              reserved "open"
              modexpp >>! dcOpn,
@@ -293,35 +293,78 @@ tyDecp  =
           quals <- qualsp
           return (TdAbsA name tvs arity quals) ]
 
-letp :: P (Let ())
+letp :: P (Decl ())
 letp  =  do
-  reserved "let"
-  tl   <- toplevelp
-  choice [
-    do reserved "interface"
-       x    <- varp
-       reservedOp ":>"
-       t    <- typep
-       reservedOp "="
-       y    <- qvarp
-       return (LtInt tl x t y),
-    do lang <- languagep
-       withState (Just lang) $
-         case lang of
-           LC -> letbodyp (LtC tl)
-           LA -> letbodyp (LtA tl)
-    ]
+    reserved "let"
+    choice [
+      enterdecl "rec" $ \tl lang ->
+        case lang of
+          LC -> letrecbodyp (LtC tl)
+          LA -> letrecbodyp (LtA tl),
+      do tl   <- toplevelp
+         reserved "interface"
+         x    <- varp
+         reservedOp ":>"
+         t    <- typep
+         reservedOp "="
+         y    <- qvarp
+         return (dcLet (LtInt tl x t y)),
+      do tl   <- toplevelp
+         lang <- languagep
+         withState (Just lang) $
+           case lang of
+             LC -> letbodyp (LtC tl)
+             LA -> letbodyp (LtA tl)
+      ]
   where
     letbodyp :: Language w =>
                 (Lid -> Maybe (Type () w) -> Expr () w -> Let ()) ->
-                P (Let ())
+                P (Decl ())
     letbodyp build = do
       f <- varp
       (fixt, fixe) <- afargsp
       t <- optionMaybe $ colon >> typep
       reservedOp "="
       e <- exprp
-      return (build f (fmap fixt t) (fixe e))
+      return (dcLet (build f (fmap fixt t) (fixe e)))
+    letrecbodyp :: Language w =>
+                   (Lid -> Maybe (Type () w) -> Expr () w -> Let ()) ->
+                   P (Decl ())
+    letrecbodyp build = do
+      bindings <- flip sepBy1 (reserved "and") $ do
+        f <- varp
+        (fixt, fixe) <- afargsp
+        colon
+        t <- typep
+        reservedOp "="
+        e <- exprp
+        return (Binding f (fixt t) (fixe e))
+      let names    = map bnvar bindings
+          namesExp = foldl1 exPair (map exBVar names)
+          namesPat = foldl1 PaPair (map PaVar names)
+          tempVar  = Lid "#letrec"
+          decls0   = [ dcLet $
+                         build tempVar Nothing $
+                           exLetRec bindings namesExp ]
+          decls1   = [ dcLet $
+                         build (bnvar binding) Nothing $
+                           exLet namesPat (exBVar tempVar) $
+                              exBVar (bnvar binding)
+                     | binding <- bindings ]
+      return $ dcLoc decls0 decls1
+            {-
+      return $
+        dcLoc
+          (build (exBVar (Lid "#letrec")) Nothing
+            (exLetRec bindings
+              (foldr    (map bnvar bindings)
+        build (bnvar b) (Just (bntype b)) $
+          exLetRec [b] (exBVar (bnvar b))
+      let b:_ = bindings
+      return $
+        build (bnvar b) (Just (bntype b)) $
+          exLetRec [b] (exBVar (bnvar b))
+          -}
 
 abstyp :: Bool -> Lang -> P AbsTy
 abstyp tl LC = do
@@ -676,7 +719,6 @@ finish p = do
 parseProg     :: P (Prog ())
 parseDecls    :: P [Decl ()]
 parseDecl     :: P (Decl ())
-parseLet      :: P (Let ())
 parseTyDec    :: P TyDec
 parseType     :: Language w => P (Type () w)
 parseExpr     :: Language w => P (Expr () w)
@@ -684,7 +726,6 @@ parsePatt     :: P Patt
 parseProg      = finish progp
 parseDecls     = finish declsp
 parseDecl      = finish declp
-parseLet       = finish letp
 parseTyDec     = finish tyDecp
 parseType      = finish typep
 parseExpr      = finish exprp
@@ -700,9 +741,6 @@ pds  = makeQaD parseDecls
 
 pd  :: String -> Decl ()
 pd   = makeQaD parseDecl
-
-pl  :: String -> Let ()
-pl   = makeQaD parseLet
 
 ptd :: String -> TyDec
 ptd  = makeQaD parseTyDec
