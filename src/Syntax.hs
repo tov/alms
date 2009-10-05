@@ -11,7 +11,7 @@
       ScopedTypeVariables,
       TypeFamilies #-}
 module Syntax (
-  Language(..), A, C, LangRep(..),
+  Language(..), A, C, Language', SameLang, LangRep(..),
   Q(..),
 
   Path(..),
@@ -854,6 +854,12 @@ instance Language A where
   reifyLang        = A
   langCase x _ fa  = fa x
   langMapType x    = fmap tyC x
+
+type SameLang w = OtherLang (OtherLang w)
+
+class (Language (OtherLang w), Language w) => Language' w
+instance Language' C
+instance Language' A
 
 sameLang :: (Language w, Language w') =>
             f w -> g w' -> (w ~ w' => f w -> g w -> r) -> r -> r

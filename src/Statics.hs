@@ -5,6 +5,7 @@
       ImplicitParams,
       MultiParamTypeClasses,
       ScopedTypeVariables,
+      TypeFamilies,
       TypeSynonymInstances,
       UndecidableInstances #-}
 module Statics (
@@ -164,6 +165,10 @@ outofC m = langCase (WrapTC m) unWrapTC (intoA . unWrapTC)
 outofA :: Language w => TC w m a -> TC A m a
 outofA m = langCase (WrapTC m) (intoC . unWrapTC) unWrapTC
 
+flipTCEnv :: (Language w, w ~ SameLang w) =>
+             TCEnv w -> TCEnv (OtherLang w)
+flipTCEnv (TCEnv (e, e') (d, d')) = TCEnv (e', e) (d', d)
+
 newIndex :: Monad m => TC w m Integer
 newIndex  = TC $ do
   M.S.modify (+ 1)
@@ -243,12 +248,26 @@ getAny msg k = TC $ asksM get where
 getTV :: (?loc :: Loc, Monad m) => TyVar -> TC w m TyVar
 getTV  = getAny "Free type variable"
 
-getVar :: (?loc :: Loc, Monad m) => Ident -> TC w m (TypeT w)
-getVar  = getAny "Unbound variable"
+getVar :: (?loc :: Loc, Monad m, Language' w, w ~ SameLang w) =>
+          Ident -> TC w m (TypeT w)
+getVar x = do
+  t <- tryGetVar x
+  t |! "Unbound variable: " ++ show x
 
-tryGetVar :: Monad m => Ident -> TC w m (Maybe (TypeT w))
+tryGetVar :: (Monad m, Language' w, w ~ SameLang w) =>
+             Ident -> TC w m (Maybe (TypeT w))
 tryGetVar x = TC $ asksM get where
-  get tce = return (tce =..= x)
+  get tce = case tce =..= x of
+    Just t  -> return (Just t)
+    Nothing -> case flipTCEnv tce =..= x of
+      Just t  -> return (Just (type2other t))
+      Nothing -> return Nothing
+
+type2other :: forall w. (Language' w, w ~ SameLang w) =>
+              TypeT (OtherLang w) -> TypeT w
+type2other t = langCase t
+                 (\tc -> ctype2atype tc :: TypeT w)
+                 atype2ctype
 
 getType :: (?loc :: Loc, Monad m) => QLid -> TC w m (TyInfo w)
 getType  = getAny "Unbound type constructor"
@@ -995,9 +1014,12 @@ withLet (LtC tl x mt e) k = intoC $ do
       return t'
     Nothing -> return te
   withVars (Var x =:= t') .
+  {- XXX
     intoA .
       withVars (Var x =:= ctype2atype t') .
         outofA .
+        -}
+        outofC .
           k $ LtC tl x (Just t') e'
 withLet (LtA tl x mt e) k = intoA $ do
   (te, e') <- tcExprA e
@@ -1015,9 +1037,12 @@ withLet (LtA tl x mt e) k = intoA $ do
         "Type of module " ++ show x ++ " is not unlimited"
       return te
   withVars (Var x =:= t') .
+  {- XXX
     intoC .
       withVars (Var x =:= atype2ctype t') .
         outofC .
+        -}
+        outofA .
           k $ LtA tl x (Just t') e'
 withLet (LtInt tl x t y) k = do
   ty <- intoC $ getVar (fmap Var y)
@@ -1027,9 +1052,12 @@ withLet (LtInt tl x t y) k = do
     show t' ++ " not compatible with RHS type: " ++ show ty
   intoA .
     withVars (Var x =:= t') .
+    {- XXX
       intoC .
         withVars (Var x =:= atype2ctype t') .
           outofC .
+          -}
+          outofA .
             k $ LtInt tl x t' y
 
 withMod :: (?loc :: Loc, Language w, Monad m) =>
@@ -1037,17 +1065,25 @@ withMod :: (?loc :: Loc, Language w, Monad m) =>
 withMod (ModC tl x b) k = intoC $ do
   (b', scope) <- tcModExp b
   let scope' = qualifyScope x scope
-  withAny (x =:= scope') $
-    intoA $
-      withAny (x =:= mapModule ctype2atype scope') $
-        (outofA $ k (ModC tl x b'))
+  withAny (x =:= scope') .
+  {- XXX
+    intoA .
+      withAny (x =:= mapModule ctype2atype scope') .
+        outofA .
+        -}
+        outofC .
+          k $ ModC tl x b'
 withMod (ModA tl x b) k = intoA $ do
   (b', scope) <- tcModExp b
   let scope' = qualifyScope x scope
-  withAny (x =:= scope') $
-    intoC $
-      withAny (x =:= mapModule atype2ctype scope') $
-        (outofC $ k (ModA tl x b'))
+  withAny (x =:= scope') .
+  {- XXX
+    intoC .
+      withAny (x =:= mapModule atype2ctype scope') .
+        outofC .
+        -}
+        outofA .
+          k $ ModA tl x b'
 
 qualifyScope :: forall w. (Language w, Data w) =>
                 Uid -> Scope w -> Scope w
@@ -1089,10 +1125,12 @@ tcModExp (MeName n)   = do
   scope <- getModule n
   return (MeName n, scope)
 
+{-
 mapModule :: forall w w'. (TypeT w -> TypeT w') -> Scope w -> Scope w'
 mapModule f scope = fmap mapLevel scope where
   mapLevel :: Level w -> Level w'
   mapLevel level = Level { vlevel = fmap f (vlevel level), tlevel = empty }
+-}
 
 withDecl :: (Language w, Monad m) =>
             Decl i -> (DeclT -> TC w m a) -> TC w m a
