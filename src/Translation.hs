@@ -38,6 +38,10 @@ transDecls tenv = foldl each (tenv, []) where
                                        in (env', ds ++ [DcAbs loc at ds0'])
   each (env, ds) (DcMod loc m)      = let (env', m') = transMod env m
                                        in (env', ds ++ [DcMod loc m']) 
+  each (env, ds) (DcOpn loc m)      = let (env', m') = transOpen env m
+                                       in (env', ds ++ [DcOpn loc m']) 
+  each (env, ds) (DcLoc loc m)      = let (env', m') = transLocal env m
+                                       in (env', ds ++ [DcLoc loc m']) 
 
 transLet :: (?trail :: Trail) => TEnv -> LetT -> (TEnv, LetT)
 transLet tenv m@(LtC tl x (Just t) e) =
@@ -55,6 +59,24 @@ transLet tenv m@(LtInt tl x t y)      =
 transLet tenv m                  =
   (tenv =+= letName m =:= m, m)
 
+transOpen :: (?trail :: Trail) => TEnv -> OpenT -> (TEnv, OpenT)
+transOpen tenv (OpenC tl b) =
+  let (scope, b') = transModExp tenv b in
+    (tenv =+= scope, OpenC tl b')
+transOpen tenv (OpenA tl b) =
+  let (scope, b') = transModExp tenv b in
+    (tenv =+= scope, OpenC tl b')
+
+transLocal :: (?trail :: Trail) => TEnv -> LocalT -> (TEnv, LocalT)
+transLocal tenv (LocalC tl ds0 ds1) =
+  let (tenv',          ds0') = transDecls (genEmpty:tenv) ds0
+      (scope:_:tenv'', ds1') = transDecls (genEmpty:tenv') ds1
+   in (tenv'' =+= scope, LocalC tl ds0' ds1')
+transLocal tenv (LocalA tl ds0 ds1) =
+  let (tenv',          ds0') = transDecls (genEmpty:tenv) ds0
+      (scope:_:tenv'', ds1') = transDecls (genEmpty:tenv') ds1
+   in (tenv'' =+= scope, LocalC tl ds0' ds1')
+
 transMod :: (?trail :: Trail) => TEnv -> ModT -> (TEnv, ModT)
 transMod tenv (ModC tl x b) =
   let ?trail       = x : ?trail in
@@ -63,7 +85,7 @@ transMod tenv (ModC tl x b) =
 transMod tenv (ModA tl x b) =
   let ?trail       = x : ?trail in
   let (scope, b') = transModExp tenv b in
-    (tenv =+= x =:= scope, ModA tl x b')
+    (tenv =+= x =:= scope, ModC tl x b')
 
 transModExp :: (?trail :: Trail) => TEnv -> ModExpT -> (Scope, ModExpT)
 transModExp tenv (MeName n) = case tenv =..= n of

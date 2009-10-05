@@ -219,32 +219,47 @@ declsp  = choice [
 
 declp :: P (Decl ())
 declp  = addLoc $ choice [
-           tyDecp >>! dcTyp,
-           letp   >>! dcLet,
-           modp   >>! dcMod,
-           do
-             reserved "abstype"
-             tl   <- toplevelp
-             lang <- languagep
-             withState (Just lang) $ do
-               at   <- abstyp tl lang
-               reserved "with"
-               ds <- declsp
-               reserved "end"
-               return (dcAbs at ds)
+           tyDecp  >>! dcTyp,
+           letp    >>! dcLet,
+           openp   >>! dcOpn,
+           modp    >>! dcMod,
+           localp  >>! dcLoc,
+           enterdecl "abstype" $ \tl lang -> do
+             at   <- abstyp tl lang
+             reserved "with"
+             ds <- declsp
+             reserved "end"
+             return (dcAbs at ds)
          ]
 
+openp :: P (Open ())
+openp  =
+  enterdecl "open" $ \tl lang -> do
+    mexp <- modexpp
+    case lang of
+      LC -> return (OpenC tl mexp)
+      LA -> return (OpenA tl mexp)
+
+localp :: P (Local ())
+localp  =
+  enterdecl "local" $ \tl lang -> do
+    ds <- declsp
+    reserved "with"
+    ds' <- declsp
+    reserved "end"
+    case lang of
+      LC -> return (LocalC tl ds ds')
+      LA -> return (LocalA tl ds ds')
+
 modp :: P (Mod ())
-modp  = do
-  reserved "module"
-  tl   <- toplevelp
-  lang <- languagep
-  name <- uidp
-  reservedOp "="
-  mexp <- withState (Just lang) modexpp
-  case lang of
-    LC -> return (ModC tl name mexp)
-    LA -> return (ModA tl name mexp)
+modp  =
+  enterdecl "module" $ \tl lang -> do
+    name <- uidp
+    reservedOp "="
+    mexp <- modexpp
+    case lang of
+      LC -> return (ModC tl name mexp)
+      LA -> return (ModA tl name mexp)
 
 modexpp :: P (ModExp ())
 modexpp  = choice [
@@ -257,10 +272,8 @@ modexpp  = choice [
            ]
 
 tyDecp :: P TyDec
-tyDecp  = do
-  reserved "type"
-  tl   <- toplevelp
-  lang <- languagep
+tyDecp  =
+  enterdecl "type" $ \tl lang ->
   case lang of
     LC -> do
       tds <- sepBy1 tyDecCp (reserved "and")
@@ -397,6 +410,13 @@ languagep  = do
                  [ do langC; return LC,
                    do langA; return LA ]
     Just lang -> return lang
+
+enterdecl :: String -> (Bool -> Lang -> P a) -> P a
+enterdecl name p = do
+  reserved name
+  tl   <- toplevelp
+  lang <- languagep
+  withState (Just lang) (p tl lang)
 
 exprp :: Language w => P (Expr () w)
 exprp = expr0 where

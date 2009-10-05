@@ -178,6 +178,8 @@ evalDecl (DcLet _ m)    = evalLet m
 evalDecl (DcTyp _ _)    = return
 evalDecl (DcAbs _ _ ds) = evalDecls ds
 evalDecl (DcMod _ m)    = evalMod m
+evalDecl (DcOpn _ m)    = evalOpen m
+evalDecl (DcLoc _ m)    = evalLocal m
 
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
@@ -190,6 +192,24 @@ evalLet (LtInt _ x _ y) env = do
   case env =..= y of
     Just v  -> return (env =+= x =:= v)
     Nothing -> fail $ "BUG! Unknown variable: " ++ show y
+
+evalOpen :: Open i -> DDecl
+evalOpen (OpenC _ b)   env = do
+  e <- evalModExp b env
+  return (env =+= e)
+evalOpen (OpenA _ b)   env = do
+  e <- evalModExp b env
+  return (env =+= e)
+
+evalLocal :: Local i -> DDecl
+evalLocal (LocalC _ ds ds')  env0 = do
+  env1          <- evalDecls ds (genEmpty:env0)
+  scope:_:env2  <- evalDecls ds' (genEmpty:env1)
+  return (env2 =+= scope)
+evalLocal (LocalA _ ds ds')  env0 = do
+  env1          <- evalDecls ds (genEmpty:env0)
+  scope:_:env2  <- evalDecls ds' (genEmpty:env1)
+  return (env2 =+= scope)
 
 evalMod :: Mod i -> DDecl
 evalMod (ModC _ x b)   env = do

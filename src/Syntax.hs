@@ -26,11 +26,12 @@ module Syntax (
   Quant(..),
   Prog(..), ProgT,
 
-  Decl(..), DeclT, dcLet, dcTyp, dcAbs, dcMod,
+  Decl(..), DeclT, dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc,
   Let(..), LetT,
   TyDec(..), TyDecC(..), TyDecA(..),
   AbsTy(..),
   Mod(..), ModExp(..), ModT, ModExpT,
+  Open(..), Local(..), OpenT, LocalT,
 
   TypeTW(..), typeTW,
 
@@ -178,8 +179,8 @@ data Decl i = DcLet Loc (Let i)
             | DcTyp Loc TyDec
             | DcAbs Loc AbsTy [Decl i]
             | DcMod Loc (Mod i)
-            -- | DcOpn Loc QUid
-            -- | DcLoc Loc [Decl i] [Decl i]
+            | DcOpn Loc (Open i)
+            | DcLoc Loc (Local i)
   deriving (Typeable, Data)
 
 dcLet :: Let i -> Decl i
@@ -193,6 +194,20 @@ dcAbs  = DcAbs bogus
 
 dcMod :: Mod i -> Decl i
 dcMod  = DcMod bogus
+
+dcOpn :: Open i -> Decl i
+dcOpn  = DcOpn bogus
+
+dcLoc :: Local i -> Decl i
+dcLoc  = DcLoc bogus
+
+data Open i  = OpenC Bool (ModExp i)
+             | OpenA Bool (ModExp i)
+  deriving (Typeable, Data)
+
+data Local i = LocalC Bool [Decl i] [Decl i]
+             | LocalA Bool [Decl i] [Decl i]
+  deriving (Typeable, Data)
 
 data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
             | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
@@ -307,6 +322,8 @@ type TypeT    = Type TyTag
 type DeclT    = Decl TyTag
 type LetT     = Let TyTag
 type ModT     = Mod TyTag
+type OpenT    = Open TyTag
+type LocalT   = Local TyTag
 type ModExpT  = ModExp TyTag
 type BindingT = Binding TyTag
 type ProgT    = Prog TyTag
@@ -550,12 +567,16 @@ instance Locatable (Decl i) where
   getLoc (DcTyp loc _)   = loc
   getLoc (DcAbs loc _ _) = loc
   getLoc (DcMod loc _)   = loc
+  getLoc (DcOpn loc _)   = loc
+  getLoc (DcLoc loc _)   = loc
 
 instance Relocatable (Decl i) where
   setLoc (DcLet _ m)     loc = DcLet loc m
   setLoc (DcTyp _ td)    loc = DcTyp loc td
   setLoc (DcAbs _ at ds) loc = DcAbs loc at ds
   setLoc (DcMod _ m)     loc = DcMod loc m
+  setLoc (DcOpn _ m)     loc = DcOpn loc m
+  setLoc (DcLoc _ l)     loc = DcLoc loc l
 
 instance Locatable (Binding i w) where
   getLoc = getLoc . bnexpr

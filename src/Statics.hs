@@ -100,6 +100,8 @@ instance GenLookup (TCEnv w) Ident (TypeT w) where
 instance GenLookup (TCEnv w) TyVar TyVar where
   TCEnv _ (d, _) =..= k = d =..= k
 
+instance GenExtend (TCEnv w) (Scope w) where
+  TCEnv (e, e') dd =+= scope = TCEnv (e =+= scope, e') dd
 instance GenExtend (TCEnv w) (Env Ident (TypeT w)) where
   TCEnv (e, e') dd =+= venv = TCEnv (e =+= venv, e') dd
 instance GenExtend (TCEnv w) (Env Uid (Scope w)) where
@@ -1046,6 +1048,44 @@ withLet (LtInt tl x t y) k = do
       outofA .
         k $ LtInt tl x t' y
 
+withOpen :: (?loc :: Loc, Language w, Monad m) =>
+            Open i -> (OpenT -> TC w m a) -> TC w m a
+withOpen (OpenC tl b) k = intoC $ do
+  (b', scope) <- tcModExp b
+  withAny scope .
+    outofC .
+      k $ OpenC tl b'
+withOpen (OpenA tl b) k = intoA $ do
+  (b', scope) <- tcModExp b
+  withAny scope .
+    outofA .
+      k $ OpenA tl b'
+
+withLocal :: (?loc :: Loc, Language w, Monad m) =>
+             Local i -> (LocalT -> TC w m a) -> TC w m a
+withLocal (LocalC tl ds0 ds1) k = intoC $ do
+  (scope, d') <- pushScope $
+                   withDecls ds0 $ \ds0' ->
+                     pushScope $
+                       withDecls ds1 $ \ds1' -> do
+                         scope <- askScope
+                         return (scope, LocalC tl ds0' ds1')
+  pushScope .
+    withAny scope .
+      squishScope .
+        outofC $ k d'
+withLocal (LocalA tl ds0 ds1) k = intoA $ do
+  (scope, d') <- pushScope $
+                   withDecls ds0 $ \ds0' ->
+                     pushScope $
+                       withDecls ds1 $ \ds1' -> do
+                         scope <- askScope
+                         return (scope, LocalA tl ds0' ds1')
+  pushScope .
+    withAny scope .
+      squishScope .
+        outofA $ k d'
+
 withMod :: (?loc :: Loc, Language w, Monad m) =>
            Mod i -> (ModT -> TC w m a) -> TC w m a
 withMod (ModC tl x b) k = intoC $ do
@@ -1117,6 +1157,10 @@ withDecl (DcTyp loc td)    k = withTyDec td (k . DcTyp loc)
 withDecl (DcAbs loc at ds) k = withAbsTy at ds (k .  DcAbs loc at)
   where ?loc = loc
 withDecl (DcMod loc m)     k = withMod m (k . DcMod loc)
+  where ?loc = loc
+withDecl (DcOpn loc m)     k = withOpen m (k . DcOpn loc)
+  where ?loc = loc
+withDecl (DcLoc loc m)     k = withLocal m (k . DcLoc loc)
   where ?loc = loc
 
 withDecls :: (Language w, Monad m) =>
