@@ -11,6 +11,7 @@ module Env (
   (:>:)(..),
   empty, isEmpty,
   (-:-), (-::-), (-:+-), (-+-), (-\-), (-\\-), (-.-), (-|-),
+  unionSum, unionProduct,
   mapAccum, mapAccumM,
   toList, fromList, domain, range,
 
@@ -80,6 +81,19 @@ m -.- y   = M.lookup (liftKey y) (unEnv m)
 -- intersection
 (-|-)    :: (k :>: k') => Env k v -> Env k' w -> Env k (v, w)
 m -|- n   = Env (M.intersectionWith (,) (unEnv m) (unEnv (liftEnv n)))
+
+-- additive union (right preference)
+unionSum :: (k :>: k') => Env k v -> Env k' w -> Env k (Either v w)
+unionSum e e' = fmap Left e -+- fmap Right e'
+
+-- multiplicative union
+unionProduct :: (k :>: k') => Env k v -> Env k' w -> Env k (Maybe v, Maybe w)
+unionProduct m n = Env (M.unionWith combine m' n') where
+  m' = fmap (\v -> (Just v, Nothing)) (unEnv m)
+  n' = fmap (\w -> (Nothing, Just w)) (unEnv (liftEnv n))
+  combine (mv, _) (_, mw) = (mv, mw)
+
+infix 5 `unionSum`, `unionProduct`
 
 instance Ord k => Functor (Env k) where
   fmap f = Env . M.map f . unEnv

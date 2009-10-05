@@ -2,6 +2,7 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 module Ppr (
   Ppr(..), module Text.PrettyPrint, parensIf,
+  pprParams,
   module Prec
 ) where
 
@@ -363,6 +364,7 @@ instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
 instance Ppr BIdent    where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
+instance Ppr (LangRep w) where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 
 instance Show TypeTW where

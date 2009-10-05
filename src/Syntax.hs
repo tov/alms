@@ -22,6 +22,7 @@ module Syntax (
   TyTag(..), Variance(..),
   QualSet, qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
   Type(..), tyC, tyA, tyAll, tyEx, TypeT,
+  removeTyTags,
   Quant(..),
   Prog(..), ProgT,
 
@@ -159,6 +160,16 @@ tyA t       = TyA t
 tyAll, tyEx :: TyVar -> Type i w -> Type i w
 tyAll = TyQu Forall
 tyEx  = TyQu Exists
+
+removeTyTags :: Type i w -> Type () w
+removeTyTags  = untype where
+  untype :: Type i w -> Type () w
+  untype (TyCon con args _) = TyCon con (map untype args) ()
+  untype (TyVar tv)         = TyVar tv
+  untype (TyQu quant tv t)  = TyQu quant tv (untype t)
+  untype (TyMu tv t)        = TyMu tv (untype t)
+  untype (TyC t)            = TyC (untype t)
+  untype (TyA t)            = TyA (untype t)
 
 data Prog i = Prog [Decl i] (Maybe (Expr i C))
   deriving (Typeable, Data)

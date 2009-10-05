@@ -9,7 +9,8 @@
       TypeSynonymInstances,
       UndecidableInstances #-}
 module Statics (
-  S, env0, NewIn(..), NewDefs,
+  S, env0,
+  NewIn(..), NewDefs, emptyNewDefs, TyInfo, tyInfoToDec,
   tcProg, tcDecls,
   addVal, addType, addMod
 ) where
@@ -1014,13 +1015,8 @@ withLet (LtC tl x mt e) k = intoC $ do
       return t'
     Nothing -> return te
   withVars (Var x =:= t') .
-  {- XXX
-    intoA .
-      withVars (Var x =:= ctype2atype t') .
-        outofA .
-        -}
-        outofC .
-          k $ LtC tl x (Just t') e'
+    outofC .
+      k $ LtC tl x (Just t') e'
 withLet (LtA tl x mt e) k = intoA $ do
   (te, e') <- tcExprA e
   t' <- case mt of
@@ -1037,13 +1033,8 @@ withLet (LtA tl x mt e) k = intoA $ do
         "Type of module " ++ show x ++ " is not unlimited"
       return te
   withVars (Var x =:= t') .
-  {- XXX
-    intoC .
-      withVars (Var x =:= atype2ctype t') .
-        outofC .
-        -}
-        outofA .
-          k $ LtA tl x (Just t') e'
+    outofA .
+      k $ LtA tl x (Just t') e'
 withLet (LtInt tl x t y) k = do
   ty <- intoC $ getVar (fmap Var y)
   t' <- intoA $ tcType t
@@ -1052,13 +1043,8 @@ withLet (LtInt tl x t y) k = do
     show t' ++ " not compatible with RHS type: " ++ show ty
   intoA .
     withVars (Var x =:= t') .
-    {- XXX
-      intoC .
-        withVars (Var x =:= atype2ctype t') .
-          outofC .
-          -}
-          outofA .
-            k $ LtInt tl x t' y
+      outofA .
+        k $ LtInt tl x t' y
 
 withMod :: (?loc :: Loc, Language w, Monad m) =>
            Mod i -> (ModT -> TC w m a) -> TC w m a
@@ -1066,24 +1052,14 @@ withMod (ModC tl x b) k = intoC $ do
   (b', scope) <- tcModExp b
   let scope' = qualifyScope x scope
   withAny (x =:= scope') .
-  {- XXX
-    intoA .
-      withAny (x =:= mapModule ctype2atype scope') .
-        outofA .
-        -}
-        outofC .
-          k $ ModC tl x b'
+    outofC .
+      k $ ModC tl x b'
 withMod (ModA tl x b) k = intoA $ do
   (b', scope) <- tcModExp b
   let scope' = qualifyScope x scope
   withAny (x =:= scope') .
-  {- XXX
-    intoC .
-      withAny (x =:= mapModule atype2ctype scope') .
-        outofC .
-        -}
-        outofA .
-          k $ ModA tl x b'
+    outofA .
+      k $ ModA tl x b'
 
 qualifyScope :: forall w. (Language w, Data w) =>
                 Uid -> Scope w -> Scope w
@@ -1218,6 +1194,9 @@ data NewIn w = NewIn {
   deriving Show
 type NewDefs = (NewIn C, NewIn A)
 
+emptyNewDefs :: NewDefs
+emptyNewDefs  = (NewIn empty empty [], NewIn empty empty [])
+
 askNewDefs :: (Language w, Monad m) => TC w m NewDefs
 askNewDefs  = do
   newc <- intoC askNewIn
@@ -1294,3 +1273,21 @@ env0  = S e0 e0 0 where
                 Uid "false" -:- Nothing
               )
 
+tyInfoToDec :: Language w => Lid -> TyInfo w -> TyDec
+tyInfoToDec n ti0 = langCase ti0
+  (\ti -> TyDecC True . return $ case ti of
+     TiSyn ps rhs    -> TdSynC n ps (removeTyTags rhs)
+     TiDat _ ps alts -> TdDatC n ps [ (uid, fmap removeTyTags mt)
+                                          | (uid, mt) <- toList alts ]
+     TiAbs tag       -> TdAbsC n (zipWith const tyvars (ttArity tag)))
+  (\ti -> TyDecA True . return $ case ti of
+     TiSyn ps rhs    -> TdSynA n ps (removeTyTags rhs)
+     TiDat _ ps alts -> TdDatA n ps [ (uid, fmap removeTyTags mt)
+                                          | (uid, mt) <- toList alts ]
+     TiAbs tag       -> TdAbsA n (zipWith const tyvars (ttArity tag))
+                               (ttArity tag)
+                               (qsToList tyvars (ttQual tag)))
+  where
+    tyvars   = map (flip TV Qu . Lid) alphabet
+    alphabet = map return ['a' .. 'z'] ++
+               [ x ++ [y] | x <- alphabet, y <- ['a' .. 'z'] ]

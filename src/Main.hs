@@ -4,16 +4,18 @@ module Main (
 ) where
 
 import Util
-import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
+import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
+import qualified Ppr
 import Parser (parse, parseProg, parseDecls)
-import Statics (tcProg, tcDecls, S, NewDefs)
+import Statics (tcProg, tcDecls, S,
+                NewDefs, NewIn(..), emptyNewDefs, tyInfoToDec)
 import Translation (translate, translateDecls, TEnv)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Prog, Lid, ProgT, Decl(..), DeclT, Let(..),
-               prog2decls, letName)
-import Env (empty, GenLookup(..), GenEmpty(..))
+import Syntax (Prog, ProgT, Decl, DeclT,
+               BIdent(..), LangRep(..), prog2decls)
+import Env (GenEmpty(..), empty, unionSum, unionProduct, toList)
 
 import Control.Monad (when, unless)
 import System.Exit (exitFailure)
@@ -112,16 +114,16 @@ translation :: (ReplState, [DeclT])   -> IO (ReplState, [DeclT])
 dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, NewValues)
 
 statics (rs, ast) = do
-  (g', newTypes, ast') <- tcDecls (rsStatics rs) ast
-  return (rs { rsStatics = g' }, newTypes, ast')
+  (g', new, ast') <- tcDecls (rsStatics rs) ast
+  return (rs { rsStatics = g' }, new, ast')
 
 translation (rs, ast) = do
   let (menv', ast') = translateDecls (rsTranslation rs) ast
   return (rs { rsTranslation = menv' }, ast')
 
 dynamics (rs, ast) = do
-  (e', newValues) <- addDecls (rsDynamics rs) ast
-  return (rs { rsDynamics = e' }, newValues)
+  (e', new) <- addDecls (rsDynamics rs) ast
+  return (rs { rsDynamics = e' }, new)
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
 interactive opt rs0 = do
@@ -140,20 +142,16 @@ interactive opt rs0 = do
           repl st'
     doLine st ast = let
       check   :: (ReplState, [Decl ()]) -> IO ReplState
-      coerce  :: Maybe NewDefs ->
-                 (ReplState, [DeclT]) -> IO ReplState
-      recheck :: Maybe NewDefs ->
-                 (ReplState, [Decl i]) -> IO ReplState
-      execute :: Maybe NewDefs ->
-                 (ReplState, [Decl i]) -> IO ReplState
-      display :: Maybe NewDefs -> Maybe NewValues ->
-                 ReplState -> IO ReplState
+      coerce  :: NewDefs -> (ReplState, [DeclT]) -> IO ReplState
+      recheck :: NewDefs -> (ReplState, [Decl i]) -> IO ReplState
+      execute :: NewDefs -> (ReplState, [Decl i]) -> IO ReplState
+      display :: NewDefs -> NewValues -> ReplState -> IO ReplState
 
       check stast0   = if opt Don'tType
-                         then execute Nothing stast0
+                         then execute emptyNewDefs stast0
                          else do
                            (st1, newDefs, ast1) <- statics stast0
-                           coerce (Just newDefs) (st1, ast1)
+                           coerce newDefs (st1, ast1)
 
       coerce newDefs stast1
                      = if opt Don'tCoerce
@@ -174,13 +172,13 @@ interactive opt rs0 = do
 
       execute newDefs stast2
                           = if opt Don'tExecute
-                              then display newDefs Nothing (fst stast2)
+                              then display newDefs empty (fst stast2)
                               else do
-                                (st3, newValues) <- dynamics stast2
-                                display newDefs (Just newValues) st3
+                                (st3, newVals) <- dynamics stast2
+                                display newDefs newVals st3
 
-      display newDefs newValues st3
-                          = do printResult newDefs newValues
+      display newDefs newVals st3
+                          = do printResult newDefs newVals
                                return st3
 
       in check (st, ast)
@@ -204,49 +202,46 @@ interactive opt rs0 = do
                     return (Just (prog2decls ast))
                   Left derr ->
                     loop ((line, derr) : acc)
-    printResult :: Maybe NewDefs -> Maybe NewValues -> IO ()
-    printResult mdefs mvals = do
-      print mdefs
-      print mvals
-    {-
-      (_, docs, _) <- foldrM dispatch (st, [], []) ds0
-      mapM_ print docs
-        where
-      dispatch :: (ReplState, [Doc], [Lid]) ->
-                  Decl i -> IO (ReplState, [Doc], [Lid])
-      dispatch (rs, docs, seen) (DcLet _ m)     = do
-        let e = rsDynamics rs
-            n = letName m
-        mv   <- case (e =..= n, n `elem` seen) of
-                  (Just v, False) -> Just `fmap` v
-                  _               -> return Nothing
-        let doc = case m of
-                    LtC _ x t _   -> val "C" x t mv
-                    LtA _ x t _   -> val "A" x t mv
-                    LtInt _ x t _ -> val "A" x (Just t) mv
-        return (rs, doc : docs, n : seen)
-      dispatch (rs, docs, seen) (DcTyp _ td)    =
-        return (rs, ppr td : docs, seen)
-      dispatch (rs, docs, seen) (DcAbs _ at ds) =
-        foldrM dispatch (rs, (text "abstype" <> ppr at) : docs, seen) ds
-      val :: (Ppr x, Ppr t, Ppr v) =>
-             String -> x -> Maybe t -> Maybe v -> Doc
-      val lang x mt mv =
-        let add c m = case m of
-                        Nothing -> id
-                        Just t  -> \d -> hang (d <+> char c)
-                                              2
-                                              (ppr t) in
-        add '=' mv $
-          add ':' mt $
-            text "val[" <> text lang <> text "]" <+> ppr x
-            -}
+    printResult :: NewDefs -> NewValues -> IO ()
+    printResult defs values = do
+      let (cDefs, aDefs) = defs
+          vals = unionProduct
+                   (unionSum (newValues aDefs)
+                             (newValues cDefs))
+                   values
+      print $ Ppr.vcat $
+        map (pprMod A) (newModules aDefs) ++
+        map (pprMod C) (newModules cDefs) ++
+        map pprType (toList (newTypes aDefs)) ++
+        map pprType (toList (newTypes cDefs)) ++
+        map pprValue (toList vals)
+
+      where
+      pprKey s lang     = text s <> char '[' <> ppr lang <> char ']'
+
+      pprMod lang uid   = pprKey "module" lang <+> ppr uid
+
+      pprType (lid, ti) = ppr (tyInfoToDec lid ti)
+
+      pprValue (Con _, _)        = Ppr.empty
+      pprValue (Var k, (mt, mv)) =
+        addHang '=' (fmap ppr mv) $
+          addHang ':' (fmap (either ppr ppr) mt) $
+            pprValLang mt <+> ppr k
+
+      pprValLang Nothing          = text "val"
+      pprValLang (Just (Left _))  = pprKey "val" A
+      pprValLang (Just (Right _)) = pprKey "val" C
+
+      addHang c m d = case m of
+        Nothing -> d
+        Just t  -> hang (d <+> char c) 2 t
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)
 
 mumbles :: Ppr a => String -> [a] -> IO ()
-mumbles s as = print $ hang (text s <> char ':') 2 (vcat (map ppr as))
+mumbles s as = print $ hang (text s <> char ':') 2 (Ppr.vcat (map ppr as))
 
 errorString :: IOError -> String
 errorString e | isUserError e = ioeGetErrorString e
