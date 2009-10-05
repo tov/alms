@@ -1,3 +1,4 @@
+{-# OPTIONS -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
       EmptyDataDecls,

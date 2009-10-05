@@ -297,10 +297,10 @@ primBasis  = [
                  -: ""
       -= \who what -> fail $ "Contract violation: " ++
                              who ++ ": " ++
-                             what :: IO ()
+                             what :: IO (),
+    submod "IO"     Basis.IO.entries,
+    submod "Socket" Basis.Socket.entries
   ]
-  ++ Basis.IO.entries
-  ++ Basis.Socket.entries
 
 newtype Ref = Ref { unRef :: IORef Value }
   deriving (Eq, Typeable)

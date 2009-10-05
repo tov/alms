@@ -8,7 +8,7 @@
       TypeSynonymInstances,
       UndecidableInstances #-}
 module Statics (
-  S, env0,
+  S, env0, NewIn(..), NewDefs,
   tcProg, tcDecls,
   addVal, addType, addMod
 ) where
@@ -20,6 +20,7 @@ import Env as Env
 import Ppr ()
 
 import Data.Data (Typeable, Data)
+import Data.Generics (everywhere, mkT)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -42,7 +43,7 @@ usage x e = case M.lookup x (fv e) of
 data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeT w)
               | TiDat TyTag [TyVar] (Env Uid (Maybe (TypeT w)))
-  deriving (Data, Typeable)
+  deriving (Data, Typeable, Show)
 
 -- Type environments
 type D = Env TyVar TyVar       -- tyvars in scope, with idempot. renaming
@@ -50,8 +51,8 @@ type D = Env TyVar TyVar       -- tyvars in scope, with idempot. renaming
 type V w     = Env BIdent (TypeT w) -- value env
 type T w     = Env Lid (TyInfo w)   -- type env
 data Level w = Level {
-                 ve :: V w, -- values
-                 te :: T w  -- types
+                 vlevel :: V w, -- values
+                 tlevel :: T w  -- types
                }
   deriving (Typeable, Data)
 type Scope w = PEnv Uid (Level w)   -- path env includes modules
@@ -70,9 +71,9 @@ instance GenExtend (Level w) (V w) where
 instance GenExtend (Level w) (T w) where
   level =+= te' = level =+= Level empty te'
 instance GenLookup (Level w) BIdent (TypeT w) where
-  level =..= k = ve level =..= k
+  level =..= k = vlevel level =..= k
 instance GenLookup (Level w) Lid (TyInfo w) where
-  level =..= k = te level =..= k
+  level =..= k = tlevel level =..= k
 
 data S   = S {
              cEnv    :: E C,
@@ -216,7 +217,7 @@ withoutConstructors tag = TC . M.R.local clean . unTC where
   eachScope      :: Scope w -> Scope w
   eachScope scope = genModify scope emptyPath flevel
   flevel         :: Level w -> Level w
-  flevel level    = level { ve = eachVe (ve level) }
+  flevel level    = level { vlevel = eachVe (vlevel level) }
   eachVe         :: V w -> V w
   eachVe          = fromList . filter keep . toList
   keep           :: (BIdent, TypeT w) -> Bool
@@ -1035,16 +1036,47 @@ withMod :: (?loc :: Loc, Language w, Monad m) =>
            Mod i -> (ModT -> TC w m a) -> TC w m a
 withMod (ModC tl x b) k = intoC $ do
   (b', scope) <- tcModExp b
-  withAny (x =:= scope) $
+  let scope' = qualifyScope x scope
+  withAny (x =:= scope') $
     intoA $
-      withAny (x =:= mapModule ctype2atype scope) $
+      withAny (x =:= mapModule ctype2atype scope') $
         (outofA $ k (ModC tl x b'))
 withMod (ModA tl x b) k = intoA $ do
   (b', scope) <- tcModExp b
-  withAny (x =:= scope) $
+  let scope' = qualifyScope x scope
+  withAny (x =:= scope') $
     intoC $
-      withAny (x =:= mapModule atype2ctype scope) $
+      withAny (x =:= mapModule atype2ctype scope') $
         (outofC $ k (ModA tl x b'))
+
+qualifyScope :: forall w. (Language w, Data w) =>
+                Uid -> Scope w -> Scope w
+qualifyScope uid0 scope0 = everywhere (mkT repair) scope0 where
+  repair :: TypeT w -> TypeT w
+  repair t@(TyCon { }) = case tyConsInThisScope -.- ttId (tyinfo t) of
+    Nothing   -> t
+    Just name -> t { tycon = name }
+  repair t = t
+
+  tyConsInThisScope :: Env Integer QLid
+  tyConsInThisScope  = makeTyConMap uid0 scope0
+
+  makeTyConMap :: Uid -> Scope w -> Env Integer QLid
+  makeTyConMap uid (PEnv ms (Level _ ts)) =
+    uid <..>
+      foldr (-+-)
+        (fromList [ (ttId tag, J [] lid)
+                  | (lid, info) <- toList ts,
+                    tag <- tagOfTyInfo info ])
+        [ makeTyConMap uid' menv
+        | (uid', menv) <- toList ms ]
+
+  tagOfTyInfo (TiAbs tag)     = [tag]
+  tagOfTyInfo (TiSyn _ _)     = []
+  tagOfTyInfo (TiDat tag _ _) = [tag]
+
+  (<..>) :: Functor f => p -> f (Path p k) -> f (Path p k)
+  uid <..> name = fmap (uid <.>) name
 
 tcModExp :: (?loc :: Loc, Language w, Monad m) =>
              ModExp i -> TC w m (ModExpT, Scope w)
@@ -1060,7 +1092,7 @@ tcModExp (MeName n)   = do
 mapModule :: forall w w'. (TypeT w -> TypeT w') -> Scope w -> Scope w'
 mapModule f scope = fmap mapLevel scope where
   mapLevel :: Level w -> Level w'
-  mapLevel level = Level { ve = fmap f (ve level), te = empty }
+  mapLevel level = Level { vlevel = fmap f (vlevel level), tlevel = empty }
 
 withDecl :: (Language w, Monad m) =>
             Decl i -> (DeclT -> TC w m a) -> TC w m a
@@ -1130,13 +1162,38 @@ withAbsTy at ds k0 = case at of
               k tag'
       absDecl _ _ = terr "(BUG) Can't abstract non-datatypes"
 
-tcDecls :: Monad m => S -> [Decl i] -> m (S, [DeclT])
+tcDecls :: Monad m => S -> [Decl i] -> m (S, NewDefs, [DeclT])
 tcDecls gg ds = runTC gg $
                   pushScope $
-                    withDecls ds $ \ds' ->
+                    withDecls ds $ \ds' -> do
+                      new <- askNewDefs
                       squishScope $ do
                         gg' <- saveTC
-                        return (gg', ds')
+                        return (gg', new, ds')
+
+-- Info about new defs for printing in the repl:
+data NewIn w = NewIn {
+                 newTypes   :: T w,
+                 newValues  :: V w,
+                 newModules :: [Uid]
+               }
+  deriving Show
+type NewDefs = (NewIn C, NewIn A)
+
+askNewDefs :: (Language w, Monad m) => TC w m NewDefs
+askNewDefs  = do
+  newc <- intoC askNewIn
+  newa <- intoA askNewIn
+  return (newc, newa)
+
+askNewIn :: (Language w, Monad m) => TC w m (NewIn w)
+askNewIn  = do
+  PEnv me (Level ve te) <- askScope
+  return NewIn {
+    newTypes   = te,
+    newValues  = ve,
+    newModules = domain me
+  }
 
 -- For adding types of primitives to the environment
 addVal :: (Ident :>: k, Language w, Monad m) =>
@@ -1168,8 +1225,6 @@ addMod gg0 x k = do
                    cEnv   = cEnv0 =+= x =:= modC,
                    aEnv   = aEnv0 =+= x =:= modA }
   return gg3
-
--- addTypeMod :: Monad m => S -> 
 
 -- Type check a program
 tcProg :: Monad m => S -> Prog i -> m (TypeT C, ProgT)

@@ -68,7 +68,7 @@ transMod tenv (ModA tl x b) =
 transModExp :: (?trail :: Trail) => TEnv -> ModExpT -> (Scope, ModExpT)
 transModExp tenv (MeName n) = case tenv =..= n of
   Just scope -> (scope, MeName n)
-  Nothing    -> error "Bug! transModExp"
+  Nothing    -> (genEmpty, MeName n) -- built-in module
 transModExp tenv (MeDecls ds) =
   let (scope:_, ds') = transDecls (genEmpty:tenv) ds
    in (scope, MeDecls ds')

@@ -6,9 +6,9 @@ module Main (
 import Util
 import Ppr (Ppr(..), Doc, (<+>), (<>), text, char, hang, vcat)
 import Parser (parse, parseProg, parseDecls)
-import Statics (tcProg, tcDecls, S)
+import Statics (tcProg, tcDecls, S, NewDefs)
 import Translation (translate, translateDecls, TEnv)
-import Dynamics (eval, addDecls, E)
+import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
 import Syntax (Prog, Lid, ProgT, Decl(..), DeclT, Let(..),
@@ -53,8 +53,11 @@ loadSource :: ReplState -> String -> String -> IO ReplState
 loadSource st name src = do
   case parse parseDecls name src of
     Left e     -> fail (show e)
-    Right ast0 ->
-      statics (st, ast0) >>= translation >>= dynamics >>= return . fst
+    Right ast0 -> do
+      (st1, _, ast1) <- statics (st, ast0)
+      (st2, ast2)    <- translation (st1, ast1)
+      (st3, _)       <- dynamics (st2, ast2)
+      return st3
 
 batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
 batch filename msrc opt st0 = do
@@ -104,21 +107,21 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
-statics     :: (ReplState, [Decl i])  -> IO (ReplState, [DeclT])
+statics     :: (ReplState, [Decl i])  -> IO (ReplState, NewDefs, [DeclT])
 translation :: (ReplState, [DeclT])   -> IO (ReplState, [DeclT])
-dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, [Decl i])
+dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, NewValues)
 
 statics (rs, ast) = do
-  (g', ast') <- tcDecls (rsStatics rs) ast
-  return (rs { rsStatics = g' }, ast')
+  (g', newTypes, ast') <- tcDecls (rsStatics rs) ast
+  return (rs { rsStatics = g' }, newTypes, ast')
 
 translation (rs, ast) = do
   let (menv', ast') = translateDecls (rsTranslation rs) ast
   return (rs { rsTranslation = menv' }, ast')
 
 dynamics (rs, ast) = do
-  e' <- addDecls (rsDynamics rs) ast
-  return (rs { rsDynamics = e' }, ast)
+  (e', newValues) <- addDecls (rsDynamics rs) ast
+  return (rs { rsDynamics = e' }, newValues)
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
 interactive opt rs0 = do
@@ -137,37 +140,48 @@ interactive opt rs0 = do
           repl st'
     doLine st ast = let
       check   :: (ReplState, [Decl ()]) -> IO ReplState
-      coerce  :: (ReplState, [DeclT])   -> IO ReplState
-      recheck :: [Decl i0] -> (ReplState, [Decl i])  -> IO ReplState
-      execute :: [Decl i0] -> (ReplState, [Decl i])  -> IO ReplState
-      display :: [Decl i0] -> (ReplState, [Decl i])  -> IO ReplState
+      coerce  :: Maybe NewDefs ->
+                 (ReplState, [DeclT]) -> IO ReplState
+      recheck :: Maybe NewDefs ->
+                 (ReplState, [Decl i]) -> IO ReplState
+      execute :: Maybe NewDefs ->
+                 (ReplState, [Decl i]) -> IO ReplState
+      display :: Maybe NewDefs -> Maybe NewValues ->
+                 ReplState -> IO ReplState
 
       check stast0   = if opt Don'tType
-                         then execute (snd stast0) stast0
-                         else statics stast0 >>= coerce
+                         then execute Nothing stast0
+                         else do
+                           (st1, newDefs, ast1) <- statics stast0
+                           coerce (Just newDefs) (st1, ast1)
 
-      coerce stast1  = if opt Don'tCoerce
-                         then recheck (snd stast1) stast1
+      coerce newDefs stast1
+                     = if opt Don'tCoerce
+                         then recheck newDefs stast1
                          else do
                            stast2 <- translation stast1
                            when (opt Verbose) $
                              mumbles "TRANSLATION" (snd stast2)
-                           recheck (snd stast1) stast2
+                           recheck newDefs stast2
 
-      recheck ast1 stast2 = if opt ReType
+      recheck newDefs stast2
+                          = if opt ReType
                               then do
                                 statics stast2
-                                execute ast1 stast2
+                                execute newDefs stast2
                               else
-                                execute ast1 stast2
+                                execute newDefs stast2
 
-      execute ast1 stast2 = if opt Don'tExecute
-                              then display ast1 stast2
-                              else dynamics stast2 >>= display ast1
+      execute newDefs stast2
+                          = if opt Don'tExecute
+                              then display newDefs Nothing (fst stast2)
+                              else do
+                                (st3, newValues) <- dynamics stast2
+                                display newDefs (Just newValues) st3
 
-      display ast1 stast3 = do
-                              printResult (fst stast3, ast1)
-                              return (fst stast3)
+      display newDefs newValues st3
+                          = do printResult newDefs newValues
+                               return st3
 
       in check (st, ast)
     reader = loop []
@@ -190,8 +204,11 @@ interactive opt rs0 = do
                     return (Just (prog2decls ast))
                   Left derr ->
                     loop ((line, derr) : acc)
-    printResult :: (ReplState, [Decl i]) -> IO ()
-    printResult (st, ds0) = return () {- do
+    printResult :: Maybe NewDefs -> Maybe NewValues -> IO ()
+    printResult mdefs mvals = do
+      print mdefs
+      print mvals
+    {-
       (_, docs, _) <- foldrM dispatch (st, [], []) ds0
       mapM_ print docs
         where

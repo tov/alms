@@ -178,13 +178,13 @@ entries  = [
       -= S.bindSocket,
     fun "connect"   -: "socket -> sockAddr -> unit" -: ""
       -= S.connect,
-    fun "socketToHandle" -: "socket -> ioMode -> handle" -: ""
+    fun "socketToHandle" -: "socket -> IO.ioMode -> IO.handle" -: ""
       -= S.socketToHandle,
     fun "inet_addr" -: "string -> hostAddress" -: ""
       -= S.inet_addr,
-    fun "sock_send" -: "socket -> string -> int" -: ""
+    fun "send" -: "socket -> string -> int" -: ""
       -= S.send,
-    fun "sock_recv" -: "socket -> int -> string" -: ""
+    fun "recv" -: "socket -> int -> string" -: ""
       -= S.recv
   ]
 

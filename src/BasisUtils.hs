@@ -165,8 +165,8 @@ basis2venv es = foldM add genEmpty es where
   add :: Monad m => E -> Entry -> m E
   add e (ValEn { enName = n, enValue = v })
           = return (Dynamics.addVal e n v)
-  add e (ModEn { enModName = n, enEnts = es })
-          = Dynamics.addMod e n `liftM` basis2venv es
+  add e (ModEn { enModName = n, enEnts = es' })
+          = Dynamics.addMod e n `liftM` basis2venv es'
   add e _ = return e
 
 basis2tenv :: Monad m => [Entry] -> m S
@@ -179,8 +179,9 @@ basis2tenv  = foldM each env0 where
       then return gg1
       else Statics.addVal gg1 n (pt at :: Type () A)
     return gg2
-  each gg0 (DecEn { enSrc = s }) =
-    fst `liftM` tcDecls gg0 (pds s)
+  each gg0 (DecEn { enSrc = s }) = do
+    (gg1, _, _) <- tcDecls gg0 (pds s)
+    return gg1
   each gg0 (TypEn { enName = n, enTyTag = i }) =
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =

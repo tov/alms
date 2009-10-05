@@ -276,8 +276,8 @@ tyDecp  = do
         do
           reservedOp "="
           choice [
-            altsp >>! TdDatC name tvs,
-            typep >>! TdSynC name tvs ],
+            typep >>! TdSynC name tvs,
+            altsp >>! TdDatC name tvs ],
         do
           return (TdAbsC name tvs) ]
     tyDecAp = do
@@ -288,8 +288,8 @@ tyDecp  = do
           unless (all (== Invariant) arity) pzero
           reservedOp "="
           choice [
-            altsp >>! TdDatA name tvs,
-            typep >>! TdSynA name tvs ],
+            typep >>! TdSynA name tvs,
+            altsp >>! TdDatA name tvs ],
         do
           quals <- qualsp
           return (TdAbsA name tvs arity quals) ]

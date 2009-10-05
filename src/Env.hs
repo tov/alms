@@ -12,9 +12,9 @@ module Env (
   empty, isEmpty,
   (-:-), (-::-), (-:+-), (-+-), (-\-), (-\\-), (-.-), (-|-),
   mapAccum, mapAccumM,
-  toList, fromList, contents,
+  toList, fromList, domain, range,
 
-  PEnv(..), Path(..), ROOT(..),
+  PEnv(..), Path(..), ROOT(..), (<.>),
   GenEmpty(..), GenLookup(..), GenRemove(..), GenModify(..),
   GenExtend(..), (=:=), (=::=), (=:+=), (=++=)
 ) where
@@ -105,8 +105,11 @@ toList    = M.toList . unEnv
 fromList :: Ord k => [(k, v)] -> Env k v
 fromList  = Env . M.fromList
 
-contents :: Ord k => Env k v -> [v]
-contents  = M.elems . unEnv
+domain   :: Ord k => Env k v -> [k]
+domain    = M.keys . unEnv
+
+range    :: Ord k => Env k v -> [v]
+range     = M.elems . unEnv
 
 instance Ord k => Monoid (Env k v) where
   mempty      = empty
@@ -166,6 +169,12 @@ data Path p k = J {
                   jname :: k
                 }
   deriving (Eq, Ord, Typeable, Data)
+
+-- Add qualifiers to a path
+(<.>) :: p -> Path p k -> Path p k
+p <.> J ps k = J (p:ps) k
+
+infixr 8 <.>
 
 newtype ROOT e = ROOT { unROOT :: e }
   deriving (Eq, Ord, Show, Typeable, Data)

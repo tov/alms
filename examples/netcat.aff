@@ -1,47 +1,47 @@
 (* Poor programmer's telnet *)
 
-let[C] pushString (sock: socket) (c: char) =
+module[C] S = Socket
+
+let[C] pushString (sock: S.socket) (c: char) =
   let rec loop (): unit =
-    let len = sock_send sock (implode (Cons (c, Nil[char]))) in
+    let len = S.send sock (implode (Cons (c, Nil[char]))) in
       if len == 0 then loop () else () in
   loop ()
 
-let[C] sendThread (sock: socket) =
+let[C] sendThread (sock: S.socket) =
   let rec loop (): unit =
-    if hIsEOF stdin
+    if IO.hIsEOF IO.stdin
       then ()
-      else let c = hGetChar stdin
+      else let c = IO.hGetChar IO.stdin
             in pushString sock c;
                loop ()
   in loop ()
 
-let[C] recvThread (sock: socket) =
+let[C] recvThread (sock: S.socket) =
   let rec loop (): unit =
-    let s = sock_recv sock 1 in
-      hPutStr stdout s;
+    let s = S.recv sock 1 in
+      IO.hPutStr IO.stdout s;
       loop ()
   in loop ()
 
-let[C] setupConnection (addr: sockAddr): socket =
-  let s = socket AF_INET Stream defaultProtocol in
-    connect s addr; s
-
-let[C] getAddr (): sockAddr =
+let[C] setupConnection (addr: S.sockAddr): S.socket =
+  let s = S.socket S.AF_INET S.Stream S.defaultProtocol in
+    S.connect s addr; s
+let[C] getAddr (): S.sockAddr =
   let argv = getArgs () in
   match argv with
   | Cons(hoststring, Cons(portstring, Nil))
-      -> let addrInfo = AddrInfo(Nil[addrInfoFlag], AF_INET,
-                                 Stream, defaultProtocol,
-                                 SockAddrInet(0, 0), None[string]) in
-         let addrInfo = getAddrInfo(Some addrInfo)
-                                   (Some hoststring)
-                                   (Some portstring) in
-         match addrInfo with
-         | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
-         | _ -> failwith[sockAddr] ("Could not resolve address " ^
-                                    hoststring ^ ":" ^ portstring)
-      -- SockAddrInet(int_of_string portstring, inet_addr hoststring)
-  | _ -> failwith[sockAddr] ("Usage: " ^ getProgName () ^ " HOST SERVICE")
+      -> let addrInfo = S.AddrInfo(Nil[S.addrInfoFlag], S.AF_INET,
+                                   S.Stream, S.defaultProtocol,
+                                   S.SockAddrInet(0, 0), None[string]) in
+         let addrInfo = S.getAddrInfo(Some addrInfo)
+                                     (Some hoststring)
+                                     (Some portstring) in
+         (match addrInfo with
+          | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
+          | _ -> failwith[S.sockAddr] ("Could not resolve address " ^
+                                       hoststring ^ ":" ^ portstring))
+  | _ -> failwith[S.sockAddr] ("Usage: " ^ getProgName () ^ " HOST SERVICE")
 
 let[A] main () =
   let sock = setupConnection (getAddr ()) in

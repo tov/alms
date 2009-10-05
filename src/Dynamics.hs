@@ -7,7 +7,7 @@
     #-}
 module Dynamics (
   -- Static API
-  E, addVal, addMod,
+  E, addVal, addMod, NewValues,
   -- Dynamic API
   eval, addDecls, Result,
   -- Value API
@@ -396,9 +396,13 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- Public API
 
-addDecls :: E -> [Decl i] -> IO E
-addDecls env decls = evalDecls decls env' where
-  env' = genEmpty : [collapse env]
+type NewValues = Env Lid Value
+
+addDecls :: E -> [Decl i] -> IO (E, NewValues)
+addDecls env decls = do
+  env' <- evalDecls decls (genEmpty : [collapse env])
+  let PEnv _ ve : _ = env'
+  mapAccumM (\v e -> v >>= \w -> return (e, w)) env' ve
 
 addVal :: E -> Lid -> Value -> E
 addVal e n v     = e =+= n =:= (return v :: IO Value)
