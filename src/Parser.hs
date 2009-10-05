@@ -79,7 +79,6 @@ chainr1last each sep final = start where
                      return (\a -> a `build` b) ]
 
 -- Just uppercase identifiers
---  - datacons in patterns
 uidp :: P Uid
 uidp  = uid >>! Uid
 
@@ -100,6 +99,7 @@ pathp p = try $ do
 
 -- Qualified uppercase identifiers:
 --  - module names occurences
+--  - datacons in patterns (though path is ignored)
 quidp :: P QUid
 quidp  = pathp (uidp >>! flip J)
 
@@ -637,8 +637,8 @@ pattp  = patt0 where
           x  <- pattN1
           return (PaPack tv x),
       do
-        u <- uidp
-        x <- optionMaybe (try pattA)
+        J _ u <- quidp
+        x     <- optionMaybe (try pattA)
         return (PaCon u x),
       pattA ]
   pattA = choice

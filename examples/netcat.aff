@@ -38,7 +38,7 @@ let[C] getAddr (): S.sockAddr =
                                      (Some hoststring)
                                      (Some portstring) in
          (match addrInfo with
-          | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
+          | Cons (S.AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
           | _ -> failwith[S.sockAddr] ("Could not resolve address " ^
                                        hoststring ^ ":" ^ portstring))
   | _ -> failwith[S.sockAddr] ("Usage: " ^ getProgName () ^ " HOST SERVICE")
