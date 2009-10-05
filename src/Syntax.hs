@@ -11,7 +11,7 @@
       ScopedTypeVariables,
       TypeFamilies #-}
 module Syntax (
-  Language(..), A, C, Language', SameLang, LangRep(..),
+  Language, A, C, Language'(..), SameLang, LangRep(..),
   Q(..),
 
   Path(..),
@@ -853,20 +853,20 @@ instance Num Variance where
 
 -- In GHC 6.10, reifyLang is enough, but in 6.8, we need langCase
 -- and langMapType, it seems.
-class Data w => Language w where
+class Data w => Language' w where
   type OtherLang w
   reifyLang   :: LangRep w
   langCase    :: f w -> (w ~ C => f C -> r) -> (w ~ A => f A -> r) -> r
   langMapType :: Functor f =>
                  (forall w'. Language w' => f (Type td w')) -> f (Type td w)
 
-instance Language C where
+instance Language' C where
   type OtherLang C = A
   reifyLang        = C
   langCase x fc _  = fc x
   langMapType x    = fmap tyA x
 
-instance Language A where
+instance Language' A where
   type OtherLang A = C
   reifyLang        = A
   langCase x _ fa  = fa x
@@ -874,9 +874,9 @@ instance Language A where
 
 type SameLang w = OtherLang (OtherLang w)
 
-class (Language (OtherLang w), Language w) => Language' w
-instance Language' C
-instance Language' A
+class (Language' (OtherLang w), Language' w) => Language w
+instance Language C
+instance Language A
 
 sameLang :: (Language w, Language w') =>
             f w -> g w' -> (w ~ w' => f w -> g w -> r) -> r -> r

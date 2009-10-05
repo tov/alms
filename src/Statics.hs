@@ -22,7 +22,7 @@ import Env as Env
 import Ppr ()
 
 import Data.Data (Typeable, Data)
-import Data.Generics (everywhere, mkT)
+import Data.Generics (everywhere, mkT, everywhereM, mkM)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -163,18 +163,22 @@ switchE = map (fmap (\(Both level other) -> Both other level))
 switchTC :: (Language w, w ~ SameLang w) => TCEnv w -> TCEnv (OtherLang w)
 switchTC (TCEnv env (d, d')) = TCEnv (switchE env) (d', d)
 
-intoC :: Language w => TC C m a -> TC w m a
+switchM :: (Language w, w ~ SameLang w) =>
+           TC w m a -> TC (OtherLang w) m a
+switchM  = intoC . outofC
+
+intoC :: Language' w => TC C m a -> TC w m a
 intoC  = TC . M.R.withReaderT sw . unTC where
   sw tc = langCase tc id switchTC
 
-intoA :: Language w => TC A m a -> TC w m a
+intoA :: Language' w => TC A m a -> TC w m a
 intoA  = TC . M.R.withReaderT sw . unTC where
   sw tc = langCase tc switchTC id
 
-outofC :: Language w => TC w m a -> TC C m a
+outofC :: Language' w => TC w m a -> TC C m a
 outofC m = langCase (WrapTC m) unWrapTC (intoA . unWrapTC)
 
-outofA :: Language w => TC w m a -> TC A m a
+outofA :: Language' w => TC w m a -> TC A m a
 outofA m = langCase (WrapTC m) (intoC . unWrapTC) unWrapTC
 
 newIndex :: Monad m => TC w m Integer
@@ -216,10 +220,10 @@ squishScope = TC . M.R.local squish . unTC where
   squish (TCEnv env        dd) = TCEnv env dd
 
 askScope :: (Monad m, Language w) => TC w m (Scope w)
-askScope  = TC $ do
-  TCEnv env _ <- M.R.ask
+askScope  = do
+  TCEnv env _ <- TC M.R.ask
   case env of
-    scope:_ -> return scope
+    scope:_ -> hideInvisible scope
     []      -> return genEmpty
 
 withoutConstructors :: forall m w a. Monad m => TyTag -> TC w m a -> TC w m a
@@ -248,31 +252,37 @@ withReplacedTyTags tag = intoC . TC . M.R.local reptc . unTC . outofC
     repboth (Both level other) = Both (r level) (r other)
     r a = replaceTyTags tag a
 
+tryGetAny :: (Monad m, GenLookup (TCEnv w) k v, Show k) =>
+             k -> TC w m (Maybe v)
+tryGetAny k = TC $ asksM (return . (=..= k))
+
 getAny :: (?loc :: Loc, Monad m, GenLookup (TCEnv w) k v, Show k) =>
           String -> k -> TC w m v
-getAny msg k = TC $ asksM get where
-  get tce = tce =..= k
-    |! msg ++ ": " ++ show k
+getAny msg k = do
+  t <- tryGetAny k
+  t |! msg ++ ": " ++ show k
 
 getTV :: (?loc :: Loc, Monad m) => TyVar -> TC w m TyVar
 getTV  = getAny "Free type variable"
 
-getVar :: (?loc :: Loc, Monad m, Language' w, w ~ SameLang w) =>
+getVar :: (?loc :: Loc, Monad m, Language w, w ~ SameLang w) =>
           Ident -> TC w m (TypeT w)
 getVar x = do
   t <- tryGetVar x
   t |! "Unbound variable: " ++ show x
 
-tryGetVar :: (Monad m, Language' w, w ~ SameLang w) =>
+tryGetVar :: (Monad m, Language w, w ~ SameLang w) =>
              Ident -> TC w m (Maybe (TypeT w))
 tryGetVar x = TC $ asksM get where
   get tce = case tce =..= x of
     Just t  -> return (Just t)
-    Nothing -> case switchTC tce =..= x of
-      Just t  -> return (Just (type2other t))
-      Nothing -> return Nothing
+    Nothing -> case view x of
+      Left _  -> case switchTC tce =..= x of
+        Just t  -> return (Just (type2other t))
+        Nothing -> return Nothing
+      Right _ -> return Nothing
 
-type2other :: forall w. (Language' w, w ~ SameLang w) =>
+type2other :: forall w. (Language w, w ~ SameLang w) =>
               TypeT (OtherLang w) -> TypeT w
 type2other t = langCase t
                  (\tc -> ctype2atype tc :: TypeT w)
@@ -711,7 +721,10 @@ withPatt :: (?loc :: Loc, Monad m, Language w) =>
 withPatt t x m = do
   (d, g, x') <- tcPatt t x
   (t', e')   <- withAny d $ withVars g $ m
-  tcType t'
+  -- tcType t'
+  let escapees = S.fromList (range d) `S.intersection` M.keysSet (ftv t')
+  tassert (S.null escapees) $
+    "Type variable escaped existential: " ++ show (S.findMin escapees)
   return (g, x', t', e')
 
 -- Given a list of type variables tvs, an type t in which tvs
@@ -1067,7 +1080,8 @@ withOpen :: (?loc :: Loc, Language w, Monad m) =>
             ModExp i -> (ModExpT -> TC w m a) -> TC w m a
 withOpen b k = do
   (b', scope) <- tcModExp b
-  withAny scope $ k b'
+  let scope' = qualifyScope [] scope
+  withAny scope' $ k b'
 
 withLocal :: (?loc :: Loc, Language w, Monad m) =>
              [Decl i] -> [Decl i] ->
@@ -1091,6 +1105,42 @@ withMod x b k = do
   (b', scope) <- tcModExp b
   let scope' = qualifyScope [x] scope
   withAny (x =:= scope') $ k b'
+
+hideInvisible :: forall w m. (Language w, Monad m) =>
+                 Scope w -> TC w m (Scope w)
+hideInvisible (PEnv me both) = do
+  both' <- withAny both $ repairBoth both
+  withAny both' $ do
+    ((), me') <- mapAccumM
+                   (\scope acc -> do
+                      scope' <- hideInvisible scope
+                      return (acc, scope'))
+                   () me
+    return (PEnv me' both')
+
+  where
+    repairBoth :: Both w -> TC w m (Both w)
+    repairBoth (Both level other) = do
+      level' <- everywhereM (mkM repair) level
+      -- other' <- switchM $ everywhereM (mkM repair) other
+      return (Both level' other)
+
+    repair :: forall w. Monad m => TypeT w -> TC w m (TypeT w)
+    repair t@(TyCon { tycon = name, tyinfo = tag }) = do
+      mtd <- tryGetAny name
+      return $ case mtd of
+        Just (TiAbs tag')
+          | tag' == tag  -> t
+        Just (TiDat tag' _ _)
+          | tag' == tag  -> t
+        Just (TiSyn _ _) -> t
+        _                -> t { tycon = hide (tyinfo t) name }
+    repair t = return t
+
+    hide :: TyTag -> QLid -> QLid
+    hide _   name@(J (Uid "?" : _) _) = name
+    hide tag (J qs (Lid k)) =
+      J (Uid "?":qs) (Lid (k ++ ':' : show (ttId tag)))
 
 qualifyScope :: forall w. (Language w) =>
                 [Uid] -> Scope w -> Scope w
