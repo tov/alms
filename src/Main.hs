@@ -8,7 +8,7 @@ import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
 import qualified Ppr
 import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S,
-                NewDefs, NewIn(..), emptyNewDefs, tyInfoToDec)
+                NewDefs(..), emptyNewDefs, tyInfoToDec)
 import Translation (translate, translateDecls, TEnv)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
@@ -204,22 +204,20 @@ interactive opt rs0 = do
                     loop ((line, derr) : acc)
     printResult :: NewDefs -> NewValues -> IO ()
     printResult defs values = do
-      let (cDefs, aDefs) = defs
-          vals = unionProduct
-                   (unionSum (newValues aDefs)
-                             (newValues cDefs))
+      let vals = unionProduct
+                   (unionSum (newAValues defs)
+                             (newCValues defs))
                    values
       print $ Ppr.vcat $
-        map (pprMod A) (newModules aDefs) ++
-        map (pprMod C) (newModules cDefs) ++
-        map pprType (toList (newTypes aDefs)) ++
-        map pprType (toList (newTypes cDefs)) ++
+        map pprMod (newModules defs) ++
+        map pprType (toList (newATypes defs)) ++
+        map pprType (toList (newCTypes defs)) ++
         map pprValue (toList vals)
 
       where
-      pprKey s lang     = text s <> char '[' <> ppr lang <> char ']'
+      pprKey s lang = text s <> char '[' <> ppr lang <> char ']'
 
-      pprMod lang uid   = pprKey "module" lang <+> ppr uid
+      pprMod uid    = text "module" <+> ppr uid
 
       pprType (lid, ti) = ppr (tyInfoToDec lid ti)
 
