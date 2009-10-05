@@ -180,7 +180,7 @@ basis2tenv  = foldM each env0 where
       else Statics.addVal gg1 n (pt at :: Type () A)
     return gg2
   each gg0 (DecEn { enSrc = s }) = do
-    (gg1, _, _) <- tcDecls gg0 (pds s)
+    (gg1, _, _) <- tcDecls False gg0 (pds s)
     return gg1
   each gg0 (TypEn { enName = n, enTyTag = i }) =
     return (Statics.addType gg0 n i)

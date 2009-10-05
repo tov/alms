@@ -56,7 +56,7 @@ loadSource st name src = do
   case parse parseDecls name src of
     Left e     -> fail (show e)
     Right ast0 -> do
-      (st1, _, ast1) <- statics (st, ast0)
+      (st1, _, ast1) <- statics False (st, ast0)
       (st2, ast2)    <- translation (st1, ast1)
       (st3, _)       <- dynamics (st2, ast2)
       return st3
@@ -109,12 +109,13 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
-statics     :: (ReplState, [Decl i])  -> IO (ReplState, NewDefs, [DeclT])
+statics     :: Bool -> (ReplState, [Decl i]) ->
+               IO (ReplState, NewDefs, [DeclT])
 translation :: (ReplState, [DeclT])   -> IO (ReplState, [DeclT])
 dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, NewValues)
 
-statics (rs, ast) = do
-  (g', new, ast') <- tcDecls (rsStatics rs) ast
+statics slow (rs, ast) = do
+  (g', new, ast') <- tcDecls slow (rsStatics rs) ast
   return (rs { rsStatics = g' }, new, ast')
 
 translation (rs, ast) = do
@@ -150,7 +151,7 @@ interactive opt rs0 = do
       check stast0   = if opt Don'tType
                          then execute emptyNewDefs stast0
                          else do
-                           (st1, newDefs, ast1) <- statics stast0
+                           (st1, newDefs, ast1) <- statics True stast0
                            coerce newDefs (st1, ast1)
 
       coerce newDefs stast1
@@ -165,7 +166,7 @@ interactive opt rs0 = do
       recheck newDefs stast2
                           = if opt ReType
                               then do
-                                statics stast2
+                                statics False stast2
                                 execute newDefs stast2
                               else
                                 execute newDefs stast2

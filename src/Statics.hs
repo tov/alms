@@ -140,12 +140,15 @@ instance Monad m => Monad (TC w m) where
 asksM :: M.R.MonadReader r m => (r -> m a) -> m a
 asksM  = (M.R.ask >>=)
 
-saveTC :: (Language w, Monad m) => TC w m S
-saveTC  = intoC . TC $ do
-  TCEnv both _ <- M.R.ask
-  index        <- M.S.get
+saveTC :: (Language w, Monad m) => Bool -> TC w m S
+saveTC interactive = intoC $ do
+  TCEnv env _ <- TC M.R.ask
+  index       <- TC M.S.get
+  let env' = if interactive
+               then requalifyTypes [] env
+               else env
   return S {
-    cEnv   = both,
+    cEnv   = env',
     currIx = index
   }
 
@@ -157,15 +160,11 @@ runTC s (TC m) = do
       ix = currIx s
   M.S.evalStateT (M.R.runReaderT m tc) ix
 
-switchE :: (Language w, w ~ SameLang w) => E w -> E (OtherLang w)
+switchE :: (Language' w, w ~ SameLang w) => E w -> E (OtherLang w)
 switchE = map (fmap (\(Both level other) -> Both other level))
 
-switchTC :: (Language w, w ~ SameLang w) => TCEnv w -> TCEnv (OtherLang w)
+switchTC :: (Language' w, w ~ SameLang w) => TCEnv w -> TCEnv (OtherLang w)
 switchTC (TCEnv env (d, d')) = TCEnv (switchE env) (d', d)
-
-switchM :: (Language w, w ~ SameLang w) =>
-           TC w m a -> TC (OtherLang w) m a
-switchM  = intoC . outofC
 
 intoC :: Language' w => TC C m a -> TC w m a
 intoC  = TC . M.R.withReaderT sw . unTC where
@@ -210,23 +209,24 @@ withVars  = withAny
 withTypes :: Monad m => T w -> TC w m a -> TC w m a
 withTypes = withAny
 
-pushScope :: (Monad m, Language w) => TC w m a -> TC w m a
+pushScope :: Monad m => TC C m a -> TC C m a
 pushScope = TC . M.R.local push . unTC where
   push (TCEnv env dd) = TCEnv (genEmpty : env) dd
 
-squishScope :: (Monad m, Language w) => TC w m a -> TC w m a
+squishScope :: Monad m => TC C m a -> TC C m a
 squishScope = TC . M.R.local squish . unTC where
   squish (TCEnv (e0:e1:es) dd) = TCEnv ((e1=+=e0):es) dd
   squish (TCEnv env        dd) = TCEnv env dd
 
-askScope :: (Monad m, Language w) => TC w m (Scope w)
+askScope :: (Monad m, Language C) => TC C m (Scope C)
 askScope  = do
   TCEnv env _ <- TC M.R.ask
   case env of
-    scope:_ -> hideInvisible scope
+    scope:_ -> return scope
     []      -> return genEmpty
 
-withoutConstructors :: forall m w a. Monad m => TyTag -> TC w m a -> TC w m a
+withoutConstructors :: forall m w a. Monad m =>
+                       TyTag -> TC w m a -> TC w m a
 withoutConstructors tag = TC . M.R.local clean . unTC where
   -- Note: only filters immediate scope -- should be right.
   clean (TCEnv env dd) = TCEnv (map eachScope env) dd
@@ -234,12 +234,12 @@ withoutConstructors tag = TC . M.R.local clean . unTC where
   eachScope scope = genModify scope emptyPath fboth
   fboth          :: Both w -> Both w
   fboth (Both level other) 
-                  = Both (flevel level) other
-  flevel         :: Level w -> Level w
+                  = Both (flevel level) (flevel other)
+  flevel         :: forall w'. Level w' -> Level w'
   flevel level    = level { vlevel = eachVe (vlevel level) }
-  eachVe         :: V w -> V w
+  eachVe         :: forall w'. V w' -> V w'
   eachVe          = fromList . filter keep . toList
-  keep           :: (BIdent, TypeT w) -> Bool
+  keep           :: forall w'. (BIdent, TypeT w') -> Bool
   keep (Con _, TyCon _ [_, TyCon _ _ tag'] _) = tag' /= tag
   keep (Con _, TyCon _ _ tag')                = tag' /= tag
   keep _                                      = True
@@ -527,9 +527,11 @@ tcExprA = tc where
                          bs tfs e's
       return (t2, exLetRec b's e2')
     ExLetDecl d e2 -> do
-      withDecl d $ \d' -> do
-        (t2, e2') <- tc e2
-        return (t2, exLetDecl d' e2')
+      intoC $
+        withDecl d $ \d' ->
+          outofC $ do
+            (t2, e2') <- tc e2
+            return (t2, exLetDecl d' e2')
     ExPair e1 e2  -> do
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2
@@ -1032,8 +1034,8 @@ tyConsOfType here (TyA ty)         = tyConsOfType (not here) ty
 
 -- END type decl checking
 
-withLet :: (?loc :: Loc, Language w, Monad m) =>
-           Let i -> (LetT -> TC w m a) -> TC w m a
+withLet :: (?loc :: Loc, Monad m) =>
+           Let i -> (LetT -> TC C m a) -> TC C m a
 withLet (LtC tl x mt e) k = intoC $ do
   (te, e') <- tcExprC e
   t' <- case mt of
@@ -1045,8 +1047,7 @@ withLet (LtC tl x mt e) k = intoC $ do
       return t'
     Nothing -> return te
   withVars (Var x =:= t') .
-    outofC .
-      k $ LtC tl x (Just t') e'
+    k $ LtC tl x (Just t') e'
 withLet (LtA tl x mt e) k = intoA $ do
   (te, e') <- tcExprA e
   t' <- case mt of
@@ -1066,7 +1067,7 @@ withLet (LtA tl x mt e) k = intoA $ do
     outofA .
       k $ LtA tl x (Just t') e'
 withLet (LtInt tl x t y) k = do
-  ty <- intoC $ getVar (fmap Var y)
+  ty <- getVar (fmap Var y)
   t' <- intoA $ tcType t
   tassert (ty == atype2ctype t') $
     "Declared type of interface " ++ show x ++ " :> " ++
@@ -1076,16 +1077,16 @@ withLet (LtInt tl x t y) k = do
       outofA .
         k $ LtInt tl x t' y
 
-withOpen :: (?loc :: Loc, Language w, Monad m) =>
-            ModExp i -> (ModExpT -> TC w m a) -> TC w m a
+withOpen :: (?loc :: Loc, Monad m) =>
+            ModExp i -> (ModExpT -> TC C m a) -> TC C m a
 withOpen b k = do
   (b', scope) <- tcModExp b
-  let scope' = qualifyScope [] scope
+  let [scope'] = requalifyTypes [] [scope]
   withAny scope' $ k b'
 
-withLocal :: (?loc :: Loc, Language w, Monad m) =>
+withLocal :: (?loc :: Loc, Monad m) =>
              [Decl i] -> [Decl i] ->
-             ([DeclT] -> [DeclT] -> TC w m a) -> TC w m a
+             ([DeclT] -> [DeclT] -> TC C m a) -> TC C m a
 withLocal ds0 ds1 k = do
   (scope, ds0', ds1') <-
     pushScope $
@@ -1099,15 +1100,15 @@ withLocal ds0 ds1 k = do
       squishScope $
         k ds0' ds1'
 
-withMod :: (?loc :: Loc, Language w, Monad m) =>
-           Uid -> ModExp i -> (ModExpT -> TC w m a) -> TC w m a
+withMod :: (?loc :: Loc, Monad m) =>
+           Uid -> ModExp i -> (ModExpT -> TC C m a) -> TC C m a
 withMod x b k = do
   (b', scope) <- tcModExp b
-  let scope' = qualifyScope [x] scope
+  let [scope'] = requalifyTypes [x] [scope]
   withAny (x =:= scope') $ k b'
 
-hideInvisible :: forall w m. (Language w, Monad m) =>
-                 Scope w -> TC w m (Scope w)
+hideInvisible :: forall m. (Monad m) =>
+                 Scope C -> TC C m (Scope C)
 hideInvisible (PEnv me both) = do
   both' <- withAny both $ repairBoth both
   withAny both' $ do
@@ -1119,11 +1120,11 @@ hideInvisible (PEnv me both) = do
     return (PEnv me' both')
 
   where
-    repairBoth :: Both w -> TC w m (Both w)
+    repairBoth :: Both C -> TC C m (Both C)
     repairBoth (Both level other) = do
       level' <- everywhereM (mkM repair) level
-      -- other' <- switchM $ everywhereM (mkM repair) other
-      return (Both level' other)
+      other' <- intoA $ everywhereM (mkM repair) other
+      return (Both level' other')
 
     repair :: forall w. Monad m => TypeT w -> TC w m (TypeT w)
     repair t@(TyCon { tycon = name, tyinfo = tag }) = do
@@ -1142,34 +1143,43 @@ hideInvisible (PEnv me both) = do
     hide tag (J qs (Lid k)) =
       J (Uid "?":qs) (Lid (k ++ ':' : show (ttId tag)))
 
-qualifyScope :: forall w. (Language w) =>
-                [Uid] -> Scope w -> Scope w
-qualifyScope uids scope0 = fmap repairBoth scope0 where
-  repairBoth :: Both w -> Both w
+requalifyTypes :: [Uid] -> E C -> E C
+requalifyTypes uids env = map (fmap repairBoth) env where
+  repairBoth :: Both C -> Both C
   repairBoth (Both level other) =
-    (Both (everywhere (mkT repair) level) other)
+    (Both (everywhere (mkT (repair :: TypeT C -> TypeT C)) level)
+          (everywhere (mkT (repair :: TypeT A -> TypeT A)) other))
 
   repair :: TypeT w -> TypeT w
-  repair t@(TyCon { }) = case tyConsInThisScope -.- ttId (tyinfo t) of
+  repair t@(TyCon { }) = case tyConsInThisEnv -.- ttId (tyinfo t) of
     Nothing   -> t
     Just name -> t { tycon = name }
   repair t = t
 
-  tyConsInThisScope :: Env Integer QLid
-  tyConsInThisScope  = uids <...> makeTyConMap scope0
+  tyConsInThisEnv :: Env Integer QLid
+  tyConsInThisEnv  = uids <...> foldr addToScopeMap empty env
 
-  makeTyConMap :: Scope w -> Env Integer QLid
-  makeTyConMap (PEnv ms (Both (Level _ ts) _)) =
-    foldr (-+-)
-      (fromList [ (ttId tag, J [] lid)
-                | (lid, info) <- toList ts,
-                  tag <- tagOfTyInfo info ])
-      [ uid <..> makeTyConMap menv
-      | (uid, menv) <- toList ms ]
+  addToScopeMap :: Scope w -> Env Integer QLid -> Env Integer QLid
+  addToScopeMap (PEnv ms (Both level other)) acc = 
+    foldr (Env.unionWith chooseQLid) acc
+      (makeLevelMap level :
+       makeLevelMap other :
+       [ uid <..> addToScopeMap menv empty
+       | (uid, menv) <- toList ms ])
+
+  makeLevelMap (Level _ ts) =
+    fromList [ (ttId tag, J [] lid)
+             | (lid, info) <- toList ts,
+               tag <- tagOfTyInfo info ]
 
   tagOfTyInfo (TiAbs tag)     = [tag]
   tagOfTyInfo (TiSyn _ _)     = []
   tagOfTyInfo (TiDat tag _ _) = [tag]
+
+  chooseQLid :: QLid -> QLid -> QLid
+  chooseQLid q1@(J p1 _) q2@(J p2 _)
+    | length p1 < length p2 = q1
+    | otherwise             = q2
 
   (<..>) :: Functor f => p -> f (Path p k) -> f (Path p k)
   (<..>)  = fmap . (<.>)
@@ -1177,28 +1187,24 @@ qualifyScope uids scope0 = fmap repairBoth scope0 where
   (<...>) :: Functor f => [p] -> f (Path p k) -> f (Path p k)
   (<...>) = flip $ foldr (<..>)
 
-tcModExp :: (?loc :: Loc, Language w, Monad m) =>
-             ModExp i -> TC w m (ModExpT, Scope w)
+tcModExp :: (?loc :: Loc, Monad m) =>
+             ModExp i -> TC C m (ModExpT, Scope C)
 tcModExp (MeStrC tl ds) =
-  intoC $
-    pushScope $
-      withDecls ds $ \ds' ->
-        outofC $ do
-          scope <- askScope
-          return (MeStrC tl ds', scope)
+  pushScope $
+    withDecls ds $ \ds' -> do
+      scope <- askScope
+      return (MeStrC tl ds', scope)
 tcModExp (MeStrA tl ds) =
-  intoA $
-    pushScope $
-      withDecls ds $ \ds' ->
-        outofA $ do
-          scope <- askScope
-          return (MeStrA tl ds', scope)
+  pushScope $
+    withDecls ds $ \ds' -> do
+      scope <- askScope
+      return (MeStrA tl ds', scope)
 tcModExp (MeName n)   = do
   scope <- getModule n
   return (MeName n, scope)
 
-withDecl :: (Language w, Monad m) =>
-            Decl i -> (DeclT -> TC w m a) -> TC w m a
+withDecl :: Monad m =>
+            Decl i -> (DeclT -> TC C m a) -> TC C m a
 withDecl decl k =
   let ?loc = getLoc decl in
     case decl of
@@ -1209,21 +1215,21 @@ withDecl decl k =
       DcOpn loc b     ->  withOpen b (k . DcOpn loc)
       DcLoc loc d0 d1 ->  withLocal d0 d1 ((.) k . DcLoc loc)
 
-withDecls :: (Language w, Monad m) =>
-             [Decl i] -> ([DeclT] -> TC w m a) -> TC w m a
+withDecls :: Monad m =>
+             [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withDecls []     k = k []
 withDecls (d:ds) k = withDecl d $ \d' ->
                        withDecls ds $ \ds' ->
                          k (d':ds')
 
-withAbsTy :: (?loc :: Loc, Language w, Monad m) =>
-             AbsTy -> [Decl i] -> ([DeclT] -> TC w m a) -> TC w m a
+withAbsTy :: (?loc :: Loc, Monad m) =>
+             AbsTy -> [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
 withAbsTy at ds k0 = case at of
-  AbsTyC tl tds -> intoC $
+  AbsTyC tl tds ->
     withTyDec (TyDecC tl tds) $ \_ ->
       withDecls ds $ \ds' -> do
         mapCont absDecl tds $ \tags' ->
-          outofC $ k0 (foldr replaceTyTags ds' tags')
+          k0 (foldr replaceTyTags ds' tags')
     where
       absDecl (TdDatC name params _) k = do
         tag <- getTypeTag "abstract-with-end" (J [] name)
@@ -1237,12 +1243,13 @@ withAbsTy at ds k0 = case at of
             withTypes (name =:= TiAbs tag') $
               k tag'
       absDecl _ _ = terr "(BUG) Can't abstract non-datatypes"
-  AbsTyA tl atds -> intoA $
+  AbsTyA tl atds ->
     let (_, _, tds) = unzip3 atds in
     withTyDec (TyDecA tl tds) $ \_ ->
-      withDecls ds $ \ds' -> do
-        mapCont absDecl atds $ \tags' ->
-          outofA $ k0 (foldr replaceTyTags ds' tags')
+      withDecls ds $ \ds' ->
+        intoA $ do
+          mapCont absDecl atds $ \tags' ->
+            outofA $ k0 (foldr replaceTyTags ds' tags')
     where
       absDecl (arity, quals, TdDatA name params _) k = do
         tag     <- getTypeTag "abstract-with-end" (J [] name)
@@ -1266,14 +1273,15 @@ withAbsTy at ds k0 = case at of
               k tag'
       absDecl _ _ = terr "(BUG) Can't abstract non-datatypes"
 
-tcDecls :: Monad m => S -> [Decl i] -> m (S, NewDefs, [DeclT])
-tcDecls gg ds = runTC gg $
-                  pushScope $
-                    withDecls ds $ \ds' -> do
-                      new <- askNewDefs
-                      squishScope $ do
-                        gg' <- saveTC
-                        return (gg', new, ds')
+tcDecls :: Monad m => Bool -> S -> [Decl i] -> m (S, NewDefs, [DeclT])
+tcDecls interactive gg ds =
+  runTC gg $
+    pushScope $
+      withDecls ds $ \ds' -> do
+        new <- askNewDefs
+        squishScope $ do
+          gg' <- saveTC interactive
+          return (gg', new, ds')
 
 -- Info about new defs for printing in the repl:
 data NewDefs = NewDefs {
@@ -1290,7 +1298,8 @@ emptyNewDefs  = (NewDefs empty empty empty empty [])
 
 askNewDefs :: (Language w, Monad m) => TC w m NewDefs
 askNewDefs  = intoC $ do
-  PEnv me (Both clevel alevel) <- askScope
+  scope <- askScope
+  PEnv me (Both clevel alevel) <- hideInvisible scope
   return NewDefs {
            newCTypes  = tlevel clevel,
            newCValues = vlevel clevel,
@@ -1305,7 +1314,7 @@ addVal :: (Ident :>: k, Language w, Monad m) =>
 addVal gg x t = runTC gg $ outofC $ do
   let ?loc = bogus
   t' <- tcType t
-  withAny (x' =:= t') saveTC
+  withAny (x' =:= t') $ saveTC False
     where x' :: Ident = liftKey x
 
 addType :: S -> Lid -> TyTag -> S

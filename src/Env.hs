@@ -11,7 +11,7 @@ module Env (
   (:>:)(..),
   empty, isEmpty,
   (-:-), (-::-), (-:+-), (-+-), (-\-), (-\\-), (-.-), (-|-),
-  unionSum, unionProduct,
+  unionWith, unionSum, unionProduct,
   mapAccum, mapAccumM,
   toList, fromList, domain, range,
 
@@ -44,6 +44,7 @@ class (Ord x, Ord y) => x :>: y where
 -- Reflexivity:
 instance Ord k => (:>:) k k where
   liftKey = id
+  liftEnv = id
 
 empty    :: Env k v
 empty     = Env M.empty
@@ -81,6 +82,10 @@ m -.- y   = M.lookup (liftKey y) (unEnv m)
 -- intersection
 (-|-)    :: (k :>: k') => Env k v -> Env k' w -> Env k (v, w)
 m -|- n   = Env (M.intersectionWith (,) (unEnv m) (unEnv (liftEnv n)))
+
+unionWith :: (k :>: k') => (v -> v -> v) -> 
+                           Env k v -> Env k' v -> Env k v
+unionWith f e e' = Env (M.unionWith f (unEnv e) (unEnv (liftEnv e')))
 
 -- additive union (right preference)
 unionSum :: (k :>: k') => Env k v -> Env k' w -> Env k (Either v w)
