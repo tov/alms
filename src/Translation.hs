@@ -31,17 +31,18 @@ translateDecls  = transDecls where ?trail = []
 
 transDecls :: (?trail :: Trail) => TEnv -> [DeclT] -> (TEnv, [DeclT])
 transDecls tenv = foldl each (tenv, []) where
-  each (env, ds) (DcLet loc m)      = let (env', m') = transLet env m
-                                       in (env', ds ++ [DcLet loc m'])
-  each (env, ds) (DcTyp loc td)     = (env, ds ++ [DcTyp loc td])
-  each (env, ds) (DcAbs loc at ds0) = let (env', ds0') = transDecls env ds0
-                                       in (env', ds ++ [DcAbs loc at ds0'])
-  each (env, ds) (DcMod loc m)      = let (env', m') = transMod env m
-                                       in (env', ds ++ [DcMod loc m']) 
-  each (env, ds) (DcOpn loc m)      = let (env', m') = transOpen env m
-                                       in (env', ds ++ [DcOpn loc m']) 
-  each (env, ds) (DcLoc loc m)      = let (env', m') = transLocal env m
-                                       in (env', ds ++ [DcLoc loc m']) 
+  each (env, ds) d = case d of
+    DcLet loc m      -> let (env', m') = transLet env m
+                          in (env', ds ++ [DcLet loc m'])
+    DcTyp loc td     -> (env, ds ++ [DcTyp loc td])
+    DcAbs loc at ds0 -> let (env', ds0') = transDecls env ds0
+                          in (env', ds ++ [DcAbs loc at ds0'])
+    DcMod loc x b    -> let (env', b') = transMod env x b
+                          in (env', ds ++ [DcMod loc x b'])
+    DcOpn loc b      -> let (env', b') = transOpen env b
+                          in (env', ds ++ [DcOpn loc b'])
+    DcLoc loc d0 d1  -> let (env', d0', d1') = transLocal env d0 d1
+                          in (env', ds ++ [DcLoc loc d0' d1'])
 
 transLet :: (?trail :: Trail) => TEnv -> LetT -> (TEnv, LetT)
 transLet tenv m@(LtC tl x (Just t) e) =
@@ -59,41 +60,35 @@ transLet tenv m@(LtInt tl x t y)      =
 transLet tenv m                  =
   (tenv =+= letName m =:= m, m)
 
-transOpen :: (?trail :: Trail) => TEnv -> OpenT -> (TEnv, OpenT)
-transOpen tenv (OpenC tl b) =
+transOpen :: (?trail :: Trail) => TEnv -> ModExpT -> (TEnv, ModExpT)
+transOpen tenv b =
   let (scope, b') = transModExp tenv b in
-    (tenv =+= scope, OpenC tl b')
-transOpen tenv (OpenA tl b) =
-  let (scope, b') = transModExp tenv b in
-    (tenv =+= scope, OpenC tl b')
+    (tenv =+= scope, b')
 
-transLocal :: (?trail :: Trail) => TEnv -> LocalT -> (TEnv, LocalT)
-transLocal tenv (LocalC tl ds0 ds1) =
+transLocal :: (?trail :: Trail) =>
+              TEnv -> [DeclT] -> [DeclT] -> (TEnv, [DeclT], [DeclT])
+transLocal tenv ds0 ds1 =
   let (tenv',          ds0') = transDecls (genEmpty:tenv) ds0
       (scope:_:tenv'', ds1') = transDecls (genEmpty:tenv') ds1
-   in (tenv'' =+= scope, LocalC tl ds0' ds1')
-transLocal tenv (LocalA tl ds0 ds1) =
-  let (tenv',          ds0') = transDecls (genEmpty:tenv) ds0
-      (scope:_:tenv'', ds1') = transDecls (genEmpty:tenv') ds1
-   in (tenv'' =+= scope, LocalC tl ds0' ds1')
+   in (tenv'' =+= scope, ds0', ds1')
 
-transMod :: (?trail :: Trail) => TEnv -> ModT -> (TEnv, ModT)
-transMod tenv (ModC tl x b) =
+transMod :: (?trail :: Trail) =>
+            TEnv -> Uid -> ModExpT -> (TEnv, ModExpT)
+transMod tenv x b =
   let ?trail       = x : ?trail in
   let (scope, b') = transModExp tenv b in
-    (tenv =+= x =:= scope, ModC tl x b')
-transMod tenv (ModA tl x b) =
-  let ?trail       = x : ?trail in
-  let (scope, b') = transModExp tenv b in
-    (tenv =+= x =:= scope, ModC tl x b')
+    (tenv =+= x =:= scope, b')
 
 transModExp :: (?trail :: Trail) => TEnv -> ModExpT -> (Scope, ModExpT)
 transModExp tenv (MeName n) = case tenv =..= n of
   Just scope -> (scope, MeName n)
   Nothing    -> (genEmpty, MeName n) -- built-in module
-transModExp tenv (MeDecls ds) =
+transModExp tenv (MeStrC tl ds) =
   let (scope:_, ds') = transDecls (genEmpty:tenv) ds
-   in (scope, MeDecls ds')
+   in (scope, MeStrC tl ds')
+transModExp tenv (MeStrA tl ds) =
+  let (scope:_, ds') = transDecls (genEmpty:tenv) ds
+   in (scope, MeStrC tl ds')
 
 getNeg :: (?trail :: Trail, Culpable p) => p -> Party
 getNeg def = case ?trail of

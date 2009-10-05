@@ -30,8 +30,7 @@ module Syntax (
   Let(..), LetT,
   TyDec(..), TyDecC(..), TyDecA(..),
   AbsTy(..),
-  Mod(..), ModExp(..), ModT, ModExpT,
-  Open(..), Local(..), OpenT, LocalT,
+  ModExp(..), ModExpT,
 
   TypeTW(..), typeTW,
 
@@ -178,9 +177,9 @@ data Prog i = Prog [Decl i] (Maybe (Expr i C))
 data Decl i = DcLet Loc (Let i)
             | DcTyp Loc TyDec
             | DcAbs Loc AbsTy [Decl i]
-            | DcMod Loc (Mod i)
-            | DcOpn Loc (Open i)
-            | DcLoc Loc (Local i)
+            | DcMod Loc Uid (ModExp i)
+            | DcOpn Loc (ModExp i)
+            | DcLoc Loc [Decl i] [Decl i]
   deriving (Typeable, Data)
 
 dcLet :: Let i -> Decl i
@@ -192,22 +191,14 @@ dcTyp  = DcTyp bogus
 dcAbs :: AbsTy -> [Decl i] -> Decl i
 dcAbs  = DcAbs bogus
 
-dcMod :: Mod i -> Decl i
+dcMod :: Uid -> ModExp i -> Decl i
 dcMod  = DcMod bogus
 
-dcOpn :: Open i -> Decl i
+dcOpn :: ModExp i -> Decl i
 dcOpn  = DcOpn bogus
 
-dcLoc :: Local i -> Decl i
+dcLoc :: [Decl i] -> [Decl i] -> Decl i
 dcLoc  = DcLoc bogus
-
-data Open i  = OpenC Bool (ModExp i)
-             | OpenA Bool (ModExp i)
-  deriving (Typeable, Data)
-
-data Local i = LocalC Bool [Decl i] [Decl i]
-             | LocalA Bool [Decl i] [Decl i]
-  deriving (Typeable, Data)
 
 data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
             | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
@@ -262,19 +253,9 @@ data AbsTy   = AbsTyC {
   deriving (Typeable, Data)
 type AbsTyADat = ([Variance], [Either TyVar Q], TyDecA)
 
-data Mod i   = ModC {
-                 mdTopLevel    :: Bool,
-                 mdName        :: Uid,
-                 mdBody        :: ModExp i
-               }
-             | ModA {
-                 mdTopLevel    :: Bool,
-                 mdName        :: Uid,
-                 mdBody        :: ModExp i
-               }
-  deriving (Typeable, Data)
-
-data ModExp i = MeDecls [Decl i] | MeName QUid
+data ModExp i = MeStrC Bool [Decl i]
+              | MeStrA Bool [Decl i]
+              | MeName QUid
   deriving (Typeable, Data)
 
 data Expr i w = Expr {
@@ -321,9 +302,6 @@ type ExprT    = Expr TyTag
 type TypeT    = Type TyTag
 type DeclT    = Decl TyTag
 type LetT     = Let TyTag
-type ModT     = Mod TyTag
-type OpenT    = Open TyTag
-type LocalT   = Local TyTag
 type ModExpT  = ModExp TyTag
 type BindingT = Binding TyTag
 type ProgT    = Prog TyTag
@@ -566,17 +544,17 @@ instance Locatable (Decl i) where
   getLoc (DcLet loc _)   = loc
   getLoc (DcTyp loc _)   = loc
   getLoc (DcAbs loc _ _) = loc
-  getLoc (DcMod loc _)   = loc
+  getLoc (DcMod loc _ _) = loc
   getLoc (DcOpn loc _)   = loc
-  getLoc (DcLoc loc _)   = loc
+  getLoc (DcLoc loc _ _) = loc
 
 instance Relocatable (Decl i) where
   setLoc (DcLet _ m)     loc = DcLet loc m
   setLoc (DcTyp _ td)    loc = DcTyp loc td
   setLoc (DcAbs _ at ds) loc = DcAbs loc at ds
-  setLoc (DcMod _ m)     loc = DcMod loc m
+  setLoc (DcMod _ m b)   loc = DcMod loc m b
   setLoc (DcOpn _ m)     loc = DcOpn loc m
-  setLoc (DcLoc _ l)     loc = DcLoc loc l
+  setLoc (DcLoc _ d d')  loc = DcLoc loc d d'
 
 instance Locatable (Binding i w) where
   getLoc = getLoc . bnexpr
@@ -868,7 +846,7 @@ instance Num Variance where
 
 -- In GHC 6.10, reifyLang is enough, but in 6.8, we need langCase
 -- and langMapType, it seems.
-class Language w where
+class Data w => Language w where
   type OtherLang w
   reifyLang   :: LangRep w
   langCase    :: f w -> (w ~ C => f C -> r) -> (w ~ A => f A -> r) -> r

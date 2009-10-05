@@ -221,9 +221,22 @@ declp :: P (Decl ())
 declp  = addLoc $ choice [
            tyDecp  >>! dcTyp,
            letp    >>! dcLet,
-           openp   >>! dcOpn,
-           modp    >>! dcMod,
-           localp  >>! dcLoc,
+           do
+             reserved "open"
+             modexpp >>! dcOpn,
+           do
+             reserved "module"
+             n <- uidp
+             reservedOp "="
+             b <- modexpp
+             return (dcMod n b),
+           do
+             reserved "local"
+             ds0 <- declsp
+             reserved "with"
+             ds1 <- declsp
+             reserved "end"
+             return (dcLoc ds0 ds1),
            enterdecl "abstype" $ \tl lang -> do
              at   <- abstyp tl lang
              reserved "with"
@@ -232,42 +245,14 @@ declp  = addLoc $ choice [
              return (dcAbs at ds)
          ]
 
-openp :: P (Open ())
-openp  =
-  enterdecl "open" $ \tl lang -> do
-    mexp <- modexpp
-    case lang of
-      LC -> return (OpenC tl mexp)
-      LA -> return (OpenA tl mexp)
-
-localp :: P (Local ())
-localp  =
-  enterdecl "local" $ \tl lang -> do
-    ds <- declsp
-    reserved "with"
-    ds' <- declsp
-    reserved "end"
-    case lang of
-      LC -> return (LocalC tl ds ds')
-      LA -> return (LocalA tl ds ds')
-
-modp :: P (Mod ())
-modp  =
-  enterdecl "module" $ \tl lang -> do
-    name <- uidp
-    reservedOp "="
-    mexp <- modexpp
-    case lang of
-      LC -> return (ModC tl name mexp)
-      LA -> return (ModA tl name mexp)
-
 modexpp :: P (ModExp ())
 modexpp  = choice [
-             do
-               reserved "struct"
+             enterdecl "struct" $ \tl lang -> do
                ds <- declsp
                reserved "end"
-               return (MeDecls ds),
+               return $ case lang of
+                 LC -> MeStrC tl ds
+                 LA -> MeStrA tl ds,
              quidp >>! MeName
            ]
 

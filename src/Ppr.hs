@@ -85,9 +85,17 @@ instance Ppr (Decl i) where
       nest 2 $ vcat (map (pprPrec p) ds),
       text "end"
     ]
-  pprPrec p (DcMod _ m)     = pprPrec p m
-  pprPrec p (DcOpn _ o)     = pprPrec p o
-  pprPrec p (DcLoc _ l)     = pprPrec p l
+  pprPrec _ (DcOpn _ b)     = pprModExp (text "open" <+>) b
+  pprPrec _ (DcMod _ n b)   = pprModExp add b where
+    add body = text "module" <+> ppr n <+> equals <+> body
+  pprPrec _ (DcLoc _ d0 d1) =
+    vcat [
+      text "local",
+      nest 2 (vcat (map ppr d0)),
+      text "with",
+      nest 2 (vcat (map ppr d1)),
+      text "end"
+    ]
 
 instance Ppr (Let i) where
   ppr (LtC tl x Nothing e) = sep
@@ -185,40 +193,16 @@ pprAlternatives (a:as) = sep $
     alt (Uid s, Nothing) = text s
     alt (Uid s, Just t)  = text s <+> text "of" <+> pprPrec precDot t
 
-instance Ppr (Open i) where
-  pprPrec _ d = case d of
-      OpenC tl mexp -> pprMod (add tl C) mexp
-      OpenA tl mexp -> pprMod (add tl A) mexp
-    where
-      add tl lang body =
-        (text "open" <> pprLang tl lang) <+> body
-
-instance Ppr (Local i) where
-  pprPrec _ d = case d of
-      LocalC tl ds ds' -> pprLocal tl C ds ds'
-      LocalA tl ds ds' -> pprLocal tl A ds ds'
-    where
-      pprLocal tl lang ds ds' = vcat [
-        text "local" <> pprLang tl lang,
-        nest 2 (vcat (map ppr ds)),
-        text "with",
-        nest 2 (vcat (map ppr ds')),
-        text "end" ]
-
-instance Ppr (Mod i) where
-  pprPrec _ m = case m of
-      ModC tl n mexp -> pprMod (add tl C n) mexp
-      ModA tl n mexp -> pprMod (add tl A n) mexp
-    where
-      add tl lang n body =
-        (text "module" <> pprLang tl lang) <+> ppr n <+> equals <+> body
-
-pprMod :: (Doc -> Doc) -> ModExp i -> Doc
-pprMod add (MeDecls ds) =
-  add (text "struct")
-  $$ nest 2 (vcat (map ppr ds))
-  $$ text "end"
-pprMod add (MeName n) = add (ppr n)
+pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
+pprModExp add modexp = case modexp of
+    MeStrC tl ds -> pprStruct C tl ds
+    MeStrA tl ds -> pprStruct A tl ds
+    MeName n     -> add (ppr n)
+  where
+    pprStruct lang tl ds =
+      add (text "struct" <> pprLang tl lang)
+      $$ nest 2 (vcat (map ppr ds))
+      $$ text "end"
 
 instance Ppr (Expr i w) where
   pprPrec p e0 = case view e0 of

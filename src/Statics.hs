@@ -241,7 +241,7 @@ withoutConstructors tag = TC . M.R.local clean . unTC where
   keep (Con _, TyCon _ _ tag')                = tag' /= tag
   keep _                                      = True
 
-withReplacedTyTags :: forall w m a. (Language w, Data w, Monad m) =>
+withReplacedTyTags :: forall w m a. (Language w, Monad m) =>
                       TyTag -> TC w m a -> TC w m a
 withReplacedTyTags tag = intoC . TC . M.R.local reptc . unTC . outofC
   where
@@ -1057,59 +1057,35 @@ withLet (LtInt tl x t y) k = do
         k $ LtInt tl x t' y
 
 withOpen :: (?loc :: Loc, Language w, Monad m) =>
-            Open i -> (OpenT -> TC w m a) -> TC w m a
-withOpen (OpenC tl b) k = intoC $ do
+            ModExp i -> (ModExpT -> TC w m a) -> TC w m a
+withOpen b k = do
   (b', scope) <- tcModExp b
-  withAny scope .
-    outofC .
-      k $ OpenC tl b'
-withOpen (OpenA tl b) k = intoA $ do
-  (b', scope) <- tcModExp b
-  withAny scope .
-    outofA .
-      k $ OpenA tl b'
+  withAny scope $ k b'
 
 withLocal :: (?loc :: Loc, Language w, Monad m) =>
-             Local i -> (LocalT -> TC w m a) -> TC w m a
-withLocal (LocalC tl ds0 ds1) k = intoC $ do
-  (scope, d') <- pushScope $
-                   withDecls ds0 $ \ds0' ->
-                     pushScope $
-                       withDecls ds1 $ \ds1' -> do
-                         scope <- askScope
-                         return (scope, LocalC tl ds0' ds1')
+             [Decl i] -> [Decl i] ->
+             ([DeclT] -> [DeclT] -> TC w m a) -> TC w m a
+withLocal ds0 ds1 k = do
+  (scope, ds0', ds1') <-
+    pushScope $
+      withDecls ds0 $ \ds0' ->
+        pushScope $
+          withDecls ds1 $ \ds1' -> do
+            scope <- askScope
+            return (scope, ds0', ds1')
   pushScope .
     withAny scope .
-      squishScope .
-        outofC $ k d'
-withLocal (LocalA tl ds0 ds1) k = intoA $ do
-  (scope, d') <- pushScope $
-                   withDecls ds0 $ \ds0' ->
-                     pushScope $
-                       withDecls ds1 $ \ds1' -> do
-                         scope <- askScope
-                         return (scope, LocalA tl ds0' ds1')
-  pushScope .
-    withAny scope .
-      squishScope .
-        outofA $ k d'
+      squishScope $
+        k ds0' ds1'
 
 withMod :: (?loc :: Loc, Language w, Monad m) =>
-           Mod i -> (ModT -> TC w m a) -> TC w m a
-withMod (ModC tl x b) k = intoC $ do
+           Uid -> ModExp i -> (ModExpT -> TC w m a) -> TC w m a
+withMod x b k = do
   (b', scope) <- tcModExp b
   let scope' = qualifyScope [x] scope
-  withAny (x =:= scope') .
-    outofC .
-      k $ ModC tl x b'
-withMod (ModA tl x b) k = intoA $ do
-  (b', scope) <- tcModExp b
-  let scope' = qualifyScope [x] scope
-  withAny (x =:= scope') .
-    outofA .
-      k $ ModA tl x b'
+  withAny (x =:= scope') $ k b'
 
-qualifyScope :: forall w. (Language w, Data w) =>
+qualifyScope :: forall w. (Language w) =>
                 [Uid] -> Scope w -> Scope w
 qualifyScope uids scope0 = fmap repairBoth scope0 where
   repairBoth :: Both w -> Both w
@@ -1146,36 +1122,35 @@ qualifyScope uids scope0 = fmap repairBoth scope0 where
 
 tcModExp :: (?loc :: Loc, Language w, Monad m) =>
              ModExp i -> TC w m (ModExpT, Scope w)
-tcModExp (MeDecls ds) =
-  pushScope $
-    withDecls ds $ \ds' -> do
-      scope <- askScope
-      return (MeDecls ds', scope)
+tcModExp (MeStrC tl ds) =
+  intoC $
+    pushScope $
+      withDecls ds $ \ds' ->
+        outofC $ do
+          scope <- askScope
+          return (MeStrC tl ds', scope)
+tcModExp (MeStrA tl ds) =
+  intoA $
+    pushScope $
+      withDecls ds $ \ds' ->
+        outofA $ do
+          scope <- askScope
+          return (MeStrA tl ds', scope)
 tcModExp (MeName n)   = do
   scope <- getModule n
   return (MeName n, scope)
 
-{-
-mapModule :: forall w w'. (TypeT w -> TypeT w') -> Scope w -> Scope w'
-mapModule f scope = fmap mapLevel scope where
-  mapLevel :: Level w -> Level w'
-  mapLevel level = Level { vlevel = fmap f (vlevel level), tlevel = empty }
--}
-
 withDecl :: (Language w, Monad m) =>
             Decl i -> (DeclT -> TC w m a) -> TC w m a
-withDecl (DcLet loc m)     k = withLet m (k . DcLet loc)
-  where ?loc = loc
-withDecl (DcTyp loc td)    k = withTyDec td (k . DcTyp loc)
-  where ?loc = loc
-withDecl (DcAbs loc at ds) k = withAbsTy at ds (k .  DcAbs loc at)
-  where ?loc = loc
-withDecl (DcMod loc m)     k = withMod m (k . DcMod loc)
-  where ?loc = loc
-withDecl (DcOpn loc m)     k = withOpen m (k . DcOpn loc)
-  where ?loc = loc
-withDecl (DcLoc loc m)     k = withLocal m (k . DcLoc loc)
-  where ?loc = loc
+withDecl decl k =
+  let ?loc = getLoc decl in
+    case decl of
+      DcLet loc m     ->  withLet m (k . DcLet loc)
+      DcTyp loc td    ->  withTyDec td (k . DcTyp loc)
+      DcAbs loc at ds ->  withAbsTy at ds (k .  DcAbs loc at)
+      DcMod loc x b   ->  withMod x b (k . DcMod loc x)
+      DcOpn loc b     ->  withOpen b (k . DcOpn loc)
+      DcLoc loc d0 d1 ->  withLocal d0 d1 ((.) k . DcLoc loc)
 
 withDecls :: (Language w, Monad m) =>
              [Decl i] -> ([DeclT] -> TC w m a) -> TC w m a

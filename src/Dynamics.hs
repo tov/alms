@@ -177,9 +177,9 @@ evalDecl :: Decl i -> DDecl
 evalDecl (DcLet _ m)    = evalLet m
 evalDecl (DcTyp _ _)    = return
 evalDecl (DcAbs _ _ ds) = evalDecls ds
-evalDecl (DcMod _ m)    = evalMod m
-evalDecl (DcOpn _ m)    = evalOpen m
-evalDecl (DcLoc _ m)    = evalLocal m
+evalDecl (DcOpn _ b)    = evalOpen b
+evalDecl (DcMod _ n b)  = evalMod n b
+evalDecl (DcLoc _ d0 d1)= evalLocal d0 d1
 
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
@@ -193,34 +193,27 @@ evalLet (LtInt _ x _ y) env = do
     Just v  -> return (env =+= x =:= v)
     Nothing -> fail $ "BUG! Unknown variable: " ++ show y
 
-evalOpen :: Open i -> DDecl
-evalOpen (OpenC _ b)   env = do
-  e <- evalModExp b env
-  return (env =+= e)
-evalOpen (OpenA _ b)   env = do
+evalOpen :: ModExp i -> DDecl
+evalOpen b env = do
   e <- evalModExp b env
   return (env =+= e)
 
-evalLocal :: Local i -> DDecl
-evalLocal (LocalC _ ds ds')  env0 = do
-  env1          <- evalDecls ds (genEmpty:env0)
-  scope:_:env2  <- evalDecls ds' (genEmpty:env1)
-  return (env2 =+= scope)
-evalLocal (LocalA _ ds ds')  env0 = do
-  env1          <- evalDecls ds (genEmpty:env0)
-  scope:_:env2  <- evalDecls ds' (genEmpty:env1)
-  return (env2 =+= scope)
+evalMod :: Uid -> ModExp i -> DDecl
+evalMod x b env = do
+  e <- evalModExp b env
+  return (env =+= x =:= e)
 
-evalMod :: Mod i -> DDecl
-evalMod (ModC _ x b)   env = do
-  e <- evalModExp b env
-  return (env =+= x =:= e)
-evalMod (ModA _ x b)   env = do
-  e <- evalModExp b env
-  return (env =+= x =:= e)
+evalLocal :: [Decl i] -> [Decl i] -> DDecl
+evalLocal ds ds'  env0 = do
+  env1          <- evalDecls ds (genEmpty:env0)
+  scope:_:env2  <- evalDecls ds' (genEmpty:env1)
+  return (env2 =+= scope)
 
 evalModExp :: ModExp i -> E -> IO Scope
-evalModExp (MeDecls ds) env = do
+evalModExp (MeStrC _ ds) env = do
+  scope:_ <- evalDecls ds (genEmpty:env)
+  return scope
+evalModExp (MeStrA _ ds) env = do
   scope:_ <- evalDecls ds (genEmpty:env)
   return scope
 evalModExp (MeName n)   env = do
