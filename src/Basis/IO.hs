@@ -1,4 +1,4 @@
-{-# OPTIONS -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
       StandaloneDeriving
@@ -9,7 +9,7 @@ import qualified IO
 
 import Data.Typeable (Typeable)
 import BasisUtils
-import Dynamics
+import Value (Valuable(..), vinjEnum, vprjEnum)
 import Ppr (text)
 import Util
 

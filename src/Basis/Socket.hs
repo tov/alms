@@ -1,4 +1,4 @@
-{-# OPTIONS -fcontext-stack=50 -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fcontext-stack=50 -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
       StandaloneDeriving
@@ -12,7 +12,7 @@ import qualified Network.Socket as S
 
 import Basis.IO ()
 import BasisUtils
-import Dynamics
+import Value
 import Ppr (text)
 
 instance Valuable S.Socket where

@@ -1,5 +1,5 @@
-{-# LANGUAGE PatternGuards #-}
 {-# OPTIONS_GHC -fno-warn-orphans #-}
+{-# LANGUAGE PatternGuards #-}
 module Ppr (
   Ppr(..), module Text.PrettyPrint, parensIf,
   pprParams,

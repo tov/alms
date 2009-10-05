@@ -1,7 +1,4 @@
 {-#
-  OPTIONS_GHC -fno-warn-orphans
-  #-}
-{-#
   LANGUAGE DeriveDataTypeable
   #-}
 module Basis (
@@ -10,7 +7,7 @@ module Basis (
 
 import Util
 import BasisUtils
-import Dynamics
+import Value (Valuable(..), Value(..))
 import Ppr (text)
 import Syntax
 

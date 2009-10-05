@@ -1,4 +1,4 @@
-{-# OPTIONS -fno-warn-orphans #-}
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
       EmptyDataDecls,

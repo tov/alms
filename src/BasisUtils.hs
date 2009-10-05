@@ -14,15 +14,16 @@ module BasisUtils (
   basis2venv, basis2tenv
 ) where
 
-import Util
-import Dynamics
-import Statics (S, env0, tcDecls, addVal, addType, addMod)
+import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
-import Syntax
 import Parser (pt, pds)
+import Ppr (ppr, text, hang, char, (<>))
+import Statics (S, env0, tcDecls, addVal, addType, addMod)
+import Syntax
+import Util
+import Value (Valuable(..), FunName(..), Value(..))
 
 import Data.Typeable (Typeable)
-import Ppr (ppr, text, hang, char, (<>))
 
 -- A basis entry is one of:
 -- -- a value with name and types
