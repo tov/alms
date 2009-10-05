@@ -36,7 +36,7 @@ module Syntax (
 
   Expr(), ExprT, Expr'(..),
   fv,
-  exId, exStr, exInt, exFloat, exCase, exLetRec, exPair,
+  exId, exStr, exInt, exFloat, exCase, exLetRec, exLetDecl, exPair,
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
   exVar, exCon, exBVar, exBCon, exLet, exSeq, -- <== synthetic
   qlid, quid,
@@ -271,7 +271,7 @@ data Expr' i w = ExId Ident
                | ExFloat Double
                | ExCase (Expr i w) [(Patt, Expr i w)]
                | ExLetRec [Binding i w] (Expr i w)
-               -- | ExLetMod Uid (ModExp i)
+               | ExLetDecl (Decl i) (Expr i w)
                | ExPair (Expr i w) (Expr i w)
                | ExAbs Patt (Type i w) (Expr i w)
                | ExApp (Expr i w) (Expr i w)
@@ -345,6 +345,13 @@ exLetRec bs e2 = Expr {
                pot = foldr (|*|) (fv e2) (map fv es)
            in foldl (|-|) pot vs,
   expr_  = ExLetRec bs e2
+}
+
+exLetDecl :: Decl i -> Expr i w -> Expr i w
+exLetDecl d e2 = Expr {
+  eloc_  = getLoc (d, e2),
+  fv_    = fv e2, -- conservative approximation
+  expr_  = ExLetDecl d e2
 }
 
 exId :: Ident -> Expr i w

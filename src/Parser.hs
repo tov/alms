@@ -1,3 +1,4 @@
+{-# LANGUAGE RelaxedPolyRec #-}
 module Parser (
   P, parse,
   parseProg, parseDecls, parseDecl,
@@ -305,9 +306,10 @@ letp  =  do
        y    <- qvarp
        return (LtInt tl x t y),
     do lang <- languagep
-       case lang of
-         LC -> letbodyp (LtC tl)
-         LA -> letbodyp (LtA tl)
+       withState (Just lang) $
+         case lang of
+           LC -> letbodyp (LtC tl)
+           LA -> letbodyp (LtA tl)
     ]
   where
     letbodyp :: Language w =>
@@ -428,7 +430,11 @@ exprp = expr0 where
                 return (exLetRec bs e2),
              do x    <- pattp
                 args <- argsp
-                finishLet (exLet x . args) ],
+                finishLet (exLet x . args),
+             do d    <- declp
+                reserved "in"
+                e2   <- expr0
+                return (exLetDecl d e2) ],
       do reserved "if"
          ec <- expr0
          reserved "then"

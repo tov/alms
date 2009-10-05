@@ -257,6 +257,9 @@ valOf e env = case view e of
       (reverse rev_rs)
       bs
     valOf e2 env'
+  ExLetDecl d e2         -> do
+    env' <- evalDecl d env
+    valOf e2 env'
   ExPair e1 e2           -> do
     v1 <- valOf e1 env
     v2 <- valOf e2 env

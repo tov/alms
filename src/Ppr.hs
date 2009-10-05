@@ -246,6 +246,9 @@ instance Ppr (Expr i w) where
                        (colon <+> ppr t <+> equals))
                  2
                  (ppr e)
+    ExLetDecl d e2 ->
+      text "let" <+> ppr d $$
+      (text "in" >+> pprPrec precDot e2)
     ExPair e1 e2 ->
       parensIf (p > precCom) $
         sep [ pprPrec precCom e1 <> comma,

@@ -8,12 +8,12 @@
       TypeFamilies,
       TypeSynonymInstances,
       UndecidableInstances #-}
-module Statics {-(
+module Statics (
   S, env0,
-  NewIn(..), NewDefs, emptyNewDefs, TyInfo, tyInfoToDec,
+  NewDefs(..), emptyNewDefs, TyInfo, tyInfoToDec,
   tcProg, tcDecls,
   addVal, addType, addMod
-)-} where
+) where
 
 import Util
 import Syntax
@@ -150,7 +150,6 @@ saveTC  = intoC . TC $ do
   }
 
 newtype WrapTC a m w = WrapTC { unWrapTC :: TC w m a }
-newtype WrapE w      = WrapE (E w)
 
 runTC :: Monad m => S -> TC C m a -> m a
 runTC s (TC m) = do
@@ -420,6 +419,10 @@ tcExprC = tc where
       let b's = zipWith3 (\b tf e' -> b { bntype = tf, bnexpr = e' })
                          bs tfs e's
       return (t2, exLetRec b's e2')
+    ExLetDecl d e2 -> do
+      withDecl d $ \d' -> do
+        (t2, e2') <- tc e2
+        return (t2, exLetDecl d' e2')
     ExPair e1 e2  -> do
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2
@@ -513,6 +516,10 @@ tcExprA = tc where
       let b's = zipWith3 (\b tf e' -> b { bntype = tf, bnexpr = e' })
                          bs tfs e's
       return (t2, exLetRec b's e2')
+    ExLetDecl d e2 -> do
+      withDecl d $ \d' -> do
+        (t2, e2') <- tc e2
+        return (t2, exLetDecl d' e2')
     ExPair e1 e2  -> do
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2

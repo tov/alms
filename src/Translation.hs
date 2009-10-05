@@ -2,7 +2,8 @@
       FlexibleInstances,
       ImplicitParams,
       MultiParamTypeClasses,
-      PatternGuards #-}
+      PatternGuards,
+      RelaxedPolyRec #-}
 module Translation (
   translate, translateDecls, TEnv
 ) where
@@ -16,7 +17,7 @@ type TEnv  = [Scope]
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.
-newtype Party = Party Ident
+newtype Party = Party { unParty :: Ident }
 type Trail    = [Uid]
 
 -- Translate a program by adding contracts.
@@ -114,6 +115,9 @@ transExpr tenv neg = te where
                            [ Binding x (type2ctype t) (rec e)
                            | Binding x t e <- bs ]
                            (rec e2)
+    ExLetDecl d e2 -> let ?trail = jpath (unParty neg) in
+                      let (tenv', [d']) = transDecls tenv [d] in
+                        exLetDecl d' (tem tenv' e2)
     ExPair e1 e2 -> exPair (te e1) (te e2)
     ExAbs x t e -> exAbs x (type2ctype t) (tem (tenv =\\= pv x) e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
