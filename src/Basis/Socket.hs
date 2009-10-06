@@ -87,37 +87,8 @@ entries :: [Entry]
 entries  = [
     typeC "portNumber = PortNum of int",
     typeC "socket",
-    typeC "family = AF_UNSPEC"
-           "      | AF_UNIX"
-           "      | AF_INET"
-           "      | AF_INET6"
-           "      | AF_SNA"
-           "      | AF_DECnet"
-           "      | AF_APPLETALK"
-           "      | AF_ROUTE"
-           "      | AF_X25"
-           "      | AF_AX25"
-           "      | AF_IPX"
-           "      | AF_NETROM"
-           "      | AF_BRIDGE"
-           "      | AF_ATMPVC"
-           "      | AF_ROSE"
-           "      | AF_NETBEUI"
-           "      | AF_SECURITY"
-           "      | AF_PACKET"
-           "      | AF_ASH"
-           "      | AF_ECONET"
-           "      | AF_ATMSVC"
-           "      | AF_IRDA"
-           "      | AF_PPPOX"
-           "      | AF_WANPIPE"
-           "      | AF_BLUETOOTH",
-    typeC "socketType = NoSocketType"
-           "          | Stream"
-           "          | Datagram"
-           "          | Raw"
-           "          | RDM"
-           "          | SeqPacket",
+    typeC (enumTypeDecl S.AF_INET),
+    typeC (enumTypeDecl S.Stream),
     typeC "protocolNumber = int",
     typeC "hostAddress  = int",
     typeC "flowInfo     = int",
@@ -127,13 +98,7 @@ entries  = [
           "         | SockAddrInet6 of"
           "             portNumber * flowInfo * hostAddress6 * scopeID"
           "         | SockAddrUnix of string",
-    typeC "addrInfoFlag = AI_ADDRCONFIG"
-          "             | AI_ALL"
-          "             | AI_CANONNAME"
-          "             | AI_NUMERICHOST"
-          "             | AI_NUMERICSERV"
-          "             | AI_PASSIVE"
-          "             | AI_V4MAPPED",
+    typeC (enumTypeDecl S.AI_ALL),
     typeC "addrInfo = AddrInfo of"
           "  addrInfoFlag list * family * socketType *"
           "  protocolNumber * sockAddr * string option",
@@ -142,6 +107,7 @@ entries  = [
 
     val "defaultProtocol" -: "protocolNumber" -: ""
       -= S.defaultProtocol,
+
     fun "getAddrInfo"
       -: ("addrInfo option -> hostName option -> " ++
           "serviceName option -> addrInfo list")

@@ -60,7 +60,7 @@ integer2char  = chr . fromIntegral
 splitBy :: (a -> Bool) -> [a] -> [[a]]
 splitBy _ [] = []
 splitBy p xs = let (ys, zs) = break p xs 
-                in ys : splitBy p zs
+                in ys : splitBy p (drop 1 zs)
 
 (?:) :: Maybe a -> [a] -> [a]
 Nothing ?: xs = xs

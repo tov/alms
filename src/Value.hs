@@ -11,9 +11,12 @@ module Value (
   FunName(..), Value(..), vaInt, vaUnit,
   Vinj(..),
   -- vinjEnum, vprjEnum, vinjProd, vprjProd, vinjStruct, vprjStruct,
+  enumTypeDecl,
   vinjData, vprjDataM
 ) where
 
+import qualified Data.List as List
+import qualified Data.Char as Char
 import Data.Generics
 
 import Util
@@ -275,6 +278,24 @@ instance (Eq a, Show a, Data a) => Valuable (Vinj a) where
 instance Show a => Show (Vinj a) where
   showsPrec p = showsPrec p . unVinj
 
+-- nasty syb stuff
+
+enumTypeDecl :: Data a => a -> String
+enumTypeDecl a =
+  case dataTypeRep ty of
+    IntRep     -> add "int"
+    FloatRep   -> add "float"
+    StringRep  -> add "string"
+    NoRep      -> name
+    AlgRep cs  -> add (unwords (List.intersperse " | " (map showConstr cs)))
+  where
+    ty = dataTypeOf a
+    add body = name ++ " = " ++ body
+    name = case last (splitBy (=='.') (dataTypeName ty)) of
+             c:cs -> Char.toLower c : cs
+             _    -> error "(BUG!) bad type name in enumTypeDecl"
+
+
 newtype Const a b = Const { unConst :: a }
 
 vinjData :: Data a => a -> Value
@@ -346,11 +367,20 @@ vprjDataM = generic
         datum <- vprjDataM field'
         return (make datum)
       z = return
-  generic v@(VaDyn _) | isAlgType ty,
-                        c:_    <- dataTypeConstrs ty,
-                        t      <- showConstr c,
-                        isTuple t
-            = generic (VaCon (Uid t) (Just v))
+  generic v@(VaDyn _) = case dataTypeRep ty of
+    AlgRep (c:_) | t <- showConstr c, isTuple t
+            -> generic (VaCon (Uid t) (Just v))
+    IntRep       | Just i <- vprjM v,
+                   Just d <- cast (i :: Integer)
+            -> return d
+    FloatRep     | Just f <- vprjM v,
+                   Just d <- cast (f :: Double)
+            -> return d
+    StringRep    | Just s <- vprjM v,
+                   Just d <- cast (s :: String)
+            -> return d
+    _       -> fail $ "(BUG) Can't project (VaDyn) " ++ show v ++
+                      " as datatype: " ++ show ty
   generic v = fail $ "(BUG) Can't project " ++ show v ++
                      " as datatype: " ++ show ty
   ty = dataTypeOf (undefined :: a)
