@@ -4,78 +4,83 @@
 
 #load "libarray-C.aff"
 
-abstype[A] ('a, 't) array = Array of {{'a} array} with
-  abstype ('t, 'c) readcap qualifier A = MkCap with
-    type 't writecap = ('t, unit) readcap
+module AArray = struct[A]
+  local
+    module A = Array
+  with
+    abstype ('a, 't) array = Array of {{'a} A.array} with
+      abstype ('t, 'c) readcap qualifier A = MkCap with
+        type 't writecap = ('t, unit) readcap
 
-    let newA['a] (size: int) : ex 't. ('a, 't) array * 't writecap =
-      Pack[ex 't. ('a, 't) array * 't writecap]
-          (unit, (Array['a,unit] (newArray['a] size), MkCap[unit,unit]))
+        let new['a] (size: int) : ex 't. ('a, 't) array * 't writecap =
+          Pack[ex 't. ('a, 't) array * 't writecap]
+              (unit, (Array['a,unit] (A.newArray['a] size), MkCap[unit,unit]))
 
-    let splitA['t,'c] (_: ('t, 'c) readcap)
-            : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap =
-      (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
+        let split['t,'c] (_: ('t, 'c) readcap)
+                : ('t, 'c * unit) readcap * ('t, 'c * unit) readcap =
+          (MkCap['t, 'c * unit], MkCap['t, 'c * unit])
 
-    let joinA['t,'c]
-            (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
-            : ('t, 'c) readcap =
-      MkCap['t, 'c]
+        let join['t,'c]
+                (_: ('t, 'c * unit) readcap * ('t, 'c * unit) readcap)
+                : ('t, 'c) readcap =
+          MkCap['t, 'c]
+      end
+
+      let at['a,'t,'c] (Array arr: ('a, 't) array) (ix: int)
+                        (cap : ('t, 'c) readcap)
+                        : 'a * ('t, 'c) readcap =
+        (A.at arr ix, cap)
+
+      let update['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
+                         (cap : 't writecap) : 't writecap =
+        A.update arr ix new;
+        cap
+
+      let size['a,'t] (Array arr: ('a, 't) array): int =
+        A.size arr
+    end
   end
 
-  let atA['a,'t,'c] (Array arr: ('a, 't) array) (ix: int)
-                    (cap : ('t, 'c) readcap)
-                    : 'a * ('t, 'c) readcap =
-    (at arr ix, cap)
+  let par ['t,'c,'<r1,'<r2]
+          (left:  all 'd. ('t, 'd) readcap -> '<r1 * ('t, 'd) readcap)
+          (right: all 'd. ('t, 'd) readcap -> '<r2 * ('t, 'd) readcap)
+          (c: ('t, 'c) readcap)
+          : '<r1 * '<r2 * ('t, 'c) readcap =
+    let (c1, c2) = split c in
+    let future   = newFuture (fun () -> left c1) in
+    let (r2, c2) = right c2 in
+    let (r1, c1) = getFuture future in
+      (r1, r2, join (c1, c2))
 
-  let updateA['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
-                     (cap : 't writecap) : 't writecap =
-    update arr ix new;
-    cap
+  let fold ['a,'t,'c,'<r]
+           (f: 'a -> '<r -> '<r) (z: '<r)
+           (a: ('a, 't) array) (c: ('t, 'c) readcap) =
+    let rec loop (i: int) (z: '<r)| (c: ('t, 'c) readcap)
+                 : '<r * ('t, 'c) readcap =
+      if i < size a
+        then let (elt, c) = at a i c in
+               loop (i + 1) (f elt z) c
+        else (z, c)
+     in loop 0 z c
 
-  let sizeA['a,'t] (Array arr: ('a, 't) array): int =
-    size arr
+  let map ['a,'t,'c,'b]
+          (f: 'a -> 'b)
+          (a: ('a, 't) array) (c: ('t, 'c) readcap)
+          : (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap =
+    let Pack('s, (b, d)) = new['b] (size a) in
+    let ((_, d), c)      = fold (fun (x: 'a) (i: int, d: 's writecap) ->
+                                    (i + 1, update b i (f x) d))
+                                 (0, d) a c in
+      (Pack[ex 't. ('b, 't) array * 't writecap]('s, (b, d)), c)
+
+  let putArray['a,'t,'c] (a: ('a, 't) array) (c: ('t, 'c) readcap) =
+    putStr "[";
+    let (_, c) =
+      fold (fun (x: 'a) (comma: bool) ->
+              (if comma then putStr "," else ());
+              putStr (string_of x);
+              true)
+           false a c in
+    putStrLn "]";
+    c
 end
-
-let[A] par ['t,'c,'<r1,'<r2]
-           (left:  all 'd. ('t, 'd) readcap -> '<r1 * ('t, 'd) readcap)
-           (right: all 'd. ('t, 'd) readcap -> '<r2 * ('t, 'd) readcap)
-           (c: ('t, 'c) readcap)
-           : '<r1 * '<r2 * ('t, 'c) readcap =
-  let (c1, c2) = splitA c in
-  let future   = newFuture (fun () -> left c1) in
-  let (r2, c2) = right c2 in
-  let (r1, c1) = getFuture future in
-    (r1, r2, joinA (c1, c2))
-
-let[A] foldA ['a,'t,'c,'<r]
-             (f: 'a -> '<r -> '<r) (z: '<r)
-             (a: ('a, 't) array) (c: ('t, 'c) readcap) =
-  let rec loop (i: int) (z: '<r)| (c: ('t, 'c) readcap)
-               : '<r * ('t, 'c) readcap =
-    if i < sizeA a
-      then let (elt, c) = atA a i c in
-             loop (i + 1) (f elt z) c
-      else (z, c)
-   in loop 0 z c
-
-let[A] mapA ['a,'t,'c,'b]
-            (f: 'a -> 'b)
-            (a: ('a, 't) array) (c: ('t, 'c) readcap)
-            : (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap =
-  let Pack('s, (b, d)) = newA['b] (sizeA a) in
-  let ((_, d), c)      = foldA (fun (x: 'a) (i: int, d: 's writecap) ->
-                                  (i + 1, updateA b i (f x) d))
-                               (0, d) a c in
-    (Pack[ex 't. ('b, 't) array * 't writecap]('s, (b, d)), c)
-
-let[A] putA['a,'t,'c] (a: ('a, 't) array) (c: ('t, 'c) readcap) =
-  putStr "[";
-  let (_, c) =
-    foldA (fun (x: 'a) (comma: bool) ->
-             (if comma then putStr "," else ());
-             putStr (string_of x);
-             true)
-          false a c in
-  putStrLn "]";
-  c
-

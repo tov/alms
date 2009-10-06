@@ -6,7 +6,6 @@
 module Basis.Socket ( entries ) where
 
 import Data.Data as Data
-import Data.Word (Word32)
 import Foreign.C.Types (CInt)
 import qualified Network.Socket as S
 
