@@ -1,3 +1,4 @@
+{-# LANGUAGE FlexibleContexts #-}
 module Util (
   fromJust, (?:),
   foldrM, anyM, allM, anyM2, allM2,
@@ -5,6 +6,7 @@ module Util (
   char2integer, integer2char, splitBy,
   unscanr, unscanl,
   mapCont, mapCont_,
+  GSequence(..),
   module Control.Arrow,
   module Control.Monad
 ) where
@@ -86,4 +88,27 @@ mapCont f (x:xs) k = f x $ \x' ->
 mapCont_ :: (a -> r -> r) -> [a] -> r -> r
 mapCont_ _ []     k = k
 mapCont_ f (x:xs) k = f x $ mapCont_ f xs $ k
+
+class GSequence m where
+  gsequence   :: Monad m' => m (m' a) -> m' (m a)
+  gsequence_  :: Monad m' => m (m' a) -> m' ()
+  gsequence_ m = gsequence m >> return ()
+  gmapM       :: (Monad m, Monad m') => (a -> m' b) -> m a -> m' (m b)
+  gmapM f      = gsequence . liftM f
+  gmapM_      :: (Monad m, Monad m') => (a -> m' b) -> m a -> m' ()
+  gmapM_ f     = gsequence_ . liftM f
+  gforM       :: (Monad m, Monad m') => m a -> (a -> m' b) -> m' (m b)
+  gforM        = flip gmapM
+  gforM_      :: (Monad m, Monad m') => m a -> (a -> m' b) -> m' ()
+  gforM_       = flip gmapM_
+
+instance GSequence [] where
+  gsequence  = sequence
+  gsequence_ = sequence_
+  gmapM      = mapM
+  gmapM_     = mapM_
+
+instance GSequence Maybe where
+  gsequence  = maybe (return Nothing) (liftM return)
+  gsequence_ = maybe (return ()) (>> return ())
 

@@ -1,19 +1,30 @@
 {-# LANGUAGE
       DeriveDataTypeable,
-      ExistentialQuantification
+      ExistentialQuantification,
+      MultiParamTypeClasses,
+      PatternGuards,
+      RankNTypes,
+      ScopedTypeVariables
     #-}
 module Value (
   Valuable(..),
   FunName(..), Value(..), vaInt, vaUnit,
-  vinjEnum, vprjEnum, vinjProd, vprjProd, vinjStruct, vprjStruct
+  Vinj(..),
+  -- vinjEnum, vprjEnum, vinjProd, vprjProd, vinjStruct, vprjStruct,
+  vinjData, vprjDataM
 ) where
 
-import Data.Typeable (Typeable, cast)
+import Data.Generics
 
 import Util
 import Syntax (Uid(..))
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             parensIf, precCom, precApp)
+
+import Foreign.C.Types (CInt)
+import Data.Word (Word32, Word16)
+
+import Control.Monad.State as M.S
 
 data FunName = FNAnonymous Doc
              | FNNamed [Doc]
@@ -86,6 +97,7 @@ vaInt   = vinj
 vaUnit :: Value
 vaUnit  = vinj ()
 
+{-
 -- Deal with algebraic datatypes
 vprjEnum  :: (Monad m, Read a) => Value -> m a
 vprjEnum v = do
@@ -118,6 +130,7 @@ vprjStruct n (VaCon (Uid name) (Just v)) = do
   fields <- vprjProd n v
   return (name, fields)
 vprjStruct _ _ = fail "vprjStruct (bug): not a constructor"
+-}
 
 -- Ppr instances
 
@@ -148,6 +161,24 @@ instance Valuable Int where
   vinj       = vinj . toInteger
   vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
 
+instance Valuable Word16 where
+  veq        = (==)
+  vpprPrec _ = text . show
+  vinj       = vinj . toInteger
+  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
+
+instance Valuable Word32 where
+  veq        = (==)
+  vpprPrec _ = text . show
+  vinj       = vinj . toInteger
+  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
+
+instance Valuable CInt where
+  veq        = (==)
+  vpprPrec _ = text . show
+  vinj       = vinj . toInteger
+  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
+
 instance Valuable Integer where
   veq        = (==)
   vpprPrec _ = text . show
@@ -171,6 +202,7 @@ instance Valuable Bool where
   vprjM _                       = fail "vprjM: not a bool"
 
 instance Valuable Value where
+  vinj v = v
   veq (VaCon c v) (VaCon d w) = c == d && v == w
   veq (VaDyn a)   b           = veqDyn a b
   veq _           _           = False
@@ -181,6 +213,14 @@ instance Valuable Value where
                                     pprPrec precApp c <+>
                                     vpprPrec (precApp + 1) v
   vpprPrec p (VaDyn v)          = vpprPrec p v
+  -- for value debugging:
+  {-
+  vpprPrec p (VaCon c Nothing)  = char '[' <> pprPrec p c <> char ']'
+  vpprPrec p (VaCon c (Just v)) = parensIf (p > precApp) $
+                                    char '[' <> pprPrec precApp c <+>
+                                    vpprPrec (precApp + 1) v <> char ']'
+  vpprPrec p (VaDyn v)          = char '{' <> vpprPrec p v <> char '}'
+  -}
 
 instance Valuable Char where
   veq            = (==)
@@ -224,3 +264,116 @@ instance Valuable a => Valuable (Maybe a) where
   vprjM (VaCon (Uid "None") Nothing)   = return Nothing
   vprjM _                              = fail "vprjM: not an option"
 
+-- For other arbitrary values:
+newtype Vinj a = Vinj { unVinj :: a }
+  deriving (Eq, Typeable, Data)
+
+instance (Eq a, Show a, Data a) => Valuable (Vinj a) where
+  veq        = (==)
+  vpprPrec _ = text . show
+
+instance Show a => Show (Vinj a) where
+  showsPrec p = showsPrec p . unVinj
+
+newtype Const a b = Const { unConst :: a }
+
+vinjData :: Data a => a -> Value
+vinjData = generic
+    `ext1Q` (vinj . map vinjData)
+    `ext1Q` (vinj . maybe Nothing (Just . vinjData))
+    `extQ`  (vinj :: String -> Value)
+    `extQ`  (vinj :: Value  -> Value)
+    `extQ`  (vinj :: Bool   -> Value)
+    `extQ`  (vinj :: Char   -> Value)
+    where
+  generic datum = case constrRep r of
+      IntConstr    v -> vinj v
+      StringConstr v -> vinj v
+      FloatConstr  v -> vinj v
+      AlgConstr    _ -> c (unConst (gfoldl k z datum))
+    where
+      r = toConstr datum
+      k (Const Nothing)  x = Const (Just (vinjData x))
+      k (Const (Just v)) x = Const (Just (vinj (v, vinjData x)))
+      z = const (Const Nothing)
+      c f = case (showConstr r, f) of
+             (s, Just f') | isTuple s
+               -> f'
+             _ -> VaCon (Uid (showConstr r)) f
+
+vprjDataM :: forall a m. (Data a, Monad m) => Value -> m a
+vprjDataM = generic
+    `ext1RT` (\x -> vprjM x >>= sequence . liftM vprjDataM)
+    `ext1RT` (\x -> vprjM x >>= maybe (return Nothing) (liftM return)
+                                         . liftM vprjDataM)
+    `extRT` (vprjM :: Value -> m Int)
+    `extRT` (vprjM :: Value -> m CInt)
+    `extRT` (vprjM :: Value -> m Word32)
+    `extRT` (vprjM :: Value -> m Word16)
+    `extRT` (vprjM :: Value -> m Integer)
+    `extRT` (vprjM :: Value -> m String)
+    `extRT` (vprjM :: Value -> m Double)
+    `extRT` (vprjM :: Value -> m Value)
+    `extRT` (vprjM :: Value -> m Bool)
+    `extRT` (vprjM :: Value -> m Char)
+    where
+  generic (VaCon (Uid uid) mfields0) = case readConstr ty uid of
+      Nothing -> fail $ 
+                   "(BUG) Couldn't find constructor: " ++ uid ++
+                   " in " ++ show ty
+      Just c  -> M.S.evalStateT (gunfold k z c) mfields0
+    where
+      k consmaker = do
+        mfields <- M.S.get
+        fields <- case mfields of
+          Just fields -> return fields
+          Nothing     -> fail "(BUG) ran out of fields"
+        field <- case vprjM fields of
+          Just (fields', field) -> do
+            M.S.put (Just fields')
+            return field
+          Nothing -> do
+            M.S.put Nothing
+            return fields
+        make  <- consmaker
+        mrest <- M.S.get
+        field' <- case mrest of
+          Just rest -> do
+            M.S.put Nothing
+            return (vinj (rest, field))
+          Nothing   ->
+            return field
+        datum <- vprjDataM field'
+        return (make datum)
+      z = return
+  generic v@(VaDyn _) | isAlgType ty,
+                        c:_    <- dataTypeConstrs ty,
+                        t      <- showConstr c,
+                        isTuple t
+            = generic (VaCon (Uid t) (Just v))
+  generic v = fail $ "(BUG) Can't project " ++ show v ++
+                     " as datatype: " ++ show ty
+  ty = dataTypeOf (undefined :: a)
+
+isTuple :: String -> Bool
+isTuple ('(':',':r) | dropWhile (== ',') r == ")"
+        = True
+isTuple _ = False
+
+newtype RT r m a = RT { unRT :: r -> m a }
+
+extRT :: (Typeable a, Typeable b) =>
+         (r -> m a) -> (r -> m b) -> r -> m a
+m1 `extRT` m2 = unRT (maybe (RT m1) id (gcast (RT m2)))
+
+ext1RT :: (Data d, Typeable1 t) =>
+          (r -> m d) -> (forall e. Data e => r -> m (t e)) -> r -> m d
+m1 `ext1RT` m2 = unRT (maybe (RT m1) id (dataCast1 (RT m2)))
+
+{-
+ext2RT :: (Data d, Typeable2 t) =>
+          (r -> m d) ->
+          (forall e e'. (Data e, Data e') => r -> m (t e e')) ->
+          r -> m d
+m1 `ext2RT` m2 = unRT (maybe (RT m1) id (dataCast2 (RT m2)))
+-}

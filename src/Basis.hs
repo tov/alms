@@ -7,7 +7,7 @@ module Basis (
 
 import Util
 import BasisUtils
-import Value (Valuable(..), Value(..))
+import Value (Valuable(..), Value(..), Vinj(..))
 import Ppr (text)
 import Syntax
 

@@ -31,7 +31,7 @@ let[C] getAddr (): sockAddr =
   | Cons(host, Cons(port, Nil))
       -> let info = AddrInfo(Nil[addrInfoFlag], AF_INET,
                              Stream, defaultProtocol,
-                             SockAddrInet(0, 0), None[string]) in
+                             SockAddrInet(PortNum 0, 0), None[string]) in
          (match getAddrInfo (Some info) (Some host) (Some port) with
           | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
           | _ -> failwith[sockAddr]

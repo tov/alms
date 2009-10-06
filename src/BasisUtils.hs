@@ -1,9 +1,8 @@
 {-# LANGUAGE
-  DeriveDataTypeable,
   FlexibleInstances
  #-}
 module BasisUtils (
-  Entry, Nonce(..), Vinj(..),
+  Entry,
   MkFun(..), baseMkFun,
   fun, binArith, val, pval, pfun,
   typeC, typeA, primtype, src,
@@ -22,8 +21,6 @@ import Statics (S, env0, tcDecls, addVal, addType, addMod)
 import Syntax
 import Util
 import Value (Valuable(..), FunName(..), Value(..))
-
-import Data.Typeable (Typeable)
 
 -- A basis entry is one of:
 -- -- a value with name and types
@@ -73,7 +70,6 @@ instance MkFun Double   where mkFun = baseMkFun
 instance MkFun Char     where mkFun = baseMkFun
 instance MkFun Bool     where mkFun = baseMkFun
 instance MkFun ()       where mkFun = baseMkFun
-instance MkFun Nonce    where mkFun = baseMkFun
 instance (Valuable a, MkFun a) =>
          MkFun [a]      where mkFun = baseMkFun
 instance (Valuable a, Valuable b, MkFun a, MkFun b) =>
@@ -133,25 +129,6 @@ primtype   = TypEn . Lid
 f -:: x = f x x
 infixl 5 -:, -::
 infixr 0 -=
-
--- For nonce values (and printing them)
-newtype Nonce = Nonce String
-  deriving (Eq, Typeable)
-
-instance Valuable Nonce where
-  veq                  = (==)
-  vpprPrec _ (Nonce s) = text ("#<" ++ s ++ ">")
-
--- For other arbitrary values:
-newtype Vinj a = Vinj { unVinj :: a }
-  deriving (Eq, Typeable)
-
-instance (Eq a, Show a, Typeable a) => Valuable (Vinj a) where
-  veq        = (==)
-  vpprPrec _ = text . show
-
-instance Show a => Show (Vinj a) where
-  showsPrec p = showsPrec p . unVinj
 
 -- Make binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry

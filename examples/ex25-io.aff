@@ -1,5 +1,7 @@
 (* Typestate file IO *)
 
+open IO
+
 abstype[C] in_channel = InChannel of handle with
   let open_in (s: string) = InChannel (openFile s ReadMode)
   let input_char (InChannel h: in_channel) = hGetChar h

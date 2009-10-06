@@ -7,9 +7,9 @@ module Basis.IO ( entries ) where
 
 import qualified IO
 
-import Data.Typeable (Typeable)
+import Data.Data (Typeable, Data)
 import BasisUtils
-import Value (Valuable(..), vinjEnum, vprjEnum)
+import Value (Valuable(..), vinjData, vprjDataM)
 import Ppr (text)
 import Util
 
@@ -20,9 +20,10 @@ instance Valuable IO.Handle where
 instance Valuable IO.IOMode where
   veq      = (==)
   vpprPrec _ = text . show
-  vinj     = vinjEnum
-  vprjM    = vprjEnum
+  vinj     = vinjData
+  vprjM    = vprjDataM
 deriving instance Typeable IO.IOMode
+deriving instance Data IO.IOMode
 
 entries :: [Entry]
 entries = [

@@ -25,5 +25,5 @@ Executable affine
                         mtl >= 1.1,
                         filepath >= 1.1,
                         network >= 2.2,
-                        editline
+                        editline >= 0.2
   CPP-Options:        -DUSE_READLINE=System.Console.Editline.Readline

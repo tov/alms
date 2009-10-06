@@ -5,7 +5,7 @@
   #-}
 module Basis.Socket ( entries ) where
 
-import Data.Typeable (Typeable)
+import Data.Data as Data
 import Data.Word (Word32)
 import Foreign.C.Types (CInt)
 import qualified Network.Socket as S
@@ -22,93 +22,70 @@ instance Valuable S.Socket where
 instance Valuable S.Family where
   veq      = (==)
   vpprPrec _ = text . show
-  vinj     = vinjEnum
-  vprjM    = vprjEnum
+  vinj     = vinjData
+  vprjM    = vprjDataM
 deriving instance Typeable S.Family
+deriving instance Data S.Family
 
 instance Valuable S.SocketType where
   veq        = (==)
   vpprPrec _ = text . show
-  vinj       = vinjEnum
-  vprjM      = vprjEnum
+  vinj       = vinjData
+  vprjM      = vprjDataM
+deriving instance Data S.SocketType
 
 instance Valuable S.AddrInfoFlag where
   veq        = (==)
   vpprPrec _ = text . show
-  vinj       = vinjEnum
-  vprjM      = vprjEnum
+  vinj       = vinjData
+  vprjM      = vprjDataM
+deriving instance Data S.AddrInfoFlag
 
 instance Valuable S.PortNumber where
   veq        = (==)
   vpprPrec _ = text . show
-  vinj       = vinj . toInteger
-  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
+  vinj       = vinjData
+  vprjM      = vprjDataM
 
-instance Valuable Word32 where
-  veq        = (==)
-  vpprPrec _ = text . show
-  vinj       = vinj . toInteger
-  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
+portNumberType :: DataType
+portNumberType  = mkDataType "Network.Socket.PortNumber" [portNumConstr]
+portNumConstr :: Constr
+portNumConstr = mkConstr portNumberType "PortNum" [] Prefix
 
-instance Valuable CInt where
-  veq        = (==)
-  vpprPrec _ = text . show
-  vinj       = vinj . toInteger
-  vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
+instance Data S.PortNumber where
+  gfoldl f z (S.PortNum x) = z S.PortNum `f` x
+  toConstr (S.PortNum _)  = portNumConstr
+  gunfold k z c = case constrIndex c of
+                    1 -> k (z S.PortNum)
+                    _ -> error "gunfold"
+  dataTypeOf _ = portNumberType
+
+instance Data.Data CInt where
+  toConstr x = mkIntConstr cIntType (fromIntegral x)
+  gunfold _ z c = case constrRep c of
+                    (IntConstr x) -> z (fromIntegral x)
+                    _ -> error "gunfold"
+  dataTypeOf _ = cIntType
+cIntType :: DataType
+cIntType  = mkIntType "Foreign.C.Types.CInt"
 
 instance Valuable S.SockAddr where
   veq        = (==)
   vpprPrec _ = text . show
-  vinj (S.SockAddrInet portNumber hostAddress)
-    = vinjStruct "SockAddrInet"
-        [vinj (toInteger portNumber),
-         vinj (toInteger hostAddress)]
-  vinj (S.SockAddrInet6 portNumber flowInfo (ha1, ha2, ha3, ha4) scopeID)
-    = vinjStruct "SockAddrInet6"
-        [vinj (toInteger portNumber),
-         vinj (toInteger flowInfo),
-         vinjProd (map (vinj . toInteger) [ha1, ha2, ha3, ha4]),
-         vinj (toInteger scopeID)]
-  vinj (S.SockAddrUnix s)
-    = vinjStruct "SockAddrUnix" [vinj s]
-  vprjM v = do
-    (name, [fields]) <- vprjStruct 1 v
-    case name of
-      "SockAddrInet" -> do
-        [f1, f2] <- vprjProd 2 fields
-        v1 <- vprjM f1
-        v2 <- vprjM f2
-        return (S.SockAddrInet v1 v2)
-      "SockAddrInet6" -> do
-        [f1, f2, f3, f4] <- vprjProd 4 fields
-        v1 <- vprjM f1
-        v2 <- vprjM f2
-        [v31, v32, v33, v34] <- vprjProd 5 f3 >>= mapM vprjM
-        v4 <- vprjM f4
-        return (S.SockAddrInet6 v1 v2 (v31, v32, v33, v34) v4)
-      _              -> do
-        [f1] <- vprjProd 1 fields
-        v1   <- vprjM f1
-        return (S.SockAddrUnix v1)
+  vinj       = vinjData
+  vprjM      = vprjDataM
+deriving instance Data S.SockAddr
 
 instance Valuable S.AddrInfo where
   veq        = (==)
   vpprPrec _ = text . show
-  vinj (S.AddrInfo f1 f2 f3 f4 f5 f6)
-             = vinjStruct "AddrInfo"
-                          [vinj f1, vinj f2, vinj f3, vinj f4, vinj f5, vinj f6]
-  vprjM v    = do
-    (_, [f1, f2, f3, f4, f5, f6]) <- vprjStruct 6 v
-    v1 <- vprjM f1
-    v2 <- vprjM f2
-    v3 <- vprjM f3
-    v4 <- vprjM f4
-    v5 <- vprjM f5
-    v6 <- vprjM f6
-    return (S.AddrInfo v1 v2 v3 v4 v5 v6)
+  vinj       = vinjData
+  vprjM      = vprjDataM
+deriving instance Data S.AddrInfo
 
 entries :: [Entry]
 entries  = [
+    typeC "portNumber = PortNum of int",
     typeC "socket",
     typeC "family = AF_UNSPEC"
            "      | AF_UNIX"
@@ -142,7 +119,6 @@ entries  = [
            "          | RDM"
            "          | SeqPacket",
     typeC "protocolNumber = int",
-    typeC "portNumber   = int",
     typeC "hostAddress  = int",
     typeC "flowInfo     = int",
     typeC "hostAddress6 = int * int * int * int",
@@ -185,6 +161,10 @@ entries  = [
     fun "send" -: "socket -> string -> int" -: ""
       -= S.send,
     fun "recv" -: "socket -> int -> string" -: ""
-      -= S.recv
+      -= S.recv,
+    fun "listen" -: "socket -> int -> unit" -: ""
+      -= S.listen,
+    fun "accept" -: "socket -> socket * sockAddr" -: ""
+      -= S.accept
   ]
 
