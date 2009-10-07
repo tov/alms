@@ -16,8 +16,7 @@ module ASocket = struct[A]
   with
     let socket (): ex 't. 't socket * 't initial =
       let sock = S.socket () in
-      Pack[ex 't. 't socket * 't initial]
-        (unit, Sock[unit] sock, Initial[unit])
+      Pack(unit, Sock[unit] sock, Initial[unit])
 
     (* If bind fails, you actually can try again. *)
     let bind['t] (Sock sock: 't socket) (port: int) (_: 't initial)
@@ -39,8 +38,7 @@ module ASocket = struct[A]
     let accept['t] (Sock sock: 't socket) (_: 't listening)
                    : (ex 's. 's socket * 's connected) * 't listening =
       let newsock = S.accept sock in
-        (Pack[ex 's. 's socket * 's connected]
-             (unit, Sock[unit] newsock, Connected[unit]),
+        (Pack(unit, Sock[unit] newsock, Connected[unit]),
          Listening['t])
 
     let send['t] (Sock sock: 't socket) (data: string)

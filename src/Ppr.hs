@@ -284,16 +284,18 @@ instance Ppr (Expr i w) where
         (args, op) = unfoldExTApp e0
     ExPack t1 t2 e ->
       parensIf (p > precApp) $
-        text "Pack" <> brackets (ppr t1) <+>
+        text "Pack" <> maybe empty (brackets . ppr) t1 <+>
         parens (sep [ pprPrec (precCom + 1) t2 <> comma,
                       pprPrec precCom e ])
     ExCast e t1 t2 ->
       parensIf (p > precCast) $
-        sep [ pprPrec (precCast + 2) e,
-              colon,
-              pprPrec (precCast + 2) t1,
-              text ":>",
-              pprPrec (precCast + 2) t2 ]
+        sep (pprPrec (precCast + 2) e :
+             maybe [] (\t1' -> [
+               colon,
+               pprPrec (precCast + 2) t1'
+             ]) t1 ++
+             [ text ":>",
+               pprPrec (precCast + 2) t2 ])
 
 pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $

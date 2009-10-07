@@ -277,8 +277,8 @@ data Expr' i w = ExId Ident
                | ExApp (Expr i w) (Expr i w)
                | ExTAbs TyVar (Expr i w)
                | ExTApp (Expr i w) (Type i w)
-               | ExPack (Type i w) (Type i w) (Expr i w)
-               | ExCast (Expr i w) (Type i w) (Type i A)
+               | ExPack (Maybe (Type i w)) (Type i w) (Expr i w)
+               | ExCast (Expr i w) (Maybe (Type i w)) (Type i A)
   deriving (Typeable, Data)
 
 data Binding i w = Binding {
@@ -398,14 +398,14 @@ exTApp e1 t2 = Expr {
   expr_  = ExTApp e1 t2
 }
 
-exPack :: Type i w -> Type i w -> Expr i w -> Expr i w
+exPack :: Maybe (Type i w) -> Type i w -> Expr i w -> Expr i w
 exPack t1 t2 e = Expr {
   eloc_  = getLoc e,
   fv_    = fv e,
   expr_  = ExPack t1 t2 e
 }
 
-exCast :: Expr i w -> Type i w -> Type i A -> Expr i w
+exCast :: Expr i w -> Maybe (Type i w) -> Type i A -> Expr i w
 exCast e t1 t2 = Expr {
   eloc_  = getLoc e,
   fv_    = fv e,

@@ -454,32 +454,42 @@ tcExprC = tc where
       t2'       <- tcType t2
       t1'       <- tapply t1 t2'
       return (t1', exTApp e1' t2')
-    ExPack t1 t2 e -> do
-      t1'      <- tcType t1
+    ExPack mt1 t2 e -> do
       t2'      <- tcType t2
       (te, e') <- tc e
+      t1'      <- case mt1 of
+        Just t1 -> tcType t1
+        Nothing -> return (makeExType te t2')
       case t1' of
         TyQu Exists tv t11' -> do
           te' <- tapply (tyAll tv t11') t2'
           tassert (te == te') $
             "Could not pack type " ++ show te ++
             " (abstracting " ++ show t2 ++
-            ") to get " ++ show t1
-          return (t1', exPack t1' t2' e')
+            ") to get " ++ show t1'
+          return (t1', exPack (Just t1') t2' e')
         _ -> tgot "Pack[-]" t1' "ex(istential) type"
-    ExCast e1 t ta -> do
-      t'  <- tcType t
+    ExCast e1 mt ta -> do
+      (t1, e1') <- tc e1
+      t'  <- maybe (return t1) tcType mt
       ta' <- intoA $ tcType ta
       tassgot (castableType t')
         "cast (:>)" t' "function type"
-      (t1, e1') <- tc e1
       tassert (t1 == t') $
         "Mismatch in cast: declared type " ++ show t' ++
         " doesn't match actual type " ++ show t1
       tassert (t1 == atype2ctype ta') $
         "Mismatch in cast: C type " ++ show t1 ++
         " is incompatible with A contract " ++ show t'
-      return (t', exCast e1' t' ta')
+      return (t', exCast e1' (Just t') ta')
+
+-- Remove all instances of t2 from t1, replacing with
+-- a new type variable 
+makeExType :: Language w => TypeT w -> TypeT w -> TypeT w
+makeExType t1 t2 = TyQu Exists tv $ everywhere (mkT erase) t1 where
+  tv       = freshTyVar (TV (Lid "a") qual) (ftv [t1, t2])
+  erase t' = if t' == t2 then TyVar tv else t'
+  qual     = langCase t2 (const Qu) qualifier
 
 tcExprA :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
 tcExprA = tc where
@@ -557,31 +567,33 @@ tcExprA = tc where
       t2'       <- tcType t2
       t1'       <- tapply t1 t2'
       return (t1', exTApp e1' t2')
-    ExPack t1 t2 e -> do
-      t1'      <- tcType t1
+    ExPack mt1 t2 e -> do
       t2'      <- tcType t2
       (te, e') <- tc e
+      t1'      <- case mt1 of
+        Just t1 -> tcType t1
+        Nothing -> return (makeExType te t2')
       case t1' of
         TyQu Exists tv t11' -> do
           te' <- tapply (tyAll tv t11') t2'
           tassert (te <: te') $
             "Could not pack type " ++ show te ++
             " (abstracting " ++ show t2 ++
-            ") to get " ++ show t1
-          return (t1', exPack t1' t2' e')
+            ") to get " ++ show t1'
+          return (t1', exPack (Just t1') t2' e')
         _ -> tgot "Pack[-]" t1' "ex(istential) type"
-    ExCast e1 t ta -> do
-      t'  <- tcType t
+    ExCast e1 mt ta -> do
+      (t1, e1') <- tc e1
+      t'  <- maybe (return t1) tcType mt
       ta' <- tcType ta
       tassgot (castableType t')
         "cast (:>)" t' "function type"
-      (t1, e1') <- tc e1
       tassgot (t1 <: t')
         "cast (:>)" t1 (show t')
       t1 \/? ta' |!
         "Mismatch in cast: types " ++ show t1 ++
         " and " ++ show t' ++ " are incompatible"
-      return (ta', exCast e1' t' ta')
+      return (ta', exCast e1' (Just t') ta')
 
   checkSharing :: (Monad m, ?loc :: Loc) =>
                   String -> V A -> Expr i A -> TC A m ()

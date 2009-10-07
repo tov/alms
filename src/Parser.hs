@@ -526,7 +526,7 @@ exprp = expr0 where
             [ chainl1 expr10 (addLoc (return exApp)),
               do
                 reserved "Pack"
-                t1 <- brackets typep
+                t1 <- optionMaybe (brackets typep)
                 parens $ do
                   t2 <- typep
                   comma
@@ -551,8 +551,7 @@ exprp = expr0 where
   exprN1 = addLoc $ do
     e1 <- expr0
     choice
-      [ do colon
-           t1 <- typep
+      [ do t1 <- optionMaybe $ do reservedOp ":"; typep
            reservedOp ":>"
            t2 <- typep
            return (exCast e1 t1 t2),

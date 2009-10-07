@@ -123,7 +123,7 @@ transExpr tenv neg = te where
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
-    ExPack t1 t2 e -> exPack (type2ctype t1) (type2ctype t2) (te e)
+    ExPack t1 t2 e -> exPack (fmap type2ctype t1) (type2ctype t2) (te e)
     ExCast e1 t ta -> transCast neg (te e1) t ta
 
 type2ctype :: Language w => TypeT w -> TypeT C
@@ -167,16 +167,22 @@ addName lang name k =
 --    e follows ta and that the context follows t.
 --
 transCast :: Language w =>
-             Party -> ExprT C -> TypeT w -> TypeT A -> ExprT C
-transCast neg e t' ta =
+             Party -> ExprT C -> Maybe (TypeT w) -> TypeT A -> ExprT C
+transCast neg e mt' ta =
   exLetVar' y e $
     exLetVar' z (ac neg pos y ta) $   -- protect the value
-      langCase t'
-        (\_ -> ca neg pos z ta)    -- protect the context, or
-        (\t -> ca neg pos z t)     -- protect the context
+      langCase (WMT mt')
+        (\_ -> ca neg pos z ta)       -- protect the context, or
+        (\(WMT mt) -> case mt of
+           Just t  -> ca neg pos z t  -- protect the context
+           Nothing -> error $
+             "Cannot add contracts to cast expression if " ++
+             "type checking was skipped")
   where y   = neg /./ "y"
         z   = neg /./ "z"
         pos = neg /./ "(:>)"
+
+newtype WrapMaybeType w = WMT (Maybe (TypeT w))
 
 -- Given negative and positive blame labels, the name of an A
 -- language variable we wish to protect, and the A type the variable
