@@ -1,0 +1,26 @@
+(* "Single-threaded" threads *)
+
+
+module AThread = struct[A]
+  local
+    #load "libthread-c.aff"
+    open Thread
+
+    (* down cast! *)
+    let interface threadFork :> (unit -o unit) -> {thread} = threadFork
+  with
+    abstype thread qualifier A = T of {thread} with
+      let threadFork (thunk: (unit -o unit)) =
+        T (threadFork thunk)
+
+      let threadKill (T th: thread) =
+        threadKill th
+
+      let threadDelay = threadDelay
+
+      let printThread (T th: thread) =
+        printThread th;
+        T th
+    end
+  end
+end
