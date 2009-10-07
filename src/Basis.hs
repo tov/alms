@@ -296,7 +296,9 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO (),
     submod "IO"     Basis.IO.entries,
-    submod "Socket" Basis.Socket.entries
+    submod "Prim" [
+      submod "Socket" Basis.Socket.entries
+    ]
   ]
 
 newtype Ref = Ref { unRef :: IORef Value }

@@ -27,6 +27,8 @@ deriving instance Data IO.IOMode
 
 entries :: [Entry]
 entries = [
+    typeA "handle",
+    typeA "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
     -- File operations
     typeC "handle",
     typeC "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",

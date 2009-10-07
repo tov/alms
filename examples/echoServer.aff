@@ -1,0 +1,41 @@
+(* Echo server written using state-tracked sockets. *)
+
+#load "libsocket-A.aff"
+
+module EchoServer = struct[A]
+  open ASocket
+
+  let handleClient['t] (sock: 't socket) (f: string -> string)
+                       (cap: 't connected) : unit =
+    let rec loop (cap: 't connected): unit =
+      match recv sock 1024 cap with
+      | None            -> ()
+      | Some (str, cap) ->
+          match send sock (f str) cap with
+          | None     -> ()
+          | Some cap -> loop cap in
+    loop cap
+
+  let rec acceptLoop['t] (sock: 't socket) (f: string -> string)
+                         (cap: 't listening) : unit =
+    let (Pack('s, clientsock, clientcap), cap) = accept sock cap in
+      putStrLn "Opened connection";
+      threadFork (fun () -> handleClient clientsock f clientcap;
+                            putStrLn "Closed connection");
+      acceptLoop sock f cap
+
+  let serve (port: int) (f: string -> string) =
+    let Pack('t, sock, cap) = socket () in
+    let cap = bind sock port cap in
+    let cap = listen sock cap in
+      acceptLoop sock f cap
+end
+
+let[C] serverFun (s: string) = s
+
+let[C] main (argv: string list) =
+  match argv with
+  | Cons (port, Nil) -> EchoServer.serve (int_of_string port) serverFun
+  | _ -> failwith[unit] "Usage: echoServer.aff PORT\n"
+
+in main (getArgs ())

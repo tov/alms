@@ -1,30 +1,32 @@
 (* Poor programmer's telnet *)
 
-open Socket
-
-let rec[C] pushString (sock: socket) (c: char): unit =
-  if send sock (implode (Cons (c, Nil[char]))) == 0
-    then pushString sock c
-    else ()
+open Prim.Socket
 
 local
   open IO
 with
   let rec[C] sendThread (sock: socket): unit =
     if hIsEOF stdin
-      then ()
+      then
+        shutdown sock ShutdownSend
       else
-        pushString sock (hGetChar stdin);
-        sendThread sock
+        match send sock (getLine () ^ "\r\n") with
+        | true  -> sendThread sock
+        | false -> ()
 
   let rec[C] recvThread (sock: socket): unit =
-    hPutStr stdout (recv sock 1);
-    recvThread sock
+    match recv sock 1024 with
+    | Some s -> putStr s; recvThread sock
+    | None   -> ()
 end
 
 let[C] setupConnection (addr: sockAddr): socket =
   let s = socket AF_INET Stream defaultProtocol in
-    connect s addr; s
+    connect s addr;
+    s
+
+let[C] teardownConnection (sock: socket): unit =
+  close sock
 
 let[C] getAddr (): sockAddr =
   match getArgs () with
@@ -40,7 +42,9 @@ let[C] getAddr (): sockAddr =
 
 let[A] main () =
   let sock = setupConnection (getAddr ()) in
-    threadFork (fun () -> recvThread sock);
-    sendThread sock
+  let wait = newFuture (fun () -> recvThread sock) in
+    sendThread sock;
+    getFuture wait;
+    teardownConnection sock
 
 in main ()

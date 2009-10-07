@@ -1,0 +1,48 @@
+(*
+    A simple sockets library.
+*)
+
+module Socket = struct[C]
+  local
+    module S = Prim.Socket
+  with
+    let getAddrByName (host: string) (port: string) : S.sockAddr =
+      let info = S.AddrInfo(Nil[S.addrInfoFlag], S.AF_INET,
+                            S.Stream, S.defaultProtocol,
+                            S.SockAddrInet(S.PortNum 0, 0), None[string]) in
+      match S.getAddrInfo (Some info) (Some host) (Some port) with
+      | Cons (S.AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
+      | _ -> failwith[S.sockAddr]
+               ("Could not resolve address "^host^":"^port)
+
+    type socket = S.socket
+
+    let socket (): socket =
+      S.socket S.AF_INET S.Stream S.defaultProtocol
+
+    let bind (sock: socket) (port: int) : unit =
+      S.bind sock (S.SockAddrInet (S.PortNum port, S.inaddr_any))
+
+    let connect (sock: socket) (host: string) (port: string) : unit =
+      S.connect sock (getAddrByName host port)
+
+    let listen (sock: socket) : unit = S.listen sock 10
+
+    let accept (sock: socket) : socket =
+      let (new, _) = S.accept sock in new
+
+    let send (sock: socket) (data: string) : bool =
+      S.send sock data
+
+    let recv (sock: socket) (len: int) : string option =
+      S.recv sock len
+
+    let close (sock: socket) : unit =
+      S.close sock
+
+    let fold_option['a, 'r] (none: 'r) (some: 'a -> 'r) (opt: 'a option) =
+      match opt with
+      | None   -> none
+      | Some v -> some v
+  end
+end

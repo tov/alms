@@ -26,6 +26,15 @@ instance Valuable S.Family where
 deriving instance Typeable S.Family
 deriving instance Data S.Family
 
+instance Valuable S.ShutdownCmd where
+  veq        = (==)
+  vpprPrec _ = text . show
+  vinj       = vinjData
+  vprjM      = vprjDataM
+deriving instance Eq S.ShutdownCmd
+deriving instance Show S.ShutdownCmd
+deriving instance Data S.ShutdownCmd
+
 instance Valuable S.SocketType where
   veq        = (==)
   vpprPrec _ = text . show
@@ -48,14 +57,19 @@ instance Valuable S.PortNumber where
 
 portNumberType :: DataType
 portNumberType  = mkDataType "Network.Socket.PortNumber" [portNumConstr]
-portNumConstr :: Constr
-portNumConstr = mkConstr portNumberType "PortNum" [] Prefix
+portNumConstr  :: Constr
+portNumConstr   = mkConstr portNumberType "PortNum" [] Prefix
+
+fakePortNumCon :: Integer -> S.PortNumber
+fakePortNumCon  = fromIntegral
+fakePortNumSel :: S.PortNumber -> Integer
+fakePortNumSel  = toInteger
 
 instance Data S.PortNumber where
-  gfoldl f z (S.PortNum x) = z S.PortNum `f` x
+  gfoldl f z portNum = z fakePortNumCon `f` (fakePortNumSel portNum)
   toConstr (S.PortNum _)  = portNumConstr
   gunfold k z c = case constrIndex c of
-                    1 -> k (z S.PortNum)
+                    1 -> k (z fakePortNumCon)
                     _ -> error "gunfold"
   dataTypeOf _ = portNumberType
 
@@ -84,6 +98,31 @@ deriving instance Data S.AddrInfo
 
 entries :: [Entry]
 entries  = [
+    {-
+    typeA "portNumber = PortNum of int",
+    typeA "socket",
+    typeA (enumTypeDecl S.AF_INET),
+    typeA (enumTypeDecl S.Stream),
+    typeA "protocolNumber = int",
+    typeA "hostAddress  = int",
+    typeA "flowInfo     = int",
+    typeA "hostAddress6 = int * int * int * int",
+    typeA "scopeID      = int",
+    typeA "sockAddr = SockAddrInet of portNumber * hostAddress"
+          "         | SockAddrInet6 of"
+          "             portNumber * flowInfo * hostAddress6 * scopeID"
+          "         | SockAddrUnix of string",
+    typeA (enumTypeDecl S.AI_ALL),
+    typeA (enumTypeDecl S.ShutdownSend),
+    typeA "addrInfo = AddrInfo of"
+          "  addrInfoFlag list * family * socketType *"
+          "  protocolNumber * sockAddr * string option",
+    typeA "hostName = string",
+    typeA "serviceName = string",
+    -}
+
+    typeA "void",
+
     typeC "portNumber = PortNum of int",
     typeC "socket",
     typeC (enumTypeDecl S.AF_INET),
@@ -98,38 +137,60 @@ entries  = [
           "             portNumber * flowInfo * hostAddress6 * scopeID"
           "         | SockAddrUnix of string",
     typeC (enumTypeDecl S.AI_ALL),
+    typeC (enumTypeDecl S.ShutdownSend),
     typeC "addrInfo = AddrInfo of"
           "  addrInfoFlag list * family * socketType *"
           "  protocolNumber * sockAddr * string option",
     typeC "hostName = string",
     typeC "serviceName = string",
 
-    val "defaultProtocol" -: "protocolNumber" -: ""
+    val "inaddr_any" -: "hostAddress" -: "void"
+      -= S.iNADDR_ANY,
+    val "defaultProtocol" -: "protocolNumber" -: "void"
       -= S.defaultProtocol,
+    val "defaultHints" -: "addrInfo" -: "void"
+      -= S.defaultHints {
+           S.addrAddress  = S.SockAddrInet S.aNY_PORT S.iNADDR_ANY,
+           S.addrCanonName = Nothing
+         },
 
     fun "getAddrInfo"
       -: ("addrInfo option -> hostName option -> " ++
-          "serviceName option -> addrInfo list")
-      -: ""
+          "serviceName option -> addrInfo list") -: "void"
       -= S.getAddrInfo,
-    fun "socket" -: "family -> socketType -> protocolNumber -> socket"
-                 -: ""
-      -= S.socket,
-    fun "bind"   -: "socket -> sockAddr -> unit" -: ""
-      -= S.bindSocket,
-    fun "connect"   -: "socket -> sockAddr -> unit" -: ""
-      -= S.connect,
-    fun "socketToHandle" -: "socket -> IO.ioMode -> IO.handle" -: ""
-      -= S.socketToHandle,
-    fun "inet_addr" -: "string -> hostAddress" -: ""
+    fun "inet_addr" -: "string -> hostAddress" -: "void"
       -= S.inet_addr,
-    fun "send" -: "socket -> string -> int" -: ""
-      -= S.send,
-    fun "recv" -: "socket -> int -> string" -: ""
-      -= S.recv,
-    fun "listen" -: "socket -> int -> unit" -: ""
+
+    fun "socket" -: "family -> socketType -> protocolNumber -> socket"
+                 -: "void"
+      -= S.socket,
+    fun "bind"   -: "socket -> sockAddr -> unit" -: "void"
+      -= S.bindSocket,
+    fun "connect"   -: "socket -> sockAddr -> unit" -: "void"
+      -= S.connect,
+    fun "listen" -: "socket -> int -> unit" -: "void"
       -= S.listen,
-    fun "accept" -: "socket -> socket * sockAddr" -: ""
-      -= S.accept
+    fun "accept" -: "socket -> socket * sockAddr" -: "void"
+      -= S.accept,
+    fun "send" -: "socket -> string -> bool" -: "void"
+      -= \sock str -> boolOfExn (S.send sock str),
+    fun "recv" -: "socket -> int -> string option" -: "void"
+      -= \sock len -> maybeOfExn (S.recv sock len),
+    fun "shutdown" -: "socket -> shutdownCmd -> unit" -: "void"
+      -= S.shutdown,
+    fun "close" -: "socket -> unit" -: "void"
+      -= S.sClose
+
+      , fun "isReadable" -: "socket -> bool" -: ""
+      -= S.sIsReadable
+      , fun "isWritable" -: "socket -> bool" -: ""
+      -= S.sIsWritable
   ]
+
+-- our language doesn't have exceptions yet
+maybeOfExn :: IO a -> IO (Maybe a)
+maybeOfExn io = fmap Just io `catch` const (return Nothing)
+
+boolOfExn :: IO a -> IO Bool
+boolOfExn io = fmap (const True) io `catch` const (return False)
 

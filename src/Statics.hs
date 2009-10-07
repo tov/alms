@@ -1042,7 +1042,7 @@ withLet (LtC tl x mt e) k = intoC $ do
     Just t  -> do
       t' <- tcType t
       tassert (te == t') $
-        "Declared type for module " ++ show x ++ " : " ++ show t ++
+        "Declared type for function " ++ show x ++ " : " ++ show t ++
         " doesn't match actual type " ++ show te
       return t'
     Nothing -> return te
@@ -1054,14 +1054,14 @@ withLet (LtA tl x mt e) k = intoA $ do
     Just t  -> do
       t' <- tcType t
       tassert (qualifier t' == Qu) $
-        "Declared type of module " ++ show x ++ " is not unlimited"
+        "Declared type of function " ++ show x ++ " is not unlimited"
       tassert (te <: t') $
-        "Declared type for module " ++ show x ++ " : " ++ show t' ++
+        "Declared type for function " ++ show x ++ " : " ++ show t' ++
         " is not subsumed by actual type " ++ show te
       return t'
     Nothing -> do
       tassert (qualifier te == Qu) $
-        "Type of module " ++ show x ++ " is not unlimited"
+        "Type of top-level function " ++ show x ++ " is not unlimited"
       return te
   withVars (Var x =:= t') .
     outofA .
