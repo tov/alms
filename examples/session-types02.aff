@@ -1,5 +1,9 @@
 (* An example with session types, including choice. *)
 
+#load "libthread-A.aff"
+
+open AThread
+
 type[A] 'a protocol = (('a send -> 'a send -> 'a recv -> unit)
                        *
                        ('a send -> 'a recv -> unit)) select

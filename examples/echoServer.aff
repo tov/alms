@@ -1,6 +1,7 @@
 (* Echo server written using state-tracked sockets. *)
 
 #load "libsocket-A.aff"
+#load "libthread-A.aff"
 
 module EchoServer = struct[A]
   open ASocket
@@ -20,8 +21,9 @@ module EchoServer = struct[A]
                          (cap: 't listening) : unit =
     let (Pack('s, clientsock, clientcap), cap) = accept sock cap in
       putStrLn "Opened connection";
-      threadFork (fun () -> handleClient clientsock f clientcap;
-                            putStrLn "Closed connection");
+      AThread.threadFork
+        (fun () -> handleClient clientsock f clientcap;
+                   putStrLn "Closed connection");
       acceptLoop sock f cap
 
   let serve (port: int) (f: string -> string) =

@@ -5,6 +5,10 @@
     threading, which manifests as a type error.
 *)
 
+#load "libthread-A.aff"
+
+open AThread
+
 abstype[C] 'a array = Array of (int -> 'a) ref with
   let newArray['a] (default: 'a): 'a array =
     Array (ref (fun ix: int -> default))

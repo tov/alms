@@ -2,6 +2,10 @@
    Reads natural numbers (very brittle) from standard input
    until getting a blank line, then prints the sum. *)
 
+#load "libthread-A.aff"
+
+open AThread
+
 type[A] protocol =
   mu 'r.
     ((int recv -> unit) *

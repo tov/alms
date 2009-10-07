@@ -4,6 +4,9 @@
    than just functions.
 *)
 
+#load "libthread-A.aff"
+open AThread
+
 let[A] printer : unit -> unit =
   let rec loop (_ : unit) : unit =
     threadDelay 100000;

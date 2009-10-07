@@ -1,5 +1,9 @@
 (* An example with futures *)
 
+#load "libthread-A.aff"
+
+open AThread
+
 let[A] prompt : unit -> string future =
   fun _:unit -> newFuture getLine
 

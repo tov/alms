@@ -179,20 +179,6 @@ primBasis  = [
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
-    -- Threads
-    typeA "thread qualifier A",
-    fun "threadFork" -: ""
-                     -: "(unit -o unit) -> thread"
-      -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
-    fun "threadKill" -: ""
-                     -: "thread -> unit"
-      -= CC.killThread . unVinj,
-    fun "threadDelay" -:: "int -> unit"
-      -= CC.threadDelay . (fromIntegral :: Integer -> Int),
-    fun "printThread" -: ""
-                      -: "thread -> thread"
-      -= \t -> do print (t :: Vinj CC.ThreadId); return t,
-
     -- Futures
     typeC "'a future",
     typeC "'a cofuture",
@@ -297,6 +283,20 @@ primBasis  = [
                              what :: IO (),
     submod "IO"     Basis.IO.entries,
     submod "Prim" [
+      submod "Thread" [
+        -- Threads
+        typeA "void",
+        typeC "thread",
+        fun "threadFork" -: "(unit -> unit) -> thread" -: "void"
+          -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
+        fun "threadKill" -: "thread -> unit" -: "void"
+          -= CC.killThread . unVinj,
+        fun "threadDelay" -:: "int -> unit"
+          -= CC.threadDelay . (fromIntegral :: Integer -> Int),
+        fun "printThread" -: "thread -> thread" -: "void"
+          -= \t -> do print (t :: Vinj CC.ThreadId); return t
+      ],
+
       submod "Socket" Basis.Socket.entries
     ]
   ]

@@ -1,5 +1,9 @@
 (* An example with session types *)
 
+#load "libthread-A.aff"
+
+open AThread
+
 type[A] protocol = int send -> int send -> int recv -> unit
 
 let[A] server =
