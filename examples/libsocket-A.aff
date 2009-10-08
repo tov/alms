@@ -26,6 +26,7 @@ module ASocket = struct[A]
 
     (* If connect fails, you actually can try again. *)
     let connect['t] (Sock sock: 't socket) (host: string) (port: string)
+                    (_: ('t initial, 't bound) either)
                     : 't connected =
       S.connect sock host port;
       Connected['t]

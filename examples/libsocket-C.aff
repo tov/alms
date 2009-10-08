@@ -26,7 +26,7 @@ module Socket = struct[C]
     let connect (sock: socket) (host: string) (port: string) : unit =
       S.connect sock (getAddrByName host port)
 
-    let listen (sock: socket) : unit = S.listen sock 10
+    let listen (sock: socket) : unit = S.listen sock 5
 
     let accept (sock: socket) : socket =
       let (new, _) = S.accept sock in new
