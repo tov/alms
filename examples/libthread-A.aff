@@ -3,7 +3,7 @@
 
 module AThread = struct[A]
   local
-    #load "libthread-c.aff"
+    #load "libthread-C.aff"
     open Thread
 
     (* down cast! *)
