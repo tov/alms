@@ -1,5 +1,5 @@
-This is a prototype implementation of the language in "Affine Contracts
-for Affine Types" by Jesse Tov and Riccardo Pucella.
+This is the prototype implementation of the language in "Stateful
+Contracts for Affine Types" by Jesse Tov and Riccardo Pucella.
 
 Please see http://www.ccs.neu.edu/home/tov/pubs/affine-contracts/ for
 more information about the paper and other software artifacts.
@@ -9,19 +9,23 @@ CONTENTS
  * GETTING STARTED
  * USAGE
  * THE LANGUAGE
- * WHAT'S INTERESTING?
 
 GETTING STARTED
 
-  We require GHC to build.  It is known to work with GHC 6.10.1,
+  We require GHC to build.  It is known to work with GHC 6.10.4,
   and likely will not work with GHC 6.8.
 
-  Provided ghc is in your path, to build on UNIX it should be sufficient
-  to type:
+  Provided that a recent ghc is in your path, to build on UNIX it ought
+  to be be sufficient to type:
 
     % make
 
-  This will produce an executable "affine" in the current directory.
+  This should produce an executable "affine" in the current directory,
+  but if Cabal gets confused, it may help to change into the src/
+  directory and run make in there.
+
+  It may also be necessary to install the editline library first, with
+  "cabal install editline."
 
   On Windows, build with Cabal:
 
@@ -33,12 +37,19 @@ GETTING STARTED
 USAGE
 
   Examples from the paper, and several more, are in the examples/
-  directory.  To try the first example (which should print "6"),
+  directory.  To try the echo server example on port 10000,
   run:
 
-    % ./affine examples/ex1.aff
+    % ./affine examples/echoServer.aff 10000
 
-  Several of the examples have type or contract errors -- the comment at
+  To connect to the echo server, you can run
+
+    % ./affine examples/netcat.aff localhost 10000
+
+  from another terminal.
+
+  The examples directory contains many more examples, many of which
+  are small, but demonstrate type or or contract errors -- the comment at
   the top of each example says what to expect.  Run all the examples
   with:
 
@@ -47,10 +58,6 @@ USAGE
   We can also run the interpreter in interactive mode:
 
     % ./affine
-
-  The language is not currently very suitable for a REPL.  The prompt
-  will read an entire program, run that program, print the result and
-  type, and repeat.
 
   The program also accepts several flags:
 
@@ -64,38 +71,6 @@ THE LANGUAGE
   We follow the paper rather closely, and the examples should give a
   reasonable idea as to the concrete syntax.
 
-  See Basis.hs for an idea what other primitives are available.  Adding
-  new primitives, to get an idea what else is possible, should be easy.
-
   In the A language, we use -o for affine function types and -> for
-  unlimited function types, rather than \multimap^1 and
-  \multimap^\infty.
-
-WHAT'S INTERESTING?
-
-  We used the implementation strategy sketched in Figure 12 (p. 10) of
-  the paper.  In particular, after type checking but before running a
-  program, we translate the mixed program to a program in the
-  conventional language only, with contract checks expressed in the
-  conventional language directly.  Thus, the run-time need not know
-  about contracts, other than providing a function for raising blame.
-
-  See Translate.hs for how this is done.  In short, it rewrites
-  inter-language module references by wrapping them with checks.  The
-  functions "ac" and "ca" in that file are the wrapping functions
-  "A" and "C" in Figure 12, extended to handle a few more types.
-
-  This implementation includes dynamic promotions (and derelictions,
-  actually), which are coercions that insert dynamic checks.  It
-  currently works only for function types, not for pairs nor references.
-  The syntax is (e :> t1 : t2) where e is an expression, t1 is its
-  actual type, and t2 is an A type to coerce it to.
-
-   - In the A sublanguage, the type of the expression is t2, and a
-     contract ensures that e and its context both actually conform to
-     t2.
-
-   - In the C sublanguage, note that t2 is still an A type; the type of
-     the expression is still t1, but it inserts a dynamic check that e
-     and its context both conform to t2.
+  unlimited function types, rather than \multimap^u and and \multimap^a.
 

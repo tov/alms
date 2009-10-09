@@ -9,7 +9,7 @@ Author:         Jesse A. Tov <tov@ccs.neu.edu>
 Maintainer:     tov@ccs.neu.edu
 Homepage:       http://www.ccs.neu.edu/~tov/pubs/affine-contracts
 Category:       Compilers/Interpreters
-Synopsis:       An implementation of "Affine Contracts for Affine Types"
+Synopsis:       An implementation of "Stateful Contracts for Affine Types"
 Build-type:     Simple
 
 Executable affine
@@ -25,5 +25,5 @@ Executable affine
                         mtl >= 1.1,
                         filepath >= 1.1,
                         network >= 2.2,
-                        editline >= 0.2
+                        editline >= 0.2.1
   CPP-Options:        -DUSE_READLINE=System.Console.Editline.Readline
