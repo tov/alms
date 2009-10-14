@@ -6,9 +6,15 @@ more information about the paper and other software artifacts.
 
 CONTENTS
 
+ * WHERE TO FIND STUFF FROM THE PAPER
  * GETTING STARTED
  * USAGE
  * THE LANGUAGE
+
+WHERE TO FIND STUFF FROM THE PAPER
+
+  The affine sockets library is in examples/libsocket-A.aff, and the
+  echo server source code that uses it is in examples/echoServer.aff.
 
 GETTING STARTED
 
@@ -50,7 +56,7 @@ USAGE
 
   The examples directory contains many more examples, many of which
   are small, but demonstrate type or or contract errors -- the comment at
-  the top of each example says what to expect.  Run all the examples
+  the top of each example says what to expect.  Run many of the examples
   with:
 
     % make examples
