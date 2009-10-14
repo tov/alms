@@ -286,7 +286,7 @@ cc _   _   x _ = exBVar x
 
 -- Generate an expression to create an initial (blessed) cell
 createContract :: ExprT C
-createContract = exApp (exTApp (exBVar (Lid "#ref"))
+createContract = exApp (exTApp (exVar (qlid "INTERNALS.ref"))
                                (tyUnitT `tyArrT` tyUnitT))
                        (exAbs PaWild tyUnitT exUnit)
 
@@ -294,7 +294,7 @@ createContract = exApp (exTApp (exBVar (Lid "#ref"))
 -- to check it
 checkContract :: Lid -> Party -> String -> ExprT C
 checkContract x (Party who) what =
-  exLetVar' f (exApp (exTApp (exBVar (Lid "#modify"))
+  exLetVar' f (exApp (exTApp (exVar (qlid "INTERNALS.modify"))
                              (tyUnitT `tyArrT` tyUnitT))
                      (exBVar x `exPair` blameFun (show who) what)) $
     exApp (exBVar f) exUnit
@@ -304,7 +304,7 @@ checkContract x (Party who) what =
 blameFun :: String -> String -> ExprT C
 blameFun who what =
   exAbs PaWild tyUnitT $
-    exApp (exApp (exVar (qlid "#blame"))
+    exApp (exApp (exVar (qlid "INTERNALS.blame"))
                  (exStr who))
           (exStr what)
 

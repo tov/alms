@@ -263,18 +263,6 @@ primBasis  = [
     pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
       -= (id :: Value -> Value),
 
-    -- Used by contract system -- # names prevent them from appearing
-    -- in a source program (which could result in nasty shadowing)
-    pfun 1 "#ref" -:: "all 'a. 'a -> 'a ref"
-      -= (\v -> Ref `fmap` newIORef v),
-    pfun 1 "#modify" -:: "all 'a. 'a ref * 'a -> 'a"
-      -= (\(vr, v1) -> do
-            atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))),
-    fun "#blame" -: "string -> string -> unit"
-                 -: ""
-      -= \who what -> fail $ "Contract violation: " ++
-                             who ++ ": " ++
-                             what :: IO (),
     submod "IO"     Basis.IO.entries,
 
     submod "Thread" [
@@ -293,6 +281,21 @@ primBasis  = [
 
     submod "Prim" [
       submod "Socket" Basis.Socket.entries
+    ],
+
+    submod "INTERNALS" [
+      -- Used by contract system -- # names prevent them from appearing
+      -- in a source program (which could result in nasty shadowing)
+      pfun 1 "ref" -:: "all 'a. 'a -> 'a ref"
+        -= (\v -> Ref `fmap` newIORef v),
+      pfun 1 "modify" -:: "all 'a. 'a ref * 'a -> 'a"
+        -= (\(vr, v1) -> do
+              atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))),
+      fun "blame" -: "string -> string -> unit"
+                  -: ""
+        -= \who what -> fail $ "Contract violation: " ++
+                               who ++ ": " ++
+                               what :: IO ()
     ]
   ]
 
