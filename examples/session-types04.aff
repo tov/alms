@@ -1,7 +1,9 @@
 -- Sutherland-Hodgman (1974) re-entrant polygon clipping
 
 #load "libthread-A.aff"
+
 open AThread
+open SessionTypes
 
 -- Some basic, low-level stuff
 let[C] putAny 'a (x: 'a) = putStr (string_of x)

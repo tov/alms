@@ -114,8 +114,8 @@ module SkewnessExample = struct[C]
       putStrLn ""
 
   let tests (n: int) =
-    foldlC (fun (t: transformation) () -> testCase n t)
-           () (functions n)
+    foldl (fun (t: transformation) () -> testCase n t)
+          () (functions n)
 end
 
 in

@@ -50,7 +50,7 @@ module ASocket = struct[A]
 
     let recv['t] (Sock sock: 't socket) (len: int)
                  (_: 't connected) : (string * 't connected) option =
-      match S.fold_option None[string] Some[string] (S.recv sock len) with
+      match S.recv sock len with
       | Some str -> Some (str, Connected['t])
       | None     -> S.close sock; None[string * 't connected]
 

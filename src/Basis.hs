@@ -37,8 +37,7 @@ primBasis  = [
     -- "unit" built in
     -- "bool" built in
     "int"    `primtype` tdInt,
-    typeC "char = int",
-    typeA "char = int",
+    typeT "char = int",
     "float"  `primtype` tdFloat,
     "string" `primtype` tdString,
 
@@ -47,19 +46,15 @@ primBasis  = [
     "-o"   `primtype` tdLol,
 
     -- Sums
-    typeC "'a option = None | Some of 'a",
-    typeC "('a, 'b) either = Left of 'a | Right of 'b",
-
-    typeA "'<a option = None | Some of '<a",
-    typeA "('<a, '<b) either = Left of '<a | Right of '<b",
+    typeT "'<a option = None | Some of '<a",
+    typeT "('<a, '<b) either = Left of '<a | Right of '<b",
 
     -- Recursion
     pfun 2 "fix" -:: "all 'a 'b. (('a -> 'b) -> ('a -> 'b)) -> ('a -> 'b)"
       -= (\(VaFun _ f) -> mfix f),
 
     -- Lists
-    typeC "'a list  = Nil | Cons of 'a * 'a list",
-    typeA "'<a list = Nil | Cons of '<a * '<a list",
+    typeT "'<a list = Nil | Cons of '<a * '<a list",
 
     -- Arithmetic
     binArith "+" (+),
@@ -180,11 +175,8 @@ primBasis  = [
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
     -- Futures
-    typeC "'a future",
-    typeC "'a cofuture",
-
-    typeA "+'a future qualifier A",
-    typeA "-'a cofuture qualifier A",
+    typeT "+'a future qualifier A",
+    typeT "-'a cofuture qualifier A",
 
     pfun 1 "newFuture" -: "all 'a. (unit -> 'a) -> 'a future"
                        -: "all '<a. (unit -o '<a) -> '<a future"
@@ -205,65 +197,67 @@ primBasis  = [
                          -: "all '<a. '<a cofuture -> '<a -o unit"
       -= \future value -> MV.putMVar (unFuture future) value,
 
-    -- Session-typed channels
-    typeA "'a rendezvous",
-    typeA "+'a channel qualifier A",
-    -- Unfortunately, we need these types to be primitive in order to
-    -- compute duals.
-    "dual"   `primtype` tdDual,
-    "send"   `primtype` tdSend,
-    "recv"   `primtype` tdRecv,
-    "select" `primtype` tdSelect,
-    "follow" `primtype` tdFollow,
-    pfun 1 "newRendezvous" -: ""
-                           -: "all 's. unit -> 's rendezvous"
-      -= \() -> do
-           mv <- newChan
-           return (Rendezvous mv),
-    pfun 1 "request" -: ""
-                     -: "all 's. 's rendezvous -> 's channel"
-      -= \rv -> do
-           readChan (unRendezvous rv),
-    pfun 1 "accept" -: ""
-                    -: "all 's. 's rendezvous -> 's dual channel"
-      -= \rv -> do
-           c <- Channel `fmap` newChan
-           writeChan (unRendezvous rv) c
-           return c,
-    pfun 2 "send"
-      -: ""
-      -: "all '<a 's. ('<a send -> 's) channel -> '<a -o 's channel"
-      -= \c a -> do
-           writeChan (unChannel c) a
-           return c,
-    pfun 2 "recv"
-      -: ""
-      -: "all '<a 's. ('<a recv -> 's) channel -> '<a * 's channel"
-      -= \c -> do
-           a <- readChan (unChannel c)
-           return (a, c),
-    pfun 2 "sel1"
-      -: ""
-      -: "all 's1 's2. ('s1 * 's2) select channel -> 's1 channel"
-      -= \c -> do
-           writeChan (unChannel c) (vinj True)
-           return c,
-    pfun 2 "sel2"
-      -: ""
-      -: "all 's1 's2. ('s1 * 's2) select channel -> 's2 channel"
-      -= \c -> do
-           writeChan (unChannel c) (vinj False)
-           return c,
-    pfun 2 "follow"
-      -: ""
-      -: ("all 's1 's2. ('s1 * 's2) follow channel -> " ++
-                       "('s1 channel, 's2 channel) either")
-      -= \c -> do
-           e  <- readChan (unChannel c)
-           e' <- vprjM e
-           if e'
-             then return (Left c)
-             else return (Right c),
+    submod "SessionTypes" [
+      -- Session-typed channels
+      typeA "'a rendezvous",
+      typeA "+'a channel qualifier A",
+      -- Unfortunately, we need these types to be primitive in order to
+      -- compute duals.
+      "dual"   `primtype` tdDual,
+      "send"   `primtype` tdSend,
+      "recv"   `primtype` tdRecv,
+      "select" `primtype` tdSelect,
+      "follow" `primtype` tdFollow,
+      pfun 1 "newRendezvous" -: ""
+                             -: "all 's. unit -> 's rendezvous"
+        -= \() -> do
+             mv <- newChan
+             return (Rendezvous mv),
+      pfun 1 "request" -: ""
+                       -: "all 's. 's rendezvous -> 's channel"
+        -= \rv -> do
+             readChan (unRendezvous rv),
+      pfun 1 "accept" -: ""
+                      -: "all 's. 's rendezvous -> 's dual channel"
+        -= \rv -> do
+             c <- Channel `fmap` newChan
+             writeChan (unRendezvous rv) c
+             return c,
+      pfun 2 "send"
+        -: ""
+        -: "all '<a 's. ('<a send -> 's) channel -> '<a -o 's channel"
+        -= \c a -> do
+             writeChan (unChannel c) a
+             return c,
+      pfun 2 "recv"
+        -: ""
+        -: "all '<a 's. ('<a recv -> 's) channel -> '<a * 's channel"
+        -= \c -> do
+             a <- readChan (unChannel c)
+             return (a, c),
+      pfun 2 "sel1"
+        -: ""
+        -: "all 's1 's2. ('s1 * 's2) select channel -> 's1 channel"
+        -= \c -> do
+             writeChan (unChannel c) (vinj True)
+             return c,
+      pfun 2 "sel2"
+        -: ""
+        -: "all 's1 's2. ('s1 * 's2) select channel -> 's2 channel"
+        -= \c -> do
+             writeChan (unChannel c) (vinj False)
+             return c,
+      pfun 2 "follow"
+        -: ""
+        -: ("all 's1 's2. ('s1 * 's2) follow channel -> " ++
+                         "('s1 channel, 's2 channel) either")
+        -= \c -> do
+             e  <- readChan (unChannel c)
+             e' <- vprjM e
+             if e'
+               then return (Left c)
+               else return (Right c)
+    ],
 
     -- Unsafe coercions
     pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
@@ -282,6 +276,7 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO (),
     submod "IO"     Basis.IO.entries,
+
     submod "Thread" [
       -- Threads
       typeA "void",
@@ -352,39 +347,22 @@ srcBasis  = unlines [
   "  | Nil          -> (Nil['<a], true)",
   "  | Cons(x, xs') -> (Cons(x, xs'), false)",
   "",
-  "let[C] foldrC =",
-  "  let rec foldr 'a 'b (f : 'a -> 'b -> 'b)",
-  "                      (z : 'b) (xs : 'a list) : 'b =",
-  "        match xs with",
-  "        | Nil -> z",
-  "        | Cons(x,xs) -> f x (foldr f z xs)",
-  "   in foldr",
-  "let[A] foldrA =",
+  "let[A] foldr =",
   "  let rec foldr '<a '<b (f : '<a -> '<b -o '<b)",
   "                        (z : '<b) |(xs : '<a list) : '<b =",
   "        match xs with",
   "        | Nil -> z",
   "        | Cons(x,xs) -> f x (foldr f z xs)",
   "   in foldr",
-  "let[A] foldlA =",
+  "let[A] foldl =",
   "  let rec foldl '<a '<b (f : '<a -> '<b -o '<b)",
   "                        (z : '<b) |(xs : '<a list) : '<b =",
   "        match xs with",
   "        | Nil -> z",
   "        | Cons(x,xs) -> foldl f (f x z) xs",
   "   in foldl",
-  "let[C] foldlC =",
-  "  let rec foldl 'a 'b (f : 'a -> 'b -> 'b)",
-  "                      (z : 'b) (xs : 'a list) : 'b =",
-  "        match xs with",
-  "        | Nil -> z",
-  "        | Cons(x,xs) -> foldl f (f x z) xs",
-  "   in foldl",
   "let[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
   "  fun 'a (lst: {{'a} list}) ->",
-  "    foldrA (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
-  "let[A] clist2alist : all 'a. {{'a} list} -> 'a list =",
-  "  fun 'a (lst: {{'a} list}) ->",
-  "    foldrC (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
+  "    foldr (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
   ""
   ]

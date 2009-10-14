@@ -39,10 +39,5 @@ module Socket = struct[C]
 
     let close (sock: socket) : unit =
       S.close sock
-
-    let fold_option['a, 'r] (none: 'r) (some: 'a -> 'r) (opt: 'a option) =
-      match opt with
-      | None   -> none
-      | Some v -> some v
   end
 end

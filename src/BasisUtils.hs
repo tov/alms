@@ -5,7 +5,7 @@ module BasisUtils (
   Entry,
   MkFun(..), baseMkFun,
   fun, binArith, val, pval, pfun,
-  typeC, typeA, primtype, src,
+  typeC, typeA, typeT, primtype, src,
   submod,
   vapp,
   (-:), (-::), (-=),
@@ -104,16 +104,19 @@ mkTyAbs entry =
 class TypeBuilder r where
   typeA :: String -> r
   typeC :: String -> r
+  typeT :: String -> r
   src   :: String -> r
 
 instance TypeBuilder Entry where
   typeC      = DecEn . ("type[C] " ++)
   typeA      = DecEn . ("type[A] " ++)
+  typeT      = DecEn . ("type[*] " ++)
   src        = DecEn
 
 instance TypeBuilder r => TypeBuilder (String -> r) where
   typeC s    = typeC . (s ++) . ('\n' :)
   typeA s    = typeA . (s ++) . ('\n' :)
+  typeT s    = typeT . (s ++) . ('\n' :)
   src s      = src   . (s ++) . ('\n' :)
 
 submod :: String -> [Entry] -> Entry
