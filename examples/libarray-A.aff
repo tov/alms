@@ -47,9 +47,9 @@ module AArray = struct[A]
           (c: ('t, 'c) readcap)
           : '<r1 * '<r2 * ('t, 'c) readcap =
     let (c1, c2) = split c in
-    let future   = newFuture (fun () -> left c1) in
+    let future   = Future.new (fun () -> left c1) in
     let (r2, c2) = right c2 in
-    let (r1, c1) = getFuture future in
+    let (r1, c1) = Future.get future in
       (r1, r2, join (c1, c2))
 
   let fold ['a,'t,'c,'<r]

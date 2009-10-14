@@ -97,16 +97,16 @@ let[C] crazy['a]
            withNewArray default
             (fun 'r (rgt: ('a, 'r) afarray) (caprgt: 'r writecap) ->
                let (cap1, cap2) = split cap in
-               let fl = newFuture (fun _:unit ->
+               let fl = Future.new (fun _:unit ->
                           let (cap1, caplft) =
                                 copyFromTo range start lft (cap1, caplft)
                            in (cap1, loop (i - 1) lft caplft)) in
-               let fr = newFuture (fun _:unit ->
+               let fr = Future.new (fun _:unit ->
                           let (cap2, cap) =
                                  copyFromTo range start start (cap2, cap)
                            in (cap2, loop (i - 1) rgt caprgt)) in
-               let (cap1, caplft) = getFuture fl in
-               let (cap2, caprgt) = getFuture fr in
+               let (cap1, caplft) = Future.get fl in
+               let (cap2, caprgt) = Future.get fr in
                let cap            = join (cap1, cap2) in
                let (cap, _, _)    = branch start lft rgt
                                            (cap, caplft, caprgt)

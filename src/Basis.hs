@@ -174,30 +174,32 @@ primBasis  = [
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
-    -- Futures
-    typeT "+'a future qualifier A",
-    typeT "-'a cofuture qualifier A",
+    submod "Future" [
+      -- Futures
+      typeA "+'a future qualifier A",
+      typeA "-'a cofuture qualifier A",
 
-    pfun 1 "newFuture" -: "all 'a. (unit -> 'a) -> 'a future"
-                       -: "all '<a. (unit -o '<a) -> '<a future"
-      -= \f -> do
-            future <- MV.newEmptyMVar
-            CC.forkIO (vapp f () >>= MV.putMVar future)
-            return (Future future),
-    pfun 1 "getFuture" -: "all 'a. 'a future -> 'a"
-                       -: "all '<a. '<a future -> '<a"
-      -= (MV.takeMVar . unFuture),
-    pfun 1 "newCofuture" -: "all 'a. ('a future -> unit) -> 'a cofuture"
-                         -: "all '<a. ('<a future -o unit) -> '<a cofuture"
-      -= \f -> do
-            future <- MV.newEmptyMVar
-            CC.forkIO (vapp f (Future future) >> return ())
-            return (Future future),
-    pfun 1 "putCofuture" -: "all 'a. 'a cofuture -> 'a -> unit"
-                         -: "all '<a. '<a cofuture -> '<a -o unit"
-      -= \future value -> MV.putMVar (unFuture future) value,
+      pfun 1 "new" -: ""
+                   -: "all '<a. (unit -o '<a) -> '<a future"
+        -= \f -> do
+              future <- MV.newEmptyMVar
+              CC.forkIO (vapp f () >>= MV.putMVar future)
+              return (Future future),
+      pfun 1 "get" -: ""
+                   -: "all '<a. '<a future -> '<a"
+        -= (MV.takeMVar . unFuture),
+      pfun 1 "coNew" -: ""
+                     -: "all '<a. ('<a future -o unit) -> '<a cofuture"
+        -= \f -> do
+              future <- MV.newEmptyMVar
+              CC.forkIO (vapp f (Future future) >> return ())
+              return (Future future),
+      pfun 1 "coPut" -: ""
+                     -: "all '<a. '<a cofuture -> '<a -o unit"
+        -= \future value -> MV.putMVar (unFuture future) value
+    ],
 
-    submod "SessionTypes" [
+    submod "SessionType" [
       -- Session-typed channels
       typeA "'a rendezvous",
       typeA "+'a channel qualifier A",

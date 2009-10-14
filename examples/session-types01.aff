@@ -3,7 +3,7 @@
 #load "libthread-A.aff"
 
 open AThread
-open SessionTypes
+open SessionType
 
 type[A] protocol = int send -> int send -> int recv -> unit
 

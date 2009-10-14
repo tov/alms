@@ -42,9 +42,9 @@ let[C] getAddr (): sockAddr =
 
 let[A] main () =
   let sock = setupConnection (getAddr ()) in
-  let wait = newFuture (fun () -> recvThread sock) in
+  let wait = Future.new (fun () -> recvThread sock) in
     sendThread sock;
-    getFuture wait;
+    Future.get wait;
     teardownConnection sock
 
 in main ()

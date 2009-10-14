@@ -5,7 +5,7 @@
 open AThread
 
 let[A] prompt : unit -> string future =
-  fun _:unit -> newFuture getLine
+  fun _:unit -> Future.new getLine
 
 let[C] printDots : int -> int -> unit =
   let rec loop (count : int) (delay : int) : unit =
@@ -24,6 +24,6 @@ let[A] main : string -> unit =
     let future = prompt () in
       printDots 80 20;
       putStrLn "";
-      putStrLn (getFuture future)
+      putStrLn (Future.get future)
 
 in main "whadday say? "
