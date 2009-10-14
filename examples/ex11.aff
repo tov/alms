@@ -1,4 +1,4 @@
-(* Affine opaque objects (contract violation: blame "*main*") *)
+(* Affine opaque objects (contract violation: blame "Double") *)
 
 let[A] makePair : (int -> int) -> int -> (int -o int) * int =
   fun f: (int -> int) ->
@@ -15,12 +15,14 @@ let[A] doPair : (int -o int) * int -> int =
       putStrLn (string_of[int] result);
       result
 
-let[C] double : int -> {(int -o int) * int} =
-  fun z: int ->
-    makePair (( * ) 2) z
+module Double = struct[C]
+  let double : int -> {(int -o int) * int} =
+    fun z: int ->
+      makePair (( * ) 2) z
+end
 (* returns an affine object, but doesn't break affinity itself. *)
 
-in let pair = double 4 in
+in let pair = Double.double 4 in
      doPair pair;
      print[int] (doPair pair)
 (* mis-uses the affine object returned by double *)

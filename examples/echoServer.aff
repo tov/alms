@@ -1,7 +1,6 @@
 (* Echo server written using state-tracked sockets. *)
 
 #load "libsocket-A.aff"
-#load "libthread-C.aff"
 
 module EchoServer = struct[A]
   open ASocket

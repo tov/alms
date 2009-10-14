@@ -9,13 +9,13 @@ import qualified Ppr
 import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
-import Translation (translate, translateDecls, TEnv)
+import Translation (translate, translateDecls, TEnv, tenv0)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
 import Syntax (Prog, ProgT, Decl, DeclT,
                BIdent(..), LangRep(..), prog2decls)
-import Env (GenEmpty(..), empty, unionSum, unionProduct, toList)
+import Env (empty, unionSum, unionProduct, toList)
 
 import Control.Monad (when, unless)
 import System.Exit (exitFailure)
@@ -42,7 +42,7 @@ main  = do
   processArgs [] args $ \opts mmsrc filename -> do
   g0  <- basis2tenv primBasis
   e0  <- basis2venv primBasis
-  st0 <- loadSource (RS g0 genEmpty e0) "basis" srcBasis
+  st0 <- loadSource (RS g0 tenv0 e0) "basis" srcBasis
   maybe interactive (batch filename) mmsrc (`elem` opts) st0
     `catch`
       \err -> do

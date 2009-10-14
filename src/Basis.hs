@@ -282,21 +282,21 @@ primBasis  = [
                              who ++ ": " ++
                              what :: IO (),
     submod "IO"     Basis.IO.entries,
-    submod "Prim" [
-      submod "Thread" [
-        -- Threads
-        typeA "void",
-        typeC "thread",
-        fun "threadFork" -: "(unit -> unit) -> thread" -: "void"
-          -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
-        fun "threadKill" -: "thread -> unit" -: "void"
-          -= CC.killThread . unVinj,
-        fun "threadDelay" -:: "int -> unit"
-          -= CC.threadDelay . (fromIntegral :: Integer -> Int),
-        fun "printThread" -: "thread -> thread" -: "void"
-          -= \t -> do print (t :: Vinj CC.ThreadId); return t
-      ],
+    submod "Thread" [
+      -- Threads
+      typeA "void",
+      typeC "thread",
+      fun "threadFork" -: "(unit -> unit) -> thread" -: ""
+        -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
+      fun "threadKill" -: "thread -> unit" -: ""
+        -= CC.killThread . unVinj,
+      fun "threadDelay" -:: "int -> unit"
+        -= CC.threadDelay . (fromIntegral :: Integer -> Int),
+      fun "printThread" -: "thread -> thread" -: ""
+        -= \t -> do print (t :: Vinj CC.ThreadId); return t
+    ],
 
+    submod "Prim" [
       submod "Socket" Basis.Socket.entries
     ]
   ]

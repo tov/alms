@@ -35,7 +35,7 @@ module Syntax (
   TypeTW(..), typeTW,
 
   Expr(), ExprT, Expr'(..),
-  fv,
+  fv, exprType, (*:*),
   exId, exStr, exInt, exFloat, exCase, exLetRec, exLetDecl, exPair,
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
   exVar, exCon, exBVar, exBCon, exLet, exSeq, -- <== synthetic
@@ -261,6 +261,7 @@ data ModExp i = MeStrC Bool [Decl i]
 data Expr i w = Expr {
                   eloc_ :: Loc,
                   fv_   :: FV,
+                  type_ :: Maybe (Either (TypeT C) (TypeT A)),
                   expr_ :: Expr' i w
                 }
   deriving (Typeable, Data)
@@ -309,28 +310,47 @@ type ProgT    = Prog TyTag
 fv :: Expr i w -> FV
 fv  = fv_
 
-pv :: Patt -> S.Set QLid
+exprType :: Expr i w -> Maybe (Either (TypeT C) (TypeT A))
+exprType  = type_
+
+(*:*) :: Language w' => ExprT w -> TypeT w' -> ExprT w
+e *:* t = e {
+  type_ = Just (langCase t Left Right)
+}
+
+pv :: Patt -> S.Set Lid
 pv PaWild             = S.empty
-pv (PaVar x)          = S.singleton (J [] x)
+pv (PaVar x)          = S.singleton x
 pv (PaCon _ Nothing)  = S.empty
 pv (PaCon _ (Just x)) = pv x
 pv (PaPair x y)       = pv x `S.union` pv y
 pv (PaStr _)          = S.empty
 pv (PaInt _)          = S.empty
-pv (PaAs x y)         = pv x `S.union` S.singleton (J [] y)
+pv (PaAs x y)         = pv x `S.union` S.singleton y
 pv (PaPack _ x)       = pv x
 
+expr0 :: Expr i w
+expr0  = Expr {
+  eloc_  = bogus,
+  fv_    = M.empty,
+  type_  = Nothing,
+  expr_  = undefined
+}
+
+mkexpr0   :: Expr' i w -> Expr i w
+mkexpr0 e' = expr0 { expr_  = e' }
+
 exStr :: String -> Expr i w
-exStr  = Expr bogus M.empty . ExStr
+exStr  = mkexpr0 . ExStr
 
 exInt :: Integer -> Expr i w
-exInt  = Expr bogus M.empty . ExInt
+exInt  = mkexpr0 . ExInt
 
 exFloat :: Double -> Expr i w
-exFloat  = Expr bogus M.empty . ExFloat
+exFloat  = mkexpr0 . ExFloat
 
 exCase  :: Expr i w -> [(Patt, Expr i w)] -> Expr i w
-exCase e clauses = Expr {
+exCase e clauses = expr0 {
   eloc_  = getLoc (e, map snd clauses),
   fv_    = fv e |*|
            foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
@@ -338,7 +358,7 @@ exCase e clauses = Expr {
 }
 
 exLetRec :: [Binding i w] -> Expr i w -> Expr i w
-exLetRec bs e2 = Expr {
+exLetRec bs e2 = expr0 {
   eloc_  = getLoc (bs, e2),
   fv_    = let es  = map bnexpr bs
                vs  = map (J [] . bnvar) bs
@@ -348,15 +368,14 @@ exLetRec bs e2 = Expr {
 }
 
 exLetDecl :: Decl i -> Expr i w -> Expr i w
-exLetDecl d e2 = Expr {
+exLetDecl d e2 = expr0 {
   eloc_  = getLoc (d, e2),
   fv_    = fv e2, -- conservative approximation
   expr_  = ExLetDecl d e2
 }
 
 exId :: Ident -> Expr i w
-exId x = Expr {
-  eloc_  = bogus,
+exId x = expr0 {
   fv_    = case view x of
              Left y -> M.singleton y 1
              _      -> M.empty,
@@ -364,49 +383,49 @@ exId x = Expr {
 }
 
 exPair :: Expr i w -> Expr i w -> Expr i w
-exPair e1 e2 = Expr {
+exPair e1 e2 = expr0 {
   eloc_  = getLoc (e1, e2),
   fv_    = fv e1 |*| fv e2,
   expr_  = ExPair e1 e2
 }
 
 exAbs :: Patt -> Type i w -> Expr i w -> Expr i w
-exAbs x t e = Expr {
+exAbs x t e = expr0 {
   eloc_  = getLoc e,
   fv_    = fv e |--| pv x,
   expr_  = ExAbs x t e
 }
 
 exApp :: Expr i w -> Expr i w -> Expr i w
-exApp e1 e2 = Expr {
+exApp e1 e2 = expr0 {
   eloc_  = getLoc (e1, e2),
   fv_    = fv e1 |*| fv e2,
   expr_  = ExApp e1 e2
 }
 
 exTAbs :: TyVar -> Expr i w -> Expr i w
-exTAbs tv e = Expr {
+exTAbs tv e = expr0 {
   eloc_  = getLoc e,
   fv_    = fv e,
   expr_  = ExTAbs tv e
 }
 
 exTApp :: Expr i w -> Type i w -> Expr i w
-exTApp e1 t2 = Expr {
+exTApp e1 t2 = expr0 {
   eloc_  = getLoc e1,
   fv_    = fv e1,
   expr_  = ExTApp e1 t2
 }
 
 exPack :: Maybe (Type i w) -> Type i w -> Expr i w -> Expr i w
-exPack t1 t2 e = Expr {
+exPack t1 t2 e = expr0 {
   eloc_  = getLoc e,
   fv_    = fv e,
   expr_  = ExPack t1 t2 e
 }
 
 exCast :: Expr i w -> Maybe (Type i w) -> Type i A -> Expr i w
-exCast e t1 t2 = Expr {
+exCast e t1 t2 = expr0 {
   eloc_  = getLoc e,
   fv_    = fv e,
   expr_  = ExCast e t1 t2
@@ -447,8 +466,8 @@ quid s = case reverse (splitBy (=='.') s) of
 (|-|) :: FV -> QLid -> FV
 (|-|)  = flip M.delete
 
-(|--|) :: FV -> S.Set QLid -> FV
-(|--|)  = S.fold M.delete
+(|--|) :: FV -> S.Set Lid -> FV
+(|--|)  = S.fold (M.delete . J [])
 
 -----
 ----- Some classes and instances

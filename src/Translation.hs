@@ -5,15 +5,16 @@
       PatternGuards,
       RelaxedPolyRec #-}
 module Translation (
-  translate, translateDecls, TEnv
+  translate, translateDecls, TEnv, tenv0
 ) where
 
 import Util
 import Syntax
-import Env
 
-type Scope = PEnv Uid (Env Lid (Let TyTag))
-type TEnv  = [Scope]
+type TEnv = ()
+
+tenv0 :: TEnv
+tenv0  = ()
 
 -- Parties to contracts are module names, but it's worth
 -- keeping them separate from regular variables.
@@ -22,104 +23,83 @@ type Trail    = [Uid]
 
 -- Translate a program by adding contracts.
 translate :: TEnv -> ProgT -> ProgT
-translate tenv0 (Prog ds e) =
-  let ?trail      = [] in
-  let (tenv, ds') = transDecls tenv0 ds in
-    Prog ds' (transExpr tenv (party (Uid "*Main*")) `fmap` e)
+translate _ (Prog ds e) =
+  Prog (transDecls ds) (transExpr (party (Uid "*Main*")) `fmap` e)
+    where ?trail = []
 
 translateDecls :: TEnv -> [DeclT] -> (TEnv, [DeclT])
-translateDecls  = transDecls where ?trail = []
+translateDecls tenv ds = (tenv, transDecls ds) where ?trail = []
 
-transDecls :: (?trail :: Trail) => TEnv -> [DeclT] -> (TEnv, [DeclT])
-transDecls tenv = foldl each (tenv, []) where
-  each (env, ds) d = case d of
-    DcLet loc m      -> let (env', m') = transLet env m
-                          in (env', ds ++ [DcLet loc m'])
-    DcTyp loc td     -> (env, ds ++ [DcTyp loc td])
-    DcAbs loc at ds0 -> let (env', ds0') = transDecls env ds0
-                          in (env', ds ++ [DcAbs loc at ds0'])
-    DcMod loc x b    -> let (env', b') = transMod env x b
-                          in (env', ds ++ [DcMod loc x b'])
-    DcOpn loc b      -> let (env', b') = transOpen env b
-                          in (env', ds ++ [DcOpn loc b'])
-    DcLoc loc d0 d1  -> let (env', d0', d1') = transLocal env d0 d1
-                          in (env', ds ++ [DcLoc loc d0' d1'])
+transDecls :: (?trail :: Trail) => [DeclT] -> [DeclT]
+transDecls = map transDecl
 
-transLet :: (?trail :: Trail) => TEnv -> LetT -> (TEnv, LetT)
-transLet tenv m@(LtC tl x (Just t) e) =
-  (tenv =+= x =:= m,
-   LtC tl x (Just t) (transExpr tenv (getNeg x) e))
-transLet tenv m@(LtA tl x (Just t) e) =
-  (tenv =+= x =:= m,
-   LtC tl x (Just (atype2ctype t)) (transExpr tenv (getNeg x) e))
-transLet tenv m@(LtInt tl x t y)      =
-  (tenv =+= x =:= m,
-   LtC tl x (Just (atype2ctype t)) $
-     exLetVar' z (transExpr tenv (getNeg x) (exVar y :: ExprT C)) $
-       ac (party y) (getNeg x) z t)
-    where z = y /./ "z"
-transLet tenv m                  =
-  (tenv =+= letName m =:= m, m)
+transDecl :: (?trail :: Trail) => DeclT -> DeclT
+transDecl (DcLet loc m)      = DcLet loc (transLet m)
+transDecl (DcTyp loc td)     = DcTyp loc td
+transDecl (DcAbs loc at ds0) = DcAbs loc at (transDecls ds0)
+transDecl (DcMod loc x b)    = DcMod loc x (transMod x b)
+transDecl (DcOpn loc b)      = DcOpn loc (transOpen b)
+transDecl (DcLoc loc d0 d1)  = let (d0', d1') = transLocal d0 d1
+                                in DcLoc loc d0' d1'
 
-transOpen :: (?trail :: Trail) => TEnv -> ModExpT -> (TEnv, ModExpT)
-transOpen tenv b =
-  let (scope, b') = transModExp tenv b in
-    (tenv =+= scope, b')
+transLet :: (?trail :: Trail) => LetT -> LetT
+transLet (LtC tl x mt e) =
+   LtC tl x mt (transExpr (getNeg x) e)
+transLet (LtA tl x mt e) =
+   LtC tl x (fmap atype2ctype mt) (transExpr (getNeg x) e)
+transLet (LtInt tl x t y)      =
+   LtC tl x (Just ty) $
+     exLetVar' z
+         (transExpr (getNeg x) (exVar y *:* ty :: ExprT C)) $
+       ac (party y) (getNeg x) z t
+    where z  = y /./ "z"
+          ty = atype2ctype t
+
+transOpen :: (?trail :: Trail) => ModExpT -> ModExpT
+transOpen b = transModExp b
 
 transLocal :: (?trail :: Trail) =>
-              TEnv -> [DeclT] -> [DeclT] -> (TEnv, [DeclT], [DeclT])
-transLocal tenv ds0 ds1 =
-  let (tenv',          ds0') = transDecls (genEmpty:tenv) ds0
-      (scope:_:tenv'', ds1') = transDecls (genEmpty:tenv') ds1
-   in (tenv'' =+= scope, ds0', ds1')
+              [DeclT] -> [DeclT] -> ([DeclT], [DeclT])
+transLocal ds0 ds1 = (transDecls ds0, transDecls ds1)
 
 transMod :: (?trail :: Trail) =>
-            TEnv -> Uid -> ModExpT -> (TEnv, ModExpT)
-transMod tenv x b =
-  let ?trail       = x : ?trail in
-  let (scope, b') = transModExp tenv b in
-    (tenv =+= x =:= scope, b')
+            Uid -> ModExpT -> ModExpT
+transMod x b = transModExp b where ?trail = x : ?trail
 
-transModExp :: (?trail :: Trail) => TEnv -> ModExpT -> (Scope, ModExpT)
-transModExp tenv (MeName n) = case tenv =..= n of
-  Just scope -> (scope, MeName n)
-  Nothing    -> (genEmpty, MeName n) -- built-in module
-transModExp tenv (MeStrC tl ds) =
-  let (scope:_, ds') = transDecls (genEmpty:tenv) ds
-   in (scope, MeStrC tl ds')
-transModExp tenv (MeStrA tl ds) =
-  let (scope:_, ds') = transDecls (genEmpty:tenv) ds
-   in (scope, MeStrC tl ds')
+transModExp :: (?trail :: Trail) => ModExpT -> ModExpT
+transModExp (MeName n)     = MeName n
+transModExp (MeStrC tl ds) = MeStrC tl (transDecls ds)
+transModExp (MeStrA tl ds) = MeStrC tl (transDecls ds)
 
 getNeg :: (?trail :: Trail, Culpable p) => p -> Party
 getNeg def = case ?trail of
   []   -> party def
   p:ps -> party (J (reverse ps) p)
 
-transExpr :: Language w => TEnv -> Party -> ExprT w -> ExprT C
-transExpr tenv neg = te where
-  tem tenv' = transExpr tenv' neg
+transExpr :: Language w => Party -> ExprT w -> ExprT C
+transExpr neg = te where
   te e0 = case view e0 of
     ExId i    -> case view i of
-      Left x   -> transVar (reifyLang1 e0) tenv neg x
       Right k  -> exCon k
+      Left x   -> case exprType e0 of
+                    Nothing         -> exId i -- icky
+                    Just (Left tc)  -> transVar (reifyLang1 e0) tc neg x
+                    Just (Right ta) -> transVar (reifyLang1 e0) ta neg x
     ExStr s   -> exStr s
     ExInt z   -> exInt z
     ExFloat f -> exFloat f
     ExCase e1 clauses -> exCase (te e1)
-                                [ (xi, tem (tenv =\\= pv xi) ei)
+                                [ (xi, te ei)
                                 | (xi, ei) <- clauses ]
-    ExLetRec bs e2 -> let ROOT tenv' = foldl (=\=) (ROOT tenv) (map bnvar bs)
-                          rec        = tem tenv'
-                      in exLetRec
-                           [ Binding x (type2ctype t) (rec e)
-                           | Binding x t e <- bs ]
-                           (rec e2)
+    ExLetRec bs e2 -> exLetRec
+                        [ Binding x (type2ctype t) (te e)
+                        | Binding x t e <- bs ]
+                        (te e2)
     ExLetDecl d e2 -> let ?trail = jpath (unParty neg) in
-                      let (tenv', [d']) = transDecls tenv [d] in
-                        exLetDecl d' (tem tenv' e2)
+                      let d' = transDecl d in
+                        exLetDecl d' (te e2)
     ExPair e1 e2 -> exPair (te e1) (te e2)
-    ExAbs x t e -> exAbs x (type2ctype t) (tem (tenv =\\= pv x) e)
+    ExAbs x t e -> exAbs x (type2ctype t) (te e)
     ExApp e1 e2 -> exApp (te e1) (te e2)
     ExTAbs tv e -> exTAbs tv (te e)
     ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
@@ -134,18 +114,16 @@ reifyLang1 :: Language w => f w -> LangRep w
 reifyLang1 _ = reifyLang
 
 -- How do we refer to a variable from a given language?
-transVar :: LangRep w -> TEnv -> Party -> QLid -> ExprT C
-transVar lang tenv neg x =
-  case (lang, tenv =..= x) of
-    (C, Just (LtC _ _ (Just t) _)) ->
-      addName C x $ \x' -> cc neg (party x) x' t
-    (C, Just (LtA _ _ (Just t) _)) ->
-      addName A x $ \x' -> ca neg (party x) x' t
-    (C, Just (LtInt _ _ t _))      ->
-      addName A x $ \x' -> ca neg (party x) x' t
-    (A, Just (LtC _ _ (Just t) _)) ->
-      addName C x $ \x' -> ac neg (party x) x' (ctype2atype t)
-    _                              -> exVar x
+transVar :: (Language w') =>
+            LangRep w -> TypeT w' -> Party -> QLid -> ExprT C
+transVar lang_neg t_pos neg x =
+  case (lang_neg, reifyLang1 t_pos) of
+    (C, A) -> addName C x $ \x' -> ca neg (party x) x' t_pos
+    (A, C) -> addName A x $ \x' -> ac neg (party x) x' (ctype2atype t_pos)
+    (C, C)
+      | J [] _ <- x  -> exVar x
+      | otherwise    -> addName C x $ \x' -> cc neg (party x) x' t_pos
+    (A, A) -> exVar x
 
 addName :: LangRep w -> QLid -> (Lid -> ExprT C) -> ExprT C
 addName lang name k =
@@ -415,5 +393,3 @@ exTAbs' tv e = case view e of
     _            -> exTAbs tv e
   _            -> exTAbs tv e
 
-instance GenRemove (ROOT [Scope]) Lid where
-  ROOT env =\= lid = ROOT (map (unROOT . (=\= lid) . ROOT) env)

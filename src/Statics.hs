@@ -266,27 +266,30 @@ getTV :: (?loc :: Loc, Monad m) => TyVar -> TC w m TyVar
 getTV  = getAny "Free type variable"
 
 getVar :: (?loc :: Loc, Monad m, Language w, w ~ SameLang w) =>
-          Ident -> TC w m (TypeT w)
+          Ident -> TC w m (Either (TypeT w) (TypeT (OtherLang w)))
 getVar x = do
   t <- tryGetVar x
   t |! "Unbound variable: " ++ show x
 
 tryGetVar :: (Monad m, Language w, w ~ SameLang w) =>
-             Ident -> TC w m (Maybe (TypeT w))
+             Ident ->
+             TC w m (Maybe (Either (TypeT w) (TypeT (OtherLang w))))
 tryGetVar x = TC $ asksM get where
   get tce = case tce =..= x of
-    Just t  -> return (Just t)
+    Just t  -> return (Just (Left t))
     Nothing -> case view x of
       Left _  -> case switchTC tce =..= x of
-        Just t  -> return (Just (type2other t))
+        Just t  -> return (Just (Right t))
         Nothing -> return Nothing
       Right _ -> return Nothing
 
+{-
 type2other :: forall w. (Language w, w ~ SameLang w) =>
               TypeT (OtherLang w) -> TypeT w
 type2other t = langCase t
                  (\tc -> ctype2atype tc :: TypeT w)
                  atype2ctype
+-}
 
 getType :: (?loc :: Loc, Monad m) => QLid -> TC w m (TyInfo w)
 getType  = getAny "Unbound type constructor"
@@ -393,8 +396,10 @@ tcExprC = tc where
   tc :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
-      tx <- getVar x
-      return (tx, exId x)
+      txtx <- getVar x
+      case txtx of
+        Left tx  -> return (tx, exId x *:* tx)
+        Right tx -> return (atype2ctype tx, exId x *:* tx)
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
     ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)
@@ -496,8 +501,10 @@ tcExprA = tc where
   tc :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
-      tx <- getVar x
-      return (tx, exId x)
+      txtx <- getVar x
+      case txtx of
+        Left tx  -> return (tx, exId x *:* tx)
+        Right tx -> return (ctype2atype tx, exId x *:* tx)
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
     ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)
@@ -610,8 +617,8 @@ tcExprA = tc where
     anyM (\x -> do
            mtx <- tryGetVar (fmap Var x)
            return $ case mtx of
-             Just tx -> qualifier tx == Qa
-             Nothing -> False)
+             Just (Left tx) -> qualifier tx == Qa
+             _              -> False)
          (M.keys (fv e))
 
 tcExApp :: (?loc :: Loc, Language w, Monad m) =>
@@ -1079,8 +1086,9 @@ withLet (LtA tl x mt e) k = intoA $ do
     outofA .
       k $ LtA tl x (Just t') e'
 withLet (LtInt tl x t y) k = do
-  ty <- getVar (fmap Var y)
-  t' <- intoA $ tcType t
+  tyty <- getVar (fmap Var y)
+  let ty = either id atype2ctype tyty
+  t'   <- intoA $ tcType t
   tassert (ty == atype2ctype t') $
     "Declared type of interface " ++ show x ++ " :> " ++
     show t' ++ " not compatible with RHS type: " ++ show ty
