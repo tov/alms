@@ -238,7 +238,7 @@ declp  = addLoc $ choice [
              ds1 <- declsp
              reserved "end"
              return (dcLoc ds0 ds1),
-           enterdecl "abstype" $ \tl lang -> do
+           enterdecl (reserved "abstype") $ \tl lang -> do
              at   <- abstyp tl lang
              reserved "with"
              ds <- declsp
@@ -248,7 +248,7 @@ declp  = addLoc $ choice [
 
 modexpp :: P (ModExp ())
 modexpp  = choice [
-             enterdecl "struct" $ \tl lang -> do
+             enterdecl (reserved "struct") $ \tl lang -> do
                ds <- declsp
                reserved "end"
                return $ case lang of
@@ -258,15 +258,22 @@ modexpp  = choice [
            ]
 
 tyDecp :: P TyDec
-tyDecp  =
-  enterdecl "type" $ \tl lang ->
-  case lang of
-    LC -> do
-      tds <- sepBy1 tyDecCp (reserved "and")
-      return (TyDecC tl tds)
-    LA -> do
+tyDecp  = do
+  reserved "type"
+  choice [
+    do
+      try (brackets star)
       tds <- sepBy1 tyDecAp (reserved "and")
-      return (TyDecA tl tds)
+      return (TyDecT tds),
+    enterlang $ \tl lang ->
+      case lang of
+        LC -> do
+          tds <- sepBy1 tyDecCp (reserved "and")
+          return (TyDecC tl tds)
+        LA -> do
+          tds <- sepBy1 tyDecAp (reserved "and")
+          return (TyDecA tl tds)
+    ]
   where
     tyDecCp = do
       tvs  <- paramsp
@@ -294,27 +301,24 @@ tyDecp  =
           return (TdAbsA name tvs arity quals) ]
 
 letp :: P (Decl ())
-letp  =  do
-    reserved "let"
+letp  =
     choice [
-      enterdecl "rec" $ \tl lang ->
+      enterdecl (reserved "let" >> reserved "rec") $ \tl lang ->
         case lang of
           LC -> letrecbodyp (LtC tl)
           LA -> letrecbodyp (LtA tl),
       do tl   <- toplevelp
-         reserved "interface"
+         try (reserved "let" >> reserved "interface")
          x    <- varp
          reservedOp ":>"
          t    <- typep
          reservedOp "="
          y    <- qvarp
          return (dcLet (LtInt tl x t y)),
-      do tl   <- toplevelp
-         lang <- languagep
-         withState (Just lang) $
-           case lang of
-             LC -> letbodyp (LtC tl)
-             LA -> letbodyp (LtA tl)
+      enterdecl (reserved "let") $ \tl lang ->
+        case lang of
+          LC -> letbodyp (LtC tl)
+          LA -> letbodyp (LtA tl)
       ]
   where
     letbodyp :: Language w =>
@@ -441,11 +445,13 @@ languagep  = do
                    do langA; return LA ]
     Just lang -> return lang
 
-enterdecl :: String -> (Bool -> Lang -> P a) -> P a
+enterlang :: (Bool -> Lang -> P a) -> P a
+enterlang = enterdecl (return ())
+
+enterdecl :: P b -> (Bool -> Lang -> P a) -> P a
 enterdecl name p = do
-  reserved name
   tl   <- toplevelp
-  lang <- languagep
+  lang <- try (name >> languagep)
   withState (Just lang) (p tl lang)
 
 exprp :: Language w => P (Expr () w)

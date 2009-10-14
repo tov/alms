@@ -122,6 +122,7 @@ instance Ppr (Let i) where
 instance Ppr TyDec where
   ppr (TyDecA _ []) = empty
   ppr (TyDecC _ []) = empty
+  ppr (TyDecT []) = empty
   ppr (TyDecA tl (td:tds)) =
     let lang   = pprLang tl A
         indent = 1 + length (show lang) in
@@ -130,6 +131,12 @@ instance Ppr TyDec where
         [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
   ppr (TyDecC tl (td:tds)) =
     let lang   = pprLang tl C
+        indent = 1 + length (show lang) in
+      vcat $
+        text "type" <> lang <+> ppr td :
+        [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
+  ppr (TyDecT (td:tds)) =
+    let lang   = text "[*]"
         indent = 1 + length (show lang) in
       vcat $
         text "type" <> lang <+> ppr td :

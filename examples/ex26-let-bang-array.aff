@@ -3,6 +3,8 @@
 
 #load "libarray-A.aff"
 
+open AArray
+
 abstype[A] ('t, 'c) ureadcap_rep qualifier A
   = Available of ('t, 'c) readcap
   | CheckedOut
@@ -54,10 +56,10 @@ with
         result
 
     let atAU['a,'t,'c] (a: ('a, 't) array) (ix: int) =
-      liftBang (atA['a,'t,'c] a ix)
+      liftBang (at['a,'t,'c] a ix)
 
     let updateAU['a,'t] (a: ('a, 't) array) (ix: int) (new: 'a) =
-      let f (cap: 't writecap) = ((), updateA['a,'t] a ix new cap) in
+      let f (cap: 't writecap) = ((), update['a,'t] a ix new cap) in
         liftBang f
   end
 end
@@ -66,16 +68,16 @@ type[A] 't uwritecap = ('t, unit) ureadcap
 
 let[A] test () =
   let n = 10 in
-  let Pack('t, a, cap) = newA[int] n in
+  let Pack('t, a, cap) = new[int] n in
     let rec loop (i: int) (cap: 't writecap): 't writecap =
       if i >= n
         then cap
-        else loop (i + 1) (updateA a i (i * i) cap) in
+        else loop (i + 1) (update a i (i * i) cap) in
     let cap = loop 0 cap in
     let (r, cap) = letBang cap
       (fun (cap: 't uwritecap) ->
          atAU a 1 cap + atAU a 3 cap + atAU a 5 cap) in
-      updateA a 0 (-1) cap;
+      update a 0 (-1) cap;
       r
 
 in print (test ())

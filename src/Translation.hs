@@ -82,7 +82,9 @@ transExpr neg = te where
     ExId i    -> case view i of
       Right k  -> exCon k
       Left x   -> case exprType e0 of
-                    Nothing         -> exId i -- icky
+                    Nothing         -> error $
+                      "Cannot add contracts to variable if " ++
+                      "type checking was skipped."
                     Just (Left tc)  -> transVar (reifyLang1 e0) tc neg x
                     Just (Right ta) -> transVar (reifyLang1 e0) ta neg x
     ExStr s   -> exStr s
@@ -197,8 +199,8 @@ ca neg pos x (TyQu Forall tv t) =
         u   = tvname tv /./ "u"
 ca neg pos x (TyQu Exists _ t) =
   ca neg pos x t
-ca _   _   x (TyCon _ _ td)
-  | ttTrans td         = exBVar x
+ca _   _   x t
+  | transparent t      = exBVar x
 ca _   _   x (TyVar tv)
   | tvqual tv <: Qu    = exBVar x
 ca _   _   x (TyC _)   = exBVar x
@@ -237,8 +239,8 @@ ac neg pos x (TyQu Forall tv t) =
         u   = tvname tv /./ "u"
 ac neg pos x (TyQu Exists _ t) =
   ac neg pos x t
-ac _   _   x (TyCon _ _ td)
-  | ttTrans td         = exBVar x
+ac _   _   x t
+  | transparent t      = exBVar x
 ac _   _   x (TyVar tv)
   | tvqual tv <: Qu    = exBVar x
 ac _   _   x (TyC _)   = exBVar x

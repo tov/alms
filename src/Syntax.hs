@@ -53,8 +53,8 @@ module Syntax (
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyBoolT, tyArrT, tyLolT, tyTupleT,
 
-  Ftv(..), freshTyVar, freshTyVars, tysubst, tysubst1, qualifier,
-  funtypes,
+  Ftv(..), freshTyVar, freshTyVars, tysubst, tysubst1,
+  qualifier, transparent, funtypes,
   ctype2atype, atype2ctype, cgetas, agetcs, replaceTyTags,
 
   syntacticValue, castableType, letName, prog2decls,
@@ -207,6 +207,7 @@ data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
 
 data TyDec   = TyDecC Bool [TyDecC]
              | TyDecA Bool [TyDecA]
+             | TyDecT [TyDecA] -- transparent types
   deriving (Typeable, Data)
 
 data TyDecC  = TdAbsC {
@@ -1103,6 +1104,16 @@ qualifier (TyQu _ _ t)       = qualifier t
 qualifier (TyMu _ t)         = qualifier t
 qualifier _                  = Qu
 
+-- Is a type transparent?
+transparent :: forall w. Language w => TypeT w -> Bool
+transparent t = case reifyLang :: LangRep w of
+  C -> case t of
+         TyCon _ _ td -> ttTrans td
+         _            -> False
+  A -> case t of
+         TyCon _ _ td -> ttTrans td && (qualifier t <: Qu || td == tdTuple)
+         _            -> False
+
 -- Funtional types
 funtypes    :: [TyTag]
 funtypes     = [tdArr, tdLol]
@@ -1130,7 +1141,7 @@ replaceTyTags tag' = everywhere (mkT each) where
            | otherwise             = tag
 
 ctype2atype :: TypeT C -> TypeT A
-ctype2atype (TyCon n ps td) | ttTrans td
+ctype2atype t@(TyCon n ps td) | transparent t
   = TyCon n (map ctype2atype ps) td
 ctype2atype (TyCon _ [td, tr] d) | d == tdArr
   = TyCon (qlid "->") [ctype2atype td, ctype2atype tr] tdArr
@@ -1145,7 +1156,7 @@ ctype2atype (TyMu tv t)
 ctype2atype t         = tyC t
 
 atype2ctype :: TypeT A -> TypeT C
-atype2ctype (TyCon n ps td) | ttTrans td
+atype2ctype t@(TyCon n ps td) | transparent t
   = TyCon n (map atype2ctype ps) td
 atype2ctype (TyCon _ [td, tr] d) | d `elem` funtypes
   = TyCon (qlid "->") [atype2ctype td, atype2ctype tr] tdArr

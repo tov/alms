@@ -814,7 +814,25 @@ indexQuals name = qsFromListM unbound where
 
 withTyDec :: (?loc :: Loc, Language w, Monad m) =>
              TyDec -> (TyDec -> TC w m a) -> TC w m a
-withTyDec (TyDecC tl tds0) k0 = intoC $ do
+withTyDec (TyDecC tl tds0) k0 =
+  intoC $
+    withTyDecCs False tds0 $ \tds0' ->
+      outofC $
+        k0 (TyDecC tl tds0')
+withTyDec (TyDecA tl tds0) k0 = intoA $ do
+  intoA $
+    withTyDecAs False tds0 $ \tds0' ->
+      outofA $
+        k0 (TyDecA tl tds0')
+withTyDec (TyDecT tds0) k0 =
+  intoA $
+    withTyDecAs True tds0 $ \tds0' ->
+      outofA $
+        k0 (TyDecT tds0')
+
+withTyDecCs :: (?loc :: Loc, Monad m) =>
+               Bool -> [TyDecC] -> ([TyDecC] -> TC C m a) -> TC C m a
+withTyDecCs trans tds0 k0 = do
   tassert (unique (map tdcName tds0)) $
     "Duplicate type(s) in recursive type declaration"
   let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
@@ -826,9 +844,8 @@ withTyDec (TyDecC tl tds0) k0 = intoC $ do
   --     b) synonyms, topologically sorted
   --     c) datatypes again
   mapCont_ withStub dtds $
-    mapCont withTyDecC (atds ++ stds ++ dtds) $
-      \tds' -> outofC $
-        k0 (TyDecC tl tds')
+    mapCont (withTyDecC trans) (atds ++ stds ++ dtds) $
+      k0
   where
     withStub (TdDatC name params _) k = do
       index <- newIndex
@@ -836,7 +853,7 @@ withTyDec (TyDecC tl tds0) k0 = intoC $ do
                   ttId    = index,
                   ttArity = map (const Invariant) params,
                   ttQual  = minBound,
-                  ttTrans = False
+                  ttTrans = trans
                 }
       withTypes (name =:= TiDat tag params empty) k
     withStub _           k = k
@@ -849,18 +866,83 @@ withTyDec (TyDecC tl tds0) k0 = intoC $ do
         TdAbsC _ _   -> (td : atds, stds, dtds)
         TdSynC _ _ _ -> (atds, td : stds, dtds)
         TdDatC _ _ _ -> (atds, stds, td : dtds)
-withTyDec (TyDecA tl tds0) k0 = intoA $ do
+
+withTyDecC :: (?loc :: Loc, Monad m) =>
+              Bool -> TyDecC -> (TyDecC -> TC C m a) -> TC C m a
+withTyDecC trans (TdAbsC name params) k = do
+  index <- newIndex
+  withTypesTransC trans
+      (name =:= TiAbs TyTag {
+         ttId    = index,
+         ttArity = map (const Invariant) params,
+         ttQual  = minBound,
+         ttTrans = trans
+       })
+    (k $ TdAbsC name params)
+withTyDecC trans (TdSynC name params rhs) k = do
+  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
+  withTypesTransC trans (name =:= t')
+    (k $ TdSynC name params rhs)
+withTyDecC trans (TdDatC name params alts) k = do
+  TiDat tag _ _ <- getType (J [] name)
+  (params', alts') <-
+    withTVs params $ \params' -> do
+      alts' <- sequence
+        [ case mt of
+            Nothing -> return (cons, Nothing)
+            Just t  -> do
+              t' <- tcType t
+              return (cons, Just t')
+        | (cons, mt) <- alts ]
+      return (params', alts')
+  withTypesTransC trans (name =:= TiDat tag params' (fromList alts')) $
+    withVarsTransC trans (alts2env name params' tag alts') $
+      (k $ TdDatC name params alts)
+
+-- Add the given types to the current language tenv, and maybe the
+-- other language tenv.
+withTypesTransC :: Monad m => Bool -> T C -> TC C m a -> TC C m a
+withTypesTransC False te k = withTypes te k
+withTypesTransC True  te k =
+  withTypes te $
+    intoA $
+      withTypes (fmap cinfo2ainfo te) $
+        intoC $
+          k
+  where
+    cinfo2ainfo (TiAbs tag)
+      = TiAbs tag
+    cinfo2ainfo (TiSyn tvs t)
+      = TiSyn tvs (ctype2atype' tvs t)
+    cinfo2ainfo (TiDat tag tvs rhs)
+      = TiDat tag tvs (fmap (fmap (ctype2atype' tvs)) rhs)
+    ctype2atype' tvs = ctype2atype . tysubsts tvs (map (tyA . TyVar) tvs) 
+
+-- Add the given types to the current language tenv, and maybe the
+-- other language tenv.
+withVarsTransC :: Monad m => Bool -> V C -> TC C m a -> TC C m a
+withVarsTransC False te k = withVars te k
+withVarsTransC True  te k =
+  withVars te $
+    intoA $
+      withVars (fmap ctype2atype te) $
+        intoC $
+          k
+
+withTyDecAs :: (?loc :: Loc, Monad m) =>
+               Bool -> [TyDecA] -> ([TyDecA] -> TC A m a) -> TC A m a
+withTyDecAs trans tds0 k0 = do
   tassert (unique (map tdaName tds0)) $
     "Duplicate type(s) in recursive type declaration"
   let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
   stds <- topSort getEdge stds0
   mapCont_ withStub dtds $
     let loop =
-          mapCont withTyDecA (atds ++ stds ++ dtds) $
+          mapCont (withTyDecA trans) (atds ++ stds ++ dtds) $
             \tds'changed ->
               if any snd tds'changed
                 then loop
-                else outofA $ k0 (TyDecA tl (map fst tds'changed))
+                else outofA $ k0 (map fst tds'changed)
      in loop
   where
     withStub (TdDatA name params _) k = do
@@ -869,7 +951,7 @@ withTyDec (TyDecA tl tds0) k0 = intoA $ do
                   ttId    = index,
                   ttArity = map (const Omnivariant) params,
                   ttQual  = minBound,
-                  ttTrans = False
+                  ttTrans = trans
                 }
       withTypes (name =:= TiDat tag params empty) k
     withStub _           k = k
@@ -883,58 +965,28 @@ withTyDec (TyDecA tl tds0) k0 = intoA $ do
         TdSynA _ _ _   -> (atds, td : stds, dtds)
         TdDatA _ _ _   -> (atds, stds, td : dtds)
 
-withTyDecC :: (?loc :: Loc, Monad m) =>
-              TyDecC -> (TyDecC -> TC C m a) -> TC C m a
-withTyDecC (TdAbsC name params) k = do
-  index <- newIndex
-  withTypes (name =:= TiAbs TyTag {
-               ttId    = index,
-               ttArity = map (const Invariant) params,
-               ttQual  = minBound,
-               ttTrans = False
-             })
-    (k $ TdAbsC name params)
-withTyDecC (TdSynC name params rhs) k = do
-  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
-  withTypes (name =:= t')
-    (k $ TdSynC name params rhs)
-withTyDecC (TdDatC name params alts) k = do
-  TiDat tag _ _ <- getType (J [] name)
-  (params', alts') <-
-    withTVs params $ \params' -> do
-      alts' <- sequence
-        [ case mt of
-            Nothing -> return (cons, Nothing)
-            Just t  -> do
-              t' <- tcType t
-              return (cons, Just t')
-        | (cons, mt) <- alts ]
-      return (params', alts')
-  withTypes (name =:= TiDat tag params' (fromList alts')) $
-    withVars (alts2env name params' tag alts') $
-      (k $ TdDatC name params alts)
-
 -- withTyDecA types an A type declaration, but in addition to
 -- return (in CPS) a declaration, it returns a boolean that indicates
 -- whether the type metadata has changed, which allows for iterating
 -- to a fixpoint.
 withTyDecA :: (?loc :: Loc, Monad m) =>
-              TyDecA -> ((TyDecA, Bool) -> TC A m a) -> TC A m a
-withTyDecA (TdAbsA name params variances quals) k = do
+              Bool -> TyDecA -> ((TyDecA, Bool) -> TC A m a) -> TC A m a
+withTyDecA trans (TdAbsA name params variances quals) k = do
   index  <- newIndex
   quals' <- indexQuals name params quals
-  withTypes (name =:= TiAbs TyTag {
-               ttId    = index,
-               ttArity = variances,
-               ttQual  = quals',
-               ttTrans = False
-             })
+  withTypesTransA trans
+      (name =:= TiAbs TyTag {
+         ttId    = index,
+         ttArity = variances,
+         ttQual  = quals',
+         ttTrans = trans
+       })
     (k (TdAbsA name params variances quals, False))
-withTyDecA (TdSynA name params rhs) k = do
+withTyDecA trans (TdSynA name params rhs) k = do
   t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
-  withTypes (name =:= t')
+  withTypesTransA trans (name =:= t')
     (k (TdSynA name params rhs, False))
-withTyDecA (TdDatA name params alts) k = do
+withTyDecA trans (TdDatA name params alts) k = do
   TiDat tag _ _ <- getType (J [] name)
   (params', alts') <-
     withTVs params $ \params' -> do
@@ -951,9 +1003,39 @@ withTyDecA (TdDatA name params alts) k = do
       qual    = typeQual params' t'
       changed = arity /= ttArity tag || qual /= ttQual tag
       tag'    = tag { ttArity = arity, ttQual = qual }
-  withTypes (name =:= TiDat tag' params' (fromList alts')) $
-    withVars (alts2env name params' tag' alts') $
+  withTypesTransA trans (name =:= TiDat tag' params' (fromList alts')) $
+    withVarsTransA trans (alts2env name params' tag' alts') $
       (k (TdDatA name params alts, changed))
+
+-- Add the given types to the current language tenv, and maybe the
+-- other language tenv.
+withTypesTransA :: Monad m => Bool -> T A -> TC A m a -> TC A m a
+withTypesTransA False te k = withTypes te k
+withTypesTransA True  te k =
+  withTypes te $
+    intoC $
+      withTypes (fmap ainfo2cinfo te) $
+        intoA $
+          k
+  where
+    ainfo2cinfo (TiAbs tag)
+      = TiAbs tag
+    ainfo2cinfo (TiSyn tvs t)
+      = TiSyn tvs (atype2ctype' tvs t)
+    ainfo2cinfo (TiDat tag tvs rhs)
+      = TiDat tag tvs (fmap (fmap (atype2ctype' tvs)) rhs)
+    atype2ctype' tvs = atype2ctype . tysubsts tvs (map (tyC . TyVar) tvs) 
+
+-- Add the given types to the current language tenv, and maybe the
+-- other language tenv.
+withVarsTransA :: Monad m => Bool -> V A -> TC A m a -> TC A m a
+withVarsTransA False te k = withVars te k
+withVarsTransA True  te k =
+  withVars te $
+    intoC $
+      withVars (fmap atype2ctype te) $
+        intoA $
+          k
 
 unique :: Ord a => [a] -> Bool
 unique  = loop S.empty where
