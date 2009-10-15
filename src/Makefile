@@ -16,18 +16,14 @@ $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 clean:
 	$(RM) Basis/*.hi Basis/*.o *.hi *.o $(EXE) $(EXE)-6.*
 
-examples: $(EXE)
+test tests: $(EXE)
 	@for i in ../examples/ex*.aff; do \
-	  echo "$$i"; \
-	  head -1 "$$i" | grep . ; \
-	  ./$(EXE) "$$i"; \
-	  echo; \
+	  ../examples/run-test.sh $(EXE) "$$i"; \
 	done
 	@for i in ../examples/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
 	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
 	  echo "$$i"; \
 	  ./$(EXE) "$$aff" < "$$i" | diff "$$out" - ; \
-	  echo; \
 	done
 
