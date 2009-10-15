@@ -1,4 +1,3 @@
-
 (* Exception tests -- should print nothing *)
 
 let[C] assert (b: bool) (msg: string) =

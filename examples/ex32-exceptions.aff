@@ -1,5 +1,4 @@
-
-(* Do IO exceptions get converted (should print nothing.) *)
+(* Do IO exceptions get converted? (should print nothing.) *)
 
 #load "../examples/libsocket-C.aff"
 

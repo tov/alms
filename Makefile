@@ -1,5 +1,6 @@
-EXE     = affine
-GHC     = ghc
+EXE      = affine
+GHC      = ghc
+EXAMPLES = examples
 
 default: Setup dist/setup-config
 	./Setup build
@@ -13,20 +14,29 @@ Setup: Setup.hs
 
 $(EXE): default
 
-
-examples: $(EXE)
-	@for i in examples/ex*.aff; do \
-	  echo "$$i"; \
-	  head -1 $$i; \
-	  ./$(EXE) $$i; \
-	  echo; \
+test tests: $(EXE)
+	@for i in $(EXAMPLES)/ex*.aff; do \
+	  $(EXAMPLES)/run-test.sh $(EXE) "$$i"; \
 	done
-	@for i in examples/*.in; do \
+	@for i in $(EXAMPLES)/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
 	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
-	  echo "$$i (should produce no output)"; \
+	  echo "$$i"; \
 	  ./$(EXE) "$$aff" < "$$i" | diff "$$out" - ; \
+	done
+
+examples: $(EXE)
+	@for i in $(EXAMPLES)/ex*.aff; do \
+	  echo "$$i"; \
+	  head -1 "$$i"; \
+	  ./$(EXE) "$$i"; \
 	  echo; \
+	done
+	@for i in $(EXAMPLES)/*.in; do \
+	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
+	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
+	  echo "$$i"; \
+	  ./$(EXE) "$$aff" < "$$i"; \
 	done
 
 clean:
