@@ -1,4 +1,7 @@
-{-# LANGUAGE RelaxedPolyRec #-}
+{-# LANGUAGE
+      RelaxedPolyRec,
+      ScopedTypeVariables
+  #-}
 module Parser (
   P, parse,
   parseProg, parseDecls, parseDecl,
@@ -464,7 +467,7 @@ enterdecl name p = do
   lang <- try (name >> languagep)
   withState (Just lang) (p tl lang)
 
-exprp :: Language w => P (Expr () w)
+exprp :: forall w. Language w => P (Expr () w)
 exprp = expr0 where
   expr0 = addLoc $ choice
     [ do reserved "let"
@@ -512,6 +515,26 @@ exprp = expr0 where
            ei <- expr0
            return (xi, ei)
          return (exCase e1 clauses),
+      do reserved "try"
+         e1 <- expr0
+         reserved "with"
+         optional (reservedOp "|")
+         clauses <- flip sepBy1 (reservedOp "|") $ do
+           xi <- pattp
+           reservedOp "->"
+           ei <- expr0
+           return (PaCon (Uid "Left") (Just xi) Nothing, ei)
+         let tryQ = qlid $
+                      "INTERNALS.Exn.try" ++
+                      show (reifyLang :: LangRep w)
+         return (exCase (exApp (exVar tryQ)
+                               (exAbs PaWild (tyGround "unit") e1)) $
+                  (PaCon (Uid "Right") (Just (PaVar (Lid "x"))) Nothing,
+                   exVar (qlid "x")) :
+                  clauses ++
+                  [(PaCon (Uid "Left") (Just (PaVar (Lid "e"))) Nothing,
+                    exApp (exVar (qlid "INTERNALS.Exn.raise"))
+                          (exVar (qlid "e")))]),
       do reserved "fun"
          build <- choice
            [

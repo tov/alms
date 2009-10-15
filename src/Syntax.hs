@@ -685,6 +685,15 @@ instance Language w => Eq (Type TyTag w) where
           where a = TyVar (freshTyVar x (ftv [t, t']))
     _            `cmp` _               = return False
 
+instance PO (Type TyTag C) where
+  t \/? TyQu Forall tv (TyVar tv') | tv == tv' = return t
+  TyQu Forall tv (TyVar tv') \/? t | tv == tv' = return t
+  t \/? t' = if t == t' then return t else fail "\\/?: does not exist"
+
+  _ /\? t'@(TyQu Forall tv (TyVar tv')) | tv == tv' = return t'
+  t'@(TyQu Forall tv (TyVar tv')) /\? _ | tv == tv' = return t'
+  t /\? t' = if t == t' then return t else fail "/\\?: does not exist"
+
 instance Show Q where
   showsPrec _ Qa = ('A':)
   showsPrec _ Qu = ('U':)

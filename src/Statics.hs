@@ -403,15 +403,16 @@ tcExprC = tc where
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
     ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)
-    ExCase e1 clauses -> do
-      (t1, e1') <- tc e1
-      (ti:tis, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
-        (_, xi', ti, ei') <- withPatt t1 xi $ tc ei
+    ExCase e clauses -> do
+      (t0, e') <- tc e
+      (t1:ts, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
+        (_, xi', ti, ei') <- withPatt t0 xi $ tc ei
         return (ti, (xi', ei'))
-      forM_ tis $ \ti' ->
-        tassert (ti == ti') $
-          "Mismatch in match/let: " ++ show ti ++ " /= " ++ show ti'
-      return (ti, exCase e1' clauses')
+      tr <- foldM (\ti' ti -> ti' \/? ti
+                      |! "Mismatch in match/let: " ++ show ti ++
+                          " and " ++ show ti')
+            t1 ts
+      return (tr, exCase e' clauses')
     ExLetRec bs e2 -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
@@ -425,7 +426,7 @@ tcExprC = tc where
       g'  <- makeG [] bs tfs
       (tas, e's) <- unzip `liftM` mapM (withVars g' . tc . bnexpr) bs
       zipWithM_ (\tf ta -> do
-                   tassert (tf == ta) $
+                   tassert (ta <: tf) $
                       "Actual type " ++ show ta ++
                       " does not agree with declared type " ++
                       show tf ++ " in let rec")
@@ -447,7 +448,7 @@ tcExprC = tc where
       (_, x', te, e') <- withPatt t' x $ tc e
       return (tyArrT t' te, exAbs x' t' e')
     ExApp _ _     -> do
-      tcExApp (==) tc e0
+      tcExApp (<:) tc e0
     ExTAbs tv e   ->
       withTVs [tv] $ \[tv'] -> do
         tassert (syntacticValue e) $
@@ -468,7 +469,7 @@ tcExprC = tc where
       case t1' of
         TyQu Exists tv t11' -> do
           te' <- tapply (tyAll tv t11') t2'
-          tassert (te == te') $
+          tassert (te <: te') $
             "Could not pack type " ++ show te ++
             " (abstracting " ++ show t2 ++
             ") to get " ++ show t1'
@@ -478,12 +479,12 @@ tcExprC = tc where
       (t1, e1') <- tc e1
       t'  <- maybe (return t1) tcType mt
       ta' <- intoA $ tcType ta
-      tassgot (castableType t')
+      tassgot (castableType ta')
         "cast (:>)" t' "function type"
-      tassert (t1 == t') $
+      tassert (t1 <: t') $
         "Mismatch in cast: declared type " ++ show t' ++
         " doesn't match actual type " ++ show t1
-      tassert (t1 == atype2ctype ta') $
+      t1 \/? atype2ctype ta' |!
         "Mismatch in cast: C type " ++ show t1 ++
         " is incompatible with A contract " ++ show t'
       return (t', exCast e1' (Just t') ta')
@@ -595,7 +596,7 @@ tcExprA = tc where
       (t1, e1') <- tc e1
       t'  <- maybe (return t1) tcType mt
       ta' <- tcType ta
-      tassgot (castableType t')
+      tassgot (castableType ta')
         "cast (:>)" t' "function type"
       tassgot (t1 <: t')
         "cast (:>)" t1 (show t')
