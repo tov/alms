@@ -10,7 +10,7 @@ import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
 import Translation (translate, translateDecls, TEnv, tenv0)
-import Value (VExn(..))
+import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
@@ -129,8 +129,11 @@ handleExns body handler =
     `Exn.catch`
       \e@(VExn { }) -> do
         prog <- getProgName
-        hPutStrLn stderr $
-          prog ++ ": Uncaught exception: " ++ show e
+        hPutStrLn stderr .
+          show $
+            hang (text (prog ++ ": Uncaught exception:"))
+                 2
+                 (vppr e)
         handler)
     `Exn.catch`
       \err -> do

@@ -17,7 +17,7 @@ case "$test" in
     ;;
   *-blame-error.aff)
     if ! ./"$exe" "$test"  2>&1 |
-        grep ': Blame ' > /dev/null; then
+        grep ' Blame (' > /dev/null; then
       echo
       echo "TEST FAILED (expected blame error):"
       head -1 "$test"
