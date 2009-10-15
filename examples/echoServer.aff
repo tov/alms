@@ -5,6 +5,8 @@
 module EchoServer = struct[A]
   open ASocket
 
+  (* This is a bit different than the version in the paper, because
+   * it uses exceptions. *)
   let handleClient['t] (sock: 't socket) (f: string -> string)
                        (cap: 't connected) : unit =
     let rec loop (cap: 't connected): unit =
