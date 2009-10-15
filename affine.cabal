@@ -12,18 +12,33 @@ Category:       Compilers/Interpreters
 Synopsis:       An implementation of "Stateful Contracts for Affine Types"
 Build-type:     Simple
 
+Flag editline
+  Description: Enable line editing using the editline package
+  Default:     True
+
+Flag readline
+  Description: Enable line editing using the readline package
+  Default:     False
+
 Executable affine
   Main-Is:              Main.hs
   Hs-Source-Dirs:       src
   GHC-Options:          -W -Wall -O2
   Build-Depends:        haskell98,
-                        base >= 3,
+                        base >= 4,
                         syb >= 0.1,
                         pretty >= 1,
                         containers >= 0.1,
                         parsec >= 2.1,
                         mtl >= 1.1,
                         filepath >= 1.1,
-                        network >= 2.2,
-                        editline >= 0.2.1
-  CPP-Options:        -DUSE_READLINE=System.Console.Editline.Readline
+                        network >= 2.2
+
+  if flag(readline)
+    Build-Depends:  readline >= 1.0
+    CPP-Options:    -DUSE_READLINE=System.Console.Readline
+  else
+    if flag(editline)
+      Build-Depends:  editline >= 0.2.1
+      CPP-Options:    -DUSE_READLINE=System.Console.Editline.Readline
+

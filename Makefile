@@ -7,7 +7,7 @@ default: Setup dist/setup-config
 	cp dist/build/affine/affine .
 
 dist/setup-config config: Setup affine.cabal
-	./Setup configure
+	./Setup configure --flags="$(FLAGS)"
 
 Setup: Setup.hs
 	$(GHC) -o $@ --make $<

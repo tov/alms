@@ -10,6 +10,7 @@ CONTENTS
  * GETTING STARTED
  * USAGE
  * THE LANGUAGE
+ * EDITLINE TROUBLE
 
 WHERE TO FIND STUFF FROM THE PAPER
 
@@ -27,11 +28,9 @@ GETTING STARTED
     % make
 
   This should produce an executable "affine" in the current directory,
-  but if Cabal gets confused, it may help to change into the src/
-  directory and run make in there.
 
-  It may also be necessary to install the editline library first, with
-  "cabal install editline."
+  If it fails, it may also be necessary to either install the editline
+  package first or disable line editing (Please see EDITLINE TROUBLE).
 
   On Windows, build with Cabal:
 
@@ -86,4 +85,47 @@ THE LANGUAGE
 
   In the A language, we use -o for affine function types and -> for
   unlimited function types, rather than \multimap^u and and \multimap^a.
+
+EDITLINE TROUBLE
+
+  Line editing is enabled in the REPL by default, which depends on the
+  editline Cabal package.  If make fails and says something about
+  editline, then there are three options:
+
+   - Disable line editing:
+
+       % make clean; make FLAGS=-editline
+
+   - Use readline instead:
+
+       % make clean; make FLAGS=readline
+
+   - Try to install editline or readline . . .
+
+  Installing editline can be kind of touchy.  On my system,
+
+    % cabal install editline
+
+  seemed to install it, but Cabal still couldn't find it when
+  building this program.  Installing editline globally made it work:
+
+    % sudo cabal install --global editline
+
+  (Likewise, readline didn't work until I installed it globally.)
+
+  At this point, older versions of Cabal may give the installed library
+  bad permissions, so something like this may help, depending on where
+  it installs things:
+
+    % sudo chmod -R a+rX /usr/local/lib/editline*
+
+  If the cabal installation of the GHC package fails, it may be
+  necessary first to install the C library that it depends on.  The
+  source is available at http://www.thrysoee.dk/editline/.  On my debian
+  system, I was able to install it with:
+
+    % sudo aptitude install libedit2 libedit-dev
+
+  Note that libeditline is a *completely different* library, and
+  installing that will not help.
 
