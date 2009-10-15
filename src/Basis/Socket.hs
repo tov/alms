@@ -147,10 +147,10 @@ entries  = [
       -= S.listen,
     fun "accept" -: "socket -> socket * sockAddr" -: ""
       -= S.accept,
-    fun "send" -: "socket -> string -> bool" -: ""
-      -= \sock str -> boolOfExn (S.send sock str),
-    fun "recv" -: "socket -> int -> string option" -: ""
-      -= \sock len -> maybeOfExn (S.recv sock len),
+    fun "send" -: "socket -> string -> int" -: ""
+      -= \sock str -> S.send sock str,
+    fun "recv" -: "socket -> int -> string" -: ""
+      -= \sock len -> S.recv sock len,
     fun "shutdown" -: "socket -> shutdownCmd -> unit" -: ""
       -= S.shutdown,
     fun "close" -: "socket -> unit" -: ""
@@ -161,11 +161,4 @@ entries  = [
     fun "isWritable" -: "socket -> bool" -: ""
       -= S.sIsWritable
   ]
-
--- our language doesn't have exceptions yet
-maybeOfExn :: IO a -> IO (Maybe a)
-maybeOfExn io = fmap Just io `catch` const (return Nothing)
-
-boolOfExn :: IO a -> IO Bool
-boolOfExn io = fmap (const True) io `catch` const (return False)
 

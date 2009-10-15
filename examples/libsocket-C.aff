@@ -30,10 +30,10 @@ module Socket = struct[C]
     let accept (sock: socket) : socket =
       let (new, _) = S.accept sock in new
 
-    let send (sock: socket) (data: string) : bool =
+    let send (sock: socket) (data: string) : int =
       S.send sock data
 
-    let recv (sock: socket) (len: int) : string option =
+    let recv (sock: socket) (len: int) : string =
       S.recv sock len
 
     let close (sock: socket) : unit =

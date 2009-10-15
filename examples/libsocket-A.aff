@@ -1,5 +1,10 @@
 (*
     A typestate sockets library
+
+    This is a bit more involved than the example in the paper,
+    because we have error cases.  We deal with this by raising
+    an exception which contains a witness that allows recovering
+    the capability if presented with the corresponding socket.
 *)
 
 #load "libsocket-C.aff"
@@ -15,55 +20,150 @@ module ASocket = struct[A]
       and 't connected qualifier A = Connected
   with
 
-    (* When we raise an exception, we "pickle" the capability. *)
-    abstype frozenInitial   qualifier A = FInitial {S.socket}
-        and frozenBound     qualifier A = FBound {S.socket}
-        and frozenListening qualifier A = FListening {S.socket}
-        and frozenConnected qualifier A = FConnected {S.socket}
+    (* When we raise an exception, we "freeze" the capability,
+     * and we can thaw the capability if we have the socket that
+     * it goes with.  This lets us recover the capability with
+     * a type paramater that matches any extant sockets that go
+     * with it. *)
+    abstype frozenInitial   qualifier A = FInitial of {S.socket}
+        and frozenBound     qualifier A = FBound of {S.socket}
+        and frozenListening qualifier A = FListening of {S.socket}
+        and frozenConnected qualifier A = FConnected of {S.socket}
+    with
+      let freezeInitial['t] (Sock sock: 't socket) (_: 't initial) =
+            FInitial sock
+      let thawInitial['t] (Sock sock: 't socket)
+                          (FInitial sock': frozenInitial) =
+        if sock == sock'
+          then Right[frozenInitial, 't initial] Initial['t]
+          else Left [frozenInitial, 't initial] (FInitial sock')
+      let freezeBound['t] (Sock sock: 't socket) (_: 't bound) =
+            FBound sock
+      let thawBound['t] (Sock sock: 't socket)
+                          (FBound sock': frozenBound) =
+        if sock == sock'
+          then Right[frozenBound, 't bound] Bound['t]
+          else Left [frozenBound, 't bound] (FBound sock')
+      let freezeListening['t] (Sock sock: 't socket) (_: 't listening) =
+            FListening sock
+      let thawListening['t] (Sock sock: 't socket)
+                          (FListening sock': frozenListening) =
+        if sock == sock'
+          then Right[frozenListening, 't listening] Listening['t]
+          else Left [frozenListening, 't listening] (FListening sock')
+      let freezeConnected['t] (Sock sock: 't socket) (_: 't connected) =
+            FConnected sock
+      let thawConnected['t] (Sock sock: 't socket)
+                          (FConnected sock': frozenConnected) =
+        if sock == sock'
+          then Right[frozenConnected, 't connected] Connected['t]
+          else Left [frozenConnected, 't connected] (FConnected sock')
+    end
 
+    exception SocketError    of string
+    exception StillInitial   of frozenInitial * string
+    exception StillBound     of frozenBound * string
+    exception StillListening of frozenListening * string
+    exception StillConnected of frozenConnected * string
 
     let socket (): ex 't. 't socket * 't initial =
-      let sock = S.socket () in
-      Pack(unit, Sock[unit] sock, Initial[unit])
+      try
+        let sock = S.socket ()
+         in Pack(unit, Sock[unit] sock, Initial[unit])
+      with
+        IOError s -> raise (SocketError s)
 
     (* If bind fails, you actually can try again. *)
-    let bind['t] (Sock sock: 't socket) (port: int) (_: 't initial)
+    let bind['t] (Sock sock as s: 't socket) (port: int) (cap: 't initial)
                  : 't bound =
-      S.bind sock port;
-      Bound['t]
+      try
+        S.bind sock port;
+        Bound['t]
+      with
+        IOError msg -> raise (StillInitial (freezeInitial s cap, msg))
 
     (* If connect fails, you actually can try again. *)
-    let connect['t] (Sock sock: 't socket) (host: string) (port: string)
-                    (_: ('t initial, 't bound) either)
+    let connect['t] (Sock sock as s: 't socket) (host: string) (port: string)
+                    (cap: ('t initial, 't bound) either)
                     : 't connected =
-      S.connect sock host port;
-      Connected['t]
+      try
+        S.connect sock host port;
+        Connected['t]
+      with
+        IOError msg -> match cap with
+          | Left cap  -> raise (StillInitial (freezeInitial s cap, msg))
+          | Right cap -> raise (StillBound (freezeBound s cap, msg))
 
-    let listen['t] (Sock sock: 't socket) (_: 't bound)
+    let listen['t] (Sock sock as s: 't socket) (cap: 't bound)
                    : 't listening =
-      S.listen sock;
-      Listening['t]
+      try
+        S.listen sock;
+        Listening['t]
+      with
+        IOError msg -> raise (StillBound (freezeBound s cap, msg))
 
-    let accept['t] (Sock sock: 't socket) (_: 't listening)
+    let accept['t] (Sock sock as s: 't socket) (cap: 't listening)
                    : (ex 's. 's socket * 's connected) * 't listening =
-      let newsock = S.accept sock in
-        (Pack(unit, Sock[unit] newsock, Connected[unit]),
-         Listening['t])
+      try
+        let newsock = S.accept sock in
+          (Pack(unit, Sock[unit] newsock, Connected[unit]),
+           Listening['t])
+      with
+        IOError msg -> raise (StillListening (freezeListening s cap, msg))
 
     let send['t] (Sock sock: 't socket) (data: string)
-                 (_: 't connected) : 't connected option =
-      if S.send sock data
-        then Some (Connected['t])
-        else S.close sock; None['t connected]
+                 (_: 't connected) : 't connected =
+      try
+        S.send sock data;
+        Connected['t]
+      with
+        IOError msg -> raise (SocketError msg)
 
     let recv['t] (Sock sock: 't socket) (len: int)
-                 (_: 't connected) : (string * 't connected) option =
-      match S.recv sock len with
-      | Some str -> Some (str, Connected['t])
-      | None     -> S.close sock; None[string * 't connected]
+                 (_: 't connected) : string * 't connected =
+      try
+        let str = S.recv sock len 
+         in (str, Connected['t])
+      with
+        IOError msg -> raise (SocketError msg)
 
     let close['t] (Sock sock: 't socket) (_: 't connected): unit =
-      S.close sock
+      try
+        S.close sock
+      with
+        IOError s -> raise (SocketError s)
   end
+
+  let catchInitial['t,'<a] (sock: 't socket) (body: unit -o '<a)
+                           (handler: 't initial -o '<a) =
+    try body () with
+    | StillInitial (frz, msg) ->
+        match thawInitial sock frz with
+        | Left frz  -> raise (StillInitial (frz, msg))
+        | Right cap -> handler cap
+
+  let catchBound['t,'<a] (sock: 't socket) (body: unit -o '<a)
+                           (handler: 't bound -o '<a) =
+    try body () with
+    | StillBound (frz, msg) ->
+        match thawBound sock frz with
+        | Left frz  -> raise (StillBound (frz, msg))
+        | Right cap -> handler cap
+
+  let catchListening['t,'<a] (sock: 't socket) (body: unit -o '<a)
+                           (handler: 't listening -o '<a) =
+    try body () with
+    | StillListening (frz, msg) ->
+        match thawListening sock frz with
+        | Left frz  -> raise (StillListening (frz, msg))
+        | Right cap -> handler cap
+
+  let catchConnected['t,'<a] (sock: 't socket) (body: unit -o '<a)
+                           (handler: 't connected -o '<a) =
+    try body () with
+    | StillConnected (frz, msg) ->
+        match thawConnected sock frz with
+        | Left frz  -> raise (StillConnected (frz, msg))
+        | Right cap -> handler cap
 end
 

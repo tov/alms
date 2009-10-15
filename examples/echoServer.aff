@@ -8,13 +8,12 @@ module EchoServer = struct[A]
   let handleClient['t] (sock: 't socket) (f: string -> string)
                        (cap: 't connected) : unit =
     let rec loop (cap: 't connected): unit =
-      match recv sock 1024 cap with
-      | None            -> ()
-      | Some (str, cap) ->
-          match send sock (f str) cap with
-          | None     -> ()
-          | Some cap -> loop cap in
-    loop cap
+      let (str, cap) = recv sock 1024 cap in
+      let cap        = send sock (f str) cap in
+        loop cap
+     in try
+          loop cap
+        with SocketError _ -> ()
 
   let rec acceptLoop['t] (sock: 't socket) (f: string -> string)
                          (cap: 't listening) : unit =
