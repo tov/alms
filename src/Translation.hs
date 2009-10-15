@@ -305,7 +305,7 @@ checkContract x (Party who) what =
 blameFun :: String -> String -> ExprT C
 blameFun who what =
   exAbs PaWild tyUnitT $
-    exApp (exApp (exVar (qlid "INTERNALS.blame"))
+    exApp (exApp (exVar (qlid "INTERNALS.Exn.raiseBlame"))
                  (exStr who))
           (exStr what)
 

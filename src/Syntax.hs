@@ -52,6 +52,8 @@ module Syntax (
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
 
+  exidIOError, exidBlame,
+
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
 
@@ -1099,6 +1101,10 @@ tdSend       = TyTag (-12) [1]  minBound          False
 tdRecv       = TyTag (-13) [-1] minBound          False
 tdSelect     = TyTag (-14) [1]  minBound          False
 tdFollow     = TyTag (-15) [1]  minBound          False
+
+exidIOError, exidBlame :: Integer
+exidIOError  = -21
+exidBlame    = -22
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon (qlid s) [] ()

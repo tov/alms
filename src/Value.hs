@@ -23,6 +23,8 @@ import Syntax (Uid(..), LangRepMono(..))
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             parensIf, precCom, precApp)
 
+import qualified Control.Exception as Exn
+
 import Foreign.C.Types (CInt)
 import Data.Word (Word32, Word16)
 
@@ -255,7 +257,14 @@ data VExn = VExn {
 
 instance Valuable VExn where
   veq          = (==)
-  vpprPrec p e = text "exn:" <> vpprPrec p (VaCon (exnName e) (exnParam e))
+  vpprPrec p e = vpprPrec p (VaCon (exnName e) (exnParam e))
+
+instance Show VExn where
+  showsPrec p e = (show (vpprPrec p e) ++)
+
+instance Exn.Exception VExn where
+  toException = Exn.SomeException
+  fromException (Exn.SomeException e) = cast e
 
 -- nasty syb stuff
 

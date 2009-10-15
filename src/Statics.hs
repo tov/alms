@@ -12,7 +12,7 @@ module Statics (
   S, env0,
   NewDefs(..), emptyNewDefs, TyInfo, tyInfoToDec,
   tcProg, tcDecls,
-  addVal, addType, addMod
+  addVal, addType, addExn, addMod
 ) where
 
 import Util
@@ -1224,20 +1224,31 @@ withExn :: (?loc :: Loc, Monad m) =>
 withExn d0 k0 = case d0 of
     ExnC _ n mt _ -> do
       index <- newIndex
-      t' <- gmapM tcType mt
-      add n t' (LC, index) .
-        intoA .
-          add n (fmap ctype2atype t') (LC, index) .
-            intoC $
-              k0 d0 { exnId = Just index }
-    ExnA _ n mt _ -> intoA $ do
+      withExnIndex n mt C index $
+        k0 d0 { exnId = Just index }
+    ExnA _ n mt _ -> do
       index <- newIndex
+      withExnIndex n mt A index $
+        k0 d0 { exnId = Just index }
+
+withExnIndex :: (?loc :: Loc, Monad m, Language w) =>
+                Uid -> Maybe (Type i w) -> LangRep w -> Integer ->
+                TC C m a -> TC C m a
+withExnIndex n mt lang index k0 = case lang of
+    C -> do
       t' <- gmapM tcType mt
-      add n t' (LA, index) .
+      add t' (LC, index) .
+        intoA .
+          add (fmap ctype2atype t') (LC, index) .
+            intoC $
+              k0
+    A -> intoA $ do
+      t' <- gmapM tcType mt
+      add t' (LA, index) .
         intoC $
-          k0 d0 { exnId = Just index }
+          k0
  where
-   add n t ix k = do
+   add t ix k = do
      ti <- getType (qlid "exn")
      let env' = n =:= (t, ix)
      ti' <- case ti of
@@ -1493,6 +1504,14 @@ addType gg n td =
       both  :: Both C
       both   = Both level level in
     gg { cEnv = cEnv gg =+= both }
+
+addExn :: (Language w, Monad m) =>
+          S -> Uid -> Type i w -> LangRep w -> Integer -> m S
+addExn gg n t lang ix =
+  runTC gg .
+    withExnIndex n (Just t) lang ix $
+      saveTC False
+  where ?loc = bogus
 
 addMod :: (Monad m) => S -> Uid -> (S -> m S) -> m S
 addMod gg0 x k = do

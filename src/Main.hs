@@ -10,6 +10,7 @@ import Parser (parse, parseProg, parseDecls)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
 import Translation (translate, translateDecls, TEnv, tenv0)
+import Value (VExn(..))
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
@@ -22,6 +23,7 @@ import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
 import IO (readFile, hPutStr, hPutStrLn, stderr)
+import qualified Control.Exception as Exn
 
 #ifdef USE_READLINE
 import qualified USE_READLINE as RL
@@ -44,12 +46,7 @@ main  = do
   e0  <- basis2venv primBasis
   st0 <- loadSource (RS g0 tenv0 e0) "basis" srcBasis
   maybe interactive (batch filename) mmsrc (`elem` opts) st0
-    `catch`
-      \err -> do
-        prog <- getProgName
-        hPutStrLn stderr $
-          prog ++ ": " ++ errorString err
-        exitFailure
+    `handleExns` exitFailure
 
 loadSource :: ReplState -> String -> String -> IO ReplState
 loadSource st name src = do
@@ -126,6 +123,21 @@ dynamics (rs, ast) = do
   (e', new) <- addDecls (rsDynamics rs) ast
   return (rs { rsDynamics = e' }, new)
 
+handleExns :: IO a -> IO a -> IO a
+handleExns body handler =
+  (body
+    `Exn.catch`
+      \e@(VExn { }) -> do
+        prog <- getProgName
+        hPutStrLn stderr $
+          prog ++ ": Uncaught exception: " ++ show e
+        handler)
+    `Exn.catch`
+      \err -> do
+        prog <- getProgName
+        hPutStrLn stderr (prog ++ ": " ++ errorString err)
+        handler
+
 interactive :: (Option -> Bool) -> ReplState -> IO ()
 interactive opt rs0 = do
   initialize
@@ -136,10 +148,7 @@ interactive opt rs0 = do
       case mast of
         Nothing  -> return ()
         Just ast -> do
-          st' <- doLine st ast `catch`
-            \err -> do
-              hPutStrLn stderr (errorString err)
-              return st
+          st' <- doLine st ast `handleExns` return st
           repl st'
     doLine st ast = let
       check   :: (ReplState, [Decl ()]) -> IO ReplState
@@ -296,5 +305,5 @@ addHistory _ = return ()
 readline s   = do
   putStr s
   hFlush stdout
-  catch (fmap Just getLine) (\_ -> return Nothing)
+  Exn.catch (fmap Just getLine) (\_ -> return Nothing)
 #endif

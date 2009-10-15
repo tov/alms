@@ -5,6 +5,7 @@ module BasisUtils (
   Entry,
   MkFun(..), baseMkFun,
   fun, binArith, val, pval, pfun,
+  exnC, exnA,
   typeC, typeA, typeT, primtype, src,
   submod,
   vapp,
@@ -17,7 +18,7 @@ import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
 import Parser (pt, pds)
 import Ppr (ppr, text, hang, char, (<>))
-import Statics (S, env0, tcDecls, addVal, addType, addMod)
+import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
 import Util
 import Value (Valuable(..), FunName(..), Value(..))
@@ -43,6 +44,12 @@ data Entry = ValEn {
            | ModEn {
                enModName :: Uid,
                enEnts    :: [Entry]
+             }
+           | ExnEn {
+               enExnName :: Uid,
+               enExnId   :: Integer,
+               enExnLang :: LangRepMono,
+               enExnType :: String
              }
 
 -- Type class for making Values out of Haskell functions
@@ -93,6 +100,14 @@ pfun :: (MkFun r, Valuable v) =>
         Int -> String -> String -> String -> (v -> r) -> Entry
 pfun 0 name cty aty f = fun name cty aty f
 pfun n name cty aty f = mkTyAbs (pfun (n - 1) name cty aty f)
+
+exnC :: String -> Integer -> String -> Entry
+exnC n ix t = ExnEn { enExnName = Uid n, enExnId = ix,
+                      enExnLang = LC, enExnType = t }
+
+exnA :: String -> Integer -> String -> Entry
+exnA n ix t = ExnEn { enExnName = Uid n, enExnId = ix,
+                      enExnLang = LA, enExnType = t }
 
 mkTyAbs :: Entry -> Entry
 mkTyAbs entry =
@@ -167,4 +182,10 @@ basis2tenv  = foldM each env0 where
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
+  each gg0 (ExnEn { enExnName = n, enExnId   = ix,
+                    enExnLang = LC, enExnType = s }) =
+    Statics.addExn gg0 n (pt s :: Type () C) C ix
+  each gg0 (ExnEn { enExnName = n, enExnId   = ix,
+                    enExnLang = LA, enExnType = s }) =
+    Statics.addExn gg0 n (pt s :: Type () A) A ix
 

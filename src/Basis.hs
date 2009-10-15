@@ -14,6 +14,7 @@ import Syntax
 import Basis.Channels
 import qualified Basis.IO
 import qualified Basis.Socket
+import qualified Basis.Exn
 
 import qualified IO
 import qualified System.Environment as Env
@@ -118,9 +119,6 @@ primBasis  = [
       -= ((==) :: Value -> Value -> Bool),
     pfun 1 "print" -:: "all 'a. 'a -> unit"
       -= (print :: Value -> IO ()),
-    pfun 1 "failwith" -: "all 'a. string -> 'a"
-                      -: "all '<a. string -> '<a"
-      -= (fail . ("Failure: "++) :: String -> IO Value),
 
     -- I/O
     fun "putChar"  -:: "int -> unit"
@@ -297,7 +295,9 @@ primBasis  = [
                   -: ""
         -= \who what -> fail $ "Contract violation: " ++
                                who ++ ": " ++
-                               what :: IO ()
+                               what :: IO (),
+
+      submod "Exn" Basis.Exn.entries
     ]
   ]
 
@@ -331,6 +331,7 @@ instance Valuable Rendezvous where
 
 srcBasis :: String
 srcBasis  = unlines [
+  "open INTERNALS.Exn",
   "let[C] not (b: bool) = if b then false else true",
   "let[C] (!=)['a] (x: 'a) (y: 'a) = not (x == y)",
   "let[C] flip['a,'b,'c] (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y",
@@ -369,5 +370,7 @@ srcBasis  = unlines [
   "let[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
   "  fun 'a (lst: {{'a} list}) ->",
   "    foldr (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
+  "let[A] failwith['<a] (msg: string) =",
+  "  raise['<a] (Failure msg)",
   ""
   ]
