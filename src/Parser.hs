@@ -253,7 +253,7 @@ declp  = addLoc $ choice [
                    t  <- optionMaybe $ do
                      reserved "of"
                      typep
-                   return (dcExn (kons tl n t Nothing)) in
+                   return (dcExn (kons tl n t)) in
              case lang of
                     LC -> exnp ExnC
                     LA -> exnp ExnA

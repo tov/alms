@@ -37,6 +37,6 @@ let[C] serverFun (s: string) = s
 let[C] main (argv: string list) =
   match argv with
   | Cons (port, Nil) -> EchoServer.serve (int_of_string port) serverFun
-  | _ -> failwith[unit] "Usage: echoServer.aff PORT\n"
+  | _ -> failwith "Usage: echoServer.aff PORT\n"
 
 in main (getArgs ())

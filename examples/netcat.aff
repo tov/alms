@@ -36,9 +36,8 @@ let[C] getAddr (): sockAddr =
                              SockAddrInet(PortNum 0, 0), None[string]) in
          (match getAddrInfo (Some info) (Some host) (Some port) with
           | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
-          | _ -> failwith[sockAddr]
-                   ("Could not resolve address "^host^":"^port))
-  | _ -> failwith[sockAddr] ("Usage: " ^ getProgName () ^ " HOST SERVICE")
+          | _ -> failwith ("Could not resolve address "^host^":"^port))
+  | _ -> failwith ("Usage: " ^ getProgName () ^ " HOST SERVICE")
 
 let[A] main () =
   let sock = setupConnection (getAddr ()) in

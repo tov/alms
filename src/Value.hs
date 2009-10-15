@@ -19,7 +19,7 @@ import qualified Data.Char as Char
 import Data.Generics
 
 import Util
-import Syntax (Uid(..), LangRepMono(..))
+import Syntax (Uid(..), ExnId(..))
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             parensIf, precCom, precApp)
 
@@ -248,16 +248,14 @@ instance Show a => Show (Vinj a) where
 -- Exceptions
 
 data VExn = VExn {
-              exnName  :: Uid,
-              exnParam :: Maybe Value,
-              exnIndex :: Integer,
-              exnLang  :: LangRepMono
+              exnId    :: ExnId,
+              exnParam :: Maybe Value
             }
   deriving (Typeable, Eq)
 
 instance Valuable VExn where
   veq          = (==)
-  vpprPrec p e = vpprPrec p (VaCon (exnName e) (exnParam e))
+  vpprPrec p e = vpprPrec p (VaCon (eiName (exnId e)) (exnParam e))
 
 instance Show VExn where
   showsPrec p e = (show (vpprPrec p e) ++)

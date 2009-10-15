@@ -1,0 +1,11 @@
+
+(* Do IO exceptions get converted (should print nothing.) *)
+
+#load "../examples/libsocket-C.aff"
+
+open Socket
+
+let[C] dummy =
+  let sock = socket () in
+  try bind sock 3; failwith "bug: didn't raise!" with
+  | IOError _ -> ()

@@ -21,8 +21,7 @@ with
         match r <- CheckedOut with
         | Available c -> c
         | CheckedOut  -> loop ()
-        | Defunct     -> failwith[('t, 'c) readcap]
-            "letBang: attempt to use defunct ureadcap"
+        | Defunct     -> failwith "letBang: attempt to use defunct ureadcap"
       in loop ()
 
     (* Given a capability, create a temporary, unlimited read capability

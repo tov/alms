@@ -45,8 +45,7 @@ usage x e = case M.lookup x (fv e) of
 data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeT w)
               | TiDat TyTag [TyVar] (Env Uid (Maybe (TypeT w)))
-              | TiExn TyTag (Env Uid (Maybe (TypeT w),
-                                      (LangRepMono, Integer)))
+              | TiExn TyTag (Env Uid (Maybe (TypeT w), ExnId))
   deriving (Data, Typeable, Show)
 
 -- Type environments
@@ -395,8 +394,8 @@ tcExprC = tc where
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
       txtx  <- getVar x
-      exnix <- either (exnConsIndex x) (intoA . exnConsIndex x) txtx
-      let e' = exId x `setExnIndex` exnix
+      exnix <- either (findExnId x) (intoA . findExnId x) txtx
+      let e' = exId x `setExnId` exnix
       case txtx of
         Left tx  -> return (tx, e' *:* tx)
         Right tx -> return (atype2ctype tx, e' *:* tx)
@@ -503,8 +502,8 @@ tcExprA = tc where
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
       txtx  <- getVar x
-      exnix <- either (exnConsIndex x) (intoC . exnConsIndex x) txtx
-      let e' = exId x `setExnIndex` exnix
+      exnix <- either (findExnId x) (intoC . findExnId x) txtx
+      let e' = exId x `setExnId` exnix
       case txtx of
         Left tx  -> return (tx, e' *:* tx)
         Right tx -> return (ctype2atype tx, e' *:* tx)
@@ -700,12 +699,12 @@ tcPatt t x0 = case x0 of
           TiExn tag' alts | tag == tag' -> do
             case alts =..= u of
               Nothing       -> tgot "Pattern" t ("constructor " ++ show u)
-              Just (mt, (_, ix)) -> case (mt, mx) of
+              Just (mt, ei) -> case (mt, mx) of
                 (Nothing, Nothing) ->
-                  return (empty, empty, PaCon u Nothing (Just ix))
+                  return (empty, empty, PaCon u Nothing (Just ei))
                 (Just t1, Just x1) -> do
                   (dx1, gx1, x1') <- tcPatt t1 x1
-                  return (dx1, gx1, PaCon u (Just x1') (Just ix))
+                  return (dx1, gx1, PaCon u (Just x1') (Just ei))
                 _ -> tgot "Pattern" t "different arity"
           _ ->
             terr $ "Pattern " ++ show x0 ++ " for type not in scope"
@@ -1223,35 +1222,35 @@ withLocal ds0 ds1 k = do
 withExn :: (?loc :: Loc, Monad m) =>
            ExnDec -> (ExnDec -> TC C m a) -> TC C m a
 withExn d0 k0 = case d0 of
-    ExnC _ n mt _ -> do
+    ExnC _ n mt -> do
       index <- newIndex
-      withExnIndex n mt C index $
-        k0 d0 { exnId = Just index }
-    ExnA _ n mt _ -> do
+      withExnId n mt C index $
+        k0 d0
+    ExnA _ n mt -> do
       index <- newIndex
-      withExnIndex n mt A index $
-        k0 d0 { exnId = Just index }
+      withExnId n mt A index $
+        k0 d0
 
-withExnIndex :: (?loc :: Loc, Monad m, Language w) =>
-                Uid -> Maybe (Type i w) -> LangRep w -> Integer ->
-                TC C m a -> TC C m a
-withExnIndex n mt lang index k0 = case lang of
+withExnId :: (?loc :: Loc, Monad m, Language w) =>
+             Uid -> Maybe (Type i w) -> LangRep w -> Integer ->
+             TC C m a -> TC C m a
+withExnId n mt lang0 index k0 = case lang0 of
     C -> do
       t' <- gmapM tcType mt
-      add t' (LC, index) .
+      add t' LC .
         intoA .
-          add (fmap ctype2atype t') (LC, index) .
+          add (fmap ctype2atype t') LC .
             intoC $
               k0
     A -> intoA $ do
       t' <- gmapM tcType mt
-      add t' (LA, index) .
+      add t' LA .
         intoC $
           k0
  where
-   add t ix k = do
+   add t lang k = do
      ti <- getType (qlid "exn")
-     let env' = n =:= (t, ix)
+     let env' = n =:= (t, ExnId index n lang)
      ti' <- case ti of
        TiExn tag env     -> return $ TiExn tag (env =+= env')
        _                 -> terr $ "Cannot extend exn type because " ++
@@ -1260,9 +1259,9 @@ withExnIndex n mt lang index k0 = case lang of
        withVars (Con n =:= maybe tyExnT (`tyArrT` tyExnT) t) $
          k
 
-exnConsIndex :: (?loc::Loc, Monad m) =>
-                Ident -> TypeT w -> TC w m (Maybe (LangRepMono, Integer))
-exnConsIndex ident t = case view ident of
+findExnId :: (?loc::Loc, Monad m) =>
+             Ident -> TypeT w -> TC w m (Maybe ExnId)
+findExnId ident t = case view ident of
     Right (J [] uid) -> case t of
       TyCon _ [_, TyCon _ _ td'] td
         | td == tdArr && td' == tdExn -> getIdOf uid
@@ -1507,10 +1506,10 @@ addType gg n td =
     gg { cEnv = cEnv gg =+= both }
 
 addExn :: (Language w, Monad m) =>
-          S -> Uid -> Type i w -> LangRep w -> Integer -> m S
-addExn gg n t lang ix =
+          S -> Uid -> Maybe (Type i w) -> LangRep w -> Integer -> m S
+addExn gg n mt lang ix =
   runTC gg .
-    withExnIndex n (Just t) lang ix $
+    withExnId n mt lang ix $
       saveTC False
   where ?loc = bogus
 

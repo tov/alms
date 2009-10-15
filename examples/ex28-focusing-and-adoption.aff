@@ -61,7 +61,7 @@ with
       : ('tb, '<b) cap * ('tb, '<a) guarded =
     let r    = ref (Some adoptee) in
     let g () = match r <- None with
-               | None   -> failwith[unit] "Can't happen"
+               | None   -> failwith "Can't happen"
                | Some c -> destroy (Cap['ta] c) in
       (Cap['tb] (adoptor, Cons(g, destructors)), Guarded['tb] r)
   let adoptBy['<a,'ta,'<b,'tb]
@@ -76,7 +76,7 @@ with
                                      ('s, '<b) cap * '<r))
       : ('t, '<a) cap * '<r =
       match r <- None with
-      | None   -> failwith[('t, '<a) cap * '<r] "Can't happen"
+      | None   -> failwith "Can't happen"
       | Some c ->
           let (Cap c, result) = body[unit] (Cap[unit] c, Tr[unit])
            in r <- Some c;

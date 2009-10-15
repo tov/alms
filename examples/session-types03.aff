@@ -12,25 +12,6 @@ type[A] protocol =
     ((int recv -> unit) *
      (int send -> 'r)) select
 
-let[C] foldl =
-  let rec loop 'a 'b (f : 'a -> 'b -> 'b) (z : 'b) (alst : 'a list) : 'b =
-    match alst with
-    | Nil          -> z
-    | Cons(a,alst) -> loop f (f a z) alst
-  in loop
-
--- This is pretty brittle :-)
-let[C] stringToInt =
-  fun s : string ->
-    let each (digit : int) (acc : int) =
-      let digit = digit - 48 in
-      if digit <= -1
-        then failwith[int] "digit out of range"
-        else if 11 <= digit
-          then failwith[int] "digit out of range"
-          else digit + 10 * acc
-    in foldl each 0 (explode s)
-
 let[A] server =
   let rec loop (acc : int)
                (c   : protocol dual channel)
@@ -54,7 +35,7 @@ let[A] client =
             r
         else
           let c      = sel2 c in
-          let c      = send c (stringToInt s) in
+          let c      = send c (int_of_string s) in
             loop c
    in loop
 

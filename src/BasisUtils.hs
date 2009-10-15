@@ -5,7 +5,7 @@ module BasisUtils (
   Entry,
   MkFun(..), baseMkFun,
   fun, binArith, val, pval, pfun,
-  exnC, exnA,
+  primexn,
   typeC, typeA, typeT, primtype, src,
   submod,
   vapp,
@@ -46,9 +46,7 @@ data Entry = ValEn {
                enEnts    :: [Entry]
              }
            | ExnEn {
-               enExnName :: Uid,
-               enExnId   :: Integer,
-               enExnLang :: LangRepMono,
+               enExnId   :: ExnId,
                enExnType :: String
              }
 
@@ -101,14 +99,6 @@ pfun :: (MkFun r, Valuable v) =>
 pfun 0 name cty aty f = fun name cty aty f
 pfun n name cty aty f = mkTyAbs (pfun (n - 1) name cty aty f)
 
-exnC :: String -> Integer -> String -> Entry
-exnC n ix t = ExnEn { enExnName = Uid n, enExnId = ix,
-                      enExnLang = LC, enExnType = t }
-
-exnA :: String -> Integer -> String -> Entry
-exnA n ix t = ExnEn { enExnName = Uid n, enExnId = ix,
-                      enExnLang = LA, enExnType = t }
-
 mkTyAbs :: Entry -> Entry
 mkTyAbs entry =
   let v     = enValue entry in
@@ -139,6 +129,9 @@ submod  = ModEn . Uid
 
 primtype  :: String -> TyTag -> Entry
 primtype   = TypEn . Lid
+
+primexn :: ExnId -> String -> Entry
+primexn ei t = ExnEn { enExnId = ei, enExnType = t }
 
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
@@ -182,10 +175,14 @@ basis2tenv  = foldM each env0 where
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
-  each gg0 (ExnEn { enExnName = n, enExnId   = ix,
-                    enExnLang = LC, enExnType = s }) =
-    Statics.addExn gg0 n (pt s :: Type () C) C ix
-  each gg0 (ExnEn { enExnName = n, enExnId   = ix,
-                    enExnLang = LA, enExnType = s }) =
-    Statics.addExn gg0 n (pt s :: Type () A) A ix
+  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiIndex = ix, eiLang = LC },
+                    enExnType = s }) =
+    Statics.addExn gg0 n (pt_maybe s) C ix
+  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiIndex = ix, eiLang = LA },
+                    enExnType = s }) =
+    Statics.addExn gg0 n (pt_maybe s) A ix
+
+pt_maybe :: Language w => String -> Maybe (Type () w)
+pt_maybe "" = Nothing
+pt_maybe s  = Just (pt s)
 

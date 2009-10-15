@@ -15,13 +15,13 @@ $(EXE): default
 
 
 examples: $(EXE)
-	for i in examples/ex*.aff; do \
+	@for i in examples/ex*.aff; do \
 	  echo "$$i"; \
 	  head -1 $$i; \
 	  ./$(EXE) $$i; \
 	  echo; \
 	done
-	for i in examples/*.in; do \
+	@for i in examples/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
 	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
 	  echo "$$i (should produce no output)"; \

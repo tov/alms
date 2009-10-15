@@ -216,8 +216,8 @@ pprModExp add modexp = case modexp of
 
 instance Ppr ExnDec where
   pprPrec _ e = case e of
-      ExnC tl n t _ -> pprExnDec C tl n t
-      ExnA tl n t _ -> pprExnDec C tl n t
+      ExnC tl n t -> pprExnDec C tl n t
+      ExnA tl n t -> pprExnDec C tl n t
     where
       pprExnDec lang tl n t =
         text "exception" <> pprLang tl lang <+> ppr n <+>

@@ -17,16 +17,16 @@ clean:
 	$(RM) Basis/*.hi Basis/*.o *.hi *.o $(EXE) $(EXE)-6.*
 
 examples: $(EXE)
-	for i in ../examples/ex*.aff; do \
+	@for i in ../examples/ex*.aff; do \
 	  echo "$$i"; \
-	  head -1 "$$i"; \
+	  head -1 "$$i" | grep . ; \
 	  ./$(EXE) "$$i"; \
 	  echo; \
 	done
-	for i in ../examples/*.in; do \
+	@for i in ../examples/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
 	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
-	  echo "$$i (should produce no output)"; \
+	  echo "$$i"; \
 	  ./$(EXE) "$$aff" < "$$i" | diff "$$out" - ; \
 	  echo; \
 	done

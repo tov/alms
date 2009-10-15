@@ -12,8 +12,7 @@ module Socket = struct[C]
                             S.SockAddrInet(S.PortNum 0, 0), None[string]) in
       match S.getAddrInfo (Some info) (Some host) (Some port) with
       | Cons (S.AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
-      | _ -> failwith[S.sockAddr]
-               ("Could not resolve address "^host^":"^port)
+      | _ -> failwith ("Could not resolve address "^host^":"^port)
 
     type socket = S.socket
 

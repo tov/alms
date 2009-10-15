@@ -37,11 +37,12 @@ module Syntax (
   TypeTW(..), typeTW,
 
   Expr(), ExprT, Expr'(..),
-  fv, exprType, (*:*), setExnIndex, getExnIndex, (*<*),
+  fv, exprType, (*:*), setExnId, getExnId, (*<*),
   exId, exStr, exInt, exFloat, exCase, exLetRec, exLetDecl, exPair,
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
   exVar, exCon, exBVar, exBCon, exLet, exSeq, -- <== synthetic
   qlid, quid,
+  ExnId(..),
   Binding(..), BindingT, Patt(..),
   pv,
 
@@ -52,7 +53,7 @@ module Syntax (
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
 
-  exidIOError, exidBlame,
+  eiIOError, eiBlame, eiPatternMatch,
 
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
@@ -273,23 +274,21 @@ data ModExp i = MeStrC Bool [Decl i]
 data ExnDec   = ExnC {
                   exnToplevel :: Bool,
                   exnName     :: Uid,
-                  exnCField   :: Maybe (Type () C),
-                  exnId       :: Maybe Integer
+                  exnCField   :: Maybe (Type () C)
                 }
               | ExnA {
                   exnToplevel :: Bool,
                   exnName     :: Uid,
-                  exnAField   :: Maybe (Type () A),
-                  exnId       :: Maybe Integer
+                  exnAField   :: Maybe (Type () A)
                 }
   deriving (Typeable, Data)
 
 data Expr i w = Expr {
-                  eloc_ :: Loc,
-                  fv_   :: FV,
-                  type_ :: Maybe (Either (TypeT C) (TypeT A)),
-                  exn_  :: Maybe (LangRepMono, Integer),
-                  expr_ :: Expr' i w
+                  eloc_  :: Loc,
+                  fv_    :: FV,
+                  type_  :: Maybe (Either (TypeT C) (TypeT A)),
+                  exnid_ :: Maybe ExnId,
+                  expr_  :: Expr' i w
                 }
   deriving (Typeable, Data)
 type FV        = M.Map QLid Integer
@@ -309,6 +308,13 @@ data Expr' i w = ExId Ident
                | ExCast (Expr i w) (Maybe (Type i w)) (Type i A)
   deriving (Typeable, Data)
 
+data ExnId     = ExnId {
+                   eiIndex :: Integer,
+                   eiName  :: Uid,
+                   eiLang  :: LangRepMono
+                 }
+  deriving (Eq, Show, Typeable, Data)
+
 data Binding i w = Binding {
   bnvar  :: Lid,
   bntype :: Type i w,
@@ -318,7 +324,7 @@ data Binding i w = Binding {
 
 data Patt = PaWild
           | PaVar Lid
-          | PaCon Uid (Maybe Patt) (Maybe Integer)
+          | PaCon Uid (Maybe Patt) (Maybe ExnId)
           | PaPair Patt Patt
           | PaStr String
           | PaInt Integer
@@ -345,14 +351,14 @@ e *:* t = e {
   type_ = Just (langCase t Left Right)
 }
 
-getExnIndex :: Expr i w -> Maybe (LangRepMono, Integer)
-getExnIndex  = exn_
+getExnId :: Expr i w -> Maybe ExnId
+getExnId  = exnid_
 
-setExnIndex :: Expr i w -> Maybe (LangRepMono, Integer) -> Expr i w
-setExnIndex e mz = e { exn_ = mz }
+setExnId :: Expr i w -> Maybe ExnId -> Expr i w
+setExnId e mz = e { exnid_ = mz }
 
 (*<*) :: Expr i w -> Expr i w' -> Expr i w
-e *<* e' = e { type_ = type_ e', exn_ = exn_ e' }
+e *<* e' = e { type_ = type_ e', exnid_ = exnid_ e' }
 
 pv :: Patt -> S.Set Lid
 pv PaWild               = S.empty
@@ -370,7 +376,7 @@ expr0  = Expr {
   eloc_  = bogus,
   fv_    = M.empty,
   type_  = Nothing,
-  exn_   = Nothing,
+  exnid_ = Nothing,
   expr_  = undefined
 }
 
@@ -1116,9 +1122,10 @@ tdRecv       = TyTag (-13) [-1] minBound          False
 tdSelect     = TyTag (-14) [1]  minBound          False
 tdFollow     = TyTag (-15) [1]  minBound          False
 
-exidIOError, exidBlame :: Integer
-exidIOError  = -21
-exidBlame    = -22
+eiIOError, eiBlame, eiPatternMatch :: ExnId
+eiIOError      = ExnId (-21) (Uid "IOError")      LC
+eiBlame        = ExnId (-22) (Uid "Blame")        LC
+eiPatternMatch = ExnId (-23) (Uid "PatternMatch") LC
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon (qlid s) [] ()

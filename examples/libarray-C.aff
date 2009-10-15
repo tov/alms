@@ -3,16 +3,17 @@
 *)
 
 module Array = struct[C]
+  exception ArrayIndex of string
   abstype 'a array = Array of int * (int -> 'a) ref with
     let newArray['a] (size : int): 'a array =
       Array (size, ref (fun ix: int ->
-                          failwith['a] "array element uninitialized"))
+                          (raise (ArrayIndex "uninitialized"))['a]))
 
     let checkIndex (size: int) (ix: int): unit =
       if ix < 0
-        then failwith[unit] "array index too low"
+        then raise (ArrayIndex "too low")
       else if ix >= size
-        then failwith[unit] "array index too high"
+        then raise (ArrayIndex "too high")
       else ()
 
     let at['a] (Array (size, r): 'a array) (ix: int): 'a =

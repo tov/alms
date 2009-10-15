@@ -12,6 +12,7 @@ import Env
 import Ppr (Ppr(..), hang, text, char, (<>))
 
 import Data.IORef (newIORef, readIORef, writeIORef)
+import qualified Control.Exception as Exn
 
 --
 -- Our semantic domains
@@ -98,9 +99,9 @@ valOf e env = case view e of
     Left x     -> case env =..= x of
       Just v     -> v
       Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
-    Right c    -> case getExnIndex e of
+    Right c    -> case getExnId e of
       Nothing -> return (VaCon (jname c) Nothing)
-      Just ix -> makeExn (jname c) (exprType e) ix
+      Just ei -> makeExn ei (exprType e)
   ExStr s    -> return (vinj s)
   ExInt z    -> return (vinj z)
   ExFloat f  -> return (vinj f)
@@ -110,8 +111,10 @@ valOf e env = case view e of
           Just env' -> valOf ei env'
           Nothing   -> loop rest
         loop []              =
-          fail $ "Pattern match failure: " ++ show v1 ++
-                 " matches none of " ++ show (map fst clauses)
+          Exn.throw VExn {
+            exnId    = eiPatternMatch,
+            exnParam = Just (vinj (show v1, map (show . fst) clauses))
+          }
     loop clauses
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
@@ -159,19 +162,16 @@ valOf e env = case view e of
     valOf e1 env
 
 makeExn :: Monad m => 
-           Uid -> Maybe (Either (TypeT C) (TypeT A)) ->
-           (LangRepMono, Integer) -> m Value
-makeExn _   Nothing   _  = fail $ "BUG! Cannot construct exception " ++
-                                  "because type checking was skipped"
-makeExn uid (Just tt) (lang, ix) = case tt of
-    Left t  -> return $ makeWith t
-    Right t -> return $ makeWith t
+           ExnId -> Maybe (Either (TypeT C) (TypeT A)) -> m Value
+makeExn _  Nothing   = fail $ "BUG! Cannot construct exception " ++
+                               "because type checking was skipped"
+makeExn ei (Just tt) = return $ either makeWith makeWith tt
   where
     makeWith (TyCon _ _ td) | td == tdExn =
-      vinj (VExn uid Nothing ix lang)
+      vinj (VExn ei Nothing)
     makeWith _ =
-      VaFun (FNAnonymous (ppr uid)) $ \v ->
-        return (vinj (VExn uid (Just v) ix lang))
+      VaFun (FNAnonymous (ppr (eiName ei))) $ \v ->
+        return (vinj (VExn ei (Just v)))
 
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
@@ -181,10 +181,10 @@ bindPatt x0 v env = case x0 of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
     _                                             -> perr
-  PaCon _ mx (Just ix) -> case (mx, vprjM v) of
-    (Nothing, Just (VExn _ Nothing   ix' _)) | ix == ix' -> return env
-    (Just x,  Just (VExn _ (Just v') ix' _)) | ix == ix' -> bindPatt x v' env
-    _                                                    -> perr
+  PaCon _ mx (Just ei) -> case (mx, vprjM v) of
+    (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
+    (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
+    _                                                -> perr
   PaPair x y   -> case vprjM v of
     Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
     Nothing       -> perr
