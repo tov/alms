@@ -372,9 +372,8 @@ tcType = tc where
           C -> return ()
           A -> tassert (all2 (\qa t -> qualifier t <: qa) quals ts') $
                  "Type constructor " ++ show n ++
-                 " has parameters with qualifiers " ++
-                 show (map qualifier ts') ++ " where at most " ++
-                 show quals ++ " is permitted"
+                 " used at " ++ show (map qualifier ts') ++
+                 " where at most " ++ show quals ++ " is permitted"
   tc (TyQu u tv t) = withTVs [tv] $ \[tv'] -> TyQu u tv' `liftM` tc t
   tc (TyMu  tv t) = withTVs [tv] $ \[tv'] -> do
     t' <- tc t
