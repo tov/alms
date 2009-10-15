@@ -31,6 +31,10 @@ type DDecl    = E -> IO E
 
 infix 6 =:!=
 
+--
+-- Evaluation
+--
+
 evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
@@ -41,6 +45,7 @@ evalDecl (DcAbs _ _ ds) = evalDecls ds
 evalDecl (DcOpn _ b)    = evalOpen b
 evalDecl (DcMod _ n b)  = evalMod n b
 evalDecl (DcLoc _ d0 d1)= evalLocal d0 d1
+evalDecl (DcExn _ _)    = return
 
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
@@ -93,7 +98,9 @@ valOf e env = case view e of
     Left x     -> case env =..= x of
       Just v     -> v
       Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
-    Right c    -> return (VaCon (jname c) Nothing)
+    Right c    -> case getExnIndex e of
+      Nothing -> return (VaCon (jname c) Nothing)
+      Just ix -> makeExn (jname c) (exprType e) ix
   ExStr s    -> return (vinj s)
   ExInt z    -> return (vinj z)
   ExFloat f  -> return (vinj f)
@@ -151,14 +158,33 @@ valOf e env = case view e of
   ExCast e1 _ _          ->
     valOf e1 env
 
+makeExn :: Monad m => 
+           Uid -> Maybe (Either (TypeT C) (TypeT A)) ->
+           (LangRepMono, Integer) -> m Value
+makeExn _   Nothing   _  = fail $ "BUG! Cannot construct exception " ++
+                                  "because type checking was skipped"
+makeExn uid (Just tt) (lang, ix) = case tt of
+    Left t  -> return $ makeWith t
+    Right t -> return $ makeWith t
+  where
+    makeWith (TyCon _ _ td) | td == tdExn =
+      vinj (VExn uid Nothing ix lang)
+    makeWith _ =
+      VaFun (FNAnonymous (ppr uid)) $ \v ->
+        return (vinj (VExn uid (Just v) ix lang))
+
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
   PaVar lid    -> return (env =+= lid =:!= (lid `nameFun` v))
-  PaCon uid mx -> case (mx, v) of
+  PaCon uid mx Nothing -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
     _                                             -> perr
+  PaCon _ mx (Just ix) -> case (mx, vprjM v) of
+    (Nothing, Just (VExn _ Nothing   ix' _)) | ix == ix' -> return env
+    (Just x,  Just (VExn _ (Just v') ix' _)) | ix == ix' -> bindPatt x v' env
+    _                                                    -> perr
   PaPair x y   -> case vprjM v of
     Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
     Nothing       -> perr

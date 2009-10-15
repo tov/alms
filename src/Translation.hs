@@ -41,6 +41,7 @@ transDecl (DcMod loc x b)    = DcMod loc x (transMod x b)
 transDecl (DcOpn loc b)      = DcOpn loc (transOpen b)
 transDecl (DcLoc loc d0 d1)  = let (d0', d1') = transLocal d0 d1
                                 in DcLoc loc d0' d1'
+transDecl (DcExn loc e)      = DcExn loc e
 
 transLet :: (?trail :: Trail) => LetT -> LetT
 transLet (LtC tl x mt e) =
@@ -80,7 +81,7 @@ transExpr :: Language w => Party -> ExprT w -> ExprT C
 transExpr neg = te where
   te e0 = case view e0 of
     ExId i    -> case view i of
-      Right k  -> exCon k
+      Right k  -> exCon k *<* e0 -- Dynamics needs metadata for exns
       Left x   -> case exprType e0 of
                     Nothing         -> error $
                       "Cannot add contracts to variable if " ++

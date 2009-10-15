@@ -1,0 +1,56 @@
+(* Exception tests -- should print nothing *)
+
+let[C] assert (b: bool) (msg: string) =
+  if b
+    then ()
+    else putStrLn ("Failed assertion: "^msg)
+
+module Group1 = struct[C]
+  exception A
+  exception B of int
+
+  let match1(e: exn) =
+    match e with
+    | A   -> 0
+    | B z -> z
+    | _   -> -1
+
+  let dummy =
+    assert (match1 A == 0) "test 1";
+    assert (match1 (B 4) == 4) "test 2"
+
+  exception A
+
+  let dummy =
+    assert (match1 A == -1) "test 3"
+
+  exception A
+  exception B of int
+end
+
+exception[C] C of int
+
+module Group2 = struct[A]
+  exception A
+  exception B of int
+
+  let match1(e: exn) =
+    match e with
+    | A   -> 0
+    | B z -> z
+    | C z -> z + 10
+    | _   -> -1
+
+  let dummy =
+    assert (match1 A == 0) "test 1";
+    assert (match1 (B 4) == 4) "test 2"
+
+  exception A
+
+  let dummy =
+    assert (match1 A == -1) "test 3";
+    assert (match1 (C 8) == 18) "test 4"
+
+  exception A
+  exception B of int
+end

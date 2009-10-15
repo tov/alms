@@ -35,7 +35,7 @@ primBasis  = [
 
     -- Primitive types:
     -- "unit" built in
-    -- "bool" built in
+    typeT "bool = false | true",
     "int"    `primtype` tdInt,
     typeT "char = int",
     "float"  `primtype` tdFloat,

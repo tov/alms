@@ -12,6 +12,7 @@
       TypeFamilies #-}
 module Syntax (
   Language, A, C, Language'(..), SameLang, LangRep(..),
+  LangRepMono(..),
   Q(..),
 
   Path(..),
@@ -26,16 +27,17 @@ module Syntax (
   Quant(..),
   Prog(..), ProgT,
 
-  Decl(..), DeclT, dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc,
+  Decl(..), DeclT, dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn,
   Let(..), LetT,
   TyDec(..), TyDecC(..), TyDecA(..),
   AbsTy(..),
   ModExp(..), ModExpT,
+  ExnDec(..),
 
   TypeTW(..), typeTW,
 
   Expr(), ExprT, Expr'(..),
-  fv, exprType, (*:*),
+  fv, exprType, (*:*), setExnIndex, getExnIndex, (*<*),
   exId, exStr, exInt, exFloat, exCase, exLetRec, exLetDecl, exPair,
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
   exVar, exCon, exBVar, exBCon, exLet, exSeq, -- <== synthetic
@@ -45,13 +47,13 @@ module Syntax (
 
   PO(..), bigVee, bigVeeM, bigWedge, bigWedgeM,
 
-  tdUnit, tdBool, tdInt, tdFloat, tdString, tdTuple, tdArr, tdLol,
+  tdUnit, tdInt, tdFloat, tdString, tdExn, tdTuple, tdArr, tdLol,
 
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
 
   tyGround, tyArr, tyLol, tyTuple,
-  tyUnitT, tyBoolT, tyArrT, tyLolT, tyTupleT,
+  tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
 
   Ftv(..), freshTyVar, freshTyVars, tysubst, tysubst1,
   qualifier, transparent, funtypes,
@@ -88,6 +90,9 @@ data A deriving Typeable
 data LangRep w where
   A :: LangRep A
   C :: LangRep C
+
+data LangRepMono = LC | LA
+  deriving (Eq, Typeable, Data, Show, Ord)
 
 -- Usage Qualifiers
 data Q = Qa | Qu
@@ -180,6 +185,7 @@ data Decl i = DcLet Loc (Let i)
             | DcMod Loc Uid (ModExp i)
             | DcOpn Loc (ModExp i)
             | DcLoc Loc [Decl i] [Decl i]
+            | DcExn Loc ExnDec
   deriving (Typeable, Data)
 
 dcLet :: Let i -> Decl i
@@ -199,6 +205,9 @@ dcOpn  = DcOpn bogus
 
 dcLoc :: [Decl i] -> [Decl i] -> Decl i
 dcLoc  = DcLoc bogus
+
+dcExn :: ExnDec -> Decl i
+dcExn  = DcExn bogus
 
 data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
             | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
@@ -259,10 +268,25 @@ data ModExp i = MeStrC Bool [Decl i]
               | MeName QUid
   deriving (Typeable, Data)
 
+data ExnDec   = ExnC {
+                  exnToplevel :: Bool,
+                  exnName     :: Uid,
+                  exnCField   :: Maybe (Type () C),
+                  exnId       :: Maybe Integer
+                }
+              | ExnA {
+                  exnToplevel :: Bool,
+                  exnName     :: Uid,
+                  exnAField   :: Maybe (Type () A),
+                  exnId       :: Maybe Integer
+                }
+  deriving (Typeable, Data)
+
 data Expr i w = Expr {
                   eloc_ :: Loc,
                   fv_   :: FV,
                   type_ :: Maybe (Either (TypeT C) (TypeT A)),
+                  exn_  :: Maybe (LangRepMono, Integer),
                   expr_ :: Expr' i w
                 }
   deriving (Typeable, Data)
@@ -292,7 +316,7 @@ data Binding i w = Binding {
 
 data Patt = PaWild
           | PaVar Lid
-          | PaCon Uid (Maybe Patt)
+          | PaCon Uid (Maybe Patt) (Maybe Integer)
           | PaPair Patt Patt
           | PaStr String
           | PaInt Integer
@@ -319,22 +343,32 @@ e *:* t = e {
   type_ = Just (langCase t Left Right)
 }
 
+getExnIndex :: Expr i w -> Maybe (LangRepMono, Integer)
+getExnIndex  = exn_
+
+setExnIndex :: Expr i w -> Maybe (LangRepMono, Integer) -> Expr i w
+setExnIndex e mz = e { exn_ = mz }
+
+(*<*) :: Expr i w -> Expr i w' -> Expr i w
+e *<* e' = e { type_ = type_ e', exn_ = exn_ e' }
+
 pv :: Patt -> S.Set Lid
-pv PaWild             = S.empty
-pv (PaVar x)          = S.singleton x
-pv (PaCon _ Nothing)  = S.empty
-pv (PaCon _ (Just x)) = pv x
-pv (PaPair x y)       = pv x `S.union` pv y
-pv (PaStr _)          = S.empty
-pv (PaInt _)          = S.empty
-pv (PaAs x y)         = pv x `S.union` S.singleton y
-pv (PaPack _ x)       = pv x
+pv PaWild               = S.empty
+pv (PaVar x)            = S.singleton x
+pv (PaCon _ Nothing _)  = S.empty
+pv (PaCon _ (Just x) _) = pv x
+pv (PaPair x y)         = pv x `S.union` pv y
+pv (PaStr _)            = S.empty
+pv (PaInt _)            = S.empty
+pv (PaAs x y)           = pv x `S.union` S.singleton y
+pv (PaPack _ x)         = pv x
 
 expr0 :: Expr i w
 expr0  = Expr {
   eloc_  = bogus,
   fv_    = M.empty,
   type_  = Nothing,
+  exn_   = Nothing,
   expr_  = undefined
 }
 
@@ -574,6 +608,7 @@ instance Locatable (Decl i) where
   getLoc (DcMod loc _ _) = loc
   getLoc (DcOpn loc _)   = loc
   getLoc (DcLoc loc _ _) = loc
+  getLoc (DcExn loc _)   = loc
 
 instance Relocatable (Decl i) where
   setLoc (DcLet _ m)     loc = DcLet loc m
@@ -582,6 +617,7 @@ instance Relocatable (Decl i) where
   setLoc (DcMod _ m b)   loc = DcMod loc m b
   setLoc (DcOpn _ m)     loc = DcOpn loc m
   setLoc (DcLoc _ d d')  loc = DcLoc loc d d'
+  setLoc (DcExn _ e)     loc = DcExn loc e
 
 instance Locatable (Binding i w) where
   getLoc = getLoc . bnexpr
@@ -1043,16 +1079,16 @@ qsToList _ qs | qs == minBound
 qsToList tvs (QualSet q ixs) 
   = Right q : [ Left (tvs !! ix) | ix <- S.toList ixs ]
 
-tdUnit, tdBool, tdInt, tdFloat, tdString,
-  tdArr, tdLol, tdTuple :: TyTag
+tdUnit, tdInt, tdFloat, tdString,
+  tdArr, tdLol, tdExn, tdTuple :: TyTag
 
 tdUnit       = TyTag (-1)  []          minBound          True
-tdBool       = TyTag (-2)  []          minBound          True
-tdInt        = TyTag (-3)  []          minBound          True
-tdFloat      = TyTag (-4)  []          minBound          True
-tdString     = TyTag (-5)  []          minBound          True
-tdArr        = TyTag (-6)  [-1, 1]     minBound          False
-tdLol        = TyTag (-7)  [-1, 1]     maxBound          False
+tdInt        = TyTag (-2)  []          minBound          True
+tdFloat      = TyTag (-3)  []          minBound          True
+tdString     = TyTag (-4)  []          minBound          True
+tdArr        = TyTag (-5)  [-1, 1]     minBound          False
+tdLol        = TyTag (-6)  [-1, 1]     maxBound          False
+tdExn        = TyTag (-7)  []          maxBound          False
 tdTuple      = TyTag (-8)  [1, 1]      qualSet           True
   where qualSet = QualSet minBound (S.fromList [0, 1])
 
@@ -1079,9 +1115,6 @@ tyTuple a b    = TyCon (qlid "*") [a, b] ()
 tyUnitT        :: TypeT w
 tyUnitT         = TyCon (qlid "unit") [] tdUnit
 
-tyBoolT        :: TypeT w
-tyBoolT         = TyCon (qlid "bool") [] tdBool
-
 tyArrT         :: TypeT w -> TypeT w -> TypeT w
 tyArrT a b      = TyCon (qlid "->") [a, b] tdArr
 
@@ -1090,6 +1123,9 @@ tyLolT a b      = TyCon (qlid "-o") [a, b] tdLol
 
 tyTupleT       :: TypeT w -> TypeT w -> TypeT w
 tyTupleT a b    = TyCon (qlid "*") [a, b] tdTuple
+
+tyExnT         :: TypeT w
+tyExnT          = TyCon (qlid "exn") [] tdExn
 
 infixr 8 `tyArrT`, `tyLolT`
 infixl 7 `tyTupleT`

@@ -98,6 +98,7 @@ instance Ppr (Decl i) where
       nest 2 (vcat (map ppr d1)),
       text "end"
     ]
+  pprPrec p (DcExn _ e)     = pprPrec p e
 
 instance Ppr (Let i) where
   ppr (LtC tl x Nothing e) = sep
@@ -213,6 +214,15 @@ pprModExp add modexp = case modexp of
       $$ nest 2 (vcat (map ppr ds))
       $$ text "end"
 
+instance Ppr ExnDec where
+  pprPrec _ e = case e of
+      ExnC tl n t _ -> pprExnDec C tl n t
+      ExnA tl n t _ -> pprExnDec C tl n t
+    where
+      pprExnDec lang tl n t =
+        text "exception" <> pprLang tl lang <+> ppr n <+>
+        maybe empty ((text "of" <+>) . ppr) t
+
 instance Ppr (Expr i w) where
   pprPrec p e0 = case view e0 of
     ExId x    -> ppr x
@@ -221,8 +231,8 @@ instance Ppr (Expr i w) where
     ExStr s   -> text (show s)
     ExCase e1 clauses ->
       case clauses of
-        [ (PaCon (Uid "true")  Nothing, et),
-          (PaCon (Uid "false") Nothing, ef) ] ->
+        [ (PaCon (Uid "true")  Nothing Nothing, et),
+          (PaCon (Uid "false") Nothing Nothing, ef) ] ->
             parensIf (p > precDot) $
               sep [ text "if" <+> ppr e1,
                     nest 2 $ text "then" <+> ppr et,
@@ -347,22 +357,22 @@ pprArgList = fsep . map eachArg . combine where
     each (Left a)  es              = Left a : es
 
 instance Ppr Patt where
-  pprPrec _ PaWild               = text "_"
-  pprPrec _ (PaVar lid)          = ppr lid
-  pprPrec _ (PaCon uid Nothing)  = ppr uid
-  pprPrec p (PaCon uid (Just x)) = parensIf (p > precApp) $
-                                     pprPrec precApp uid <+>
-                                     pprPrec (precApp + 1) x
-  pprPrec p (PaPair x y)         = parensIf (p > precCom) $
-                                     pprPrec precCom x <> comma <+>
-                                     pprPrec (precCom + 1) y
-  pprPrec _ (PaStr s)            = text (show s)
-  pprPrec _ (PaInt z)            = text (show z)
-  pprPrec p (PaAs x lid)         = parensIf (p > precDot) $
-                                     pprPrec (precDot + 1) x <+>
-                                     text "as" <+> ppr lid
-  pprPrec p (PaPack tv x)        = parensIf (p > precApp) $
-                                     text "Pack" <+> parens (sep pair)
+  pprPrec _ PaWild                 = text "_"
+  pprPrec _ (PaVar lid)            = ppr lid
+  pprPrec _ (PaCon uid Nothing _)  = ppr uid
+  pprPrec p (PaCon uid (Just x) _) = parensIf (p > precApp) $
+                                       pprPrec precApp uid <+>
+                                       pprPrec (precApp + 1) x
+  pprPrec p (PaPair x y)           = parensIf (p > precCom) $
+                                       pprPrec precCom x <> comma <+>
+                                       pprPrec (precCom + 1) y
+  pprPrec _ (PaStr s)              = text (show s)
+  pprPrec _ (PaInt z)              = text (show z)
+  pprPrec p (PaAs x lid)           = parensIf (p > precDot) $
+                                       pprPrec (precDot + 1) x <+>
+                                       text "as" <+> ppr lid
+  pprPrec p (PaPack tv x)          = parensIf (p > precApp) $
+                                       text "Pack" <+> parens (sep pair)
     where pair = [ pprPrec (precCom + 1) tv <> comma,
                    pprPrec precCom x ]
 

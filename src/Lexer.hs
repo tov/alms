@@ -32,7 +32,7 @@ tok = T.makeTokenParser T.LanguageDef {
     T.reservedNames  = ["fun",
                         "if", "then", "else",
                         "match", "with", "as", "_",
-                        "local", "open",
+                        "local", "open", "exception",
                         "let", "rec", "and", "in",
                         "Pack",
                         "interface", "abstype", "end",

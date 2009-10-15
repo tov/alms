@@ -16,7 +16,7 @@ import Text.ParserCombinators.Parsec hiding (parse)
 import System.IO.Unsafe (unsafePerformIO)
 import System.FilePath ((</>), dropFileName)
 
-data Lang = LC | LA deriving (Eq, Show, Ord)
+type Lang = LangRepMono
 type St   = Maybe Lang
 type P a  = CharParser St a
 
@@ -239,11 +239,21 @@ declp  = addLoc $ choice [
              reserved "end"
              return (dcLoc ds0 ds1),
            enterdecl (reserved "abstype") $ \tl lang -> do
-             at   <- abstyp tl lang
+             at <- abstyp tl lang
              reserved "with"
              ds <- declsp
              reserved "end"
-             return (dcAbs at ds)
+             return (dcAbs at ds),
+           enterdecl (reserved "exception") $ \tl lang ->
+             let exnp kons = do
+                   n  <- uidp
+                   t  <- optionMaybe $ do
+                     reserved "of"
+                     typep
+                   return (dcExn (kons tl n t Nothing)) in
+             case lang of
+                    LC -> exnp ExnC
+                    LA -> exnp ExnA
          ]
 
 modexpp :: P (ModExp ())
@@ -490,8 +500,8 @@ exprp = expr0 where
          et <- expr0
          reserved "else"
          ef <- expr0
-         return (exCase ec [(PaCon (Uid "true")  Nothing, et),
-                            (PaCon (Uid "false") Nothing, ef)]),
+         return (exCase ec [(PaCon (Uid "true")  Nothing Nothing, et),
+                            (PaCon (Uid "false") Nothing Nothing, ef)]),
       do reserved "match"
          e1 <- expr0
          reserved "with"
@@ -618,7 +628,7 @@ paty  = do
   (p, mt) <- pamty
   case (p, mt) of
     (_, Just t) -> return (p, t)
-    (PaCon (Uid "()") Nothing, Nothing)
+    (PaCon (Uid "()") Nothing Nothing, Nothing)
                 -> return (p, tyGround "unit")
     _           -> pzero <?> ":"
 
@@ -632,7 +642,7 @@ pamty  = parens $ choice
              do
                p <- pattp
                maybecolon p,
-             return (PaCon (Uid "()") Nothing, Nothing)
+             return (PaCon (Uid "()") Nothing Nothing, Nothing)
            ]
   where
     maybecolon p = choice
@@ -698,7 +708,7 @@ pattp  = patt0 where
       do
         J _ u <- quidp
         x     <- optionMaybe (try pattA)
-        return (PaCon u x),
+        return (PaCon u x Nothing),
       pattA ]
   pattA = choice
     [ reserved "_"  >>  return PaWild,
@@ -711,7 +721,7 @@ pattp  = patt0 where
   pattN1 = do
     xs <- commaSep patt0
     case xs of
-      []    -> return (PaCon (Uid "()") Nothing)
+      []    -> return (PaCon (Uid "()") Nothing Nothing)
       x:xs' -> return (foldl PaPair x xs')
 
 finish :: CharParser st a -> CharParser st a

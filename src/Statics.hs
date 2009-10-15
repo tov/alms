@@ -45,6 +45,8 @@ usage x e = case M.lookup x (fv e) of
 data TyInfo w = TiAbs TyTag
               | TiSyn [TyVar] (TypeT w)
               | TiDat TyTag [TyVar] (Env Uid (Maybe (TypeT w)))
+              | TiExn TyTag (Env Uid (Maybe (TypeT w),
+                                      (LangRepMono, Integer)))
   deriving (Data, Typeable, Show)
 
 -- Type environments
@@ -283,14 +285,6 @@ tryGetVar x = TC $ asksM get where
         Nothing -> return Nothing
       Right _ -> return Nothing
 
-{-
-type2other :: forall w. (Language w, w ~ SameLang w) =>
-              TypeT (OtherLang w) -> TypeT w
-type2other t = langCase t
-                 (\tc -> ctype2atype tc :: TypeT w)
-                 atype2ctype
--}
-
 getType :: (?loc :: Loc, Monad m) => QLid -> TC w m (TyInfo w)
 getType  = getAny "Unbound type constructor"
 
@@ -303,6 +297,7 @@ getTypeTag who n = do
       who ++ " expects an abstract or data type, but " ++
       "got type synonym: " ++ show n
     TiDat td _ _ -> return td
+    TiExn td _   -> return td
 
 getModule :: (?loc :: Loc, Monad m) => QUid -> TC w m (Scope w)
 getModule  = getAny "Unbound module identifier"
@@ -360,6 +355,9 @@ tcType = tc where
       TiDat td _ _ -> do
         checkLength (length (ttArity td))
         return (TyCon n ts' td)
+      TiExn td _ -> do
+        checkLength 0
+        return (TyCon n ts' td)
     where
       checkLength len =
         tassert (length ts == len) $
@@ -396,10 +394,12 @@ tcExprC = tc where
   tc :: Monad m => Expr i C -> TC C m (TypeT C, ExprT C)
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
-      txtx <- getVar x
+      txtx  <- getVar x
+      exnix <- either (exnConsIndex x) (intoA . exnConsIndex x) txtx
+      let e' = exId x `setExnIndex` exnix
       case txtx of
-        Left tx  -> return (tx, exId x *:* tx)
-        Right tx -> return (atype2ctype tx, exId x *:* tx)
+        Left tx  -> return (tx, e' *:* tx)
+        Right tx -> return (atype2ctype tx, e' *:* tx)
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
     ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)
@@ -501,10 +501,12 @@ tcExprA = tc where
   tc :: Monad m => Expr i A -> TC A m (TypeT A, ExprT A)
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
-      txtx <- getVar x
+      txtx  <- getVar x
+      exnix <- either (exnConsIndex x) (intoC . exnConsIndex x) txtx
+      let e' = exId x `setExnIndex` exnix
       case txtx of
-        Left tx  -> return (tx, exId x *:* tx)
-        Right tx -> return (ctype2atype tx, exId x *:* tx)
+        Left tx  -> return (tx, e' *:* tx)
+        Right tx -> return (ctype2atype tx, e' *:* tx)
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
     ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)
@@ -678,7 +680,7 @@ tcPatt :: (?loc :: Loc, Monad m, Language w) =>
 tcPatt t x0 = case x0 of
   PaWild     -> return (empty, empty, PaWild)
   PaVar x    -> return (empty, Var x =:= t, PaVar x)
-  PaCon u mx -> do
+  PaCon u mx _ -> do
     case t of
       TyCon name ts tag -> do
         tcon <- getType name
@@ -687,11 +689,22 @@ tcPatt t x0 = case x0 of
             case alts =..= u of
               Nothing -> tgot "Pattern" t ("constructor " ++ show u)
               Just mt -> case (mt, mx) of
-                (Nothing, Nothing) -> return (empty, empty, PaCon u Nothing)
+                (Nothing, Nothing) ->
+                  return (empty, empty, PaCon u Nothing Nothing)
                 (Just t1, Just x1) -> do
                   let t1' = tysubsts params ts t1
                   (dx1, gx1, x1') <- tcPatt t1' x1
-                  return (dx1, gx1, PaCon u (Just x1'))
+                  return (dx1, gx1, PaCon u (Just x1') Nothing)
+                _ -> tgot "Pattern" t "different arity"
+          TiExn tag' alts | tag == tag' -> do
+            case alts =..= u of
+              Nothing       -> tgot "Pattern" t ("constructor " ++ show u)
+              Just (mt, (_, ix)) -> case (mt, mx) of
+                (Nothing, Nothing) ->
+                  return (empty, empty, PaCon u Nothing (Just ix))
+                (Just t1, Just x1) -> do
+                  (dx1, gx1, x1') <- tcPatt t1 x1
+                  return (dx1, gx1, PaCon u (Just x1') (Just ix))
                 _ -> tgot "Pattern" t "different arity"
           _ ->
             terr $ "Pattern " ++ show x0 ++ " for type not in scope"
@@ -916,6 +929,8 @@ withTypesTransC True  te k =
       = TiSyn tvs (ctype2atype' tvs t)
     cinfo2ainfo (TiDat tag tvs rhs)
       = TiDat tag tvs (fmap (fmap (ctype2atype' tvs)) rhs)
+    cinfo2ainfo (TiExn tag rhs)
+      = TiExn tag (fmap (first (fmap ctype2atype)) rhs)
     ctype2atype' tvs = ctype2atype . tysubsts tvs (map (tyA . TyVar) tvs) 
 
 -- Add the given types to the current language tenv, and maybe the
@@ -1024,6 +1039,8 @@ withTypesTransA True  te k =
       = TiSyn tvs (atype2ctype' tvs t)
     ainfo2cinfo (TiDat tag tvs rhs)
       = TiDat tag tvs (fmap (fmap (atype2ctype' tvs)) rhs)
+    ainfo2cinfo (TiExn tag rhs)
+      = TiExn tag (fmap (first (fmap atype2ctype)) rhs)
     atype2ctype' tvs = atype2ctype . tysubsts tvs (map (tyC . TyVar) tvs) 
 
 -- Add the given types to the current language tenv, and maybe the
@@ -1202,6 +1219,52 @@ withLocal ds0 ds1 k = do
       squishScope $
         k ds0' ds1'
 
+withExn :: (?loc :: Loc, Monad m) =>
+           ExnDec -> (ExnDec -> TC C m a) -> TC C m a
+withExn d0 k0 = case d0 of
+    ExnC _ n mt _ -> do
+      index <- newIndex
+      t' <- gmapM tcType mt
+      add n t' (LC, index) .
+        intoA .
+          add n (fmap ctype2atype t') (LC, index) .
+            intoC $
+              k0 d0 { exnId = Just index }
+    ExnA _ n mt _ -> intoA $ do
+      index <- newIndex
+      t' <- gmapM tcType mt
+      add n t' (LA, index) .
+        intoC $
+          k0 d0 { exnId = Just index }
+ where
+   add n t ix k = do
+     ti <- getType (qlid "exn")
+     let env' = n =:= (t, ix)
+     ti' <- case ti of
+       TiExn tag env     -> return $ TiExn tag (env =+= env')
+       _                 -> terr $ "Cannot extend exn type because " ++
+                                   "exn is shadowed"
+     withTypes (Lid "exn" =:= ti') .
+       withVars (Con n =:= maybe tyExnT (`tyArrT` tyExnT) t) $
+         k
+
+exnConsIndex :: (?loc::Loc, Monad m) =>
+                Ident -> TypeT w -> TC w m (Maybe (LangRepMono, Integer))
+exnConsIndex ident t = case view ident of
+    Right (J [] uid) -> case t of
+      TyCon _ [_, TyCon _ _ td'] td
+        | td == tdArr && td' == tdExn -> getIdOf uid
+      TyCon _ [] td
+        | td == tdExn                 -> getIdOf uid
+      _                               -> return Nothing
+    _                                 -> return Nothing
+  where
+    getIdOf n = do
+      ti <- getType (qlid "exn")
+      case ti of
+        TiExn _ alts -> return (fmap snd (alts =..= n))
+        _            -> return Nothing
+
 withMod :: (?loc :: Loc, Monad m) =>
            Uid -> ModExp i -> (ModExpT -> TC C m a) -> TC C m a
 withMod x b k = do
@@ -1237,6 +1300,8 @@ hideInvisible (PEnv me both) = do
         Just (TiDat tag' _ _)
           | tag' == tag  -> t
         Just (TiSyn _ _) -> t
+        Just (TiExn tag' _)
+          | tag' == tag  -> t
         _                -> t { tycon = hide (tyinfo t) name }
     repair t = return t
 
@@ -1277,6 +1342,7 @@ requalifyTypes uids env = map (fmap repairBoth) env where
   tagOfTyInfo (TiAbs tag)     = [tag]
   tagOfTyInfo (TiSyn _ _)     = []
   tagOfTyInfo (TiDat tag _ _) = [tag]
+  tagOfTyInfo (TiExn tag _)   = [tag]
 
   chooseQLid :: QLid -> QLid -> QLid
   chooseQLid q1@(J p1 _) q2@(J p2 _)
@@ -1316,6 +1382,7 @@ withDecl decl k =
       DcMod loc x b   ->  withMod x b (k . DcMod loc x)
       DcOpn loc b     ->  withOpen b (k . DcOpn loc)
       DcLoc loc d0 d1 ->  withLocal d0 d1 ((.) k . DcLoc loc)
+      DcExn loc e     ->  withExn e (k . DcExn loc)
 
 withDecls :: Monad m =>
              [Decl i] -> ([DeclT] -> TC C m a) -> TC C m a
@@ -1459,17 +1526,12 @@ env0  = S e0 0 where
     level0 :: Level w
     level0  = Level venv0 tenv0
     venv0  :: V w
-    venv0   = Con (Uid "()")    -:- tyUnitT -+-
-              Con (Uid "true")  -:- tyBoolT -+-
-              Con (Uid "false") -:- tyBoolT
+    venv0   = Con (Uid "()")    -:- tyUnitT
     tenv0  :: T w
     tenv0   = Lid "unit" -:- TiDat tdUnit [] (
                 Uid "()"    -:- Nothing
               ) -+-
-              Lid "bool" -:- TiDat tdBool [] (
-                Uid "true"  -:- Nothing -+-
-                Uid "false" -:- Nothing
-              )
+              Lid "exn"  -:- TiExn tdExn empty
 
 tyInfoToDec :: Language w => Lid -> TyInfo w -> TyDec
 tyInfoToDec n ti0 = langCase ti0
@@ -1477,14 +1539,20 @@ tyInfoToDec n ti0 = langCase ti0
      TiSyn ps rhs    -> TdSynC n ps (removeTyTags rhs)
      TiDat _ ps alts -> TdDatC n ps [ (uid, fmap removeTyTags mt)
                                           | (uid, mt) <- toList alts ]
-     TiAbs tag       -> TdAbsC n (zipWith const tyvars (ttArity tag)))
+     TiAbs tag       -> TdAbsC n (zipWith const tyvars (ttArity tag))
+     TiExn _ alts    -> TdDatC (Lid "exn") []
+                               [ (uid, fmap removeTyTags mt)
+                               | (uid, (mt, _)) <- toList alts ])
   (\ti -> TyDecA True . return $ case ti of
      TiSyn ps rhs    -> TdSynA n ps (removeTyTags rhs)
      TiDat _ ps alts -> TdDatA n ps [ (uid, fmap removeTyTags mt)
                                           | (uid, mt) <- toList alts ]
      TiAbs tag       -> TdAbsA n (zipWith const tyvars (ttArity tag))
                                (ttArity tag)
-                               (qsToList tyvars (ttQual tag)))
+                               (qsToList tyvars (ttQual tag))
+     TiExn _ alts    -> TdDatA (Lid "exn") []
+                               [ (uid, fmap removeTyTags mt)
+                               | (uid, (mt, _)) <- toList alts ])
   where
     tyvars   = map (flip TV Qu . Lid) alphabet
     alphabet = map return ['a' .. 'z'] ++
