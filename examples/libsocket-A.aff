@@ -14,6 +14,14 @@ module ASocket = struct[A]
       and 't listening qualifier A = Listening
       and 't connected qualifier A = Connected
   with
+
+    (* When we raise an exception, we "pickle" the capability. *)
+    abstype frozenInitial   qualifier A = FInitial {S.socket}
+        and frozenBound     qualifier A = FBound {S.socket}
+        and frozenListening qualifier A = FListening {S.socket}
+        and frozenConnected qualifier A = FConnected {S.socket}
+
+
     let socket (): ex 't. 't socket * 't initial =
       let sock = S.socket () in
       Pack(unit, Sock[unit] sock, Initial[unit])
