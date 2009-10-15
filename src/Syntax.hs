@@ -139,7 +139,8 @@ data TyTag =
                            -- The qualifier of the type is the lub of
                            -- the qualifiers of the named parameters and
                            -- possibly some constants
-    ttTrans :: Bool
+    ttTrans :: Bool,       -- transparent?
+    ttBound :: [Q]        -- upper bounds for parameters
   }
   deriving (Show, Typeable, Data)
 
@@ -1104,23 +1105,23 @@ qsToList tvs (QualSet q ixs)
 tdUnit, tdInt, tdFloat, tdString,
   tdArr, tdLol, tdExn, tdTuple :: TyTag
 
-tdUnit       = TyTag (-1)  []          minBound          True
-tdInt        = TyTag (-2)  []          minBound          True
-tdFloat      = TyTag (-3)  []          minBound          True
-tdString     = TyTag (-4)  []          minBound          True
-tdArr        = TyTag (-5)  [-1, 1]     minBound          False
-tdLol        = TyTag (-6)  [-1, 1]     maxBound          False
-tdExn        = TyTag (-7)  []          maxBound          False
-tdTuple      = TyTag (-8)  [1, 1]      qualSet           True
+tdUnit       = TyTag (-1)  []          minBound  True  []
+tdInt        = TyTag (-2)  []          minBound  True  []
+tdFloat      = TyTag (-3)  []          minBound  True  []
+tdString     = TyTag (-4)  []          minBound  True  []
+tdArr        = TyTag (-5)  [-1, 1]     minBound  False [maxBound, maxBound]
+tdLol        = TyTag (-6)  [-1, 1]     maxBound  False [maxBound, maxBound]
+tdExn        = TyTag (-7)  []          maxBound  False []
+tdTuple      = TyTag (-8)  [1, 1]      qualSet   True  [maxBound, maxBound]
   where qualSet = QualSet minBound (S.fromList [0, 1])
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:
-tdDual       = TyTag (-11) [-1] minBound          False
-tdSend       = TyTag (-12) [1]  minBound          False
-tdRecv       = TyTag (-13) [-1] minBound          False
-tdSelect     = TyTag (-14) [1]  minBound          False
-tdFollow     = TyTag (-15) [1]  minBound          False
+tdDual       = TyTag (-11) [-1] minBound False []
+tdSend       = TyTag (-12) [1]  minBound False [maxBound]
+tdRecv       = TyTag (-13) [-1] minBound False [maxBound]
+tdSelect     = TyTag (-14) [1]  minBound False [minBound]
+tdFollow     = TyTag (-15) [1]  minBound False [minBound]
 
 eiIOError, eiBlame, eiPatternMatch :: ExnId
 eiIOError      = ExnId (-21) (Uid "IOError")      LC

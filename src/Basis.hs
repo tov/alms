@@ -175,8 +175,8 @@ primBasis  = [
 
     submod "Future" [
       -- Futures
-      typeA "+'a future qualifier A",
-      typeA "-'a cofuture qualifier A",
+      typeA "+'<a future qualifier A",
+      typeA "-'<a cofuture qualifier A",
 
       pfun 1 "new" -: ""
                    -: "all '<a. (unit -o '<a) -> '<a future"

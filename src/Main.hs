@@ -305,5 +305,5 @@ addHistory _ = return ()
 readline s   = do
   putStr s
   hFlush stdout
-  Exn.catch (fmap Just getLine) (\_ -> return Nothing)
+  catch (fmap Just getLine) (\_ -> return Nothing)
 #endif

@@ -336,10 +336,11 @@ m |! s = case m of
 infix 1 |!
 
 -- Check type for closed-ness and and defined-ness, and add info
-tcType :: (?loc :: Loc, Language w, Monad m) =>
+tcType ::  (?loc :: Loc, Language w, Monad m) =>
           Type i w -> TC w m (TypeT w)
 tcType = tc where
-  tc :: (Language w, Monad m) => Type i w -> TC w m (TypeT w)
+  tc :: forall i m w. (Language w, Monad m) =>
+        Type i w -> TC w m (TypeT w)
   tc (TyVar tv)   = do
     tv' <- getTV tv
     return (TyVar tv')
@@ -349,10 +350,12 @@ tcType = tc where
     case tcon of
       TiAbs td -> do
         checkLength (length (ttArity td))
+        checkBound (ttBound td) ts'
         return (TyCon n ts' td)
       TiSyn ps t -> return (tysubsts ps ts' t)
       TiDat td _ _ -> do
         checkLength (length (ttArity td))
+        checkBound (ttBound td) ts'
         return (TyCon n ts' td)
       TiExn td _ -> do
         checkLength 0
@@ -363,6 +366,15 @@ tcType = tc where
           "Type constructor " ++ show n ++ " applied to " ++
           show (length ts) ++ " arguments where " ++
           show len ++ " expected"
+      checkBound :: [Q] -> [TypeT w] -> TC w m ()
+      checkBound quals ts' =
+        case reifyLang :: LangRep w of
+          C -> return ()
+          A -> tassert (all2 (\qa t -> qualifier t <: qa) quals ts') $
+                 "Type constructor " ++ show n ++
+                 " has parameters with qualifiers " ++
+                 show (map qualifier ts') ++ " where at most " ++
+                 show quals ++ " is permitted"
   tc (TyQu u tv t) = withTVs [tv] $ \[tv'] -> TyQu u tv' `liftM` tc t
   tc (TyMu  tv t) = withTVs [tv] $ \[tv'] -> do
     t' <- tc t
@@ -866,7 +878,8 @@ withTyDecCs trans tds0 k0 = do
                   ttId    = index,
                   ttArity = map (const Invariant) params,
                   ttQual  = minBound,
-                  ttTrans = trans
+                  ttTrans = trans,
+                  ttBound = map tvqual params
                 }
       withTypes (name =:= TiDat tag params empty) k
     withStub _           k = k
@@ -889,7 +902,8 @@ withTyDecC trans (TdAbsC name params) k = do
          ttId    = index,
          ttArity = map (const Invariant) params,
          ttQual  = minBound,
-         ttTrans = trans
+         ttTrans = trans,
+         ttBound = map tvqual params
        })
     (k $ TdAbsC name params)
 withTyDecC trans (TdSynC name params rhs) k = do
@@ -966,7 +980,8 @@ withTyDecAs trans tds0 k0 = do
                   ttId    = index,
                   ttArity = map (const Omnivariant) params,
                   ttQual  = minBound,
-                  ttTrans = trans
+                  ttTrans = trans,
+                  ttBound = map tvqual params
                 }
       withTypes (name =:= TiDat tag params empty) k
     withStub _           k = k
@@ -994,7 +1009,8 @@ withTyDecA trans (TdAbsA name params variances quals) k = do
          ttId    = index,
          ttArity = variances,
          ttQual  = quals',
-         ttTrans = trans
+         ttTrans = trans,
+         ttBound = map tvqual params
        })
     (k (TdAbsA name params variances quals, False))
 withTyDecA trans (TdSynA name params rhs) k = do
@@ -1446,7 +1462,7 @@ withAbsTy at ds k0 = case at of
           "abstract-with-end: declared qualifier for type " ++ show name ++
           ", " ++ show qualSet ++
           ", is more general than actual qualifier " ++ show (ttQual tag)
-        let tag' = TyTag (ttId tag) arity qualSet False
+        let tag' = TyTag (ttId tag) arity qualSet False (map tvqual params)
         withoutConstructors tag' .
           withReplacedTyTags tag' .
             withTypes (name =:= TiAbs tag') $
