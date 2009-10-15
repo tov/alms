@@ -848,6 +848,11 @@ instance  PO (Type TyTag A) where
                              (ftv [t1, t2] `M.union` used)
           seen' = (((b, tw1, tw2), tv) : ((b, tw2, tw1), tv) : seen)
 
+    -- Special cases to treat "all 'a. 'a" as bottom:
+    cmp _ b t'@(TyQu Forall tv (TyVar tv')) t
+      | tv == tv' && qualifier t <: tvqual tv = return (if b then t else t')
+    cmp _ b t t'@(TyQu Forall tv (TyVar tv'))
+      | tv == tv' && qualifier t <: tvqual tv = return (if b then t else t')
     -- Special cases for session types duality:
     cmp seen b (TyCon _ [p] td) t
       | td == tdDual                = chk seen b (dualSessionType p) t

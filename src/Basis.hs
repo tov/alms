@@ -36,6 +36,7 @@ primBasis  = [
 
     -- Primitive types:
     -- "unit" built in
+    typeT "any  = all '<a. '<a",
     typeT "bool = false | true",
     "int"    `primtype` tdInt,
     typeT "char = int",
@@ -370,7 +371,7 @@ srcBasis  = unlines [
   "let[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
   "  fun 'a (lst: {{'a} list}) ->",
   "    foldr (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
-  "let[A] failwith['<a] (msg: string) =",
-  "  raise['<a] (Failure msg)",
+  "let[A] failwith (msg: string) =",
+  "  raise (Failure msg)",
   ""
   ]

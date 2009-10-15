@@ -12,7 +12,7 @@ entries = [
     exnC "Blame"   exidBlame   "string * string",
     src "exception[C] Failure of string",
 
-    pfun 1 "raise" -:: "all '<a. exn -> '<a"
+    pfun 1 "raise" -:: "exn -> any"
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
     pfun 1 "tryC" -: "all 'a. (unit -> 'a) -> (exn, 'a) either"
