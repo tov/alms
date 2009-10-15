@@ -81,6 +81,9 @@ THE LANGUAGE
   We follow the paper rather closely, and the examples should give a
   reasonable idea as to the concrete syntax.
 
+  The sockets examples use exceptions for error handling, rather than
+  just ignoring it like in the paper.
+
   In the A language, we use -o for affine function types and -> for
   unlimited function types, rather than \multimap^u and and \multimap^a.
 
