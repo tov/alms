@@ -5,7 +5,7 @@ module Util (
   foldl2, foldr2, all2, any2,
   char2integer, integer2char, splitBy,
   unscanr, unscanl,
-  mapCont, mapCont_,
+  (>>!), mapCont, mapCont_,
   GSequence(..),
   module Control.Arrow,
   module Control.Monad
@@ -78,6 +78,11 @@ unscanl f = loop [] where
   loop acc b = case f b of
     Just (a, b') -> loop (a : acc) b'
     Nothing      -> (acc, b)
+
+(>>!) :: Functor f => f a -> (a -> b) -> f b
+(>>!)  = flip fmap
+
+infixl 1 >>!
 
 mapCont :: (a -> (b -> r) -> r) -> [a] -> ([b] -> r) -> r
 mapCont _ []     k = k []

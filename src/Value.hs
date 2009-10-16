@@ -86,7 +86,7 @@ vcast a = case cast a of
 -- A Value is either a function (with a name), or a Haskell
 -- dynamic value with some typeclass operations
 data Value = VaFun FunName (Value -> IO Value)
-           | VaSus Doc (IO Value)
+           | VaSus FunName (IO Value)
            | VaCon Uid (Maybe Value)
            | forall a. Valuable a => VaDyn a
   deriving Typeable
@@ -104,7 +104,7 @@ vaUnit  = vinj ()
 -- Ppr instances
 
 instance Ppr FunName where
-  pprPrec _ (FNAnonymous doc) = hang (text "#<closure") 4 $
+  pprPrec _ (FNAnonymous doc) = hang (text "#<fn") 4 $
                                   doc <> char '>'
   pprPrec _ (FNNamed docs)    = hang (text "#<fn") 4 $
                                   sep docs <> char '>'
@@ -176,7 +176,7 @@ instance Valuable Value where
   veq (VaDyn a)   b           = veqDyn a b
   veq _           _           = False
   vpprPrec p (VaFun n _)        = pprPrec p n
-  vpprPrec _ (VaSus n _)        = n
+  vpprPrec p (VaSus n _)        = pprPrec p n
   vpprPrec p (VaCon c Nothing)  = pprPrec p c
   vpprPrec p (VaCon c (Just v)) = parensIf (p > precApp) $
                                     pprPrec precApp c <+>

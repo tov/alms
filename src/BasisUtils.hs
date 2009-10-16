@@ -17,7 +17,7 @@ module BasisUtils (
 import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
 import Parser (pt, pds)
-import Ppr (ppr, text, hang, char, (<>))
+import Ppr (ppr, text)
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
 import Util
@@ -57,7 +57,7 @@ class MkFun r where
 -- Recursive case: accept one argument, then look for more
 instance (Valuable v, MkFun r) => MkFun (v -> r) where
   mkFun n f = VaFun n $ \v ->
-    vprjM v >>= return . mkFun (next v) . f
+    vprjM v >>! mkFun (next v) . f
     where
       next v = case n of
         FNAnonymous doc -> FNAnonymous doc
@@ -65,10 +65,10 @@ instance (Valuable v, MkFun r) => MkFun (v -> r) where
 
 -- Base cases for various return types
 instance Valuable r => MkFun (IO r) where
-  mkFun n f = VaFun n $ \v -> vprjM v >>= f >>= return . vinj
+  mkFun n f = VaFun n $ \v -> vprjM v >>= f >>! vinj
 
 instance MkFun Value where
-  mkFun n f = VaFun n $ \v -> vprjM v >>= return . f
+  mkFun n f = VaFun n $ \v -> vprjM v >>! f
 
 instance MkFun Integer  where mkFun = baseMkFun
 instance MkFun Double   where mkFun = baseMkFun
@@ -81,7 +81,7 @@ instance (Valuable a, Valuable b, MkFun a, MkFun b) =>
          MkFun (a, b)   where mkFun = baseMkFun
 
 baseMkFun :: (Valuable a, Valuable b) => FunName -> (a -> b) -> Value
-baseMkFun n f = VaFun n $ \v -> vprjM v >>= return . vinj . f
+baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 
 fun :: (MkFun r, Valuable v) =>
        String -> String -> String -> (v -> r) -> Entry
@@ -102,9 +102,7 @@ pfun n name cty aty f = mkTyAbs (pfun (n - 1) name cty aty f)
 mkTyAbs :: Entry -> Entry
 mkTyAbs entry =
   let v     = enValue entry in
-  entry { enValue =
-            VaSus (hang (text "#<sus") 4 $ vppr v <> char '>')
-                  (return v) }
+  entry { enValue = VaSus (FNNamed [ppr (enName entry)]) (return v) }
 
 class TypeBuilder r where
   typeA :: String -> r

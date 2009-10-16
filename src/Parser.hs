@@ -23,9 +23,6 @@ type Lang = LangRepMono
 type St   = Maybe Lang
 type P a  = CharParser St a
 
-(>>!) :: P a -> (a -> b) -> P b
-(>>!)  = flip fmap
-
 parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p Nothing
 

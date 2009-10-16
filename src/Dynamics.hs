@@ -9,7 +9,7 @@ import Value
 import Util
 import Syntax
 import Env
-import Ppr (Ppr(..), hang, text, char, (<>))
+import Ppr (Ppr(..), Doc, text, precApp, brackets)
 
 import Data.IORef (newIORef, readIORef, writeIORef)
 import qualified Control.Exception as Exn
@@ -51,13 +51,13 @@ evalDecl (DcExn _ _)    = return
 evalLet :: Let i -> DDecl
 evalLet (LtC _ x _ e)   env = do
   v <- valOf e env
-  return (env =+= x =:!= v)
+  return (env =+= x =:!= nameFun x v)
 evalLet (LtA _ x _ e)   env = do
   v <- valOf e env
-  return (env =+= x =:!= v)
+  return (env =+= x =:!= nameFun x v)
 evalLet (LtInt _ x _ y) env = do
   case env =..= y of
-    Just v  -> return (env =+= x =:= v)
+    Just v  -> return (env =+= x =:= fmap (nameFun x) v)
     Nothing -> fail $ "BUG! Unknown variable: " ++ show y
 
 evalOpen :: ModExp i -> DDecl
@@ -143,17 +143,16 @@ valOf e env = case view e of
     v2  <- valOf e2 env
     v1' <- force v1  -- Magic type application
     case v1' of
-      VaFun _ f -> f v2
+      VaFun n f -> f v2 >>! nameApp n (pprPrec (precApp + 1) v2) 
       VaCon c _ -> return (VaCon c (Just v2))
       _         -> fail $ "BUG! applied non-function " ++ show v1
                            ++ " to argument " ++ show v2
   ExTAbs _ e'            ->
-    return (VaSus (hang (text "#<sus") 4 $ ppr e <> char '>')
-                  (valOf e' env))
-  ExTApp e' _            -> do
+    return (VaSus (FNAnonymous (ppr e)) (valOf e' env))
+  ExTApp e' t2           -> do
     v' <- valOf e' env
     case v' of
-      VaSus _ f -> f
+      VaSus n f -> f >>! nameApp n (brackets (ppr t2))
       VaCon _ _ -> return v'
       _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
   ExPack _ _ e1          ->
@@ -207,14 +206,23 @@ bindPatt x0 v env = case x0 of
 ---
 
 force :: Value -> IO Value
-force (VaSus _ v) = v >>= force
+force (VaSus n v) = v >>= force . nameApp n (text "[_]")
 force v           = return v
 
 -- Add the given name to an anonymous function
 nameFun :: Lid -> Value -> Value
 nameFun (Lid x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed [text x]) lam
+nameFun (Lid x) (VaSus (FNAnonymous _) lam)
+  | x /= "it"          = VaSus (FNNamed [text x]) lam
 nameFun _       value  = value
+
+nameApp :: FunName -> Doc -> Value -> Value
+nameApp (FNNamed docs) arg (VaFun (FNAnonymous _) lam)
+  = VaFun (FNNamed (docs ++ [ arg ])) lam
+nameApp (FNNamed docs) arg (VaSus (FNAnonymous _) lam)
+  = VaSus (FNNamed (docs ++ [ arg ])) lam
+nameApp _ _ value = value
 
 collapse :: E -> Scope
 collapse = foldr (flip (=+=)) genEmpty
