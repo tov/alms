@@ -10,14 +10,17 @@ with
       then
         shutdown sock ShutdownSend
       else
-        match send sock (getLine () ^ "\r\n") with
-        | true  -> sendThread sock
-        | false -> ()
+        try
+          send sock (getLine () ^ "\r\n");
+          sendThread sock
+        with
+          IOError _ -> ()
 
   let rec[C] recvThread (sock: socket): unit =
-    match recv sock 1024 with
-    | Some s -> putStr s; recvThread sock
-    | None   -> ()
+    try
+      putStr (recv sock 1024); recvThread sock
+    with
+      IOError _ -> ()
 end
 
 let[C] setupConnection (addr: sockAddr): socket =

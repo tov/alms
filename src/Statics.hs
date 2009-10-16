@@ -717,8 +717,7 @@ tcPatt t x0 = case x0 of
                   (dx1, gx1, x1') <- tcPatt t1 x1
                   return (dx1, gx1, PaCon u (Just x1') (Just ei))
                 _ -> tgot "Pattern" t "different arity"
-          _ ->
-            terr $ "Pattern " ++ show x0 ++ " for type not in scope"
+          _ -> tgot "Pattern" t ("constructor " ++ show u)
       _ -> tgot "Pattern" t ("constructor " ++ show u)
   PaPair x y -> do
     case t of
