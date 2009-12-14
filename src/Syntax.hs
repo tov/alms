@@ -224,6 +224,7 @@ data TyTag =
 -- | Types are parameterized by:
 --
 --   [@i@] the type of information associated with each tycon
+--
 --   [@w@] the sublanguage, A or C
 data Type i w where
   TyCon :: QLid -> [Type i w] -> i -> Type i w
@@ -994,9 +995,9 @@ bigWedgeM  = foldrM (/\?) maxBound
 --
 --  * 'ifMJ'
 --
---  * '(\/)', '(/\)'    (only if it's a lattice)
+--  * '\/', '/\'    (only if it's a lattice)
 --
---  * '(\/?)', '(/\?)'  (partial join and meet)
+--  * '\/?', '/\?'  (partial join and meet)
 class Eq a => PO a where
   -- | Takes a boolean parameter, and does join if true
   --   and meet if false.  This sometimes allows us to exploit duality
