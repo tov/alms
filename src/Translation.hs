@@ -1,3 +1,5 @@
+-- | Translation inserts coercions while translating language A to
+--   language C.
 {-# LANGUAGE
       FlexibleInstances,
       ImplicitParams,
@@ -11,22 +13,30 @@ module Translation (
 import Util
 import Syntax
 
+-- | The translation environment.  This currently doesn't carry
+--   any information, but we keep it in the interface for later use.
 type TEnv = ()
 
+-- | The initial translation environment
 tenv0 :: TEnv
 tenv0  = ()
 
--- Parties to contracts are module names, but it's worth
--- keeping them separate from regular variables.
+-- | Parties to contracts are module names, but it's worth
+--   keeping them separate from regular variables.
 newtype Party = Party { unParty :: Ident }
+-- | The trail to a particular mention is the module path in
+--   which it appears, which is used to generate a 'Party'
 type Trail    = [Uid]
 
--- Translate a program by adding contracts.
+-- | Translate a whole program
 translate :: TEnv -> ProgT -> ProgT
 translate _ (Prog ds e) =
   Prog (transDecls ds) (transExpr (party (Uid "*Main*")) `fmap` e)
     where ?trail = []
 
+-- | Translation a sequence of declarations in the context
+--   of a translation environment, returning a new translation
+--   environment
 translateDecls :: TEnv -> [DeclT] -> (TEnv, [DeclT])
 translateDecls tenv ds = (tenv, transDecls ds) where ?trail = []
 

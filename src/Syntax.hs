@@ -1,3 +1,11 @@
+-----------------------------------------------------------------------------
+-- |
+-- This module provides syntax and basic syntax operations for
+-- the implementation of the language from the paper "Stateful Contracts
+-- for Affine Types".
+--
+-----------------------------------------------------------------------------
+
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
@@ -11,60 +19,98 @@
       ScopedTypeVariables,
       TypeFamilies #-}
 module Syntax (
-  Language, A, C, Language'(..), SameLang, LangRep(..),
-  LangRepMono(..),
-  Q(..),
+  -- * Languages, variances, qualifiers
+  -- ** Languages
+  -- |
+  -- We have two sublanguages, A for affine and C for conventional
+  Language, A, C, Language'(..), SameLang, LangRep(..), LangRepMono(..),
+  -- ** Variances
+  Variance(..),
+  -- ** Qualifiers
+  Q(..), QualSet,
+  -- *** Qualifier operations
+  qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
 
+  -- * Identifiers
   Path(..),
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
   TyVar(..),
+  qlid, quid,
 
-  TyTag(..), Variance(..),
-  QualSet, qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
-  Type(..), tyC, tyA, tyAll, tyEx, TypeT,
-  removeTyTags,
+  -- * Types
+  TyTag(..),
   Quant(..),
-  Prog(..), ProgT,
+  Type(..),
+  TypeT,
+  TypeTW(..), typeTW,
+  -- * Synthetic constructors
+  tyC, tyA, tyAll, tyEx,
+  -- ** Accessors and updaters
+  tycon, tyargs, tyinfo,
+  setTycon, setTyinfo,
+  -- ** Freshness
+  Ftv(..), freshTyVar, freshTyVars,
+  -- ** Substitutions
+  tysubst, tysubst1,
+  -- ** Queries and conversions
+  qualifier, transparent, funtypes, castableType,
+  ctype2atype, atype2ctype, cgetas, agetcs,
+  replaceTyTags, removeTyTags,
 
-  Decl(..), DeclT, dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn,
+  -- * Programs and declarations
+  Prog(..), ProgT,
+  Decl(..), DeclT,
   Let(..), LetT,
   TyDec(..), TyDecC(..), TyDecA(..),
   AbsTy(..),
   ModExp(..), ModExpT,
   ExnDec(..),
+  -- ** Synthetic consructors
+  -- | These fill in the source location fields with a bogus location
+  dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn,
+  -- ** Operations
+  letName, prog2decls,
 
-  TypeTW(..), typeTW,
+  -- * Exceptions
+  ExnId(..),
+  -- ** Built-in exceptions
+  eiIOError, eiBlame, eiPatternMatch,
 
+  -- * Expressions
   Expr(), ExprT, Expr'(..),
-  fv, exprType, (*:*), setExnId, getExnId, (*<*),
+  -- ** Two-level expression constructors
+  -- | These fill in the source location field based on the
+  -- subexpressions and perform the free variable analysis
   exId, exStr, exInt, exFloat, exCase, exLetRec, exLetDecl, exPair,
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
-  exVar, exCon, exBVar, exBCon, exLet, exSeq, -- <== synthetic
-  qlid, quid,
-  ExnId(..),
+  -- ** Synthetic expression constructors
+  exVar, exCon, exBVar, exBCon, exLet, exSeq,
+  -- ** Expression accessors and updaters
+  fv, exprType, (*:*), setExnId, getExnId, (*<*),
+  syntacticValue,
+
+  -- * Patterns and bindings
   Binding(..), BindingT, Patt(..),
   pv,
 
+  -- * Partial orders
   PO(..), bigVee, bigVeeM, bigWedge, bigWedgeM,
 
+  -- * Built-in types
+  -- ** Type information
   tdUnit, tdInt, tdFloat, tdString, tdExn, tdTuple, tdArr, tdLol,
-
+  -- ** Session types
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
-
-  eiIOError, eiBlame, eiPatternMatch,
-
+  -- ** Convenience type constructors
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
 
-  Ftv(..), freshTyVar, freshTyVars, tysubst, tysubst1,
-  qualifier, transparent, funtypes,
-  ctype2atype, atype2ctype, cgetas, agetcs, replaceTyTags,
-
-  syntacticValue, castableType, letName, prog2decls,
+  -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
 
+  -- * Miscellany
   module Viewable,
   dumpType
 ) where
@@ -86,68 +132,101 @@ import Data.Generics (Typeable(..), Data(..), Fixity(..),
                       DataType, mkDataType,
                       everywhere, mkT)
 
--- We have two languages:
-data C deriving Typeable
-data A deriving Typeable
+-- LANGUAGES, QUALIFIERS, VARIANCES
 
+-- | The affine language
+data A deriving Typeable
+-- | The conventional language
+data C deriving Typeable
+
+-- | GADT for run-time language representation
 data LangRep w where
   A :: LangRep A
   C :: LangRep C
 
+-- | Non-GADT language representation
 data LangRepMono = LC | LA
   deriving (Eq, Typeable, Data, Show, Ord)
 
--- Usage Qualifiers
-data Q = Qa | Qu
+-- | Usage qualifiers
+data Q
+  -- | affine
+  = Qa
+  -- | unlimited
+  | Qu
   deriving (Eq, Typeable, Data)
 
--- Variables
+-- |
+-- Determines how the parameters to a tycon contribute to
+-- the qualifier of the type:
+--   if @qualset c = QualSet q set@ then
+--
+-- @
+--    |(t1, ..., tk) c| = q \\sqcup \\bigsqcup { qi | i <- set }
+-- @
+data QualSet = QualSet Q (S.Set Int)
+  deriving (Typeable, Data)
+
+-- | Tycon parameter variance (like sign analysis)
+data Variance
+  -- | Z
+  = Invariant
+  -- | non-negative
+  | Covariant
+  -- | non-positive
+  | Contravariant
+  -- | { 0 } 
+  | Omnivariant
+  deriving (Eq, Ord, Typeable, Data)
+
+-- IDENTIFIERS
+
+-- | lowercase identifiers (variables, tycons)
 newtype Lid = Lid { unLid :: String }
   deriving (Eq, Ord, Typeable, Data)
 
+-- | uppercase identifiers (modules, datacons)
 newtype Uid = Uid { unUid :: String }
   deriving (Eq, Ord, Typeable, Data)
 
+-- | bare (unqualified) identifers
 data BIdent = Var { unVar :: Lid }
             | Con { unCon :: Uid }
   deriving (Eq, Ord, Typeable, Data)
 
+-- | path-qualified uppercase identifiers
 type QUid  = Path Uid Uid
+-- | path-qualified lowecase identifiers
 type QLid  = Path Uid Lid
+-- | path-qualified identifiers
 type Ident = Path Uid BIdent
 
--- Type variables
+-- | Type variables include qualifiers
 data TyVar = TV { tvname :: Lid, tvqual :: Q }
   deriving (Eq, Ord, Typeable, Data)
 
--- Variance
-data Variance = Invariant
-              | Covariant
-              | Contravariant
-              | Omnivariant
-  deriving (Eq, Ord, Typeable, Data)
-
-data QualSet = QualSet Q (S.Set Int)
-  deriving (Typeable, Data)
-
--- Info about a type constructor (for language A)
+-- | Info about a type constructor (for language A)
 data TyTag =
   TyTag {
+    -- Identity
     ttId    :: Integer,
-    ttArity :: [Variance], -- The variance of each of its parameters
+    -- The variance of each of its parameters
+    ttArity :: [Variance],
+    -- Determines qualifier as above
     ttQual  :: QualSet,
-                           -- The qualifier of the type is the lub of
-                           -- the qualifiers of the named parameters and
-                           -- possibly some constants
-    ttTrans :: Bool,       -- transparent?
-    ttBound :: [Q]        -- upper bounds for parameters
+    -- transparent?
+    ttTrans :: Bool,
+    -- upper qualifier bounds for parameters
+    ttBound :: [Q]
   }
   deriving (Show, Typeable, Data)
 
+-- | Types are parameterized by:
+--
+--   [@i@] the type of information associated with each tycon
+--   [@w@] the sublanguage, A or C
 data Type i w where
-  TyCon { tycon  :: QLid,
-          tyargs :: [Type i w],
-          tyinfo :: i } :: Type i w
+  TyCon :: QLid -> [Type i w] -> i -> Type i w
   TyVar :: TyVar -> Type i w
   TyQu  :: Quant -> TyVar -> Type i w -> Type i w
   TyMu  :: TyVar -> Type i w -> Type i w
@@ -155,9 +234,37 @@ data Type i w where
   TyA   :: Type i A -> Type i C
   deriving Typeable
 
+-- | Type quantifers
 data Quant = Forall | Exists
   deriving (Typeable, Data, Eq)
 
+tycon :: Type i w -> QLid
+tycon (TyCon tc _ _)  = tc
+tycon _               = error "tycon: not a TyCon"
+tyargs :: Type i w -> [Type i w]
+tyargs (TyCon _ ts _) = ts
+tyargs _              = error "tyargs: not a TyCon"
+tyinfo :: Type i w -> i
+tyinfo (TyCon _ _ i)  = i
+tyinfo _              = error "tyinfo: not a TyCon"
+
+setTycon :: Type i w -> QLid -> Type i w
+setTycon (TyCon _ ts i) tc = TyCon tc ts i
+setTycon t _               = t
+setTyinfo :: Type i w -> i -> Type i w
+setTyinfo (TyCon tc ts _) i = TyCon tc ts i
+setTyinfo t _               = t
+
+infixl `setTycon`, `setTyinfo`
+
+-- | Synthetic constructors for wrapper (interlanguage) types
+-- prevent multiple nested wrapping.  Essentially we make the
+-- type algebra less free by adding constrants:
+--
+-- @
+--    tyC (tyA t) = t
+--    tyA (tyC t) = t
+-- @
 tyC :: Type i C -> Type i A
 tyC (TyA t) = t
 tyC t       = TyC t
@@ -166,10 +273,12 @@ tyA :: Type i A -> Type i C
 tyA (TyC t) = t
 tyA t       = TyA t
 
+-- | Convenience constructors for qualified types
 tyAll, tyEx :: TyVar -> Type i w -> Type i w
 tyAll = TyQu Forall
 tyEx  = TyQu Exists
 
+-- | Remove tycon information from a type
 removeTyTags :: Type i w -> Type () w
 removeTyTags  = untype where
   untype :: Type i w -> Type () w
@@ -180,82 +289,124 @@ removeTyTags  = untype where
   untype (TyC t)            = TyC (untype t)
   untype (TyA t)            = TyA (untype t)
 
+-- | A program is a sequence of declarations, maybe followed by a C
+-- expression
 data Prog i = Prog [Decl i] (Maybe (Expr i C))
   deriving (Typeable, Data)
 
-data Decl i = DcLet Loc (Let i)
-            | DcTyp Loc TyDec
-            | DcAbs Loc AbsTy [Decl i]
-            | DcMod Loc Uid (ModExp i)
-            | DcOpn Loc (ModExp i)
-            | DcLoc Loc [Decl i] [Decl i]
-            | DcExn Loc ExnDec
+-- | Declarations
+data Decl i
+  -- | Constant declaration
+  = DcLet Loc (Let i)
+  -- | Type declaration
+  | DcTyp Loc TyDec
+  -- | Abstype block declaration
+  | DcAbs Loc AbsTy [Decl i]
+  -- | Module declaration
+  | DcMod Loc Uid (ModExp i)
+  -- | Module open
+  | DcOpn Loc (ModExp i)
+  -- | Local block
+  | DcLoc Loc [Decl i] [Decl i]
+  -- | Exception declaration
+  | DcExn Loc ExnDec
   deriving (Typeable, Data)
 
+-- | Build a constant declaration with bogus source location
 dcLet :: Let i -> Decl i
 dcLet  = DcLet bogus
 
+-- | Build a type declaration with bogus source location
 dcTyp :: TyDec -> Decl i
 dcTyp  = DcTyp bogus
 
+-- | Build a abstype declaration with bogus source location
 dcAbs :: AbsTy -> [Decl i] -> Decl i
 dcAbs  = DcAbs bogus
 
+-- | Build a module with bogus source location
 dcMod :: Uid -> ModExp i -> Decl i
 dcMod  = DcMod bogus
 
+-- | Build an open declaration with bogus source location
 dcOpn :: ModExp i -> Decl i
 dcOpn  = DcOpn bogus
 
+-- | Build local block with bogus source location
 dcLoc :: [Decl i] -> [Decl i] -> Decl i
 dcLoc  = DcLoc bogus
 
+-- | Build an exception declaration with bogus source location
 dcExn :: ExnDec -> Decl i
 dcExn  = DcExn bogus
 
-data Let i  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
-            | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
-            | LtInt Bool Lid (Type i A) QLid
+-- | Constant declarations (@let@)
+data Let i
+  -- | An affine-language constant
+  = LtA Bool Lid (Maybe (Type i A)) (Expr i A)
+  -- | A conventional-language constant
+  | LtC Bool Lid (Maybe (Type i C)) (Expr i C)
+  -- | An affine-to-conventional interface
+  | LtInt Bool Lid (Type i A) QLid
   deriving (Typeable, Data)
 
-data TyDec   = TyDecC Bool [TyDecC]
-             | TyDecA Bool [TyDecA]
-             | TyDecT [TyDecA] -- transparent types
+-- | Type declarations (@type@)
+data TyDec
+  -- | An affine-language type (or mutually recursive types)
+  = TyDecC Bool [TyDecC]
+  -- | An conventional-language type (or mutually recursive types)
+  | TyDecA Bool [TyDecA]
+  -- | A transparent (both languages) type (or mutually recursive types)
+  | TyDecT [TyDecA]
   deriving (Typeable, Data)
 
-data TyDecC  = TdAbsC {
-                 tdcName      :: Lid,
-                 tdcParams    :: [TyVar]
-               }
-             | TdSynC {
-                 tdcName      :: Lid,
-                 tdcParams    :: [TyVar],
-                 tdcRHS       :: Type () C
-             }
-             | TdDatC {
-                 tdcName      :: Lid,
-                 tdcParams    :: [TyVar],
-                 tdcAlts      :: [(Uid, Maybe (Type () C))]
-             }
-  deriving (Typeable, Data)
-data TyDecA  = TdAbsA {
-                 tdaName      :: Lid,
-                 tdaParams    :: [TyVar],
-                 tdaVariances :: [Variance],
-                 tdaQual      :: [Either TyVar Q]
-               }
-             | TdSynA {
-                 tdaName      :: Lid,
-                 tdaParams    :: [TyVar],
-                 tdaRHS       :: Type () A
-             }
-             | TdDatA {
-                 tdaName      :: Lid,
-                 tdaParams    :: [TyVar],
-                 tdaAlts      :: [(Uid, Maybe (Type () A))]
-             }
+-- | Affine language type declarations
+data TyDecC
+  -- | An abstract (empty) type
+  = TdAbsC {
+    tdcName      :: Lid,
+    tdcParams    :: [TyVar]
+  }
+  -- | A type synonym
+  | TdSynC {
+    tdcName      :: Lid,
+    tdcParams    :: [TyVar],
+    tdcRHS       :: Type () C
+  }
+  -- | An algebraic datatype
+  | TdDatC {
+    tdcName      :: Lid,
+    tdcParams    :: [TyVar],
+    tdcAlts      :: [(Uid, Maybe (Type () C))]
+  }
   deriving (Typeable, Data)
 
+-- | Affine language type declarations
+data TyDecA
+  -- | An abstract (empty) type
+  = TdAbsA {
+    tdaName      :: Lid,
+    tdaParams    :: [TyVar],
+    -- | The variance of each parameter
+    tdaVariances :: [Variance],
+    -- | Whether each parameter contributes to the qualifier
+    tdaQual      :: [Either TyVar Q]
+  }
+  -- | A type synonym
+  | TdSynA {
+    tdaName      :: Lid,
+    tdaParams    :: [TyVar],
+    tdaRHS       :: Type () A
+  }
+  -- | An algebraic datatype
+  | TdDatA {
+    tdaName      :: Lid,
+    tdaParams    :: [TyVar],
+    tdaAlts      :: [(Uid, Maybe (Type () A))]
+  }
+  deriving (Typeable, Data)
+
+-- | An abstype block
 data AbsTy   = AbsTyC {
                  atTopLevel    :: Bool,
                  atTyDecC      :: [TyDecC]
@@ -265,13 +416,21 @@ data AbsTy   = AbsTyC {
                  atTyDecA      :: [AbsTyADat]
                }
   deriving (Typeable, Data)
+-- | An abstract type in language A needs to specify variances
+-- and the qualifier
 type AbsTyADat = ([Variance], [Either TyVar Q], TyDecA)
 
-data ModExp i = MeStrC Bool [Decl i]
-              | MeStrA Bool [Decl i]
-              | MeName QUid
+-- | A module expression
+data ModExp i
+  -- | A language C module literal
+  = MeStrC Bool [Decl i]
+  -- | A language A module literal
+  | MeStrA Bool [Decl i]
+  -- | A module variable
+  | MeName QUid
   deriving (Typeable, Data)
 
+-- | Exception declarations
 data ExnDec   = ExnC {
                   exnToplevel :: Bool,
                   exnName     :: Uid,
@@ -284,31 +443,64 @@ data ExnDec   = ExnC {
                 }
   deriving (Typeable, Data)
 
-data Expr i w = Expr {
-                  eloc_  :: Loc,
-                  fv_    :: FV,
-                  type_  :: Maybe (Either (TypeT C) (TypeT A)),
-                  exnid_ :: Maybe ExnId,
-                  expr_  :: Expr' i w
-                }
-  deriving (Typeable, Data)
-type FV        = M.Map QLid Integer
-data Expr' i w = ExId Ident
-               | ExStr String
-               | ExInt Integer
-               | ExFloat Double
-               | ExCase (Expr i w) [(Patt, Expr i w)]
-               | ExLetRec [Binding i w] (Expr i w)
-               | ExLetDecl (Decl i) (Expr i w)
-               | ExPair (Expr i w) (Expr i w)
-               | ExAbs Patt (Type i w) (Expr i w)
-               | ExApp (Expr i w) (Expr i w)
-               | ExTAbs TyVar (Expr i w)
-               | ExTApp (Expr i w) (Type i w)
-               | ExPack (Maybe (Type i w)) (Type i w) (Expr i w)
-               | ExCast (Expr i w) (Maybe (Type i w)) (Type i A)
+-- | Expressions are a two-level type, which simulates a sort
+-- of inheritance without losing pattern matching.  Every expression
+-- has several fields in addition to its particular abstract syntax.
+data Expr i w
+  = Expr {
+      -- | source location
+      eloc_  :: Loc,
+      -- | free variables
+      fv_    :: FV,
+      -- | possibly its type (used for translation)
+      type_  :: Maybe (Either (TypeT C) (TypeT A)),
+      -- | if it's an exception constructor, its identity
+      exnid_ :: Maybe ExnId,
+      -- | the underlying sum type
+      expr_  :: Expr' i w
+    }
   deriving (Typeable, Data)
 
+-- | The underlying expression type, which we can pattern match without
+-- dealing with the common fields above.
+data Expr' i w
+  -- | variables and datacons
+  = ExId Ident
+  -- | string literals
+  | ExStr String
+  -- | integer literals
+  | ExInt Integer
+  -- | floating point literals
+  | ExFloat Double
+  -- | case expressions (including desugared @if@ and @let@)
+  | ExCase (Expr i w) [(Patt, Expr i w)]
+  -- | recursive let expressions
+  | ExLetRec [Binding i w] (Expr i w)
+  -- | nested declarations
+  | ExLetDecl (Decl i) (Expr i w)
+  -- | pair construction
+  | ExPair (Expr i w) (Expr i w)
+  -- | lambda
+  | ExAbs Patt (Type i w) (Expr i w)
+  -- | application
+  | ExApp (Expr i w) (Expr i w)
+  -- | type abstraction
+  | ExTAbs TyVar (Expr i w)
+  -- | type application
+  | ExTApp (Expr i w) (Type i w)
+  -- | existential construction
+  | ExPack (Maybe (Type i w)) (Type i w) (Expr i w)
+  -- | dynamic promotion
+  | ExCast (Expr i w) (Maybe (Type i w)) (Type i A)
+  deriving (Typeable, Data)
+
+-- | Our free variables function returns not merely a set,
+-- but a map from names to a count of maximum occurrences.
+type FV        = M.Map QLid Integer
+
+-- | Exceptions need identity beyond their names, since one
+-- exception declaration can shadow another, and we need to catch
+-- only the right ones a run time.
 data ExnId     = ExnId {
                    eiIndex :: Integer,
                    eiName  :: Uid,
@@ -316,6 +508,7 @@ data ExnId     = ExnId {
                  }
   deriving (Eq, Show, Typeable, Data)
 
+-- | Let-rec bindings require us to give types
 data Binding i w = Binding {
   bnvar  :: Lid,
   bntype :: Type i w,
@@ -323,44 +516,69 @@ data Binding i w = Binding {
 }
   deriving (Typeable, Data)
 
-data Patt = PaWild
-          | PaVar Lid
-          | PaCon Uid (Maybe Patt) (Maybe ExnId)
-          | PaPair Patt Patt
-          | PaStr String
-          | PaInt Integer
-          | PaAs Patt Lid
-          | PaPack TyVar Patt
+-- | Patterns
+data Patt
+  -- | wildcard
+  = PaWild
+  -- | variable pattern
+  | PaVar Lid
+  -- | datacon, possibly with parameter, possibly an exception
+  | PaCon Uid (Maybe Patt) (Maybe ExnId)
+  -- | pair pattern
+  | PaPair Patt Patt
+  -- | string literal
+  | PaStr String
+  -- | integer literal
+  | PaInt Integer
+  -- | bind an identifer and a pattern (@as@)
+  | PaAs Patt Lid
+  -- | existential opening
+  | PaPack TyVar Patt
   deriving (Typeable, Data)
 
+-- | A type-checked expression (has tycon info)
 type ExprT    = Expr TyTag
+-- | A type-checked type (has tycon info)
 type TypeT    = Type TyTag
+-- | A type-checked declaration (has tycon info)
 type DeclT    = Decl TyTag
+-- | A type-checked constant declaration (has tycon info)
 type LetT     = Let TyTag
+-- | A type-checked module expression (has tycon info)
 type ModExpT  = ModExp TyTag
+-- | A type-checked let-rec binding (has tycon info)
 type BindingT = Binding TyTag
+-- | A type-checked program (has tycon info)
 type ProgT    = Prog TyTag
 
+-- | Accessor for the free variables field of expressions
 fv :: Expr i w -> FV
 fv  = fv_
 
+-- | Get the type of an expression, if known
 exprType :: Expr i w -> Maybe (Either (TypeT C) (TypeT A))
 exprType  = type_
 
+-- | Update the type of an expression
 (*:*) :: Language w' => ExprT w -> TypeT w' -> ExprT w
 e *:* t = e {
   type_ = Just (langCase t Left Right)
 }
 
+-- | Get the exception id of an expression
 getExnId :: Expr i w -> Maybe ExnId
 getExnId  = exnid_
 
+-- | Update the exception id of an expression
 setExnId :: Expr i w -> Maybe ExnId -> Expr i w
 setExnId e mz = e { exnid_ = mz }
 
+-- | Clone the type and exception id from the right expression
+-- onto the left expression
 (*<*) :: Expr i w -> Expr i w' -> Expr i w
 e *<* e' = e { type_ = type_ e', exnid_ = exnid_ e' }
 
+-- | The set of variables bound by a pattern
 pv :: Patt -> S.Set Lid
 pv PaWild               = S.empty
 pv (PaVar x)            = S.singleton x
@@ -493,16 +711,19 @@ exLet x e1 e2 = exCase e1 [(x, e2)]
 exSeq :: Expr i w -> Expr i w -> Expr i w
 exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 
+-- | Sugar for generating AST for qualified lowercase identifers
 qlid :: String -> QLid
 qlid s = case reverse (splitBy (=='.') s) of
            []   -> J [] (Lid "")
            x:xs -> J (map Uid (reverse xs)) (Lid x)
 
+-- | Sugar for generating AST for qualified uppercase identifers
 quid :: String -> QUid
 quid s = case reverse (splitBy (=='.') s) of
            []   -> J [] (Uid "")
            x:xs -> J (map Uid (reverse xs)) (Uid x)
 
+-- | Used by the free variables analysis
 (|*|), (|+|) :: FV -> FV -> FV
 (|*|) = M.unionWith (+)
 (|+|) = M.unionWith max
@@ -768,26 +989,38 @@ bigWedge  = foldr (/\) maxBound
 bigWedgeM :: (Monad m, Bounded a, PO a) => [a] -> m a
 bigWedgeM  = foldrM (/\?) maxBound
 
--- Minimal complete definition is one of:
---  * ifMJ
---  * (\/), (/\)    (only if it's a lattice)
---  * (\/?), (/\?)
+-- | Partial orders.
+--  Minimal complete definition is one of:
+--
+--  * 'ifMJ'
+--
+--  * '(\/)', '(/\)'    (only if it's a lattice)
+--
+--  * '(\/?)', '(/\?)'  (partial join and meet)
 class Eq a => PO a where
+  -- | Takes a boolean parameter, and does join if true
+  --   and meet if false.  This sometimes allows us to exploit duality
+  --   to define both at once.
   ifMJ :: Monad m => Bool -> a -> a -> m a
   ifMJ True  x y = return (x \/ y)
   ifMJ False x y = return (x /\ y)
 
+  -- | Partial join returns in a monad, in case join DNE
   (\/?) :: Monad m => a -> a -> m a
   (\/?)  = ifMJ True
 
+  -- | Partial meet returns in a monad, in case meet DNE
   (/\?) :: Monad m => a -> a -> m a
   (/\?)  = ifMJ False
 
+  -- | Total join
   (\/)  :: a -> a -> a
+  -- | Total meet
   (/\)  :: a -> a -> a
   x \/ y = fromJust (x \/? y)
   x /\ y = fromJust (x /\? y)
 
+  -- | The order relation (derived)
   (<:)  :: a -> a -> Bool
   x <: y = Just x == (x /\? y)
         || Just y == (x \/? y)
@@ -796,11 +1029,15 @@ infixl 7 /\, /\?
 infixl 6 \/, \/?
 infix 4 <:
 
+-- | The variance lattice:
+--
+-- @
 --       (In)
 --         T
 --  (Co) +   - (Contra)
 --         0
 --      (Omni)
+-- @
 instance PO Variance where
   Covariant     \/ Covariant     = Covariant
   Contravariant \/ Contravariant = Contravariant
@@ -814,9 +1051,12 @@ instance PO Variance where
   Invariant     /\ v             = v
   _             /\ _             = Omnivariant
 
+-- | The qualifier lattice
+-- @
 --  Qa
 --  |
 --  Qu
+-- @
 instance PO Q where
   Qu \/ Qu = Qu
   _  \/ _  = Qa
@@ -827,6 +1067,8 @@ instance Ord a => PO (S.Set a) where
   (\/) = S.union
   (/\) = S.intersection
 
+-- | The 'QualSet' partial order
+-- (relation only defined for same-length qualsets)
 instance PO QualSet where
   QualSet q ixs /\? QualSet q' ixs'
     | q == q' = return (QualSet q (ixs /\ ixs'))
@@ -837,7 +1079,7 @@ instance PO QualSet where
     | q' == maxBound = QualSet maxBound S.empty
     | otherwise      = QualSet (q \/ q') (ixs \/ ixs')
 
-  -- Special cases for dual session types:
+-- | The Type partial order
 instance  PO (Type TyTag A) where
   ifMJ bi t1i t2i = clean `liftM` chk [] bi t1i t2i where
     clean :: TypeT w -> TypeT w
@@ -909,7 +1151,7 @@ instance  PO (Type TyTag A) where
         then return t
         else fail "\\/? or /\\?: Does not exist"
 
--- Variance has a bit more structure still -- it does sign analysis:
+-- | Variance has a bit more structure still -- it does sign analysis:
 instance Num Variance where
   Covariant     * Covariant     = Covariant
   Covariant     * Contravariant = Contravariant
@@ -930,8 +1172,8 @@ instance Num Variance where
                 | n < 0     = Contravariant
                 | otherwise = Omnivariant
 
--- In GHC 6.10, reifyLang is enough, but in 6.8, we need langCase
--- and langMapType, it seems.
+-- | In GHC 6.10, reifyLang is enough, but in 6.8, we need langCase
+--   and langMapType, it seems.
 class Data w => Language' w where
   type OtherLang w
   reifyLang   :: LangRep w
@@ -951,12 +1193,14 @@ instance Language' A where
   langCase x _ fa  = fa x
   langMapType x    = fmap tyC x
 
+-- | Serves as a witness that 'OtherLang' is involutive
 type SameLang w = OtherLang (OtherLang w)
 
 class (Language' (OtherLang w), Language' w) => Language w
 instance Language C
 instance Language A
 
+-- | Dispatch on whether two terms are in the same language or not
 sameLang :: (Language w, Language w') =>
             f w -> g w' -> (w ~ w' => f w -> g w -> r) -> r -> r
 sameLang x y same diff =
@@ -972,6 +1216,8 @@ sameLang x y same diff =
 --- Syntax Utils
 ---
 
+-- | Class for getting free type variables (from types, expressions,
+-- lists thereof, pairs thereof, etc.)
 class Ftv a where
   ftv :: a -> M.Map TyVar Variance
 
@@ -1017,9 +1263,13 @@ freshTyVar tv m = if tv `M.member` m
            then loop (n + 1)
            else tv'
 
+-- | Special case of type substitution forces unification of the
+-- languages of its two Type arguments
 tysubst1 :: Language w => TyVar -> TypeT w -> TypeT w -> TypeT w
 tysubst1  = tysubst
 
+-- | Type substitution (NB: the languages need not match, since
+-- types embed in one another)
 tysubst :: (Language w, Language w') =>
            TyVar -> TypeT w' -> TypeT w -> TypeT w
 tysubst a t = ts where
@@ -1056,8 +1306,9 @@ tysubst a t = ts where
   ts (TyC t')
                 = ctype2atype (ts t')
 
+-- |
 -- Helper for finding the dual of a session type (since we can't
--- express this direction in the type system)
+-- express this directly in the type system at this point)
 dualSessionType :: TypeT w -> TypeT w
 dualSessionType  = d where
   d (TyCon (J [] (Lid "->"))
@@ -1123,10 +1374,15 @@ tdRecv       = TyTag (-13) [-1] minBound False [maxBound]
 tdSelect     = TyTag (-14) [1]  minBound False [minBound]
 tdFollow     = TyTag (-15) [1]  minBound False [minBound]
 
-eiIOError, eiBlame, eiPatternMatch :: ExnId
-eiIOError      = ExnId (-21) (Uid "IOError")      LC
-eiBlame        = ExnId (-22) (Uid "Blame")        LC
-eiPatternMatch = ExnId (-23) (Uid "PatternMatch") LC
+-- | Relay Haskell's IO exceptions
+eiIOError      :: ExnId
+eiIOError       = ExnId (-21) (Uid "IOError")      LC
+-- | Contract blame errors
+eiBlame        :: ExnId
+eiBlame         = ExnId (-22) (Uid "Blame")        LC
+-- | Failed pattern match errors
+eiPatternMatch :: ExnId
+eiPatternMatch  = ExnId (-23) (Uid "PatternMatch") LC
 
 tyGround      :: String -> Type () w
 tyGround s     = TyCon (qlid s) [] ()
@@ -1158,6 +1414,8 @@ tyExnT          = TyCon (qlid "exn") [] tdExn
 infixr 8 `tyArrT`, `tyLolT`
 infixl 7 `tyTupleT`
 
+-- | Find the qualifier of a type (which must be decorated with
+--   tycon info)
 qualifier     :: TypeT A -> Q
 qualifier (TyCon _ ps td) = bigVee qs' where
   qs  = map qualifier ps
@@ -1168,7 +1426,7 @@ qualifier (TyQu _ _ t)       = qualifier t
 qualifier (TyMu _ t)         = qualifier t
 qualifier _                  = Qu
 
--- Is a type transparent?
+-- | Is a type transparent?
 transparent :: forall w. Language w => TypeT w -> Bool
 transparent t = case reifyLang :: LangRep w of
   C -> case t of
@@ -1178,10 +1436,11 @@ transparent t = case reifyLang :: LangRep w of
          TyCon _ _ td -> ttTrans td && (qualifier t <: Qu || td == tdTuple)
          _            -> False
 
--- Funtional types
+-- | Constructors for function types
 funtypes    :: [TyTag]
 funtypes     = [tdArr, tdLol]
 
+-- | Get all the A types embedded in a C type
 cgetas :: Type i C -> [Type i A]
 cgetas (TyCon _ ts _) = concatMap cgetas ts
 cgetas (TyVar _)      = []
@@ -1190,6 +1449,7 @@ cgetas (TyMu _ t)     = cgetas t
 cgetas (TyA t)        = [t]
 cgetas _              = [] -- can't happen
 
+-- | Get all the C types embedded in a A type
 agetcs :: Type i A -> [Type i C]
 agetcs (TyCon _ ts _) = concatMap agetcs ts
 agetcs (TyVar _)      = []
@@ -1198,12 +1458,17 @@ agetcs (TyMu _ t)     = agetcs t
 agetcs (TyC t)        = [t]
 agetcs _              = [] -- can't happen
 
+-- | Given a type tag and something traversable, find all type tags
+--   with the same identity as the given type tag, and replace them.
+--   (We use this to do type abstraction, since we can replace datatype
+--   type tags with abstract type tags that have the datacons redacted.)
 replaceTyTags :: Data a => TyTag -> a -> a
 replaceTyTags tag' = everywhere (mkT each) where
   each :: TyTag -> TyTag
   each tag | ttId tag == ttId tag' = tag'
            | otherwise             = tag
 
+-- | The C-to-A type translation
 ctype2atype :: TypeT C -> TypeT A
 ctype2atype t@(TyCon n ps td) | transparent t
   = TyCon n (map ctype2atype ps) td
@@ -1219,6 +1484,7 @@ ctype2atype (TyMu tv t)
                               tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 ctype2atype t         = tyC t
 
+-- | The A-to-C type translation
 atype2ctype :: TypeT A -> TypeT C
 atype2ctype t@(TyCon n ps td) | transparent t
   = TyCon n (map atype2ctype ps) td
@@ -1234,6 +1500,7 @@ atype2ctype (TyMu tv t)
                               tv' = tv { tvqual = Qu } `freshTyVar` ftv t
 atype2ctype t         = tyA t
 
+-- | Is the expression conservatively side-effect free?
 syntacticValue :: Expr i w -> Bool
 syntacticValue e = case view e of
   ExId _       -> True
@@ -1253,6 +1520,7 @@ syntacticConstructor e = case view e of
   ExApp e1 e2         -> syntacticConstructor e1 && syntacticValue e2
   _                   -> False
 
+-- | Is the type promotable to a lower-qualifier type?
 castableType :: TypeT w -> Bool
 castableType (TyVar _)      = False
 castableType (TyCon _ _ td) = td `elem` funtypes
@@ -1261,11 +1529,14 @@ castableType (TyMu _ t)     = castableType t
 castableType (TyC _)        = False
 castableType (TyA _)        = False
 
+-- | The name bound by a let declaration
 letName :: Let i -> Lid
 letName (LtA _ x _ _)   = x
 letName (LtC _ x _ _)   = x
 letName (LtInt _ x _ _) = x
 
+-- | Turn a program into a sequence of declarations by replacing
+-- the final expression with a declaration of variable 'it'.
 prog2decls :: Prog i -> [Decl i]
 prog2decls (Prog ds (Just e))
   = ds ++ [DcLet (getLoc e) (LtC True (Lid "it") Nothing e)]
@@ -1274,6 +1545,8 @@ prog2decls (Prog ds Nothing)
 
 -- Unfolding various sequences
 
+-- | Get the list of formal parameters and body of a
+--   lambda/typelambda expression
 unfoldExAbs :: Expr i w -> ([Either (Patt, Type i w) TyVar], Expr i w)
 unfoldExAbs  = unscanr each where
   each e = case view e of
@@ -1281,28 +1554,34 @@ unfoldExAbs  = unscanr each where
     ExTAbs tv e' -> Just (Right tv, e')
     _            -> Nothing
 
+-- | Get the list of formal parameters and body of a qualified type
 unfoldTyQu  :: Quant -> Type i w -> ([TyVar], Type i w)
 unfoldTyQu u = unscanr each where
   each (TyQu u' x t) | u == u' = Just (x, t)
   each _                       = Nothing
 
+-- | Get the list of actual parameters and body of a type application
 unfoldExTApp :: Expr i w -> ([Type i w], Expr i w)
 unfoldExTApp  = unscanl each where
   each e = case view e of
     ExTApp e' t  -> Just (t, e')
     _            -> Nothing
 
+-- | Get the list of actual parameters and body of a value application
 unfoldExApp :: Expr i w -> ([Expr i w], Expr i w)
 unfoldExApp  = unscanl each where
   each e = case view e of
     ExApp e1 e2 -> Just (e2, e1)
     _           -> Nothing
 
+-- | Get the list of argument types and result type of a function type
 unfoldTyFun :: TypeT w -> ([TypeT w], TypeT w)
 unfoldTyFun  = unscanr each where
   each (TyCon _ [ta, tr] td) | td `elem` funtypes = Just (ta, tr)
   each _                                         = Nothing
 
+-- | Noisy type printer for debugging (includes type tags that aren't
+--   normally pretty-printed)
 dumpType :: Int -> TypeT w -> IO ()
 dumpType i t0 = do
   putStr (replicate i ' ')

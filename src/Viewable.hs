@@ -1,12 +1,19 @@
+-- | Quick and dirty views
 {-# LANGUAGE TypeFamilies #-}
 module Viewable where
 
 import Util
 
+-- | A viewable type has an associated type at which we view it, and
+--   an operation to view it at that type.
+--
+-- Instances map view over lists, options, sums, and products
 class Viewable a where
   type View a
   view :: a -> View a
 
+-- | Wrapper type to hide from 'Viewable'.  The view of
+--   @HIDE a@ is @a@, rather than @View a@.
 newtype HIDDEN a = HIDE { unHIDE :: a }
 
 instance Viewable (HIDDEN a) where

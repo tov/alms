@@ -1,15 +1,20 @@
+-- | Lexer setup for parsec
 module Lexer (
+  -- * Identifier tokens
+  isUpperIdentifier, lid, uid,
+
+  -- * Special, unreserved operators
+  sharpLoad,
+  lolli, arrow, star,
+  qualU, qualA, langC, langA,
+  opP,
+
+  -- * Token parsers from Parsec
   identifier, reserved, operator, reservedOp, charLiteral,
   stringLiteral, natural, integer, integerOrFloat, float,
   naturalOrFloat, decimal, hexadecimal, octal, symbol, lexeme,
   whiteSpace, parens, braces, angles, brackets, squares, semi, comma,
-  colon, dot, semiSep, semiSep1, commaSep, commaSep1,
-
-  isUpperIdentifier, lid, uid,
-  sharpLoad,
-  lolli, arrow, star,
-  qualU, qualA, langC, langA,
-  opP
+  colon, dot, semiSep, semiSep1, commaSep, commaSep1
 ) where
 
 import Util
@@ -120,44 +125,60 @@ commaSep         = T.commaSep tok
 commaSep1       :: CharParser st a -> CharParser st [a]
 commaSep1        = T.commaSep1 tok
 
+-- | The @#load@ pragma
 sharpLoad       :: CharParser st ()
 sharpLoad        = try (symbol "#load") >> return ()
 
+-- | The @-o@ type operator, which violates our other lexer rules
 lolli           :: CharParser st ()
 lolli            = try (symbol "-o") >> return ()
 
+-- | The @->@ type operator
 arrow           :: CharParser st ()
 arrow            = try (symbol "->") >> return ()
 
+-- | @*@, which is reserved in types but not in expressions
 star            :: CharParser st ()
 star             = symbol "*" >> return ()
 
-qualU, qualA    :: CharParser st ()
-qualU            = symbol "U" >> return ()
-qualA            = symbol "A" >> return ()
+-- | Qualifier @U@ (not reserved)
+qualU    :: CharParser st ()
+qualU     = symbol "U" >> return ()
+-- | Qualifier @A@ (not reserved)
+qualA    :: CharParser st ()
+qualA     = symbol "A" >> return ()
 
-langC, langA    :: CharParser st ()
-langC            = symbol "C" >> return ()
-langA            = symbol "A" >> return ()
+-- | Language @C@ (not reserved)
+langC    :: CharParser st ()
+langC     = symbol "C" >> return ()
+-- | Language @A@ (not reserved)
+langA    :: CharParser st ()
+langA     = symbol "A" >> return ()
 
+-- | Is the string an oppercase identifier?  (Special case: @true@ and
+--   @false@ are consider uppercase.)
 isUpperIdentifier :: String -> Bool
 isUpperIdentifier "true"  = True
 isUpperIdentifier "false" = True
 isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 
-lid, uid        :: CharParser st String
+-- | Lex a lowercase identifer
+lid        :: CharParser st String
 lid              = try $ do
   s <- identifier
   if isUpperIdentifier s
     then pzero <?> "lowercase identifier"
     else return s
+-- | Lex an uppercase identifer
+uid        :: CharParser st String
 uid              = try $ do
   s <- identifier
   if isUpperIdentifier s
     then return s
     else pzero <?> "uppercase identifier"
 
+-- | Accept an operator having the specified precedence
 opP :: Prec -> CharParser st String
 opP p = try $ do
   op <- operator

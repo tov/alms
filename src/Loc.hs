@@ -1,10 +1,20 @@
+-- | Source locations
 {-# LANGUAGE
       DeriveDataTypeable #-}
 module Loc (
-  Loc, file, line, col,
-  initial, bogus, isBogus,
+  -- * Type and constructors
+  Loc,
+  initial, bogus,
+  -- * Destructors
+  file, line, col, isBogus,
+
+  -- * Generic function for clearing source locations everywhere
   scrub,
+  
+  -- * Type class interface
   Locatable(..), Relocatable(..), (<<@), cloneLoc,
+
+  -- * Interface to 'Parsec' source positions
   toSourcePos, fromSourcePos
 ) where
 
@@ -12,41 +22,56 @@ import Data.Typeable ()
 import Data.Generics
 import Text.ParserCombinators.Parsec.Pos
 
-newtype Loc = Loc { toSourcePos :: SourcePos }
+-- | Source locations
+newtype Loc = Loc {
+  -- | Extract a 'Parsec' source position
+  toSourcePos :: SourcePos
+  }
   deriving (Eq, Ord, Typeable)
 
+-- | Create from a 'Parsec' source position
 fromSourcePos :: SourcePos -> Loc
 fromSourcePos  = Loc
 
 new :: String -> Int -> Int -> Loc
 new f l c = fromSourcePos (newPos f l c)
 
+-- | The source file of a location
 file :: Loc -> String
 file  = sourceName . toSourcePos
 
+-- | The source line of a location
 line :: Loc -> Int
 line  = sourceLine . toSourcePos
 
+-- | The source column of a location
 col  :: Loc -> Int
 col   = sourceColumn . toSourcePos
 
+-- | The initial location for a named source file
 initial :: String -> Loc
 initial = fromSourcePos . initialPos
 
+-- | The bogus location.
+--   (Avoids need for @Maybe Loc@ and lifting)
 bogus   :: Loc
 bogus    = new "<bogus>" (-1) (-1)
 
+-- | Is the location bogus?
 isBogus :: Loc -> Bool
 isBogus loc = case (file loc, line loc, col loc) of
   ("<bogus>", -1, -1) -> True
   _                   -> False
 
+-- | Class for types that carry source locations
 class Locatable a where
   getLoc   :: a -> Loc
 
+-- | Class for types that can have their source locations updated
 class Relocatable a where
   setLoc   :: a -> Loc -> a
 
+-- | Update a source location
 (<<@) :: Relocatable a => a -> Loc -> a
 (<<@)  = setLoc
 
@@ -129,9 +154,11 @@ instance (Relocatable a, Relocatable b, Relocatable c, Relocatable d, Relocatabl
 instance Relocatable b => Relocatable (a -> b) where
   setLoc f loc x = setLoc (f x) loc
 
+-- | Copy the source location from the second operand to the first
 cloneLoc :: (Relocatable a, Locatable b) => a -> b -> a
 cloneLoc a b = setLoc a (getLoc b)
 
+-- | Bogosify all source locations (as far as SYB can find them)
 scrub :: Data a => a -> a
 scrub a = everywhere (mkT bogosify) a where
   bogosify :: Loc -> Loc

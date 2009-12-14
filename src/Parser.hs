@@ -1,11 +1,16 @@
+-- | Parser
 {-# LANGUAGE
       RelaxedPolyRec,
       ScopedTypeVariables
   #-}
 module Parser (
-  P, parse,
+  -- * The parsing monad
+  P,
+  parse,
+  -- ** Parsers
   parseProg, parseDecls, parseDecl,
     parseTyDec, parseType, parseExpr, parsePatt,
+  -- * Convenience parsers (quick and dirty)
   pp, pds, pd, ptd, pt, pe, px
 ) where
 
@@ -21,8 +26,11 @@ import System.FilePath ((</>), dropFileName)
 
 type Lang = LangRepMono
 type St   = Maybe Lang
+
+-- | A 'Parsec' character parser, with abstract state
 type P a  = CharParser St a
 
+-- | Run a parser, given the source file name, on a given string
 parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p Nothing
 
@@ -751,12 +759,19 @@ finish p = do
   eof
   return r
 
+-- | Parse a program
 parseProg     :: P (Prog ())
+-- | Parse a sequence of declarations
 parseDecls    :: P [Decl ()]
+-- | Parse a declaration
 parseDecl     :: P (Decl ())
+-- | Parse a type declaration
 parseTyDec    :: P TyDec
+-- | Parse a type
 parseType     :: Language w => P (Type () w)
+-- | Parse an expression
 parseExpr     :: Language w => P (Expr () w)
+-- | Parse a pattern
 parsePatt     :: P Patt
 parseProg      = finish progp
 parseDecls     = finish declsp
@@ -768,24 +783,31 @@ parsePatt      = finish pattp
 
 -- Convenience functions for quick-and-dirty parsing:
 
+-- | Parse a program
 pp  :: String -> Prog ()
 pp   = makeQaD parseProg
 
+-- | Parse a sequence of declarations
 pds :: String -> [Decl ()]
 pds  = makeQaD parseDecls
 
+-- | Parse a sequence of declarations
 pd  :: String -> Decl ()
 pd   = makeQaD parseDecl
 
+-- | Parse a type declaration
 ptd :: String -> TyDec
 ptd  = makeQaD parseTyDec
 
+-- | Parse a type
 pt  :: Language w => String -> Type () w
 pt   = makeQaD parseType
 
+-- | Parse an expression
 pe  :: Language w => String -> Expr () w
 pe   = makeQaD parseExpr
 
+-- | Parse a pattern
 px  :: String -> Patt
 px   = makeQaD parsePatt
 

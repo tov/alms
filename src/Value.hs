@@ -1,3 +1,4 @@
+-- | The representation and embedding of values
 {-# LANGUAGE
       DeriveDataTypeable,
       ExistentialQuantification,
@@ -7,9 +8,14 @@
       ScopedTypeVariables
     #-}
 module Value (
-  Valuable(..),
-  FunName(..), Value(..), vaInt, vaUnit,
+  -- * Value and function representation
+  Valuable(..), FunName(..), Value(..),
+  -- ** Common values
+  vaInt, vaUnit,
+  -- ** Some pre-defined value types
   Vinj(..), VExn(..),
+
+  -- * Utilities for algebraic data types
   enumTypeDecl,
   vinjData, vprjDataM
 ) where
@@ -30,33 +36,52 @@ import Data.Word (Word32, Word16)
 
 import Control.Monad.State as M.S
 
-data FunName = FNAnonymous Doc
-             | FNNamed [Doc]
+-- | The name of a function
+data FunName
+  -- | An anonymous function, whose name is overwritten by binding
+  = FNAnonymous Doc
+  -- | An already-named function
+  | FNNamed [Doc]
 
+-- | Class for Haskell values that can be injected as object-language
+--   values
+--
+-- All methods have reasonable (not very useful) defaults.
 class Typeable a => Valuable a where
+  -- | Equality (default returns 'False')
   veq          :: a -> a -> Bool
   veq _ _       = False
 
+  -- | Dynamic equality: attempts to coerce two 'Valuable's
+  --   to the same Haskell type and then compare them
   veqDyn       :: Valuable b => a -> b -> Bool
   veqDyn a b    = maybe False (veq a) (vcast b)
 
+  -- | Pretty-print a value at the given precedence
   vpprPrec     :: Int -> a -> Doc
   vpprPrec _ _  = text "#<->"
 
+  -- | Pretty-print a value at top-level precedence
   vppr         :: a -> Doc
   vppr          = vpprPrec 0
 
+  -- | Inject a Haskell value into the 'Value' type
   vinj         :: a -> Value
   vinj a        = case cast a of
                     Just v  -> v
                     Nothing -> VaDyn a
 
+  -- | Project a Haskell value from the 'Value' type
   vprjM        :: Monad m => Value -> m a
   vprjM         = vcast
 
+  -- | Project a Haskell value from the 'Value' type, or fail
   vprj         :: Value -> a
   vprj          = maybe (error "BUG! vprj: coercion error") id . vprjM
 
+  -- | Pretty-print a list of values.  (This is the same hack used
+  --   by 'Show' for printing 'String's differently than other
+  --   lists.)
   vpprPrecList :: Int -> [a] -> Doc
   vpprPrecList _ []     = text "nil"
   vpprPrecList p (x:xs) = parensIf (p > precApp) $
@@ -65,10 +90,14 @@ class Typeable a => Valuable a where
                                  1
                                  (vpprPrecList (precApp + 1) xs)
 
+  -- | Inject a list.  As with the above, this lets us special-case
+  --   lists at some types (e.g. we inject Haskell 'String' as object
+  --   language @string@ rather than @char list@)
   vinjList     :: [a] -> Value
   vinjList []     = VaCon (Uid "Nil") Nothing
   vinjList (x:xs) = VaCon (Uid "Cons") (Just (vinj (x, xs)))
 
+  -- | Project a list.  (Same deal.)
   vprjListM    :: Monad m => Value -> m [a]
   vprjListM (VaCon (Uid "Nil") Nothing) = return []
   vprjListM (VaCon (Uid "Cons") (Just v)) = do
@@ -76,6 +105,8 @@ class Typeable a => Valuable a where
     return (x:xs)
   vprjListM _ = fail "vprjM: not a list"
 
+-- | Cast from one 'Typeable' to another, potentially unwrapping
+--   dynamic value constructors.
 vcast :: (Typeable a, Typeable b, Monad m) => a -> m b
 vcast a = case cast a of
             Just r  -> return r
@@ -83,21 +114,27 @@ vcast a = case cast a of
               Just (VaDyn r) -> vcast r
               _              -> fail "BUG! vcast: coercion error"
 
--- A Value is either a function (with a name), or a Haskell
--- dynamic value with some typeclass operations
-data Value = VaFun FunName (Value -> IO Value)
-           | VaSus FunName (IO Value)
-           | VaCon Uid (Maybe Value)
-           | forall a. Valuable a => VaDyn a
+-- | The representation of a value.
+--
+-- We have special cases for the three classes of values that
+-- have special meaning in the dynamics, and push all other Haskell
+-- types into a catch-all case.
+data Value
+  -- | A function
+  = VaFun FunName (Value -> IO Value)
+  -- | A type abstraction
+  | VaSus FunName (IO Value)
+  -- | A datacon, potentially applied
+  | VaCon Uid (Maybe Value)
+  -- | Any other embeddable Haskell type
+  | forall a. Valuable a => VaDyn a
   deriving Typeable
 
--- We represent function names in a way that makes pretty-printing
--- them nicer
--- Construct an int value
+-- | Construct an @int@ value
 vaInt  :: Integer -> Value
 vaInt   = vinj
 
--- The unit value
+-- | The @unit@ value
 vaUnit :: Value
 vaUnit  = vinj ()
 
@@ -233,7 +270,8 @@ instance Valuable a => Valuable (Maybe a) where
   vprjM (VaCon (Uid "None") Nothing)   = return Nothing
   vprjM _                              = fail "vprjM: not an option"
 
--- For other arbitrary values:
+-- | Type for injection of arbitrary Haskell values with
+--   minimal functionality
 newtype Vinj a = Vinj { unVinj :: a }
   deriving (Eq, Typeable, Data)
 
@@ -244,9 +282,9 @@ instance (Eq a, Show a, Data a) => Valuable (Vinj a) where
 instance Show a => Show (Vinj a) where
   showsPrec p = showsPrec p . unVinj
 
-
 -- Exceptions
 
+-- | The representation of exceptions
 data VExn = VExn {
               exnId    :: ExnId,
               exnParam :: Maybe Value
@@ -266,6 +304,8 @@ instance Exn.Exception VExn where
 
 -- nasty syb stuff
 
+-- | Use SYB to attempt to turn a Haskell data type into an object
+--   language type declaration
 enumTypeDecl :: Data a => a -> String
 enumTypeDecl a =
   case dataTypeRep ty of
@@ -281,9 +321,11 @@ enumTypeDecl a =
              c:cs -> Char.toLower c : cs
              _    -> error "(BUG!) bad type name in enumTypeDecl"
 
-
 newtype Const a b = Const { unConst :: a }
 
+-- | Use SYB to attempt to inject a value of a Haskell data type into
+--   an object language value matching the type declaration generated
+--   by 'enumTypeDecl'.
 vinjData :: Data a => a -> Value
 vinjData = generic
     `ext1Q` (vinj . map vinjData)
@@ -308,6 +350,7 @@ vinjData = generic
                -> f'
              _ -> VaCon (Uid (showConstr r)) f
 
+-- | The partial inverse of 'vinjData'
 vprjDataM :: forall a m. (Data a, Monad m) => Value -> m a
 vprjDataM = generic
     `ext1RT` (\x -> vprjM x >>= sequence . liftM vprjDataM)

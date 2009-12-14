@@ -1,17 +1,28 @@
+-- | Tools for implementing primitive operations -- essentially an
+--   object-language/meta-language FFI.
 {-# LANGUAGE
   FlexibleInstances
  #-}
 module BasisUtils (
+  -- | * Initial environment entries
   Entry,
-  MkFun(..), baseMkFun,
-  fun, binArith, val, pval, pfun,
-  primexn,
-  typeC, typeA, typeT, primtype, src,
-  submod,
-  vapp,
+  -- ** Entry constructors
+  -- *** Values
+  fun, val, pfun, pval, binArith,
+  -- *** Types
+  typeC, typeA, typeT, primtype,
+  -- *** Modules, exceptions, and arbitrary declarations
+  submod, primexn, src,
+  -- ** Sugar operators for entry construction
   (-:), (-::), (-=),
+  -- ** Environment construction
+  basis2venv, basis2tenv,
+
+  -- * Function embedding
+  MkFun(..), baseMkFun, vapp,
+
+  -- * Re-exports
   text, Uid(..),
-  basis2venv, basis2tenv
 ) where
 
 import Dynamics (E, addVal, addMod)
@@ -23,38 +34,43 @@ import Syntax
 import Util
 import Value (Valuable(..), FunName(..), Value(..))
 
--- A basis entry is one of:
--- -- a value with name and types
--- -- source of a declaration to eval
--- -- an abstract type constructor
--- -- a module
-data Entry = ValEn {
-               enName  :: Lid,
-               enCType :: String,
-               enAType :: String,
-               enValue :: Value
-             }
-           | DecEn {
-               enSrc   :: String
-             }
-           | TypEn {
-               enName  :: Lid,
-               enTyTag :: TyTag
-             }
-           | ModEn {
-               enModName :: Uid,
-               enEnts    :: [Entry]
-             }
-           | ExnEn {
-               enExnId   :: ExnId,
-               enExnType :: String
-             }
+-- | An entry in the initial environment
+data Entry
+  -- | A value entry has a name, separate types for each sublanguage
+  --   (may be blank), and a value
+  = ValEn {
+    enName  :: Lid,
+    enCType :: String,
+    enAType :: String,
+    enValue :: Value
+  }
+  -- | A declaration entry is just source code
+  | DecEn {
+    enSrc   :: String
+  }
+  -- | A type entry associates a tycon name with information about it
+  | TypEn {
+    enName  :: Lid,
+    enTyTag :: TyTag
+  }
+  -- | A module entry associates a module name with a list of entries
+  | ModEn {
+    enModName :: Uid,
+    enEnts    :: [Entry]
+  }
+  -- | An exception entry associates an exception name with its unique id
+  | ExnEn {
+    enExnId   :: ExnId,
+    enExnType :: String
+  }
 
--- Type class for making Values out of Haskell functions
+-- | Type class for embedding Haskell functions as object language
+--   values.  Dispatches on return type @r@.
 class MkFun r where
   mkFun :: Valuable v => FunName -> (v -> r) -> Value
 
--- Recursive case: accept one argument, then look for more
+-- | Recursive case is functions that return functions: accept
+--   one argument, then look for more
 instance (Valuable v, MkFun r) => MkFun (v -> r) where
   mkFun n f = VaFun n $ \v ->
     vprjM v >>! mkFun (next v) . f
@@ -64,9 +80,12 @@ instance (Valuable v, MkFun r) => MkFun (v -> r) where
         FNNamed docs    -> FNNamed (docs ++ [ppr v])
 
 -- Base cases for various return types
+
+-- | Base case for functions returning in the 'IO' monad
 instance Valuable r => MkFun (IO r) where
   mkFun n f = VaFun n $ \v -> vprjM v >>= f >>! vinj
 
+-- | Base case for functions that already return 'Value'
 instance MkFun Value where
   mkFun n f = VaFun n $ \v -> vprjM v >>! f
 
@@ -83,17 +102,25 @@ instance (Valuable a, Valuable b, MkFun a, MkFun b) =>
 baseMkFun :: (Valuable a, Valuable b) => FunName -> (a -> b) -> Value
 baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 
+-- | Make a value entry for a Haskell function, given a names and types
+--   for the sublanguages.  (Leave blank to leave the binding out of
+--   that language.
 fun :: (MkFun r, Valuable v) =>
        String -> String -> String -> (v -> r) -> Entry
 fun name cty aty f = ValEn (Lid name) cty aty (mkFun (FNNamed [text name]) f)
 
+-- | Make a value entry for a Haskell non-function.
 val :: Valuable v => String -> String -> String -> v -> Entry
 val name cty aty v = ValEn (Lid name) cty aty (vinj v)
 
+-- | Make a value entry for a value that is polymorphic in the object
+--   language: appends the specified number of type lambdas
 pval :: Valuable v => Int -> String -> String -> String -> v -> Entry
 pval 0 name cty aty v = val name cty aty v
 pval n name cty aty v = mkTyAbs (pval (n - 1) name cty aty v)
 
+-- | Make a value entry for a function that is polymorphic in the object
+--   language: appends the specified number of type lambdas
 pfun :: (MkFun r, Valuable v) =>
         Int -> String -> String -> String -> (v -> r) -> Entry
 pfun 0 name cty aty f = fun name cty aty f
@@ -105,9 +132,17 @@ mkTyAbs entry =
   entry { enValue = VaSus (FNNamed [ppr (enName entry)]) (return v) }
 
 class TypeBuilder r where
+  -- | @String String ... -> Entry@ variadic function for building
+  --   source-level A type entries
   typeA :: String -> r
+  -- | @String String ... -> Entry@ variadic function for building
+  --   source-level C type entries
   typeC :: String -> r
+  -- | @String String ... -> Entry@ variadic function for building
+  --   source-level shared type entries
   typeT :: String -> r
+  -- | @String String ... -> Entry@ variadic function for building
+  --   source-level declaration entries
   src   :: String -> r
 
 instance TypeBuilder Entry where
@@ -122,31 +157,39 @@ instance TypeBuilder r => TypeBuilder (String -> r) where
   typeT s    = typeT . (s ++) . ('\n' :)
   src s      = src   . (s ++) . ('\n' :)
 
+-- | Creates a module entry
 submod :: String -> [Entry] -> Entry
 submod  = ModEn . Uid
 
+-- | Creates a primitve type entry, binding a name to a type tag
+--   (which is usually defined in Syntax.hs)
 primtype  :: String -> TyTag -> Entry
 primtype   = TypEn . Lid
 
+-- | Creates a primitve exception entry
 primexn :: ExnId -> String -> Entry
 primexn ei t = ExnEn { enExnId = ei, enExnType = t }
 
+-- | Application
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
 (-=) = ($)
+-- | Application twice, for giving the same type in C and A
 (-::) :: (a -> a -> b) -> a -> b
 f -:: x = f x x
 infixl 5 -:, -::
 infixr 0 -=
 
--- Make binary arithmetic functions
+-- | Instance of 'fun' for making binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry
 binArith name = fun name "int -> int -> int" "int -> int -> int"
 
+-- | Apply an object language function (as a 'Value')
 vapp :: Valuable a => Value -> a -> IO Value
 vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
+-- | Build the dynamic environment
 basis2venv :: Monad m => [Entry] -> m E
 basis2venv es = foldM add genEmpty es where
   add :: Monad m => E -> Entry -> m E
@@ -156,6 +199,7 @@ basis2venv es = foldM add genEmpty es where
           = Dynamics.addMod e n `liftM` basis2venv es'
   add e _ = return e
 
+-- | Build the static environment
 basis2tenv :: Monad m => [Entry] -> m S
 basis2tenv  = foldM each env0 where
   each gg0 (ValEn { enName = n, enCType = ct, enAType = at }) = do

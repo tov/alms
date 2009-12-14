@@ -1,8 +1,16 @@
+-- | Operator precdences
+--
+-- We use operator precedences from Ocaml.  The precence and
+-- associativity of an operator is determined by its first character.
 module Prec (
   Prec, precOp,
+  -- * Precedences for reserved operators needed by the parser
   precSemi, precCom, precDot, precArr, precStar, precApp, precCast, precTApp
 ) where
 
+-- | Precedence and associativity, e.g. @Right 4@ is right-associative
+--   at level 4.  Higher precedences bind tighter, with application
+--   at precedence 9.
 type Prec = Either Int Int
 
 precOp :: String -> Prec
@@ -26,7 +34,7 @@ precSemi  =  1 -- ;
 --           3 -- != = < > | & $
 --           4 -- @ ^ (infixr)
 precArr   =  5 -- -> - +
-precStar  =  6 -- * / %
+precStar  =  6 -- % / *
 --           7 -- ** (infixr)
 precApp   =  9 -- f x
 --          10 -- ! ~ ? (prefix)

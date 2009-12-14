@@ -1,10 +1,16 @@
+-- | Pretty-printing
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       PatternGuards
     #-}
 module Ppr (
-  Ppr(..), module Text.PrettyPrint, parensIf,
+  -- * Pretty-printing class
+  Ppr(..),
+  -- * Pretty-printing combinators
+  parensIf,
   pprParams,
+  -- * Re-exports
+  module Text.PrettyPrint,
   module Prec
 ) where
 
@@ -14,13 +20,22 @@ import Syntax
 import Text.PrettyPrint
 import Data.List (intersperse)
 
+-- | Class for pretty-printing at different types
+--
+-- Minimal complete definition is one of:
+--
+-- * [pprPrec]
+-- * [ppr]
 class Ppr p where
+  -- | Print at the specified enclosing precedence
   pprPrec :: Int -> p -> Doc
+  -- | Print at top-level precedence
   ppr     :: p -> Doc
 
   ppr       = pprPrec precDot
   pprPrec _ = ppr
 
+-- | Conditionaly add parens around the given 'Doc'
 parensIf :: Bool -> Doc -> Doc
 parensIf True  doc = parens doc
 parensIf False doc = doc
@@ -45,6 +60,7 @@ instance Ppr (Type i w) where
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "-o" <+> pprPrec precArr t2 ]
+  -- Sugar for tuples
   pprPrec p (TyCon (J [] (Lid "*")) [t1, t2] _)
                   = parensIf (p > precStar) $
                       sep [ pprPrec precStar t1,
@@ -182,6 +198,8 @@ instance Ppr AbsTy where
         >?> pprAlternatives alts
     each (_, _, td) = ppr td -- shouldn't happen (yet)
 
+-- | Print a list of type variables as printed as the parameters
+--   to a type.  (Why is this exported?)
 pprParams    :: [TyVar] -> Doc
 pprParams tvs = delimList parens comma (map ppr tvs)
 

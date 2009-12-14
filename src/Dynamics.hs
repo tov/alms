@@ -1,7 +1,8 @@
+-- | The dynamics of the interpreter
 module Dynamics (
-  -- Static API
+  -- | Static API
   E, addVal, addMod, NewValues,
-  -- Dynamic API
+  -- | Dynamic API
   eval, addDecls, Result
 ) where
 
@@ -18,13 +19,23 @@ import qualified Control.Exception as Exn
 -- Our semantic domains
 --
 
+-- | The result of a computation
 type Result   = IO Value
 
+-- | The run-time environment is a stack of scopes which are, for our
+--   purposes, abstract.  The interface merely allows us to bind new
+--   values and modules in the top scope.
 type E        = [Scope]
+-- | Each scope binds paths of uppercase identifiers to flat value
+--   environments
 type Scope    = PEnv Uid VE
+-- | We bind 'IO' 'Value's rather than values, so that we can use
+-- 'IORef' to set up recursion
 type VE       = Env Lid (IO Value)
 
+-- | Domain for the meaning of an expression:
 type D        = E -> Result
+-- | Domain for the meaning of a declaration:
 type DDecl    = E -> IO E
 
 (=:!=) :: Ord v => v -> a -> Env v (IO a)
@@ -229,17 +240,24 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- Public API
 
+-- | For printing in the REPL, 'addDecls' returns an environment
+--   mapping any newly bound names to their values
 type NewValues = Env Lid Value
 
+-- | Interpret declarations by adding to the environment, potentially
+--   with side effects
 addDecls :: E -> [Decl i] -> IO (E, NewValues)
 addDecls env decls = do
   env' <- evalDecls decls (genEmpty : [collapse env])
   let PEnv _ ve : _ = env'
   mapAccumM (\v e -> v >>= \w -> return (e, w)) env' ve
 
+-- | Bind a name to a value
 addVal :: E -> Lid -> Value -> E
 addVal e n v     = e =+= n =:= (return v :: IO Value)
 
+-- | Bind a name to a module, which is represented as a nested
+--   environment
 addMod :: E -> Uid -> E -> E
 addMod e n e' = e =+= n =:= collapse e'
 

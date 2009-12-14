@@ -2,6 +2,8 @@ EXE      = affine
 GHC      = ghc
 EXAMPLES = examples
 
+DOC      = dist/doc/html/affine/affine/
+
 default: Setup dist/setup-config
 	./Setup build
 	cp dist/build/affine/affine .
@@ -39,9 +41,17 @@ examples: $(EXE)
 	  ./$(EXE) "$$aff" < "$$i"; \
 	done
 
+$(DOC): Setup $(wildcard src/*.hs)
+	./Setup haddock --executables
+
+doc: $(DOC)
+	$(RM) html
+	ln -s $(DOC) html
+
 clean:
 	$(RM) *.hi *.o $(EXE) $(TARBALL) Setup
 	$(RM) -Rf $(DISTDIR) dist
+	$(RM) html
 
 
 VERSION = 0.10.2

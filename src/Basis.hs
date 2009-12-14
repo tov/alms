@@ -1,3 +1,4 @@
+-- | Built-in operations and types
 {-#
   LANGUAGE DeriveDataTypeable
   #-}
@@ -25,6 +26,7 @@ import qualified Control.Concurrent.MVar as MV
 import Control.Monad
 import Control.Monad.Fix
 
+-- Primitive operations implemented in Haskell
 primBasis :: [Entry]
 primBasis  = [
     ---
@@ -330,6 +332,7 @@ instance Valuable Rendezvous where
   veq = (==)
   vpprPrec _ _ = text "#<rendezvous>"
 
+-- | Built-in operations implemented in the object language
 srcBasis :: String
 srcBasis  = unlines [
   "open INTERNALS.Exn",

@@ -1,3 +1,4 @@
+-- | Flat, deep, and generalized environments
 {-# LANGUAGE
       DeriveDataTypeable,
       FlexibleInstances,
@@ -7,17 +8,32 @@
       ScopedTypeVariables,
       UndecidableInstances #-}
 module Env (
+  -- * Basic type and operations
   Env(unEnv),
+  -- ** Key subsumption
   (:>:)(..),
-  empty, isEmpty,
-  (-:-), (-::-), (-:+-), (-+-), (-\-), (-\\-), (-.-), (-|-),
+  -- ** Constructors
+  empty, (-:-), (-::-),
+  (-:+-), (-+-), (-\-), (-\\-), (-|-),
+  -- ** Destructors
+  isEmpty, (-.-),
+  -- ** Higher-order constructors
   unionWith, unionSum, unionProduct,
+  -- ** Higher-order destructors
   mapAccum, mapAccumM,
+  -- ** List conversions
   toList, fromList, domain, range,
 
+  -- * Deep environments
   PEnv(..), Path(..), ROOT(..), (<.>),
-  GenEmpty(..), GenLookup(..), GenRemove(..), GenModify(..),
-  GenExtend(..), (=:=), (=::=), (=:+=), (=++=)
+
+  -- * Generalized environments
+  GenEmpty(..),
+  GenExtend(..), (=++=), GenModify(..), GenRemove(..),
+  GenLookup(..),
+
+  -- * Aliases (why?)
+  (=:=), (=::=), (=:+=)
 ) where
 
 import Util
@@ -31,67 +47,75 @@ infixl 6 -.-
 infixr 5 -+-
 infixl 5 -\-, -\\-, -|-
 
+-- | The basic type, mapping keys @k@ to values @v@
 newtype Env k v = Env { unEnv:: M.Map k v }
   deriving (Typeable, Data)
 
--- Key subsumption.  Keys need to be
--- declared.
+-- | Key subsumption.  Downside: keys sometimes need to be
+-- declared.  Upside: we can use shorter keys that embed into
+-- larger keyspaces.
 class (Ord x, Ord y) => x :>: y where
   liftKey :: y -> x
   liftEnv :: Env y v -> Env x v
   liftEnv (Env m) = Env (M.mapKeys liftKey m)
 
--- Reflexivity:
+-- | Every ordered type is a key, reflexively
 instance Ord k => (:>:) k k where
   liftKey = id
   liftEnv = id
 
+-- | The empty environment
 empty    :: Env k v
 empty     = Env M.empty
 
+-- | Is this an empty environment?
 isEmpty  :: Env k v -> Bool
 isEmpty   = M.null . unEnv
 
--- singleton bind
+-- | Create a singleton environment
 (-:-)    :: Ord k => k -> v -> Env k v
 k -:- v   = Env (M.singleton k v)
 
--- monad bind
+-- | Monadic bind creates a singleton environment whose value is
+--   monadic, given a pure value
 (-::-)  :: (Monad m, Ord k) => k -> v -> Env k (m v)
 k -::- v = k -:- return v
 
--- "closure bind"
+-- | "Closure bind" ensures that every element of the range maps to
+--   itself as well.  (This is good for substitutions.)
 (-:+-)   :: Ord k => k -> k -> Env k k
 k -:+- k' = k -:- k' -+- k' -:- k'
 
--- union (right preference
+-- | Union (right preference)
 (-+-)    :: (k :>: k') => Env k v -> Env k' v -> Env k v
 m -+- n   = m `mappend` liftEnv n
 
--- difference
+-- | Remove a binding
 (-\-)    :: (k :>: k') => Env k v -> k' -> Env k v
 m -\- y   = Env (M.delete (liftKey y) (unEnv m))
 
+-- | Difference, removing a set of keys
 (-\\-)   :: (k :>: k') => Env k v -> S.Set k' -> Env k v
 m -\\- ys = Env (S.fold (M.delete . liftKey) (unEnv m) ys)
 
--- lookup
+-- | Lookup
 (-.-)    :: (k :>: k') => Env k v -> k' -> Maybe v
 m -.- y   = M.lookup (liftKey y) (unEnv m)
 
--- intersection
+-- | Intersection
 (-|-)    :: (k :>: k') => Env k v -> Env k' w -> Env k (v, w)
 m -|- n   = Env (M.intersectionWith (,) (unEnv m) (unEnv (liftEnv n)))
 
+-- | Union, given a combining function
 unionWith :: (k :>: k') => (v -> v -> v) -> 
                            Env k v -> Env k' v -> Env k v
 unionWith f e e' = Env (M.unionWith f (unEnv e) (unEnv (liftEnv e')))
 
--- additive union (right preference)
+-- | Additive union (right preference)
 unionSum :: (k :>: k') => Env k v -> Env k' w -> Env k (Either v w)
 unionSum e e' = fmap Left e -+- fmap Right e'
 
--- multiplicative union
+-- | Multiplicative union
 unionProduct :: (k :>: k') => Env k v -> Env k' w -> Env k (Maybe v, Maybe w)
 unionProduct m n = Env (M.unionWith combine m' n') where
   m' = fmap (\v -> (Just v, Nothing)) (unEnv m)
@@ -103,10 +127,14 @@ infix 5 `unionSum`, `unionProduct`
 instance Ord k => Functor (Env k) where
   fmap f = Env . M.map f . unEnv
 
+-- | Map over an environment, with an opportunity to maintain an
+--   accumulator
 mapAccum :: Ord k => (v -> a -> (a, w)) -> a -> Env k v -> (a, Env k w)
 mapAccum f z m = case M.mapAccum (flip f) z (unEnv m) of
                    (w, m') -> (w, Env m')
 
+-- | Map over an environment, with an opportunity to maintain an
+--   accumulator (monadic)
 mapAccumM :: (Ord k, Monad m) =>
              (v -> a -> m (a, w)) -> a -> Env k v -> m (a, Env k w)
 mapAccumM f z m = do
@@ -118,15 +146,19 @@ mapAccumM f z m = do
       (a', w) <- f v a
       helper a' ((k, w) : acc) rest
 
+-- | Get an association list
 toList   :: Ord k => Env k v -> [(k, v)]
 toList    = M.toList . unEnv
 
+-- | Make an environment from an association list
 fromList :: Ord k => [(k, v)] -> Env k v
 fromList  = Env . M.fromList
 
+-- | The keys
 domain   :: Ord k => Env k v -> [k]
 domain    = M.keys . unEnv
 
+-- | The values
 range    :: Ord k => Env k v -> [v]
 range     = M.elems . unEnv
 
@@ -138,23 +170,6 @@ instance (Ord k, Show k, Show v) => Show (Env k v) where
   showsPrec _ env = foldr (.) id
     [ shows k . (" : "++) . shows v . ('\n':)
     | (k, v) <- M.toList (unEnv env) ]
-
-class GenExtend e e' where
-  (=+=) :: e -> e' -> e
-
-class GenRemove e k where
-  (=\=)  :: e -> k -> e
-  (=\\=) :: e -> S.Set k -> e
-  e =\\= set = foldl (=\=) e (S.toList set)
-
-class GenLookup e k v | e k -> v where
-  (=..=) :: e -> k -> Maybe v
-
-class GenModify e k v where
-  genModify :: e -> k -> (v -> v) -> e
-
-class GenEmpty e where
-  genEmpty :: e
 
 (=:=)  :: Ord k => k -> v -> Env k v
 (=::=) :: (Ord k, Monad m) => k -> v -> Env k (m v)
@@ -177,24 +192,29 @@ instance (k :>: k') => GenModify (Env k v) k' v where
     Just v  -> e =+= k -:- fv v
 instance GenEmpty (Env k v) where genEmpty = empty
 
+-- | A path environment maps paths of @p@ components to @e@.
 data PEnv p e = PEnv {
+                  -- | Nested path environments
                   envenv :: Env p (PEnv p e),
+                  -- | The top level flat environment
                   valenv :: e
                 }
   deriving (Show, Typeable, Data)
 
+-- | A path of @p@ components with final key type @k@
 data Path p k = J {
                   jpath :: [p],
                   jname :: k
                 }
   deriving (Eq, Ord, Typeable, Data)
 
--- Add qualifiers to a path
+-- | Add a qualifier to the front of a path
 (<.>) :: p -> Path p k -> Path p k
 p <.> J ps k = J (p:ps) k
 
 infixr 8 <.>
 
+-- | Newtype for selecting instances operations that operate at the root
 newtype ROOT e = ROOT { unROOT :: e }
   deriving (Eq, Ord, Show, Typeable, Data)
 
@@ -235,11 +255,19 @@ instance GenEmpty e => GenEmpty [e] where
 instance GenRemove e k => GenRemove [e] k where
   e =\= k = map (=\= k) e
 
+-- | A generalization of environment union.  If the environments
+--   have different types, we assume the right type may be lifted
+--   to the left types.
+--
 -- We can extend a nested env with
---  - some subenvs
---  - a value env
---  - another nested env (preferring the right)
---  - (=++=) unions subenvs rather than replacing
+--
+--  * some subenvs
+--  * a value env
+--  * another nested env (preferring the right)
+--  * '(=++=)' pathwise-unions subenvs rather than replacing
+class GenExtend e e' where
+  (=+=) :: e -> e' -> e
+
 instance Ord p => GenExtend (PEnv p e) (Env p (PEnv p e)) where
   penv =+= e = penv { envenv = envenv penv =+= e }
 
@@ -265,23 +293,24 @@ instance (Ord p, Ord k, GenEmpty e, GenExtend e (Env k v)) =>
     p:ps -> let penv' = maybe genEmpty id (ee =..= p) =+= (J ps k, v)
              in PEnv (ee =+= p =:= penv') ve
 
-{-
-path2penv :: (Ord p, GenEmpty e) => [p] -> e -> PEnv p e
-path2penv []     e = PEnv empty e
-path2penv (p:ps) e = PEnv (p =:= path2penv ps e) genEmpty
--}
-
--- tree-wise union:
+-- | tree-wise union:
 (=++=) :: (Ord p, GenExtend e e) => PEnv p e -> PEnv p e -> PEnv p e
 PEnv (Env m) e =++= PEnv (Env m') e' =
   PEnv (Env (M.unionWith (=++=) m m')) (e =+= e')
 
--- We can lookup in a nested env by
---  - one path component
---  - a path
---  - a path to a key
---  - a path to a path component
---  - one key (ROOT)
+-- | Generalization class for lookup, where the environment and key
+--   types determine the value type
+--
+-- Instances allow us to lookup in a nested env by
+--
+--  * one path component
+--  * a path
+--  * a path to a key
+--  * a path to a path component
+--  * one key (must wrap the environment in 'ROOT')
+class GenLookup e k v | e k -> v where
+  (=..=) :: e -> k -> Maybe v
+
 instance Ord p => GenLookup (PEnv p e) p (PEnv p e) where
   penv =..= p = envenv penv =..= p
 
@@ -302,12 +331,17 @@ instance GenLookup e k v => GenLookup (ROOT (PEnv p e)) k v where
 (=.=) :: GenLookup e k v => PEnv p e -> k -> Maybe v
 (=.=)  = (=..=) . ROOT
 
+-- | Generalization of a value update operation
+--
 -- We can modify a nested env at
---  - one path component
---  - a path to a nested env
---  - a path to an env
---  - a path to a key
---  - a single key (ROOT)
+--
+--  * one path component
+--  * a path to a nested env
+--  * a path to an env
+--  * a path to a key
+--  * a single key (ROOT)
+class GenModify e k v where
+  genModify :: e -> k -> (v -> v) -> e
 
 instance Ord p => GenModify (PEnv p e) p (PEnv p e) where
   genModify penv p f  =  genModify penv [p] f
@@ -335,11 +369,18 @@ instance GenModify e k v => GenModify (ROOT (PEnv p e)) k v where
     fe  :: e -> e
     fe e = genModify e k fv
 
--- we can remove at
---  - a single path component
---  - a path to a key
---  - a path to a path
---  - a single key (ROOT)
+-- | Generalization class for key removal
+--
+-- We can remove at
+--  * a single path component
+--  * a path to a key
+--  * a path to a path
+--  * a single key (using 'ROOT')
+class GenRemove e k where
+  (=\=)  :: e -> k -> e
+  (=\\=) :: e -> S.Set k -> e
+  e =\\= set = foldl (=\=) e (S.toList set)
+
 instance Ord p => GenRemove (PEnv p e) p where
   penv =\= p = penv { envenv = envenv penv =\= p }
 
@@ -355,6 +396,10 @@ instance Ord p => GenRemove (PEnv p e) (Path p p) where
 
 instance GenRemove e k => GenRemove (ROOT (PEnv p e)) k where
   ROOT penv =\= k = ROOT (penv { valenv = valenv penv =\= k })
+
+-- | Generalization of the empty environment
+class GenEmpty e where
+  genEmpty :: e
 
 -- we can make empty PEnvs if we can put an empty env in it
 instance GenEmpty e => GenEmpty (PEnv p e) where

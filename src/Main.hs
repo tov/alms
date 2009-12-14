@@ -1,3 +1,5 @@
+-- | The main driver program, which performs all manner of unpleasant
+--   tasks to tie everything together
 {-# LANGUAGE CPP #-}
 module Main (
   main
@@ -38,6 +40,7 @@ data Option = Don'tExecute
             | Verbose
   deriving Eq
 
+-- | The main procedure
 main :: IO ()
 main  = do
   args <- getArgs
