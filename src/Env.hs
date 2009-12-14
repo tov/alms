@@ -262,8 +262,11 @@ instance GenRemove e k => GenRemove [e] k where
 -- We can extend a nested env with
 --
 --  * some subenvs
+--
 --  * a value env
+--
 --  * another nested env (preferring the right)
+--
 --  * '(=++=)' pathwise-unions subenvs rather than replacing
 class GenExtend e e' where
   (=+=) :: e -> e' -> e
@@ -304,9 +307,13 @@ PEnv (Env m) e =++= PEnv (Env m') e' =
 -- Instances allow us to lookup in a nested env by
 --
 --  * one path component
+--
 --  * a path
+--
 --  * a path to a key
+--
 --  * a path to a path component
+--
 --  * one key (must wrap the environment in 'ROOT')
 class GenLookup e k v | e k -> v where
   (=..=) :: e -> k -> Maybe v
@@ -336,9 +343,13 @@ instance GenLookup e k v => GenLookup (ROOT (PEnv p e)) k v where
 -- We can modify a nested env at
 --
 --  * one path component
+--
 --  * a path to a nested env
+--
 --  * a path to an env
+--
 --  * a path to a key
+--
 --  * a single key (ROOT)
 class GenModify e k v where
   genModify :: e -> k -> (v -> v) -> e
@@ -372,9 +383,13 @@ instance GenModify e k v => GenModify (ROOT (PEnv p e)) k v where
 -- | Generalization class for key removal
 --
 -- We can remove at
+--
 --  * a single path component
+--
 --  * a path to a key
+--
 --  * a path to a path
+--
 --  * a single key (using 'ROOT')
 class GenRemove e k where
   (=\=)  :: e -> k -> e

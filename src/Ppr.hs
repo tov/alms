@@ -24,8 +24,9 @@ import Data.List (intersperse)
 --
 -- Minimal complete definition is one of:
 --
--- * [pprPrec]
--- * [ppr]
+-- * 'pprPrec'
+--
+-- * 'ppr'
 class Ppr p where
   -- | Print at the specified enclosing precedence
   pprPrec :: Int -> p -> Doc
