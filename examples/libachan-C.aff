@@ -1,0 +1,70 @@
+#load "libqueue-C.aff"
+
+module AChan = struct[C]
+  local
+    module Q = Queue
+    module M = MVar
+    type 'a mvar = 'a M.mvar
+    type 'a queue = 'a Q.queue
+    type 'a repr = Readers of 'a M.mvar queue
+                 | Writers of 'a queue
+
+  with
+    abstype 'a achan = AChan of 'a repr M.mvar
+    with
+      let new['a] () = AChan (M.new (Writers Q.empty['a]))
+
+      let recv['a] (AChan mv : 'a achan) =
+        let wait (readers : 'a mvar queue) =
+          let reader = M.newEmpty['a] () in
+            (Readers (Q.enqueue reader readers),
+             fun () -> M.take reader) in
+        M.modify mv (fun repr : 'a repr ->
+          match repr with
+          | Readers readers -> wait readers
+          | Writers writers ->
+              match Q.first_dequeue writers with
+              | None          -> wait Q.empty['a mvar]
+              | Some (x, xs)  -> (Writers xs, fun () -> x))
+          ()
+
+      let send['a] (AChan mv : 'a achan) (x : 'a) =
+        M.modify_ mv (fun repr : 'a repr ->
+          match repr with
+          | Writers writers -> Writers (Q.enqueue x writers)
+          | Readers readers ->
+              match Q.first_dequeue readers with
+              | None -> Writers (Q.enqueue x Q.empty['a])
+              | Some (reader, readers')
+                     -> M.put reader x;
+                        Readers readers')
+
+      let tryRecv['a] (AChan mv : 'a achan) =
+        M.modify mv (fun repr : 'a repr ->
+          match repr with
+          | Readers readers -> (repr, None['a])
+          | Writers writers ->
+              match Q.first_dequeue writers with
+              | None          -> (repr, None['a])
+              | Some (x, xs)  -> (Writers xs, Some x))
+
+      (* Send always succeeds, but trySend succeeds only if there's
+         a reader ready to receive the send. *)
+      let trySend['a] (AChan mv : 'a achan) (x : 'a) =
+        M.modify mv (fun repr : 'a repr ->
+          match repr with
+          | Writers writers -> (repr, false)
+          | Readers readers ->
+              match Q.first_dequeue readers with
+              | None -> (repr, false)
+              | Some (reader, readers')
+                     -> M.put reader x;
+                        (Readers readers', true))
+
+      let size['a] (AChan mv : 'a achan) =
+        match M.read mv with
+        | Writers writers -> Q.size writers
+        | Readers readers -> ~(Q.size readers)
+    end
+  end
+end

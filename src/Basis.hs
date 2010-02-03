@@ -66,6 +66,8 @@ primBasis  = [
     binArith "*" (*),
     binArith "/" div,
     binArith "%" mod,
+    fun "~" -:: "int -> int"
+      -= (negate :: Integer -> Integer),
     fun "abs" -:: "int -> int"
       -= (abs :: Integer -> Integer),
     fun "<=" -:: "int -> int -> bool"
@@ -86,6 +88,8 @@ primBasis  = [
       -= ((/) :: Double -> Double -> Double),
     fun "**" -:: "float -> float -> float"
       -= ((**) :: Double -> Double -> Double),
+    fun "~." -:: "float -> float"
+      -= (negate :: Double -> Double),
     fun "sqrt" -:: "float -> float"
       -= (sqrt :: Double -> Double),
     fun "log" -:: "float -> float"
@@ -433,6 +437,17 @@ srcBasis  = unlines [
   "        | Nil -> z",
   "        | Cons(x,xs) -> foldl f (f x z) xs",
   "   in foldl",
+  "let[A] revApp['<a] (xs : '<a list) (ys : '<a list) =",
+  "  let cons (x : '<a) (acc : '<a list) = Cons (x, acc) in",
+  "    foldl cons ys xs",
+  "let[A] rev['<a] (xs : '<a list) = revApp xs Nil",
+  "let[A] append['<a] (xs : '<a list) = revApp (rev xs)",
+  "let[A] length['<a] (xs : '<a list) =",
+  "  foldr (fun (x : '<a) -> (+) 1) 0 xs",
+  "let[A] lengthA['<a] (xs : '<a list) =",
+  "  let count (x : '<a) (xs' : '<a list, n : int) =",
+  "       (Cons (x, xs'), 1 + n) in",
+  "    foldr count (Nil['<a], 0) xs",
   "let[C] alist2clist : all 'a. {{'a} list} -> 'a list =",
   "  fun 'a (lst: {{'a} list}) ->",
   "    foldr (fun (x:'a) (xs:'a list) -> Cons(x, xs)) Nil['a] lst",
