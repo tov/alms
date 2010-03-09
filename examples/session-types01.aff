@@ -5,7 +5,7 @@
 open AThread
 open SessionType
 
-type[A] protocol = int send -> int send -> int recv -> unit
+type[A] protocol = int send; int send; int recv; unit
 
 let[A] server =
   fun c : protocol dual channel ->

@@ -8,9 +8,7 @@ open AThread
 open SessionType
 
 type[A] protocol =
-  mu 'r.
-    ((int recv -> unit) *
-     (int send -> 'r)) select
+  mu 'r. (int recv; unit + int send; 'r) select
 
 let[A] server =
   let rec loop (acc : int)

@@ -8,7 +8,6 @@ module Ppr (
   Ppr(..),
   -- * Pretty-printing combinators
   parensIf,
-  pprParams,
   -- * Re-exports
   module Text.PrettyPrint,
   module Prec
@@ -52,7 +51,7 @@ instance (Ppr a, Separator a) => Ppr [a] where
                              (map (pprPrec precCom) xs))
 
 instance Ppr (Type i w) where
-  -- Print sugar for arrow types:
+  -- Print sugar for infix type constructors:
   pprPrec p (TyCon (J [] (Lid "->")) [t1, t2] _)
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
@@ -61,11 +60,18 @@ instance Ppr (Type i w) where
                   = parensIf (p > precArr) $
                       sep [ pprPrec (precArr + 1) t1,
                         text "-o" <+> pprPrec precArr t2 ]
-  -- Sugar for tuples
+  pprPrec p (TyCon (J [] (Lid ";")) [t1, t2] _)
+                  = parensIf (p > precSemi) $
+                      sep [ pprPrec (precSemi + 1) t1 <> text ";",
+                            pprPrec precSemi t2 ]
   pprPrec p (TyCon (J [] (Lid "*")) [t1, t2] _)
                   = parensIf (p > precStar) $
                       sep [ pprPrec precStar t1,
                         text "*" <+> pprPrec (precStar + 1) t2 ]
+  pprPrec p (TyCon (J [] (Lid "+")) [t1, t2] _)
+                  = parensIf (p > precPlus) $
+                      sep [ pprPrec precPlus t1,
+                        text "+" <+> pprPrec (precPlus + 1) t2 ]
   pprPrec _ (TyCon n [] _)  = ppr n
   pprPrec p (TyCon n [t] _) = parensIf (p > precApp) $
                                 sep [ pprPrec precApp t,
@@ -161,25 +167,14 @@ instance Ppr TyDec where
         [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
 
 instance Ppr TyDecC where
-  ppr (TdAbsC n ps) =
-     pprParams ps <?> ppr n
-  ppr (TdSynC n ps rhs) =
-    pprParams ps <?> ppr n
-      >?> equals <+> ppr rhs
-  ppr (TdDatC n ps alts) =
-    pprParams ps <?> ppr n
-      >?> pprAlternatives alts
+  ppr (TdAbsC n ps)       = pprProto n ps
+  ppr (TdSynC n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
+  ppr (TdDatC n ps alts)  = pprProto n ps >?> pprAlternatives alts
 
 instance Ppr TyDecA where
-  ppr (TdAbsA n ps vs qs) =
-    pprParamsV vs ps <?> ppr n
-      >?> pprQuals qs
-  ppr (TdSynA n ps rhs) =
-    pprParams ps <?> ppr n
-      >?> equals <+> ppr rhs
-  ppr (TdDatA n ps alts) =
-    pprParams ps <?> ppr n
-      >?> pprAlternatives alts
+  ppr (TdAbsA n ps vs qs) = pprProtoV n vs ps >?> pprQuals qs
+  ppr (TdSynA n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
+  ppr (TdDatA n ps alts)  = pprProto n ps >?> pprAlternatives alts
 
 instance Ppr AbsTy where
   ppr (AbsTyC tl decls) =
@@ -194,10 +189,22 @@ instance Ppr AbsTy where
       d:ds -> lang <> d $$ vcat (map (text "and" <+>) ds)
     where
     each (variances, qual, TdDatA name params alts) =
-      pprParamsV variances params <?> ppr name
+      pprProtoV name variances params
         >?> pprQuals qual
         >?> pprAlternatives alts
     each (_, _, td) = ppr td -- shouldn't happen (yet)
+
+pprProto     :: Lid -> [TyVar] -> Doc
+pprProto n [tv1, tv2]
+  | isOperator n = ppr tv1 <+> text (unLid n) <+> ppr tv2
+pprProto n tvs   = pprParams tvs <?> ppr n
+
+pprProtoV     :: Lid -> [Variance] -> [TyVar] -> Doc
+pprProtoV n [v1, v2] [tv1, tv2]
+  | isOperator n   = ppr v1 <> ppr tv1 <+>
+                     text (unLid n)    <+>
+                     ppr v2 <> ppr tv2
+pprProtoV n vs tvs = pprParamsV vs tvs <?> ppr n
 
 -- | Print a list of type variables as printed as the parameters
 --   to a type.  (Why is this exported?)

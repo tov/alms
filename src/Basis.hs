@@ -51,7 +51,7 @@ primBasis  = [
 
     -- Sums
     typeT "'<a option = None | Some of '<a",
-    typeT "('<a, '<b) either = Left of '<a | Right of '<b",
+    typeT "'<a + '<b = Left of '<a | Right of '<b",
 
     -- Recursion
     pfun 2 "fix" -:: "all 'a 'b. (('a -> 'b) -> ('a -> 'b)) -> ('a -> 'b)"
@@ -263,6 +263,8 @@ primBasis  = [
       -- Session-typed channels
       typeA "'a rendezvous",
       typeA "+'a channel qualifier A",
+      typeA "-'<a ; +'<b",
+      typeA "('<a, '<b) semi = '<a; '<b",
       -- Unfortunately, we need these types to be primitive in order to
       -- compute duals.
       "dual"   `primtype` tdDual,
@@ -287,32 +289,32 @@ primBasis  = [
              return c,
       pfun 2 "send"
         -: ""
-        -: "all '<a 's. ('<a send -> 's) channel -> '<a -o 's channel"
+        -: "all '<a 's. ('<a send; 's) channel -> '<a -o 's channel"
         -= \c a -> do
              writeChan (unChannel c) a
              return c,
       pfun 2 "recv"
         -: ""
-        -: "all '<a 's. ('<a recv -> 's) channel -> '<a * 's channel"
+        -: "all '<a 's. ('<a recv; 's) channel -> '<a * 's channel"
         -= \c -> do
              a <- readChan (unChannel c)
              return (a, c),
       pfun 2 "sel1"
         -: ""
-        -: "all 's1 's2. ('s1 * 's2) select channel -> 's1 channel"
+        -: "all 's1 's2. ('s1 + 's2) select channel -> 's1 channel"
         -= \c -> do
              writeChan (unChannel c) (vinj True)
              return c,
       pfun 2 "sel2"
         -: ""
-        -: "all 's1 's2. ('s1 * 's2) select channel -> 's2 channel"
+        -: "all 's1 's2. ('s1 + 's2) select channel -> 's2 channel"
         -= \c -> do
              writeChan (unChannel c) (vinj False)
              return c,
       pfun 2 "follow"
         -: ""
-        -: ("all 's1 's2. ('s1 * 's2) follow channel -> " ++
-                         "('s1 channel, 's2 channel) either")
+        -: ("all 's1 's2. ('s1 + 's2) follow channel -> " ++
+                         "'s1 channel + 's2 channel")
         -= \c -> do
              e  <- readChan (unChannel c)
              e' <- vprjM e

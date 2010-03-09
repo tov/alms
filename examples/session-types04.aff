@@ -131,7 +131,7 @@ let[A] copt2aopt['a] (opt: {{'a} option}) : 'a option =
 -- sequence of points:
 --
 
-type[A] 'a stream = mu 'x. (unit * ('a recv -> 'x)) follow
+type[A] 'a stream = mu 'x. (unit + 'a recv; 'x) follow
 
 --
 -- Each transducer takes a plane to clip by, and two rendezvous objects,
@@ -183,7 +183,7 @@ let[A] printer : {point} stream channel -> unit =
 
 -- The main protocol for the program, which lets us split our parser
 -- from our main loop.
-type[A] main_prot = mu 'x. ({point} stream * ({plane} recv -> 'x)) follow
+type[A] main_prot = mu 'x. ({point} stream + {plane} recv; 'x) follow
 
 let[A] parser : main_prot dual channel -> unit =
   let rec plane_loop (oc: main_prot dual channel): unit =

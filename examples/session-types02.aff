@@ -5,9 +5,9 @@
 open AThread
 open SessionType
 
-type[A] 'a protocol = (('a send -> 'a send -> 'a recv -> unit)
-                       *
-                       ('a send -> 'a recv -> unit)) select
+type[A] 'a protocol = ('a send; 'a send; 'a recv; unit
+                       +
+                       'a send; 'a recv; unit) select
 
 let[A] server =
   fun c : int protocol dual channel ->

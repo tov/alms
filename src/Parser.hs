@@ -113,7 +113,7 @@ quidp :: P QUid
 quidp  = pathp (uidp >>! flip J)
 
 -- Qualified lowercase identifiers:
---  - tycon ocurences
+--  - tycon occurences
 qlidp :: P QLid
 qlidp  = pathp (lidp >>! flip J)
 
@@ -140,7 +140,7 @@ tyvarp :: P TyVar
 tyvarp  = do
   char '\''
   q <- choice
-       [ char '<' >> return Qa,
+       [ do assertLang LA; char '<'; return Qa,
          return Qu ]
   x <- lidp
   return (TV x q)
@@ -149,42 +149,48 @@ oplevelp :: Prec -> P Lid
 oplevelp  = liftM Lid . opP
 
 typep  :: Language w => P (Type () w)
-typep   = typepP 0
+typep   = typepP precStart
 
 typepP :: Language w => Int -> P (Type () w)
-typepP 0 = choice
+typepP p | p == precStart
+         = choice
   [ do tc <- choice
          [ reserved "all" >> return tyAll,
            reserved "ex"  >> return tyEx,
            reserved "mu"  >> return TyMu ]
        tvs <- many tyvarp
        dot
-       t   <- typepP 0
+       t   <- typepP p
        return (foldr tc t tvs),
-    typepP 5 ]
-typepP 1 = typepP 2
-typepP 2 = typepP 3
-typepP 3 = typepP 4
-typepP 4 = typepP 5
-typepP 5 = chainr1last (typepP 6) tyop5 (typepP 0) where
-             tyop5 = choice [
-                       arrow >> return tyArr,
-                       lolli >> return tyLol
-                     ]
-typepP 6 = chainl1last (typepP 7) tyop6 (typepP 0) where
-             tyop6 = star >> return tyTuple
-typepP 7 = tyarg >>= tyapp'
+    typepP (p + 1) ]
+typepP p | p == precArr
+         = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
+             tyop = choice [
+                      arrow >> return tyArr,
+                      lolli >> return tyLol
+                    ]
+typepP p | p == precPlus
+         = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
+             tyop = plus >> return tySum
+typepP p | p == precStar
+         = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
+             tyop = star >> return tyTuple
+typepP p | p == precSemi
+         = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
+             tyop = semi >> return tySemi
+typepP p | p == precApp -- this case ensures termination
+         = tyarg >>= tyapp'
   where
   -- This uses ScopedTypeVariables to reify the Language type:
   tyarg :: Language w => P [Type () w]
   tyarg  = choice
-           [ do args <- parens $ commaSep1 (typepP 0)
+           [ do args <- parens $ commaSep1 (typepP precStart)
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
              do tc   <- qlidp
                 return [TyCon tc [] ()],
-             do t <- braces (langMapType (typepP 0))
+             do t <- braces (langMapType (typepP precStart))
                 return [t] ]
 
   tyapp' :: [Type () w] -> P (Type () w)
@@ -194,7 +200,9 @@ typepP 7 = tyarg >>= tyapp'
   tyapp' ts  = do
                  tc <- qlidp
                  tyapp' [TyCon tc ts ()]
-typepP _ = typepP 0
+typepP p | p <= precMax
+         = typepP (p + 1)
+typepP _ = typepP precStart
 
 progp :: P (Prog ())
 progp  = choice [
@@ -279,7 +287,7 @@ tyDecp :: P TyDec
 tyDecp  = do
   reserved "type"
   choice [
-    do
+    withState (Just LA) $ do
       try (brackets star)
       tds <- sepBy1 tyDecAp (reserved "and")
       return (TyDecT tds),
@@ -294,8 +302,7 @@ tyDecp  = do
     ]
   where
     tyDecCp = do
-      tvs  <- paramsp
-      name <- lidp
+      (_, tvs, name) <- tyProtp
       choice [
         do
           reservedOp "="
@@ -305,8 +312,7 @@ tyDecp  = do
         do
           return (TdAbsC name tvs) ]
     tyDecAp = do
-      (arity, tvs) <- paramsVp
-      name         <- lidp
+      (arity, tvs, name) <- tyProtp
       choice [
         do
           unless (all (== Invariant) arity) pzero
@@ -317,6 +323,28 @@ tyDecp  = do
         do
           quals <- qualsp
           return (TdAbsA name tvs arity quals) ]
+
+tyProtCP :: P ([TyVar], Lid)
+tyProtCP = try $ do
+  (arity, tvs, name) <- tyProtp
+  unless (all (== Invariant) arity) $
+    fail "language C type parameters cannot have variance"
+  unless (all ((== Qu) . tvqual) tvs) $
+    fail "language C type parameters cannot have qualifier A"
+  return (tvs, name)
+
+tyProtp :: P ([Variance], [TyVar], Lid)
+tyProtp  = choice [
+  try $ do
+    (v1, tv1) <- paramVp
+    con <- choice [ arrow, lolli, semi, star, plus ] >>! Lid
+    (v2, tv2) <- paramVp
+    return ([v1, v2], [tv1, tv2], con),
+  do
+    (arity, tvs) <- paramsVp
+    name         <- lidp
+    return (arity, tvs, name)
+  ]
 
 letp :: P (Decl ())
 letp  =
@@ -391,24 +419,19 @@ letp  =
 abstyp :: Bool -> Lang -> P AbsTy
 abstyp tl LC = do
   tds <- flip sepBy (reserved "and") $ do
-    tvs  <- paramsp
-    name <- lidp
+    (_, tvs, name) <- tyProtp
     reservedOp "="
     alts <- altsp
     return (TdDatC name tvs alts)
   return (AbsTyC tl tds)
 abstyp tl LA = do
   tds <- flip sepBy (reserved "and") $ do
-    (arity, tvs) <- paramsVp
-    name         <- lidp
+    (arity, tvs, name) <- tyProtp
     quals        <- qualsp
     reservedOp "="
     alts         <- altsp
     return (arity, quals, TdDatA name tvs alts)
   return (AbsTyA tl tds)
-
-paramsp  :: P [TyVar]
-paramsp   = delimList (return ()) parens comma tyvarp
 
 paramsVp :: P ([Variance], [TyVar])
 paramsVp  = delimList (return ()) parens comma paramVp >>! unzip
@@ -424,10 +447,12 @@ paramVp = do
 
 variancep :: P Variance
 variancep = choice
-  [ char '+' >> return Covariant,
-    char '-' >> return Contravariant,
-    char '0' >> return Omnivariant,
-    char '1' >> return Invariant,
+  [ do assertLang LA;
+       choice
+         [ char '+' >> return Covariant,
+           char '-' >> return Contravariant,
+           char '0' >> return Omnivariant,
+           char '1' >> return Invariant ],
     return Invariant ]
 
 qualp :: P (Either TyVar Q)
@@ -462,6 +487,11 @@ languagep  = do
                  [ do langC; return LC,
                    do langA; return LA ]
     Just lang -> return lang
+
+assertLang :: Lang -> P ()
+assertLang lang = do
+  st <- getState
+  unless (st == Just lang) pzero
 
 enterlang :: (Bool -> Lang -> P a) -> P a
 enterlang = enterdecl (return ())
@@ -791,7 +821,7 @@ pp   = makeQaD parseProg
 pds :: String -> [Decl ()]
 pds  = makeQaD parseDecls
 
--- | Parse a sequence of declarations
+-- | Parse a declaration
 pd  :: String -> Decl ()
 pd   = makeQaD parseDecl
 
@@ -801,16 +831,20 @@ ptd  = makeQaD parseTyDec
 
 -- | Parse a type
 pt  :: Language w => String -> Type () w
-pt   = makeQaD parseType
+pt   = makeQaDA parseType
 
 -- | Parse an expression
 pe  :: Language w => String -> Expr () w
-pe   = makeQaD parseExpr
+pe   = makeQaDA parseExpr
 
 -- | Parse a pattern
 px  :: String -> Patt
-px   = makeQaD parsePatt
+px   = makeQaDA parsePatt
 
 makeQaD :: P a -> String -> a
 makeQaD parser =
-  either (error . show) id . parse parser "<string>"
+  either (error . show) id . runParser parser Nothing "<string>"
+
+makeQaDA :: P a -> String -> a
+makeQaDA parser =
+  either (error . show) id . runParser parser (Just LA) "<string>"

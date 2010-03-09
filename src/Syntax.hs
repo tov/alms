@@ -36,7 +36,7 @@ module Syntax (
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
   TyVar(..),
-  qlid, quid,
+  isOperator, qlid, quid,
 
   -- * Types
   TyTag(..),
@@ -99,13 +99,15 @@ module Syntax (
 
   -- * Built-in types
   -- ** Type information
-  tdUnit, tdInt, tdFloat, tdString, tdExn, tdTuple, tdArr, tdLol,
+  tdUnit, tdInt, tdFloat, tdString, tdExn,
+  tdArr, tdLol, tdTuple,
   -- ** Session types
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
   -- ** Convenience type constructors
   tyGround, tyArr, tyLol, tyTuple,
   tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
+  tySemi, tySum,
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
@@ -712,6 +714,12 @@ exLet x e1 e2 = exCase e1 [(x, e2)]
 exSeq :: Expr i w -> Expr i w -> Expr i w
 exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 
+-- | Is the lowercase identifier an infix operator?
+isOperator :: Lid -> Bool
+isOperator lid = case show lid of
+    '(':_ -> True
+    _     -> False
+
 -- | Sugar for generating AST for qualified lowercase identifers
 qlid :: String -> QLid
 qlid s = case reverse (splitBy (=='.') s) of
@@ -1312,18 +1320,18 @@ tysubst a t = ts where
 -- express this directly in the type system at this point)
 dualSessionType :: TypeT w -> TypeT w
 dualSessionType  = d where
-  d (TyCon (J [] (Lid "->"))
-       [TyCon (J [] (Lid "send")) [ta] _, tr] _)
-    = TyCon (qlid "->") [TyCon (qlid "recv") [ta] tdRecv, d tr] tdArr
-  d (TyCon (J [] (Lid "->"))
-       [TyCon (J [] (Lid "recv")) [ta] _, tr] _)
-    = TyCon (qlid "->") [TyCon (qlid "send") [ta] tdSend, d tr] tdArr
+  d (TyCon (J [] (Lid ";"))
+       [TyCon (J [] (Lid "send")) [ta] _, tr] tdSemi)
+    = TyCon (qlid ";") [TyCon (qlid "recv") [ta] tdRecv, d tr] tdSemi
+  d (TyCon (J [] (Lid ";"))
+       [TyCon (J [] (Lid "recv")) [ta] _, tr] tdSemi)
+    = TyCon (qlid ";") [TyCon (qlid "send") [ta] tdSend, d tr] tdSemi
   d (TyCon (J [] (Lid "select"))
-       [TyCon (J [] (Lid "*")) [t1, t2] _] _)
-    = TyCon (qlid "follow") [TyCon (qlid "*") [d t1, d t2] tdTuple] tdFollow
+       [TyCon (J [] (Lid "+")) [t1, t2] tdSum] _)
+    = TyCon (qlid "follow") [TyCon (qlid "+") [d t1, d t2] tdSum] tdFollow
   d (TyCon (J [] (Lid "follow"))
-       [TyCon (J [] (Lid "*")) [t1, t2] _] _)
-    = TyCon (qlid "select") [TyCon (qlid "*") [d t1, d t2] tdTuple] tdSelect
+       [TyCon (J [] (Lid "+")) [t1, t2] tdSum] _)
+    = TyCon (qlid "select") [TyCon (qlid "+") [d t1, d t2] tdSum] tdSelect
   d (TyMu tv t)
     = TyMu tv (d t)
   d t = t
@@ -1396,6 +1404,12 @@ tyLol a b      = TyCon (qlid "-o") [a, b] ()
 
 tyTuple       :: Type () w -> Type () w -> Type () w
 tyTuple a b    = TyCon (qlid "*") [a, b] ()
+
+tySemi        :: Type () w -> Type () w -> Type () w
+tySemi a b     = TyCon (qlid ";") [a, b] ()
+
+tySum          :: Type () w -> Type () w -> Type () w
+tySum a b       = TyCon (qlid "+") [a, b] ()
 
 tyUnitT        :: TypeT w
 tyUnitT         = TyCon (qlid "unit") [] tdUnit
