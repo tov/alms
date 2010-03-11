@@ -20,11 +20,11 @@ module ASocket = struct[A]
       and 't connected qualifier A = Connected
   with
 
-    (* When we raise an exception, we "freeze" the capability,
-     * and we can thaw the capability if we have the socket that
-     * it goes with.  This lets us recover the capability with
-     * a type paramater that matches any extant sockets that go
-     * with it. *)
+    (* When we raise an exception, we "freeze" the capability.
+     * We can thaw the frozen capability if we have the socket that
+     * it goes with.  (This requires a dynamic check.)  This lets us
+     * recover the capability with a type paramater that matches any
+     * extant sockets that go with it. *)
     abstype frozenInitial   qualifier A = FInitial of {S.socket}
         and frozenBound     qualifier A = FBound of {S.socket}
         and frozenListening qualifier A = FListening of {S.socket}
@@ -32,27 +32,34 @@ module ASocket = struct[A]
     with
       let freezeInitial['t] (Sock sock: 't socket) (_: 't initial) =
             FInitial sock
+
       let thawInitial['t] (Sock sock: 't socket)
                           (FInitial sock': frozenInitial) =
         if sock == sock'
           then Right[frozenInitial, 't initial] Initial['t]
           else Left [frozenInitial, 't initial] (FInitial sock')
+
       let freezeBound['t] (Sock sock: 't socket) (_: 't bound) =
             FBound sock
+
       let thawBound['t] (Sock sock: 't socket)
                           (FBound sock': frozenBound) =
         if sock == sock'
           then Right[frozenBound, 't bound] Bound['t]
           else Left [frozenBound, 't bound] (FBound sock')
+
       let freezeListening['t] (Sock sock: 't socket) (_: 't listening) =
             FListening sock
+
       let thawListening['t] (Sock sock: 't socket)
                           (FListening sock': frozenListening) =
         if sock == sock'
           then Right[frozenListening, 't listening] Listening['t]
           else Left [frozenListening, 't listening] (FListening sock')
+
       let freezeConnected['t] (Sock sock: 't socket) (_: 't connected) =
             FConnected sock
+
       let thawConnected['t] (Sock sock: 't socket)
                           (FConnected sock': frozenConnected) =
         if sock == sock'
@@ -73,7 +80,6 @@ module ASocket = struct[A]
       with
         IOError s -> raise (SocketError s)
 
-    (* If bind fails, you actually can try again. *)
     let bind['t] (Sock sock as s: 't socket) (port: int) (cap: 't initial)
                  : 't bound =
       try
@@ -82,7 +88,6 @@ module ASocket = struct[A]
       with
         IOError msg -> raise (StillInitial (freezeInitial s cap, msg))
 
-    (* If connect fails, you actually can try again. *)
     let connect['t] (Sock sock as s: 't socket) (host: string) (port: string)
                     (cap: 't initial + 't bound)
                     : 't connected =
@@ -134,6 +139,8 @@ module ASocket = struct[A]
         IOError s -> raise (SocketError s)
   end
 
+  (* Convenience functions for catching and thawing frozen socket
+   * capabilities. *)
   let catchInitial['t,'<a] (sock: 't socket) (body: unit -o '<a)
                            (handler: 't initial -o '<a) =
     try body () with
