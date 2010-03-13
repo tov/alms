@@ -27,7 +27,7 @@ while [ -n "$1" ]; do
     link)
       version="`$0 showVersion`"
       ssh $host "cd $remote;
-                 DISPLAY='' ex -c '/affine-contracts-[0-9.]*\.tar\.gz/s/-[0-9.]*\.tar/-$version.tar/|:wq';
+                 DISPLAY='' ex -c '/affine-contracts-[0-9.]*[.]tar[.]gz/s/-[0-9.]*[.]tar/-$version.tar/|:wq' index.html;
                  rm affine-contracts.tar.gz;
                  ln -s 'affine-contracts-$version.tar.gz' affine-contracts.tar.gz"
       ;;
