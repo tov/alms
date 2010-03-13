@@ -54,7 +54,7 @@ clean:
 	$(RM) html
 
 
-VERSION = 0.10.6
+VERSION = 0.11.0
 DISTDIR = affine-contracts-$(VERSION)
 TARBALL = $(DISTDIR).tar.gz
 

@@ -13,7 +13,10 @@ while [ -n "$1" ]; do
   case "$cmd" in
     release)
       ver="$1"; shift
-      set version "$ver" ci "version bump: $ver" dist send edit link $@
+      set version "$ver" ci "version bump: $ver" clean dist send link $@
+      ;;
+    clean)
+      rm affine-contracts*.tar.gz
       ;;
     dist)
       make dist
@@ -22,9 +25,11 @@ while [ -n "$1" ]; do
       scp -p affine-contracts*.tar.gz $host:$remote/
       ;;
     link)
+      version="`$0 showVersion`"
       ssh $host "cd $remote;
+                 DISPLAY='' ex -c '/affine-contracts-[0-9.]*\.tar\.gz/s/-[0-9.]*\.tar/-$version.tar/|:wq';
                  rm affine-contracts.tar.gz;
-                 ln -s \"\`ls affine-contracts-*.tar.gz | tail -1\`\" affine-contracts.tar.gz"
+                 ln -s 'affine-contracts-$version.tar.gz' affine-contracts.tar.gz"
       ;;
     edit)
       ssh $host -t vim $remote/index.html
@@ -49,7 +54,7 @@ while [ -n "$1" ]; do
       $0 showVersion
       ;;
     showVersion)
-      grep -i '^version' Makefile affine.cabal
+      awk '$0 ~ /^VERSION *= / { print $3 }' Makefile
       ;;
     *)
       echo "What does '$cmd' mean?" >&2
