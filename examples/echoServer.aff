@@ -21,7 +21,7 @@ module EchoServer = struct[A]
                          (cap: 't listening) : unit =
     let (Pack('s, clientsock, clientcap), cap) = accept sock cap in
       putStrLn "Opened connection";
-      (Thread.threadFork :> (unit -o unit) -> {Thread.thread})
+      (Thread.fork :> (unit -o unit) -> {Thread.thread})
         (fun () -> handleClient clientsock f clientcap;
                    putStrLn "Closed connection");
       acceptLoop sock f cap

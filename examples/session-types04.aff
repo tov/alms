@@ -1,8 +1,8 @@
 -- Sutherland-Hodgman (1974) re-entrant polygon clipping
 
 #load "libthread-A.aff"
+#load "libsessiontype.aff"
 
-open AThread
 open SessionType
 
 -- Some basic, low-level stuff
@@ -214,12 +214,12 @@ let[A] main : unit -> unit =
             | Nil              -> ic
             | Cons(plane,rest) ->
                 let outrv = newRendezvous[{point} stream] () in
-                  threadFork (fun _: unit ->
+                  AThread.fork (fun _: unit ->
                     clipper plane ic (accept outrv));
                   connect rest (request outrv) in
   fun _: unit ->
     let rv           = newRendezvous[main_prot] () in
-    let _            = threadFork (fun _: unit -> parser (accept rv)) in
+    let _            = AThread.fork (fun _: unit -> parser (accept rv)) in
     let (planes, ic) = get_planes Nil[{plane}] (request rv) in
     let ic           = connect planes ic in
       printer ic

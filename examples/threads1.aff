@@ -2,7 +2,7 @@
 
 let[A] printer : unit -> unit =
   let rec loop (_ : unit) : unit =
-    threadDelay 100000;
+    Thread.delay 100000;
     putStr "x";
     flush ();
     loop ()
@@ -10,8 +10,8 @@ let[A] printer : unit -> unit =
 
 let[A] timer : unit -> unit =
   fun _: unit ->
-    let id = threadFork printer in
-      threadDelay 2000000;
-      threadKill id
+    let id = Thread.fork printer in
+      Thread.delay 2000000;
+      Thread.kill id
 
 in timer ()

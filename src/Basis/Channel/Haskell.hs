@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 -- |
--- Module      :  Basis.Channels
+-- Module      :  Basis.Channel.Haskell
 -- Copyright   :  (c) 2009 Jesse A. Tov
 -- License     :  BSD (see the file LICENSE)
 -- 
@@ -27,7 +27,7 @@
 --     another thread tries to receive it.
 --
 -----------------------------------------------------------------------------
-module Basis.Channels (
+module Basis.Channel.Haskell (
   -- * The channel datatype
   Chan,               -- abstract: * -> *
   -- ** Construction and observation

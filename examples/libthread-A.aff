@@ -3,22 +3,20 @@
 
 module AThread = struct[A]
   local
-    open Thread
-
     (* down cast! *)
-    let interface threadFork :> (unit -o unit) -> {thread} = threadFork
+    let interface fork' :> (unit -o unit) -> {Thread.thread} = Thread.fork
   with
-    abstype thread qualifier A = T of {thread} with
-      let threadFork (thunk: (unit -o unit)) =
-        T (threadFork thunk)
+    abstype thread qualifier A = T of {Thread.thread} with
+      let fork (thunk: (unit -o unit)) =
+        T (fork' thunk)
 
-      let threadKill (T th: thread) =
-        threadKill th
+      let kill (T th: thread) =
+        Thread.kill th
 
-      let threadDelay = threadDelay
+      let delay = Thread.delay
 
-      let printThread (T th: thread) =
-        printThread th;
+      let print (T th: thread) =
+        Thread.print th;
         T th
     end
   end

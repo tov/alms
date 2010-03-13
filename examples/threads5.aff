@@ -5,25 +5,26 @@
 *)
 
 #load "libthread-A.aff"
-open AThread
+
+type[A] thread = AThread.thread
 
 let[A] printer : unit -> unit =
   let rec loop (_ : unit) : unit =
-    threadDelay 100000;
+    AThread.delay 100000;
     putStr "x";
     flush ();
     loop ()
   in loop
 
 let[A] start : unit -> thread =
-  fun _: unit -> threadFork printer
+  fun _: unit -> AThread.fork printer
 
-let[A] stop : thread -> unit = threadKill
+let[A] stop : thread -> unit = AThread.kill
 
 let[A] after : int -> (unit -o unit) -> unit =
   fun delay: int ->
     fun stop: (unit -o unit) ->
-      threadFork (fun _:unit  -> threadDelay delay; stop ());
+      AThread.fork (fun _:unit  -> AThread.delay delay; stop ());
       ()
 
 (* {thread} is an "opaque" type *)

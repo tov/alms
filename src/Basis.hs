@@ -8,21 +8,22 @@ module Basis (
 
 import Util
 import BasisUtils
-import Value (Valuable(..), Value(..), Vinj(..))
+import Value (Valuable(..), Value(..))
 import Ppr (text)
 import Syntax
 
-import Basis.Channels
 import qualified Basis.IO
 import qualified Basis.Socket
 import qualified Basis.Exn
+import qualified Basis.Thread
+import qualified Basis.Channel
+import qualified Basis.MVar
+import qualified Basis.Future
 
 import qualified IO
 import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
-import qualified Control.Concurrent as CC
-import qualified Control.Concurrent.MVar as MV
 import Control.Monad
 import Control.Monad.Fix
 
@@ -179,172 +180,30 @@ primBasis  = [
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
-    submod "Future" [
-      -- Futures
-      typeA "+'<a future qualifier A",
-      typeA "-'<a cofuture qualifier A",
-
-      pfun 1 "new" -: ""
-                   -: "all '<a. (unit -o '<a) -> '<a future"
-        -= \f -> do
-              future <- MV.newEmptyMVar
-              CC.forkIO (vapp f () >>= MV.putMVar future)
-              return (Future future),
-      pfun 1 "get" -: ""
-                   -: "all '<a. '<a future -> '<a"
-        -= (MV.takeMVar . unFuture),
-      pfun 1 "coNew" -: ""
-                     -: "all '<a. ('<a future -o unit) -> '<a cofuture"
-        -= \f -> do
-              future <- MV.newEmptyMVar
-              CC.forkIO (vapp f (Future future) >> return ())
-              return (Future future),
-      pfun 1 "coPut" -: ""
-                     -: "all '<a. '<a cofuture -> '<a -o unit"
-        -= \future value -> MV.putMVar (unFuture future) value
+    submod "Unsafe" [
+      -- Unsafe coercions
+      pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
+        -= (id :: Value -> Value),
+      pfun 1 "unsafeDup" -: ""
+                         -: "all '<a. '<a -> '<a * '<a"
+        -= ((\v -> (v, v)) :: Value -> (Value, Value))
     ],
 
-    submod "MVar" [
-      typeC "'a mvar",
-      typeA "'<a mvar qualifier U",
-
-      pfun 1 "new" -: "all 'a. 'a -> 'a mvar"
-                   -: "all '<a. '<a -> '<a mvar"
-        -= liftM MVar . MV.newMVar,
-      pfun 1 "newEmpty"
-                   -: "all 'a. unit -> 'a mvar"
-                   -: "all '<a. unit -> '<a mvar"
-        -= \() -> MVar `liftM` MV.newEmptyMVar,
-      pfun 1 "take"
-                   -: "all 'a. 'a mvar -> 'a"
-                   -: "all '<a. '<a mvar -> '<a"
-        -= MV.takeMVar . unMVar,
-      pfun 1 "put"
-                   -: "all 'a. 'a mvar -> 'a -> unit"
-                   -: "all '<a. '<a mvar -> '<a -> unit"
-        -= MV.putMVar . unMVar,
-      pfun 1 "read"
-                   -: "all 'a. 'a mvar -> 'a"
-                   -: "all 'a. 'a mvar -> 'a" -- important!
-        -= MV.readMVar . unMVar,
-      pfun 1 "swap"
-                   -: "all 'a. 'a mvar -> 'a -> 'a"
-                   -: "all '<a. '<a mvar -> '<a -> '<a"
-        -= MV.swapMVar . unMVar,
-      pfun 1 "tryTake"
-                   -: "all 'a. 'a mvar -> 'a option"
-                   -: "all '<a. '<a mvar -> '<a option"
-        -= MV.tryTakeMVar . unMVar,
-      pfun 1 "tryPut"
-                   -: "all 'a. 'a mvar -> 'a -> bool"
-                   -: "all '<a. '<a mvar -> '<a -> bool"
-        -= MV.tryPutMVar . unMVar,
-      pfun 1 "isEmpty"
-                   -: "all 'a. 'a mvar -> bool"
-                   -: "all '<a. '<a mvar -> bool"
-        -= MV.isEmptyMVar . unMVar,
-      pfun 1 "callWith"
-                   -: "all 'a 'b. 'a mvar -> ('a -> 'b) -> 'b"
-                   -: "all '<a '<b. '<a mvar -> ('<a -> '<b) -> '<b"
-        -= \mv callback -> MV.withMVar (unMVar mv) (vapp callback),
-      pfun 1 "modify_"
-                   -: "all 'a. 'a mvar -> ('a -> 'a) -> unit"
-                   -: "all '<a. '<a mvar -> ('<a -> '<a) -> unit"
-        -= \mv callback -> MV.modifyMVar_ (unMVar mv) (vapp callback),
-      pfun 1 "modify"
-                   -: "all 'a 'b. 'a mvar -> ('a -> 'a * 'b) -> 'b"
-                   -: "all '<a '<b. '<a mvar -> ('<a -> '<a * '<b) -> '<b"
-        -= \mv callback -> MV.modifyMVar (unMVar mv) $ \v -> do
-                             result <- vapp callback v
-                             (vprjM result :: IO (Value, Value))
-    ],
-
-    submod "SessionType" [
-      -- Session-typed channels
-      typeA "'a rendezvous",
-      typeA "+'a channel qualifier A",
-      typeA "-'<a ; +'<b",
-      typeA "('<a, '<b) semi = '<a; '<b",
-      -- Unfortunately, we need these types to be primitive in order to
-      -- compute duals.
-      "dual"   `primtype` tdDual,
-      "send"   `primtype` tdSend,
-      "recv"   `primtype` tdRecv,
-      "select" `primtype` tdSelect,
-      "follow" `primtype` tdFollow,
-      pfun 1 "newRendezvous" -: ""
-                             -: "all 's. unit -> 's rendezvous"
-        -= \() -> do
-             mv <- newChan
-             return (Rendezvous mv),
-      pfun 1 "request" -: ""
-                       -: "all 's. 's rendezvous -> 's channel"
-        -= \rv -> do
-             readChan (unRendezvous rv),
-      pfun 1 "accept" -: ""
-                      -: "all 's. 's rendezvous -> 's dual channel"
-        -= \rv -> do
-             c <- Channel `fmap` newChan
-             writeChan (unRendezvous rv) c
-             return c,
-      pfun 2 "send"
-        -: ""
-        -: "all '<a 's. ('<a send; 's) channel -> '<a -o 's channel"
-        -= \c a -> do
-             writeChan (unChannel c) a
-             return c,
-      pfun 2 "recv"
-        -: ""
-        -: "all '<a 's. ('<a recv; 's) channel -> '<a * 's channel"
-        -= \c -> do
-             a <- readChan (unChannel c)
-             return (a, c),
-      pfun 2 "sel1"
-        -: ""
-        -: "all 's1 's2. ('s1 + 's2) select channel -> 's1 channel"
-        -= \c -> do
-             writeChan (unChannel c) (vinj True)
-             return c,
-      pfun 2 "sel2"
-        -: ""
-        -: "all 's1 's2. ('s1 + 's2) select channel -> 's2 channel"
-        -= \c -> do
-             writeChan (unChannel c) (vinj False)
-             return c,
-      pfun 2 "follow"
-        -: ""
-        -: ("all 's1 's2. ('s1 + 's2) follow channel -> " ++
-                         "'s1 channel + 's2 channel")
-        -= \c -> do
-             e  <- readChan (unChannel c)
-             e' <- vprjM e
-             if e'
-               then return (Left c)
-               else return (Right c)
-    ],
-
-    -- Unsafe coercions
-    pfun 2 "unsafeCoerce" -:: "all '<b '<a. '<a -> '<b"
-      -= (id :: Value -> Value),
-
-    submod "IO"     Basis.IO.entries,
-
-    submod "Thread" [
-      -- Threads
-      typeA "void",
-      typeC "thread",
-      fun "threadFork" -: "(unit -> unit) -> thread" -: ""
-        -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
-      fun "threadKill" -: "thread -> unit" -: ""
-        -= CC.killThread . unVinj,
-      fun "threadDelay" -:: "int -> unit"
-        -= CC.threadDelay . (fromIntegral :: Integer -> Int),
-      fun "printThread" -: "thread -> thread" -: ""
-        -= \t -> do print (t :: Vinj CC.ThreadId); return t
-    ],
+    submod "IO"      Basis.IO.entries,
+    submod "Channel" Basis.Channel.entries,
+    submod "Thread"  Basis.Thread.entries,
+    submod "MVar"    Basis.MVar.entries,
+    submod "Future"  Basis.Future.entries,
 
     submod "Prim" [
-      submod "Socket" Basis.Socket.entries
+      submod "Socket" Basis.Socket.entries,
+      submod "SessionType" [
+        "dual"   `primtype` tdDual,
+        "send"   `primtype` tdSend,
+        "recv"   `primtype` tdRecv,
+        "select" `primtype` tdSelect,
+        "follow" `primtype` tdFollow
+      ]
     ],
 
     submod "INTERNALS" [
@@ -371,34 +230,6 @@ newtype Ref = Ref { unRef :: IORef Value }
 instance Valuable Ref where
   veq = (==)
   vpprPrec _ _ = text "#<ref>"
-
-newtype Future = Future { unFuture :: MV.MVar Value }
-  deriving (Eq, Typeable)
-
-instance Valuable Future where
-  veq = (==)
-  vpprPrec _ _ = text "#<(co)future>"
-
-newtype Channel = Channel { unChannel :: Chan Value }
-  deriving (Eq, Typeable)
-
-instance Valuable Channel where
-  veq = (==)
-  vpprPrec _ _ = text "#<channel>"
-
-newtype MVar = MVar { unMVar :: MV.MVar Value }
-  deriving (Eq, Typeable)
-
-instance Valuable MVar where
-  veq = (==)
-  vpprPrec _ _ = text "#<mvar>"
-
-newtype Rendezvous = Rendezvous { unRendezvous :: Chan Channel }
-  deriving (Eq, Typeable)
-
-instance Valuable Rendezvous where
-  veq = (==)
-  vpprPrec _ _ = text "#<rendezvous>"
 
 -- | Built-in operations implemented in the object language
 srcBasis :: String

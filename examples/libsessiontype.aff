@@ -1,0 +1,54 @@
+(*
+    A session types library
+*)
+
+module SessionType = struct[A]
+  (* Unfortunately, we need several types to be primitive in order to
+   * compute duals. *)
+  open Prim.SessionType
+
+  module C = Channel
+
+  type -'<a ; +'<s
+  type ('<a, '<s) semi = '<a; '<s
+
+  abstype 's rendezvous = Rendezvous of ({{'s channel} C.channel})
+      and +'s channel qualifier A = Chan of {bool C.channel}
+  with
+    let newRendezvous['s] (_: unit) : 's rendezvous =
+      Rendezvous (C.new['s channel] ())
+
+    let request['s] (Rendezvous r: 's rendezvous) : 's channel =
+      C.recv r
+
+    let accept['s] (Rendezvous r: 's rendezvous) : 's dual channel =
+      let c = Chan['s] (C.new[bool] ()) in
+        C.send r c;
+        c
+
+    let send['<a, 's] (Chan c: ('<a send; 's) channel)|
+                      (a: '<a) : 's channel =
+      C.send c (Unsafe.unsafeCoerce[bool] a);
+      Chan['s] c
+
+    let recv['<a, 's] (Chan c: ('<a recv; 's) channel)
+                      : '<a * 's channel =
+      (Unsafe.unsafeCoerce['<a] (C.recv c), Chan['s] c)
+
+    let sel1['s1, 's2] (Chan c: ('s1 + 's2) select channel)
+                       : 's1 channel =
+      C.send c true;
+      Chan['s1] c
+
+    let sel2['s1, 's2] (Chan c: ('s1 + 's2) select channel)
+                       : 's2 channel =
+      C.send c false;
+      Chan['s2] c
+
+    let follow['s1, 's2] (Chan c: ('s1 + 's2) follow channel)
+                         : 's1 channel + 's2 channel =
+      if C.recv c
+        then Left ['s1 channel, 's2 channel] (Chan['s1] c)
+        else Right['s1 channel, 's2 channel] (Chan['s2] c)
+  end
+end
