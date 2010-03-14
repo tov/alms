@@ -46,6 +46,11 @@ while [ -n "$1" ]; do
       git ca -m "$msg"
       svn ci -m "$msg"
       ;;
+    add)
+      git add $@
+      svn add $@
+      set --
+      ;;
     version)
       version="$1"
       shift
