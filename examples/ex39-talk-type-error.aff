@@ -1,0 +1,39 @@
+#load "libsessiontype.aff"
+
+open SessionType
+
+type[A] prot = string send; int send; loop
+    and loop = mu 's. (string recv; 's + unit) follow
+
+let[A] client (r: prot rendezvous) (s: string) (z: int) =
+    let c = request r in
+    let c = send c s  in
+    let c = send c z  in
+    let rec loop (c : loop channel) : unit =
+      match follow c with
+      | Left c  -> let (s, c) = recv c in
+                     putStrLn s; loop c
+      | Right _ -> ()
+     in loop c
+
+let[A] startServer (s: string, c: (int recv; loop dual) channel) =
+  let (z, c) = recv c in
+  let rec loop (z: int) (c: loop dual channel) : unit =
+    if z < 1
+      then sel2 c; ()
+      else let c = send (sel1 c) s in
+             loop (z - 1) c
+   in loop z c
+
+let[A] listen (r: prot rendezvous) =
+  let c = accept r in
+    Thread.fork (fun () -> startServer (recv c))
+
+let[A] main (s: string) (z: int) =
+  let r = newRendezvous[prot] () in
+  let f = Future.new (fun () -> client r s z) in
+  listen r;
+  Future.get f
+
+in
+  main "Hello!" 3
