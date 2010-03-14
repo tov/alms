@@ -5,7 +5,7 @@ module Lexer (
 
   -- * Special, unreserved operators
   sharpLoad,
-  lolli, arrow, star, plus,
+  lolli, arrow, star, slash, plus,
   qualU, qualA, langC, langA,
   opP,
 
@@ -140,6 +140,10 @@ arrow            = try (symbol "->")
 -- | @*@, which is reserved in types but not in expressions
 star            :: CharParser st String
 star             = symbol "*"
+
+-- | @/@, which is reserved in types but not in expressions
+slash           :: CharParser st String
+slash            = symbol "/"
 
 -- | @+@, which is reserved in types but not in expressions
 plus            :: CharParser st String

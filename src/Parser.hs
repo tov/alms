@@ -95,6 +95,11 @@ uidp  = uid >>! Uid
 lidp :: P Lid
 lidp  = lid >>! Lid
 
+-- Lowercase identifiers or naturals
+--  - tycon declarations
+lidnatp :: P Lid
+lidnatp = choice [ lid, natural >>! show ] >>! Lid
+
 -- Just operators
 operatorp :: P Lid
 operatorp  = try (parens operator) >>! Lid
@@ -113,9 +118,13 @@ quidp :: P QUid
 quidp  = pathp (uidp >>! flip J)
 
 -- Qualified lowercase identifiers:
+-- qlidp :: P QLid
+-- qlidp  = pathp (lidp >>! flip J)
+
+-- Qualified lowercase identifiers or naturals:
 --  - tycon occurences
-qlidp :: P QLid
-qlidp  = pathp (lidp >>! flip J)
+qlidnatp :: P QLid
+qlidnatp  = pathp (lidnatp >>! flip J)
 
 -- Lowercase identifiers and operators
 --  - variable bindings
@@ -165,19 +174,16 @@ typepP p | p == precStart
     typepP (p + 1) ]
 typepP p | p == precArr
          = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = choice [
-                      arrow >> return tyArr,
-                      lolli >> return tyLol
-                    ]
+             tyop = choice [ arrow, lolli ] >>! tyBinOp
 typepP p | p == precPlus
          = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = plus >> return tySum
+             tyop = plus >>! tyBinOp
 typepP p | p == precStar
          = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = star >> return tyTuple
+             tyop = choice [ star, slash ] >>! tyBinOp
 typepP p | p == precSemi
          = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = semi >> return tySemi
+             tyop = semi >>! tyBinOp
 typepP p | p == precApp -- this case ensures termination
          = tyarg >>= tyapp'
   where
@@ -188,17 +194,17 @@ typepP p | p == precApp -- this case ensures termination
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
-             do tc   <- qlidp
+             do tc   <- qlidnatp
                 return [TyCon tc [] ()],
              do t <- braces (langMapType (typepP precStart))
                 return [t] ]
 
   tyapp' :: [Type () w] -> P (Type () w)
   tyapp' [t] = option t $ do
-                 tc <- qlidp
+                 tc <- qlidnatp
                  tyapp' [TyCon tc [t] ()]
   tyapp' ts  = do
-                 tc <- qlidp
+                 tc <- qlidnatp
                  tyapp' [TyCon tc ts ()]
 typepP p | p <= precMax
          = typepP (p + 1)
@@ -324,25 +330,16 @@ tyDecp  = do
           quals <- qualsp
           return (TdAbsA name tvs arity quals) ]
 
-tyProtCP :: P ([TyVar], Lid)
-tyProtCP = try $ do
-  (arity, tvs, name) <- tyProtp
-  unless (all (== Invariant) arity) $
-    fail "language C type parameters cannot have variance"
-  unless (all ((== Qu) . tvqual) tvs) $
-    fail "language C type parameters cannot have qualifier A"
-  return (tvs, name)
-
 tyProtp :: P ([Variance], [TyVar], Lid)
 tyProtp  = choice [
   try $ do
     (v1, tv1) <- paramVp
-    con <- choice [ arrow, lolli, semi, star, plus ] >>! Lid
+    con <- choice [ arrow, lolli, semi, star, slash, plus ] >>! Lid
     (v2, tv2) <- paramVp
     return ([v1, v2], [tv1, tv2], con),
   do
     (arity, tvs) <- paramsVp
-    name         <- lidp
+    name         <- lidnatp
     return (arity, tvs, name)
   ]
 
@@ -563,7 +560,7 @@ exprp = expr0 where
                       "INTERNALS.Exn.try" ++
                       show (reifyLang :: LangRep w)
          return (exCase (exApp (exVar tryQ)
-                               (exAbs PaWild (tyGround "unit") e1)) $
+                               (exAbs PaWild (tyNulOp "unit") e1)) $
                   (PaCon (Uid "Right") (Just (PaVar (Lid "x"))) Nothing,
                    exVar (qlid "x")) :
                   clauses ++
@@ -594,8 +591,8 @@ exprp = expr0 where
   expr4 = chainr1last expr5 (opappp (Right 4)) expr0
   expr5 = chainl1last expr6 (opappp (Left 5))  expr0
   expr6 = chainl1last expr7 (opappp (Left 6))  expr0
-  expr7 = chainr1last expr8 (opappp (Right 7)) expr0
-  expr8 = expr9
+  expr7 = expr8
+  expr8 = chainr1last expr9 (opappp (Right 8)) expr0
   expr9 = choice
             [ chainl1 expr10 (addLoc (return exApp)),
               do
@@ -687,7 +684,7 @@ paty  = do
   case (p, mt) of
     (_, Just t) -> return (p, t)
     (PaCon (Uid "()") Nothing Nothing, Nothing)
-                -> return (p, tyGround "unit")
+                -> return (p, tyNulOp "unit")
     _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument

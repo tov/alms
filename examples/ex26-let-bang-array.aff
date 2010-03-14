@@ -63,7 +63,7 @@ with
   end
 end
 
-type[A] 't uwritecap = ('t, unit) ureadcap
+type[A] 't uwritecap = ('t, 1) ureadcap
 
 let[A] test () =
   let n = 10 in

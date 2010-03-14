@@ -52,26 +52,19 @@ instance (Ppr a, Separator a) => Ppr [a] where
 
 instance Ppr (Type i w) where
   -- Print sugar for infix type constructors:
-  pprPrec p (TyCon (J [] (Lid "->")) [t1, t2] _)
-                  = parensIf (p > precArr) $
-                      sep [ pprPrec (precArr + 1) t1,
-                        text "->" <+> pprPrec precArr t2 ]
-  pprPrec p (TyCon (J [] (Lid "-o")) [t1, t2] _)
-                  = parensIf (p > precArr) $
-                      sep [ pprPrec (precArr + 1) t1,
-                        text "-o" <+> pprPrec precArr t2 ]
   pprPrec p (TyCon (J [] (Lid ";")) [t1, t2] _)
                   = parensIf (p > precSemi) $
                       sep [ pprPrec (precSemi + 1) t1 <> text ";",
                             pprPrec precSemi t2 ]
-  pprPrec p (TyCon (J [] (Lid "*")) [t1, t2] _)
-                  = parensIf (p > precStar) $
-                      sep [ pprPrec precStar t1,
-                        text "*" <+> pprPrec (precStar + 1) t2 ]
-  pprPrec p (TyCon (J [] (Lid "+")) [t1, t2] _)
-                  = parensIf (p > precPlus) $
-                      sep [ pprPrec precPlus t1,
-                        text "+" <+> pprPrec (precPlus + 1) t2 ]
+  pprPrec p (TyCon (J [] (Lid n)) [t1, t2] _)
+    | isOperator (Lid n)
+                  = case precOp n of
+        Left prec  -> parensIf (p > prec) $
+                      sep [ pprPrec prec t1,
+                            text n <+> pprPrec (prec + 1) t2 ]
+        Right prec -> parensIf (p > prec) $
+                      sep [ pprPrec (prec + 1) t1,
+                            text n <+> pprPrec prec t2]
   pprPrec _ (TyCon n [] _)  = ppr n
   pprPrec p (TyCon n [t] _) = parensIf (p > precApp) $
                                 sep [ pprPrec precApp t,

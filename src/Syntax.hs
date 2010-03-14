@@ -105,9 +105,9 @@ module Syntax (
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
   -- ** Convenience type constructors
-  tyGround, tyArr, tyLol, tyTuple,
+  tyNulOp, tyUnOp, tyBinOp,
+  tyArr, tyLol, tyTuple,
   tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
-  tySemi, tySum,
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
@@ -957,6 +957,7 @@ instance Show Lid where
   showsPrec _ (Lid s) = case s of
     '_':_             -> (s++)
     c  :_ | isAlpha c -> (s++)
+    c  :_ | isDigit c -> (s++)
     '*':_             -> ("( "++) . (s++) . (" )"++)
     _                 -> ('(':) . (s++) . (')':)
 
@@ -1393,23 +1394,23 @@ eiBlame         = ExnId (-22) (Uid "Blame")        LC
 eiPatternMatch :: ExnId
 eiPatternMatch  = ExnId (-23) (Uid "PatternMatch") LC
 
-tyGround      :: String -> Type () w
-tyGround s     = TyCon (qlid s) [] ()
+tyNulOp       :: String -> Type () w
+tyNulOp s      = TyCon (qlid s) [] ()
+
+tyUnOp        :: String -> Type () w -> Type () w
+tyUnOp s a     = TyCon (qlid s) [a] ()
+
+tyBinOp       :: String -> Type () w -> Type () w -> Type () w
+tyBinOp s a b  = TyCon (qlid s) [a, b] ()
 
 tyArr         :: Type () w -> Type () w -> Type () w
-tyArr a b      = TyCon (qlid "->") [a, b] ()
+tyArr          = tyBinOp "->"
 
 tyLol         :: Type () w -> Type () w -> Type () w
-tyLol a b      = TyCon (qlid "-o") [a, b] ()
+tyLol          = tyBinOp "-o"
 
 tyTuple       :: Type () w -> Type () w -> Type () w
-tyTuple a b    = TyCon (qlid "*") [a, b] ()
-
-tySemi        :: Type () w -> Type () w -> Type () w
-tySemi a b     = TyCon (qlid ";") [a, b] ()
-
-tySum          :: Type () w -> Type () w -> Type () w
-tySum a b       = TyCon (qlid "+") [a, b] ()
+tyTuple        = tyBinOp "*"
 
 tyUnitT        :: TypeT w
 tyUnitT         = TyCon (qlid "unit") [] tdUnit

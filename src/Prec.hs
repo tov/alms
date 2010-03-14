@@ -18,6 +18,8 @@ type Prec = Either Int Int
 precOp :: String -> Prec
 precOp ('*':'*':_)    = Right precExp
 precOp ('-':'>':_)    = Right precArr
+precOp ('-':'o':_)    = Right precArr
+precOp (';':_)        = Right precSemi
 precOp "!="           = Left precEq
 precOp (c:_)
   | c `elem` "=<>|&$" = Left precEq
