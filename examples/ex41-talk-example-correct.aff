@@ -37,11 +37,7 @@ let[A] startServer (s: string,
   let _      = send c (substring 0 z s) in
     ()
 
-let[C] badFork (thunk: unit -> unit) =
-  Thread.fork thunk;
-  Thread.fork thunk
-
-let interface fork' :> (unit -o unit) -> {Thread.thread} = badFork
+let interface fork' :> (unit -o unit) -> {Thread.thread} = Thread.fork
 
 let[A] listen (r: prot rendezvous) =
   let c = accept r in
