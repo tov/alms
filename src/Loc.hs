@@ -12,7 +12,7 @@ module Loc (
   scrub,
   
   -- * Type class interface
-  Locatable(..), Relocatable(..), (<<@), cloneLoc,
+  Locatable(..), Relocatable(..), (<<@),
 
   -- * Interface to 'Parsec' source positions
   toSourcePos, fromSourcePos
@@ -70,10 +70,6 @@ class Locatable a where
 -- | Class for types that can have their source locations updated
 class Relocatable a where
   setLoc   :: a -> Loc -> a
-
--- | Update a source location
-(<<@) :: Relocatable a => a -> Loc -> a
-(<<@)  = setLoc
 
 instance Locatable Loc where
   getLoc   = id
@@ -155,8 +151,8 @@ instance Relocatable b => Relocatable (a -> b) where
   setLoc f loc x = setLoc (f x) loc
 
 -- | Copy the source location from the second operand to the first
-cloneLoc :: (Relocatable a, Locatable b) => a -> b -> a
-cloneLoc a b = setLoc a (getLoc b)
+(<<@)  :: (Relocatable a, Locatable b) => a -> b -> a
+a <<@ b = setLoc a (getLoc b)
 
 -- | Bogosify all source locations (as far as SYB can find them)
 scrub :: Data a => a -> a

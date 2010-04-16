@@ -17,6 +17,7 @@ module Parser (
 import Util
 import Prec
 import Syntax
+import Sigma
 import Loc
 import Lexer
 
@@ -25,22 +26,45 @@ import System.IO.Unsafe (unsafePerformIO)
 import System.FilePath ((</>), dropFileName)
 
 type Lang = LangRepMono
-type St   = Maybe Lang
+data St   = St {
+              stLang  :: Maybe Lang,
+              stSigma :: Bool
+            }
 
 -- | A 'Parsec' character parser, with abstract state
 type P a  = CharParser St a
 
+state0 :: St
+state0 = St {
+           stLang  = Nothing,
+           stSigma = False
+         }
+
 -- | Run a parser, given the source file name, on a given string
 parse   :: P a -> SourceName -> String -> Either ParseError a
-parse p  = runParser p Nothing
+parse p  = runParser p state0
 
-withState :: St -> P a -> P a
-withState st p = do
-  st0 <- getState
-  setState st
+withLang :: Lang -> P a -> P a
+withLang lang p = do
+  st <- getState
+  setState st { stLang = Just lang }
   r <- p
-  setState st0
+  setState st
   return r
+
+getLang :: P (Maybe Lang)
+getLang  = stLang `fmap` getState
+
+withSigma :: Bool -> P a -> P a
+withSigma b p = do
+  st <- getState
+  setState st { stSigma = b }
+  r <- p
+  setState st
+  return r
+
+getSigma :: P Bool
+getSigma  = stSigma `fmap` getState
 
 curLoc :: P Loc
 curLoc  = getPosition >>! fromSourcePos
@@ -293,7 +317,7 @@ tyDecp :: P TyDec
 tyDecp  = do
   reserved "type"
   choice [
-    withState (Just LA) $ do
+    withLang LA $ do
       try (brackets star)
       tds <- sepBy1 tyDecAp (reserved "and")
       return (TyDecT tds),
@@ -384,7 +408,7 @@ letp  =
         colon
         t <- typep
         reservedOp "="
-        e <- exprp
+        e <- withSigma False exprp
         return (Binding f (fixt t) (fixe e))
       let names    = map bnvar bindings
           namesExp = foldl1 exPair (map exBVar names)
@@ -474,11 +498,11 @@ altp   = do
   return (k, t)
 
 toplevelp :: P Bool
-toplevelp  = maybe True (const False) `fmap` getState
+toplevelp  = maybe True (const False) `fmap` getLang
 
 languagep :: P Lang
 languagep  = do
-  st <- getState
+  st <- getLang
   case st of
     Nothing   -> brackets $ choice
                  [ do langC; return LC,
@@ -487,7 +511,7 @@ languagep  = do
 
 assertLang :: Lang -> P ()
 assertLang lang = do
-  st <- getState
+  st <- getLang
   unless (st == Just lang) pzero
 
 enterlang :: (Bool -> Lang -> P a) -> P a
@@ -497,7 +521,7 @@ enterdecl :: P b -> (Bool -> Lang -> P a) -> P a
 enterdecl name p = do
   tl   <- toplevelp
   lang <- try (name >> languagep)
-  withState (Just lang) (p tl lang)
+  withLang lang (p tl lang)
 
 exprp :: forall w. Language w => P (Expr () w)
 exprp = expr0 where
@@ -510,14 +534,25 @@ exprp = expr0 where
                e2 <- expr0
                return (makeLet e1 e2)
          choice
-           [ do reserved "rec"
+           [ do bang
+                inSigma <- getSigma
+                x       <- pattp
+                reservedOp "="
+                e1      <- expr0
+                reserved "in"
+                e2      <- withSigma True expr0
+                return $
+                  if inSigma
+                    then exLet (makeBangPatt x) e1 e2
+                    else exSLet x e1 e2,
+             do reserved "rec"
                 bs <- flip sepBy1 (reserved "and") $ do
                   x    <- varp
                   (ft, fe) <- afargsp
                   colon
                   t    <- typep
                   reservedOp "="
-                  e    <- expr0
+                  e    <- withSigma False expr0
                   return (Binding x (ft t) (fe e))
                 reserved "in"
                 e2 <- expr0
@@ -525,7 +560,7 @@ exprp = expr0 where
              do x    <- pattp
                 args <- argsp
                 finishLet (exLet x . args),
-             do d    <- declp
+             do d    <- withSigma False declp
                 reserved "in"
                 e2   <- expr0
                 return (exLetDecl d e2) ],
@@ -579,6 +614,13 @@ exprp = expr0 where
            ]
          arrow
          expr0 >>! build,
+      do reserved "sigma"
+         x  <- pattp
+         colon
+         t  <- typepP (precArr + 1)
+         arrow
+         e  <- withSigma True expr0
+         return (exSigma x t e),
       expr1 ]
   expr1 = addLoc $ do
             e1 <- expr3
@@ -630,6 +672,9 @@ exprp = expr0 where
            es <- commaSep1 expr0
            return (foldl exPair e1 es),
         return e1 ]
+
+-- maybeBang :: P Bool
+-- maybeBang = choice [ bang >> return True, return False ]
 
 -- Parse an infix operator at given precedence
 opappp :: Prec -> P (Expr () w -> Expr () w -> Expr () w)
@@ -840,8 +885,9 @@ px   = makeQaDA parsePatt
 
 makeQaD :: P a -> String -> a
 makeQaD parser =
-  either (error . show) id . runParser parser Nothing "<string>"
+  either (error . show) id . runParser parser state0 "<string>"
 
 makeQaDA :: P a -> String -> a
 makeQaDA parser =
-  either (error . show) id . runParser parser (Just LA) "<string>"
+  either (error . show) id .
+    runParser parser state0 { stLang = Just LA } "<string>"

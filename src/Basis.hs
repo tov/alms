@@ -251,6 +251,8 @@ srcBasis  = unlines [
   "  let Cons(x, _) = xs in x",
   "let[C] tl = fun 'a (xs : 'a list) ->",
   "  let Cons(_, xs') = xs in xs'",
+  "let[A] fst['<a,'<b] (x: '<a, _: '<b) = x",
+  "let[A] snd['<a,'<b] (_: '<a, y: '<b) = y",
   "let[A] anull = fun '<a (xs : '<a list) ->",
   "  match xs with",
   "  | Nil          -> (Nil['<a], true)",

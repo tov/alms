@@ -5,7 +5,7 @@ module Lexer (
 
   -- * Special, unreserved operators
   sharpLoad,
-  lolli, arrow, star, slash, plus,
+  bang, lolli, arrow, star, slash, plus,
   qualU, qualA, langC, langA,
   opP,
 
@@ -34,7 +34,7 @@ tok = T.makeTokenParser T.LanguageDef {
     T.identLetter    = alphaNum <|> oneOf "_'",
     T.opStart        = oneOf "!$%&*+-/<=>?@^|~",
     T.opLetter       = oneOf "!$%&*+-/<=>?@^|~.:",
-    T.reservedNames  = ["fun",
+    T.reservedNames  = ["fun", "sigma",
                         "if", "then", "else",
                         "match", "with", "as", "_",
                         "try",
@@ -128,6 +128,10 @@ commaSep1        = T.commaSep1 tok
 -- | The @#load@ pragma
 sharpLoad       :: CharParser st ()
 sharpLoad        = try (symbol "#load") >> return ()
+
+-- | @!@, which has special meaning in let patterns
+bang            :: CharParser st String
+bang             = symbol "!"
 
 -- | The @-o@ type operator, which violates our other lexer rules
 lolli           :: CharParser st String

@@ -15,6 +15,7 @@
       GADTs,
       MultiParamTypeClasses,
       ParallelListComp,
+      PatternGuards,
       RankNTypes,
       ScopedTypeVariables,
       TypeFamilies #-}
@@ -86,13 +87,15 @@ module Syntax (
   exAbs, exApp, exTAbs, exTApp, exPack, exCast,
   -- ** Synthetic expression constructors
   exVar, exCon, exBVar, exBCon, exLet, exSeq,
+  -- ** Optimizing expression constructors
+  exLet', exLetVar', exAbs', exAbsVar', exTAbs',
   -- ** Expression accessors and updaters
   fv, exprType, (*:*), setExnId, getExnId, (*<*),
   syntacticValue,
 
   -- * Patterns and bindings
   Binding(..), BindingT, Patt(..),
-  pv,
+  pv, ptv,
 
   -- * Partial orders
   PO(..), bigVee, bigVeeM, bigWedge, bigWedgeM,
@@ -132,7 +135,8 @@ import qualified Data.Set as S
 import Data.Generics (Typeable(..), Data(..), Fixity(..),
                       Constr, mkConstr, constrIndex,
                       DataType, mkDataType,
-                      everywhere, mkT)
+                      everywhere, mkT,
+                      everything, mkQ)
 
 -- LANGUAGES, QUALIFIERS, VARIANCES
 
@@ -593,6 +597,9 @@ pv (PaInt _)            = S.empty
 pv (PaAs x y)           = pv x `S.union` S.singleton y
 pv (PaPack _ x)         = pv x
 
+ptv :: Patt -> S.Set TyVar
+ptv = everything S.union (mkQ S.empty S.singleton)
+
 expr0 :: Expr i w
 expr0  = Expr {
   eloc_  = bogus,
@@ -713,6 +720,57 @@ exLet x e1 e2 = exCase e1 [(x, e2)]
 
 exSeq :: Expr i w -> Expr i w -> Expr i w
 exSeq e1 e2 = exCase e1 [(PaWild, e2)]
+
+-- | Constructs a let expression, but with a special case:
+--
+--   @let x      = e in x        ==   e@
+--   @let (x, y) = e in (x, y)   ==   e@
+--
+-- This is always safe to do.
+exLet' :: Patt -> Expr i w -> Expr i w -> Expr i w
+exLet' x e1 e2 = case (x, view e2) of
+  (PaVar y, ExId (J [] (Var y')))
+    | y == y'                        -> e1
+  (PaPair (PaVar y) (PaVar z), ExPair ey ez)
+    | ExId (J [] (Var y')) <- view ey,
+      ExId (J [] (Var z')) <- view ez,
+      y == y' && z == z'             -> e1
+  _                                  -> exLet x e1 e2
+
+-- | Constructs a let expression whose pattern is a variable.
+exLetVar' :: Lid -> Expr i w -> Expr i w -> Expr i w
+exLetVar'  = exLet' . PaVar
+
+-- | Constructs a lambda expression, but with a special case:
+--
+--    @exAbs' x t (exApp (exVar f) (exVar x))  ==  exVar f@
+--
+-- This eta-contraction is always safe, because f has no effect
+exAbs' :: Patt -> Type i w -> Expr i w -> Expr i w
+exAbs' x t e = case view e of
+  ExApp e1 e2 -> case (x, view e1, view e2) of
+    (PaVar y, ExId (J p (Var f)), ExId (J [] (Var y'))) |
+      y == y' && J [] y /= J p f
+              -> exVar (J p f)
+    _         -> exAbs x t e
+  _           -> exAbs x t e
+
+-- | Construct an abstraction whose pattern is just a variable.
+exAbsVar' :: Lid -> Type i w -> Expr i w -> Expr i w
+exAbsVar'  = exAbs' . PaVar
+
+-- | Construct a type-lambda expression, but with a special case:
+--
+--   @exTAbs' tv (exTApp (exVar f) tv)  ==  exVar f@
+--
+-- This should always be safe, because f has no effect
+exTAbs' :: TyVar -> Expr i w -> Expr i w
+exTAbs' tv e = case view e of
+  ExTApp e1 t2 -> case (view e1, t2) of
+    (ExId (J p (Var f)), TyVar tv') |
+      tv == tv'  -> exVar (J p f)
+    _            -> exTAbs tv e
+  _            -> exTAbs tv e
 
 -- | Is the lowercase identifier an infix operator?
 isOperator :: Lid -> Bool
