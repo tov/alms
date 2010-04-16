@@ -114,6 +114,7 @@ module Syntax (
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
+  unfoldTupleExpr, unfoldTuplePatt,
 
   -- * Miscellany
   module Viewable,
@@ -1653,6 +1654,18 @@ unfoldTyFun :: TypeT w -> ([TypeT w], TypeT w)
 unfoldTyFun  = unscanr each where
   each (TyCon _ [ta, tr] td) | td `elem` funtypes = Just (ta, tr)
   each _                                         = Nothing
+
+unfoldTupleExpr :: Expr i w -> ([Expr i w], Expr i w)
+unfoldTupleExpr  = unscanl each where
+  each e = case view e of
+    ExPair e1 e2 -> Just (e2, e1)
+    _            -> Nothing
+
+unfoldTuplePatt :: Patt -> ([Patt], Patt)
+unfoldTuplePatt  = unscanl each where
+  each p = case p of
+    PaPair p1 p2 -> Just (p2, p1)
+    _            -> Nothing
 
 -- | Noisy type printer for debugging (includes type tags that aren't
 --   normally pretty-printed)
