@@ -253,6 +253,7 @@ srcBasis  = unlines [
   "  let Cons(_, xs') = xs in xs'",
   "let[A] fst['<a,'<b] (x: '<a, _: '<b) = x",
   "let[A] snd['<a,'<b] (_: '<a, y: '<b) = y",
+  "let[A] (=>!) ['<a] (x: '<a) ['<b] (y: '<b) = (y, x)",
   "let[A] anull = fun '<a (xs : '<a list) ->",
   "  match xs with",
   "  | Nil          -> (Nil['<a], true)",

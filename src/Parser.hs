@@ -56,9 +56,12 @@ getLang :: P (Maybe Lang)
 getLang  = stLang `fmap` getState
 
 withSigma :: Bool -> P a -> P a
-withSigma b p = do
+withSigma = mapSigma . const
+
+mapSigma :: (Bool -> Bool) -> P a -> P a
+mapSigma f p = do
   st <- getState
-  setState st { stSigma = b }
+  setState st { stSigma = f (stSigma st) }
   r <- p
   setState st
   return r
@@ -393,10 +396,10 @@ letp  =
                 P (Decl ())
     letbodyp build = do
       f <- varp
-      (fixt, fixe) <- afargsp
+      (sigma, fixt, fixe) <- afargsp
       t <- optionMaybe $ colon >> typep
       reservedOp "="
-      e <- exprp
+      e <- withSigma sigma exprp
       return (dcLet (build f (fmap fixt t) (fixe e)))
     letrecbodyp :: Language w =>
                    (Lid -> Maybe (Type () w) -> Expr () w -> Let ()) ->
@@ -404,11 +407,11 @@ letp  =
     letrecbodyp build = do
       bindings <- flip sepBy1 (reserved "and") $ do
         f <- varp
-        (fixt, fixe) <- afargsp
+        (sigma, fixt, fixe) <- afargsp
         colon
         t <- typep
         reservedOp "="
-        e <- withSigma False exprp
+        e <- withSigma sigma exprp
         return (Binding f (fixt t) (fixe e))
       let names    = map bnvar bindings
           namesExp = foldl1 exPair (map exBVar names)
@@ -527,39 +530,36 @@ exprp :: forall w. Language w => P (Expr () w)
 exprp = expr0 where
   expr0 = addLoc $ choice
     [ do reserved "let"
-         let finishLet makeLet = do
-               reservedOp "="
-               e1 <- expr0
-               reserved "in"
-               e2 <- expr0
-               return (makeLet e1 e2)
          choice
-           [ do bang
-                inSigma <- getSigma
-                x       <- pattp
-                reservedOp "="
-                e1      <- expr0
-                reserved "in"
-                e2      <- withSigma True expr0
-                return $
-                  if inSigma
-                    then exLet (makeBangPatt x) e1 e2
-                    else exSLet x e1 e2,
-             do reserved "rec"
+           [ do reserved "rec"
                 bs <- flip sepBy1 (reserved "and") $ do
                   x    <- varp
-                  (ft, fe) <- afargsp
+                  (sigma, ft, fe) <- afargsp
                   colon
                   t    <- typep
                   reservedOp "="
-                  e    <- withSigma False expr0
+                  e    <- withSigma sigma expr0
                   return (Binding x (ft t) (fe e))
                 reserved "in"
                 e2 <- expr0
                 return (exLetRec bs e2),
-             do x    <- pattp
-                args <- argsp
-                finishLet (exLet x . args),
+             do (x, sigma, lift) <- pattbangp
+                if sigma
+                  then do
+                    reservedOp "="
+                    e1 <- expr0
+                    reserved "in"
+                    e2 <- withSigma True expr0
+                    return (lift (flip exLet e1) x e2)
+                  else do
+                    (sigma', args) <- argsp
+                    reservedOp "="
+                    e1 <- withSigma sigma' expr0
+                    reserved "in"
+                    e2 <- expr0
+                    return (exLet x (args e1) e2),
+             do reserved "let"
+                unexpected "let",
              do d    <- withSigma False declp
                 reserved "in"
                 e2   <- expr0
@@ -577,20 +577,23 @@ exprp = expr0 where
          reserved "with"
          optional (reservedOp "|")
          clauses <- flip sepBy1 (reservedOp "|") $ do
-           xi <- pattp
+           (xi, sigma, lift) <- pattbangp
            reservedOp "->"
-           ei <- expr0
-           return (xi, ei)
+           ei <- mapSigma (sigma ||) expr0
+           return (lift (,) xi ei)
          return (exCase e1 clauses),
       do reserved "try"
          e1 <- expr0
          reserved "with"
          optional (reservedOp "|")
          clauses <- flip sepBy1 (reservedOp "|") $ do
-           xi <- pattp
+           (xi, sigma, lift) <- pattbangp
            reservedOp "->"
-           ei <- expr0
-           return (PaCon (Uid "Left") (Just xi) Nothing, ei)
+           ei <- mapSigma (sigma ||) expr0
+           return $
+             lift (\xi' ei' ->
+                     (PaCon (Uid "Left") (Just xi') Nothing, ei'))
+                  xi ei
          let tryQ = qlid $
                       "INTERNALS.Exn.try" ++
                       show (reifyLang :: LangRep w)
@@ -603,24 +606,17 @@ exprp = expr0 where
                     exApp (exVar (qlid "INTERNALS.Exn.raise"))
                           (exVar (qlid "e")))]),
       do reserved "fun"
-         build <- choice
+         (sigma, build) <- choice
            [
              argsp1,
              do
-               x  <- pattp
+               (x, sigma, lift) <- pattbangp
                colon
-               t  <- typepP (precArr + 1)
-               return (exAbs x t)
+               t <- typepP (precArr + 1)
+               return (sigma, lift (flip exAbs t) x)
            ]
          arrow
-         expr0 >>! build,
-      do reserved "sigma"
-         x  <- pattp
-         colon
-         t  <- typepP (precArr + 1)
-         arrow
-         e  <- withSigma True expr0
-         return (exSigma x t e),
+         withSigma sigma expr0 >>! build,
       expr1 ]
   expr1 = addLoc $ do
             e1 <- expr3
@@ -686,7 +682,7 @@ opappp p = do
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
 afargsp :: Language w =>
-           P (Type () w -> Type () w, Expr () w -> Expr () w)
+           P (Bool, Type () w -> Type () w, Expr () w -> Expr () w)
 afargsp = loop tyArr where
   loop arrcon0 = do
     arrcon <- option arrcon0 $ do
@@ -694,33 +690,52 @@ afargsp = loop tyArr where
       return tyLol
     choice
       [ do (tvt, tve) <- tyargp
-           (ft, fe) <- loop arrcon
-           return (tvt . ft, tve . fe),
-        do (ft,  fe)  <- vargp arrcon
-           (fts, fes) <- loop arrcon
-           return (ft . fts, fe . fes),
-        return (id, id) ]
+           (b, ft, fe) <- loop arrcon
+           return (b, tvt . ft, tve . fe),
+        do (b, ft, fe) <- vargp arrcon
+           if b
+              then return (b, ft, fe)
+              else do
+                (b', fts, fes) <- loop arrcon
+                return (b', ft . fts, fe . fes),
+        return (False, id, id) ]
 
 -- One or more of (pat:typ, ...), (), tyvar
-argsp1 :: Language w => P (Expr () w -> Expr () w)
-argsp1  = foldr (.) id `fmap` many1 argp
+argsp1 :: Language w => P (Bool, Expr () w -> Expr () w)
+argsp1  = do
+           (b, fe) <- argp
+           if b
+             then return (b, fe)
+             else second (fe .) `fmap` option (False, id) argsp1
 
 -- Zero or more of (pat:typ, ...), (), tyvar
-argsp :: Language w => P (Expr () w -> Expr () w)
-argsp  = foldr (.) id `fmap` many argp
+argsp :: Language w => P (Bool, Expr () w -> Expr () w)
+argsp  = option (False, id) $ do
+           (b, fe) <- argp
+           if b
+             then return (b, fe)
+             else second (fe .) `fmap` argsp
 
 -- Parse a (pat:typ, ...), (), or tyvar
-argp :: Language w => P (Expr () w -> Expr () w)
-argp  = (tyargp <|> vargp const) >>! snd
+argp :: Language w => P (Bool, Expr () w -> Expr () w)
+argp  = choice [
+          do
+            (_, fe)    <- tyargp
+            return (False, fe),
+          do
+            (b, _, fe) <- vargp const
+            return (b, fe)
+        ]
 
 -- Parse a (pat:typ, ...) or () argument
 vargp :: Language w =>
          (Type () w -> Type () w -> Type () w) ->
-         P (Type () w -> Type () w, Expr () w -> Expr () w)
+         P (Bool, Type () w -> Type () w, Expr () w -> Expr () w)
 vargp arrcon = do
   loc    <- curLoc
+  inBang <- bangp
   (p, t) <- paty
-  return (arrcon t, exAbs p t <<@ loc)
+  return (inBang, arrcon t, condSigma inBang (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
 paty :: Language w => P (Patt, Type () w)
@@ -785,6 +800,30 @@ tyargp  = do
           \e -> foldr (\(loc, tv) -> exTAbs tv <<@ loc) e tvs)
     where
   loctv = liftM2 (,) curLoc tyvarp
+
+pattbangp :: Language w =>
+             P (Patt, Bool,
+                (Patt -> Expr () w -> b) -> Patt -> Expr () w -> b)
+pattbangp = do
+  inSigma <- getSigma
+  inBang  <- bangp
+  x       <- pattp
+  let trans = inBang && not inSigma
+      wrap  = inBang && inSigma
+  return (condMakeBang wrap x, inBang, condSigma trans)
+
+condSigma :: Language w =>
+             Bool -> (Patt -> Expr () w -> a) ->
+             Patt -> Expr () w -> a
+condSigma True  = exSigma
+condSigma False = id
+
+condMakeBang :: Bool -> Patt -> Patt
+condMakeBang True  = makeBangPatt
+condMakeBang False = id
+
+bangp :: P Bool
+bangp  = (bang >> return True) <|> return False
 
 pattp :: P Patt
 pattp  = patt0 where
