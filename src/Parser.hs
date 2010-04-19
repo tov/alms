@@ -11,7 +11,8 @@ module Parser (
   parseProg, parseDecls, parseDecl,
     parseTyDec, parseType, parseExpr, parsePatt,
   -- * Convenience parsers (quick and dirty)
-  pp, pds, pd, ptd, pt, pe, px
+  pp, pds, pd, ptd, pt, pe, px,
+  peA, ptA, peC, ptC
 ) where
 
 import Util
@@ -528,6 +529,8 @@ enterdecl name p = do
 
 exprp :: forall w. Language w => P (Expr () w)
 exprp = expr0 where
+  onlyOne [x] = [x True]
+  onlyOne xs  = map ($ False) xs
   expr0 = addLoc $ choice
     [ do reserved "let"
          choice
@@ -550,7 +553,7 @@ exprp = expr0 where
                     e1 <- expr0
                     reserved "in"
                     e2 <- withSigma True expr0
-                    return (lift (flip exLet e1) x e2)
+                    return (lift True (flip exLet e1) x e2)
                   else do
                     (sigma', args) <- argsp
                     reservedOp "="
@@ -580,8 +583,8 @@ exprp = expr0 where
            (xi, sigma, lift) <- pattbangp
            reservedOp "->"
            ei <- mapSigma (sigma ||) expr0
-           return (lift (,) xi ei)
-         return (exCase e1 clauses),
+           return (\b -> lift b (,) xi ei)
+         return (exCase e1 (onlyOne clauses)),
       do reserved "try"
          e1 <- expr0
          reserved "with"
@@ -590,8 +593,8 @@ exprp = expr0 where
            (xi, sigma, lift) <- pattbangp
            reservedOp "->"
            ei <- mapSigma (sigma ||) expr0
-           return $
-             lift (\xi' ei' ->
+           return $ \b ->
+             lift b (\xi' ei' ->
                      (PaCon (Uid "Left") (Just xi') Nothing, ei'))
                   xi ei
          let tryQ = qlid $
@@ -601,7 +604,7 @@ exprp = expr0 where
                                (exAbs PaWild (tyNulOp "unit") e1)) $
                   (PaCon (Uid "Right") (Just (PaVar (Lid "x"))) Nothing,
                    exVar (qlid "x")) :
-                  clauses ++
+                  onlyOne clauses ++
                   [(PaCon (Uid "Left") (Just (PaVar (Lid "e"))) Nothing,
                     exApp (exVar (qlid "INTERNALS.Exn.raise"))
                           (exVar (qlid "e")))]),
@@ -613,7 +616,7 @@ exprp = expr0 where
                (x, sigma, lift) <- pattbangp
                colon
                t <- typepP (precArr + 1)
-               return (sigma, lift (flip exAbs t) x)
+               return (sigma, lift True (flip exAbs t) x)
            ]
          arrow
          withSigma sigma expr0 >>! build,
@@ -735,7 +738,7 @@ vargp arrcon = do
   loc    <- curLoc
   inBang <- bangp
   (p, t) <- paty
-  return (inBang, arrcon t, condSigma inBang (flip exAbs t) p <<@ loc)
+  return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
 paty :: Language w => P (Patt, Type () w)
@@ -803,7 +806,7 @@ tyargp  = do
 
 pattbangp :: Language w =>
              P (Patt, Bool,
-                (Patt -> Expr () w -> b) -> Patt -> Expr () w -> b)
+                Bool -> (Patt -> Expr () w -> b) -> Patt -> Expr () w -> b)
 pattbangp = do
   inSigma <- getSigma
   inBang  <- bangp
@@ -813,10 +816,11 @@ pattbangp = do
   return (condMakeBang wrap x, inBang, condSigma trans)
 
 condSigma :: Language w =>
-             Bool -> (Patt -> Expr () w -> a) ->
+             Bool -> Bool ->
+             (Patt -> Expr () w -> a) ->
              Patt -> Expr () w -> a
 condSigma True  = exSigma
-condSigma False = id
+condSigma False = const id
 
 condMakeBang :: Bool -> Patt -> Patt
 condMakeBang True  = makeBangPatt
@@ -917,6 +921,22 @@ pt   = makeQaDA parseType
 -- | Parse an expression
 pe  :: Language w => String -> Expr () w
 pe   = makeQaDA parseExpr
+
+-- | Parse a type
+ptC  :: String -> Type () C
+ptC   = pt
+
+-- | Parse an expression
+peC  :: String -> Expr () C
+peC   = pe
+
+-- | Parse a type
+ptA  :: String -> Type () A
+ptA   = pt
+
+-- | Parse an expression
+peA  :: String -> Expr () A
+peA   = pe
 
 -- | Parse a pattern
 px  :: String -> Patt

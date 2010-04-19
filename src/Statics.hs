@@ -789,7 +789,7 @@ tcPatt t x0 = case x0 of
           tassert (isEmpty (dx -|- dy)) $
             "Pattern " ++ show x0 ++ " binds type variable twice"
           return (dx =+= dy, gx =+= gy, PaPair x' y')
-      _ -> tgot "Pattern" t "pair type"
+      _ -> tgot "Pattern " t "pair type"
   PaStr s    -> do
     tassgot (tyinfo t == tdString)
       "Pattern" t "string"

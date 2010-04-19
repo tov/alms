@@ -5,7 +5,7 @@ GHC      = ghc
 EXE      = affine
 EXAMPLES = ../examples
 
-HCOPTS  = -W -Wall -O0 $(EDITING)
+HCOPTS  = -W -Wall -fno-warn-unused-imports -O0 $(EDITING)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 
 $(EXE) $(EXE)-%: *.hs Basis/*.hs

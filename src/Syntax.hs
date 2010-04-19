@@ -58,6 +58,7 @@ module Syntax (
   qualifier, transparent, funtypes, castableType,
   ctype2atype, atype2ctype, cgetas, agetcs,
   replaceTyTags, removeTyTags,
+  (-==+), 
 
   -- * Programs and declarations
   Prog(..), ProgT,
@@ -729,14 +730,7 @@ exSeq e1 e2 = exCase e1 [(PaWild, e2)]
 --
 -- This is always safe to do.
 exLet' :: Patt -> Expr i w -> Expr i w -> Expr i w
-exLet' x e1 e2 = case (x, view e2) of
-  (PaVar y, ExId (J [] (Var y')))
-    | y == y'                        -> e1
-  (PaPair (PaVar y) (PaVar z), ExPair ey ez)
-    | ExId (J [] (Var y')) <- view ey,
-      ExId (J [] (Var z')) <- view ez,
-      y == y' && z == z'             -> e1
-  _                                  -> exLet x e1 e2
+exLet' x e1 e2 = if (x -==+ e2) then e1 else exLet x e1 e2
 
 -- | Constructs a let expression whose pattern is a variable.
 exLetVar' :: Lid -> Expr i w -> Expr i w -> Expr i w
@@ -772,6 +766,20 @@ exTAbs' tv e = case view e of
       tv == tv'  -> exVar (J p f)
     _            -> exTAbs tv e
   _            -> exTAbs tv e
+
+-- | Does a pattern exactly match an expression?  That is, is
+--   @let p = e1 in e@ equivalent to @e1@?  Note that we cannot
+--   safely handle data constructors, because they may fail to match.
+(-==+) :: Patt -> Expr i w -> Bool
+p -==+ e = case (p, view e) of
+  (PaVar l,                   ExId (J [] (Var l')))
+    -> l == l'
+  (PaCon (Uid "()") Nothing Nothing,   ExId (J [] (Con (Uid "()"))))
+    -> True
+  (PaPair p1 p2,              ExPair e1 e2)
+    -> p1 -==+ e1 && p2 -==+ e2
+  _ -> False
+infix 4 -==+
 
 -- | Is the lowercase identifier an infix operator?
 isOperator :: Lid -> Bool

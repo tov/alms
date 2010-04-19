@@ -14,30 +14,38 @@ import Data.Generics (Data, everywhere, mkT)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
+import Data.Foldable (Foldable, toList)
 
 -- | To lift a binder to bind effect variables rather than
---   normal variables.
+--   normal variables.  (Boolean specifies whether the result
+--   should include the effect variables.)
 exSigma :: Language w =>
+           Bool ->
            (Patt -> Expr () w -> a) ->
            Patt -> Expr () w -> a
-exSigma binder patt body =
+exSigma ret binder patt body =
   let (b_vars, b_code) = transform (pv patt) body in
   binder (ren patt) $
   exLet' (PaVar r1 -:: b_vars) b_code $
-  exPair (exBVar r1) (patt2expr (ren (flatpatt patt)))
+  if ret
+    then exPair (exBVar r1) (patt2expr (ren (flatpatt patt)))
+    else exBVar r1
 
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.
 exAddSigma :: Language w =>
+              Bool ->
               ([Lid] -> Patt -> Expr () w -> a) ->
               S.Set Lid -> Patt -> Expr () w -> a
-exAddSigma binder env patt body =
+exAddSigma ret binder env patt body =
   let env'             = pv patt
       (b_vars, b_code) = transform (env' `S.union` env) body
       vars = [ v | v <- b_vars, v `S.notMember` ren env' ]
    in binder vars (ren patt) $
       exLet' (PaVar r1 -:: b_vars) b_code $
-      exPair (exBVar r1) (patt2expr (ren (flatpatt patt))) +:: vars
+      if ret
+        then exPair (exBVar r1) (patt2expr (ren (flatpatt patt))) +:: vars
+        else exBVar r1 +:: vars
 
 {-
 ---- The one variable case:
@@ -68,41 +76,6 @@ exAddSigma binder env patt body =
   [[ c e ]]   = let (r, y) = [[ e ]] in
                   (c r, y)
 
--- The pattern case:
-
-  (p! is a renaming of p)
-
-  fun !(p:t) -> e     ===   fun p:t -> [[ e ]](p)
-  let !p = e1 in e2   ===   let y = e1 in [[ e ]](p)
-
-  [[ e1 p2 ]](p)   | pv p2 `subseteq` pv p
-                   = let (r1, p!)   = [[ e1 ]](p) in
-                     let (r2, p2!) = r1 p2! in
-                       (r2, p!)
-  [[ e1 e2 ]](p)   = let (r1, y) = [[ e1 ]](p) in
-                     let (r2, y) = [[ e2 ]](p) in
-                       (r1 r2, y)
-  [[ x ]](p)       | x `subseteq` pv p
-                   = let p! = y in
-                     (x!, p[()/x]!)
-  [[ v ]](p)       = (v, y)
-  [[ match e with
-     | p1 -> e1
-     | ...
-     | pk -> ek ]](p)
-              = let (r, y) = [[ e ]] in
-                match r with
-                | p1 -> [[ e1 ]](p)
-                | ...
-                | pk -> [[ ek ]](p)
-  [[ e [t] ]] = let (r, y) = [[ e ]](p) in
-                  (r [t], y)
-
-  [[ slet p1 = e1 in e2 ]](p)
-              = let (y1, y)       = [[ e1 ]](p) in
-                let (r1, (y1, y)) = [[ e2 ]](p, p1) in
-                  ((r1, y1), y)
-
 -- The pattern case (2):
 
   (p! is a renaming of p)
@@ -116,7 +89,7 @@ exAddSigma binder env patt body =
                              in (r1, p!)
                             where e.env = pv p in
 
-  e ::= e1 p2   | pv p2 `subseteq` pv e.p && pv p2 != empty
+  e ::= e1 p2   | pv p2 `subseteq` pv e.env && pv p2 != empty
 
     e1.env  = e.env
     e.vars  = e1.vars `union` pv p2!
@@ -143,6 +116,32 @@ exAddSigma binder env patt body =
     e.code  = let e.vars = e.vars! in
               (v, [ () | _ <- e.vars ])
 
+  e ::= match p0 with
+        | p1 -> e1
+        | ...
+        | pk -> ek
+                | pv p0 `subseteq` pv e.env && pv p0 != empty
+
+    if p1 is a bang pattern
+      then e1.env  = e.env `union` pv p1
+      else e1.env  = e.env - (pv p1 - pv p0)
+    ...
+    if pk is a bang pattern
+      then ek.env  = e.env `union` pv pk
+      else ek.env  = e.env - (pv pk - pv p0)
+
+    e.vars  = e.env `intersection` (e1.vars `union` ... `union` ek.vars)
+    e.code  = match p0! with
+              | p1[p0!/p0] -> let (p0 - p1)! = ((), ..., ()) in
+                              let (r2, e1.vars) = e1.code in (r2, e.vars)
+              | ...
+        (if pk is not a bang pattern then)
+              | pk[p0!/p0] -> let (p0 - pk)! = ((), ..., ()) in
+                              let (r2, e1.vars) = e1.code in (r2, e.vars)
+        (else)
+              | pk!        -> let (p0 - pk)! = ((), ..., ()) in
+                              let (r2, e1.vars) = e1.code in (r2, e.vars)
+
   e ::= match e0 with
         | p1 -> e1
         | ...
@@ -153,12 +152,31 @@ exAddSigma binder env patt body =
     ...
     ek.env  = e.env - pv pk
 
-    e.vars = e0.vars `union` e1.vars `union` ... `union` ek.vars
-    e.code = let (r1, e0.vars) = e0.code in
-             match r1 with
-             | p1 -> let (r2, e1.vars) = e1.code in (r2, e.vars)
-             | ...
-             | pk -> let (r2, ek.vars) = ek.code in (r2, e.vars)
+    e.vars  = e.env `intersection`
+                (e0.vars `union` e1.vars `union` ... `union` ek.vars)
+    e.code  = let (r1, e0.vars) = e0.code in
+              match r1 with
+              | p1 -> let (r2, e1.vars) = e1.code in (r2, e.vars)
+              | ...
+              | pk -> let (r2, ek.vars) = ek.code in (r2, e.vars)
+
+  e ::= let rec f1 = v1
+            and ...
+            and fk = vk
+         in e1
+
+    captured = { x `in` (fv v1 `union` ... `union` fv vk)
+               | x! `in` e.env }
+
+    e1.env  = e.env - { f1, ..., fk }
+    e.vars  = e1.vars `union` captured!
+    e.code  = let captured  = captured! in
+              let captured! = ((), ..., ()) in
+              let rec f1 = v1
+                  and ...
+                  and fk = vk
+               in let (r1, e1.vars) = e1.code
+                   in (r1, e.vars)
 
   e ::= e1[t]
 
@@ -174,21 +192,18 @@ exAddSigma binder env patt body =
     e.vars  = e1.vars
     e.code  = let (p1!, e1.vars) = e1.code in
               let (r2,  e2.vars) = e2.code in
-                ((r2, p1!), e.vars)
+                (r2, e.vars)
 -}
 
 transform :: Language w =>
               S.Set Lid -> Expr () w -> ([Lid], Expr () w)
 transform env = loop where
   capture e1
-    | v:vs <- [ v | J [] v <- M.keys (fv e1),
+    | vars <- [ v | J [] v <- M.keys (fv e1),
                     v `S.member` env ],
-      patt <- PaVar v -:: vs,
-      expr <- exUnit +:+ [ exUnit | _ <- vs ],
-      vars <- ren (v:vs),
-      code <- exLet' patt (patt2expr (ren patt)) .
-              exLet' (ren patt) expr
-        = Just (vars, code)
+      code <- translate PaVar (exBVar . ren) vars .
+              kill (ren vars)
+        = Just (ren vars, code)
     | otherwise
         = Nothing
 
@@ -205,6 +220,18 @@ transform env = loop where
     | vars <- e1_vars,
       code <- exLet' (PaPair (PaVar r1) (PaVar r2)) e1_code $
                 exPair (kont (exBVar r1)) (exBVar r2)
+      = (vars, code)
+
+  binder kont (e1_vars, e1_code)
+    | Just (k_vars, k_code) <- capture (kont exUnit),
+      vars <- k_vars `L.union` e1_vars,
+      code <- k_code $
+              kont $
+              exLet' (PaVar r1 -:: e1_vars) e1_code $
+              (exBVar r1 +:: vars)
+      = (vars, code)
+    | vars <- e1_vars,
+      code <- kont e1_code
       = (vars, code)
 
   binop kont e1 e2 =
@@ -241,27 +268,50 @@ transform env = loop where
         -> (vars, ren (exBVar x) +:+ [exUnit])
 
     ExCase e0 bs
+      | Just p0 <- expr2patt env S.empty e0,
+        not (pv p0 `disjoint` env),
+        e0_vars <- toList (pv (ren p0)),
+        e0_code <- ren e0,
+        bs'  <-
+          [ case parseBangPatt pj of
+              Nothing  ->
+                (renOnly (pv p0) pj,
+                 shadow (pv pj `S.difference` pv p0) ej)
+              Just pj' ->
+                (ren pj',
+                 transform (env `S.union` pv pj) ej)
+          | (pj, ej) <- bs ],
+        vars <- [ v | v <- foldl L.union e0_vars (map (fst . snd) bs'),
+                      v `S.member` ren env ],
+        code <- exCase e0_code $
+                  [ (pj, kill (pv (ren p0) `S.difference` pv pj) $
+                         exLet' (PaVar r1 -:: ej_vars) ej_code $
+                           (exBVar r1 +:: vars))
+                  | (pj, (ej_vars, ej_code)) <- bs' ]
+        -> (vars, code)
+
       | (e0_vars, e0_code) <- loop e0,
         bs'  <-
-          [ case parseBangPatt pk of
-              Nothing  -> (pk, shadow (pv pk) ek)
-              Just pk' -> exAddSigma
+          [ case parseBangPatt pj of
+              Nothing  -> (pj, shadow (pv pj) ej)
+              Just pj' -> exAddSigma
+                            (length bs == 1)
                             (\vars patt expr -> (patt, (vars, expr)))
-                            env pk' ek
-          | (pk, ek) <- bs ],
+                            env pj' ej
+          | (pj, ej) <- bs ],
         vars <- foldl L.union e0_vars (map (fst . snd) bs'),
         code <- exLet' (PaVar r1 -:: e0_vars) e0_code $
                 exCase (exBVar r1) $
-                  [ (pk, exLet' (PaVar r2 -:: ek_vars) ek_code $
+                  [ (pj, exLet' (PaVar r2 -:: ej_vars) ej_code $
                            (exBVar r2 +:: vars))
-                  | (pk, (ek_vars, ek_code)) <- bs' ]
+                  | (pj, (ej_vars, ej_code)) <- bs' ]
         -> (vars, code)
 
     ExLetRec bs e1
-        -> unop (exLetRec bs) (shadow (S.fromList (map bnvar bs)) e1)
+        -> binder (exLetRec bs) (shadow (S.fromList (map bnvar bs)) e1)
 
     ExLetDecl ds e1
-        -> unop (exLetDecl ds) (loop e1)
+        -> binder (exLetDecl ds) (loop e1)
 
     ExPair e1 e2
         -> binop exPair e1 e2
@@ -270,14 +320,15 @@ transform env = loop where
       | Just p2 <- expr2patt env S.empty e2,
         not (pv p2 `disjoint` env),
         (e1_vars, e1_code) <- loop e1,
-        vars <- e1_vars `L.union` S.toList (pv (ren p2)),
-        code <- 
-          if null e1_vars
-            then exApp e1_code (ren e2)
-            else exLet' (PaVar r1 -:: e1_vars) e1_code $
-                 exLet' (PaPair (PaVar r2) (flatpatt (ren p2)))
-                        (exApp (exBVar r1) (ren e2)) $
-                 exBVar r2 +:: vars
+        vars <- e1_vars `L.union` toList (pv (ren p2)),
+        (v1, f1) <- if null e1_vars
+                      then (e1_code, id)
+                      else (exBVar r1,
+                            exLet' (PaVar r1 -:: e1_vars) e1_code),
+        code <- f1 $
+                exLet' (PaPair (PaVar r2) (flatpatt (ren p2)))
+                       (exApp v1 (ren e2)) $
+                exBVar r2 +:: vars
         -> (vars, code)
 
       | otherwise
@@ -309,70 +360,6 @@ e +:: vs = e +:+ map exBVar vs
 
 (-::)   :: Patt -> [Lid] -> Patt
 p -:: vs = p -:- map PaVar vs
-
-{-
-exBang :: Language w =>
-          (Patt -> Expr () w -> a) ->
-          Patt -> Expr () w -> a
-exBang binder patt body =
-  binder (ren patt) $
-  exLetVar' y (patt2expr (ren fp)) $
-  exLet' (PaPair (PaVar r1) (ren fp)) (transform fp body) $
-  exPair (exBVar r1) (patt2expr (ren patt))
-  where fp = flatpatt patt
-
-transform :: Language w => Patt -> Expr () w -> Expr () w
-transform p = loop where
-  vs     = pv p
-  tvs    = ptv p
-  loop e = (<<@ e) $ case view e of
-    ExId (J [] (Var x))
-      | x `S.member` vs
-        -> exLet' (ren p) (exBVar y) $
-             exPair (ren (exBVar x) <<@ e)
-                    (patt2expr (ren (remove x p)))
-    ExCase e1 [ (bp2, e2) ]
-      | Just p2 <- parseBangPatt bp2
-        -> exLet' (PaPair (PaVar y1) (PaVar y)) (loop e1) $
-           exAddBang p (flip exLet' (exBVar y1)) p2 e2
-    ExCase e1 bs
-        -> r1 <-- e1 $ \v1 ->
-           exCase v1 [ (pk, loop ek) | (pk, ek) <- bs ]
-    ExLetRec bs e1
-        -> exLetRec bs (loop e1)
-    ExLetDecl ds e1
-        -> exLetDecl ds (loop e1)
-    ExPair e1 e2
-        -> r1 <-- e1 $ \v1 ->
-           r2 <-- e2 $ \v2 ->
-           ret (exPair v1 v2)
-    ExApp e1 e2
-      | Just p2 <- expr2patt vs tvs e2,
-        not (pv p2 `disjoint` vs)
-        -> exLet' (PaPair (PaVar r1) (ren p)) (loop e1) $
-           exLet' (PaPair (PaVar r2) (ren p2))
-                  (exApp (exBVar r1) (ren e2) <<@ e) $
-             exPair (exBVar r2) (patt2expr (ren p))
-      | otherwise
-        -> r1 <-- e1 $ \v1 ->
-           r2 <-- e2 $ \v2 ->
-           ret (exApp v1 v2)
-    ExTApp e1 t2
-        -> r1 <-- e1 $ \v1 ->
-           ret (exTApp v1 t2)
-    ExPack mt t1 e2
-        -> r2 <-- e2 $ \v2 ->
-           ret (exPack mt t1 v2)
-    ExCast e1 mt t2
-        -> r1 <-- e1 $ \v1 ->
-           ret (exCast v1 mt t2)
-    _   -> exPair e (exBVar y)
-    where
-      (r <-- e1) k =
-        exLet' (PaPair (PaVar r) (PaVar y)) (loop e1) $
-          (k (exBVar r) <<@ e)
-      ret e1 = exPair e1 (exBVar y)
--}
 
 r1, r2 :: Lid
 r1 = Lid "r1.!"
@@ -482,18 +469,34 @@ ren :: Data a => a -> a
 ren = everywhere (mkT each) where
   each (Lid s) = Lid (s ++ "!")
 
-{-
 renOnly :: Data a => S.Set Lid -> a -> a
 renOnly set = everywhere (mkT each) where
   each l | l `S.member` set = Lid (unLid l ++ "!")
          | otherwise        = l
 
-remove :: Lid -> Patt -> Patt
-remove v = everywhere (mkT each) where
-  each (PaVar v')
-    | v == v'   = paUnit
-  each p        = p
--}
+{-
+remove :: Data a => S.Set Lid -> a -> a
+remove set = everywhere (mkT expr `extT` patt) where
+  patt (PaVar v)
+    | v `S.member` set = paUnit
+  patt p               = p
+  expr :: Ident -> Ident
+  expr (J [] (Var v))
+    | v `S.member` set = J [] (Con (Uid "()"))
+  expr e               = e
+  -}
+
+kill :: Foldable f => f Lid -> Expr () w -> Expr () w
+kill  = translate PaVar (const exUnit)
+
+translate :: Foldable f =>
+             (Lid -> Patt) -> (Lid -> Expr () w) ->
+             f Lid -> Expr () w -> Expr () w
+translate mkpatt mkexpr set =
+  case toList set of
+    []   -> id
+    v:vs -> exLet' (mkpatt v -:- map mkpatt vs)
+                   (mkexpr v +:+ map mkexpr vs)
 
 exUnit :: Expr i w
 exUnit  = exBCon (Uid "()")
