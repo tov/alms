@@ -6,7 +6,7 @@ test="$2"
 echo "$test"
 
 case "$test" in
-  *-type-error.aff)
+  *-type-error.alms)
     if ! ./"$exe" "$test"  2>&1 |
         grep ': Type error: ' > /dev/null; then
       echo
@@ -15,7 +15,7 @@ case "$test" in
       echo
     fi >&2
     ;;
-  *-blame-error.aff)
+  *-blame-error.alms)
     if ! ./"$exe" "$test"  2>&1 |
         grep ' Blame (' > /dev/null; then
       echo

@@ -1,7 +1,7 @@
 #!/bin/sh
 
 host=spelunker.ccs.neu.edu
-remote=public_html/pubs/affine-contracts
+remote=public_html/pubs/alms
 
 if [ -z "$1" ]; then
   set showVersion
@@ -16,20 +16,20 @@ while [ -n "$1" ]; do
       set version "$ver" ci "version bump: $ver" clean dist send link $@
       ;;
     clean)
-      rm affine-contracts*.tar.gz
+      rm alms*.tar.gz
       ;;
     dist)
       make dist
       ;;
     send)
-      scp -p affine-contracts*.tar.gz $host:$remote/
+      scp -p alms*.tar.gz $host:$remote/
       ;;
     link)
       version="`$0 showVersion`"
       ssh $host "cd $remote;
-                 DISPLAY='' ex -c '/affine-contracts-[0-9.]*[.]tar[.]gz/s/-[0-9.]*[.]tar/-$version.tar/|:wq' index.html;
-                 rm affine-contracts.tar.gz;
-                 ln -s 'affine-contracts-$version.tar.gz' affine-contracts.tar.gz"
+                 DISPLAY='' ex -c '/alms-[0-9.]*[.]tar[.]gz/s/-[0-9.]*[.]tar/-$version.tar/|:wq' index.html;
+                 rm alms.tar.gz;
+                 ln -s 'alms-$version.tar.gz' alms.tar.gz"
       ;;
     edit)
       ssh $host -t vim $remote/index.html

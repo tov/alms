@@ -1,15 +1,15 @@
-Name:           affine
-Version:        0.12.0
-Copyright:      2009, Jesse A. Tov
+Name:           alms
+Version:        0.1.0
+Copyright:      2010, Jesse A. Tov
 Cabal-Version:  >= 1.2
 License:        BSD3
 License-File:   LICENSE
 Stability:      experimental
 Author:         Jesse A. Tov <tov@ccs.neu.edu>
 Maintainer:     tov@ccs.neu.edu
-Homepage:       http://www.ccs.neu.edu/~tov/pubs/affine-contracts
+Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms
 Category:       Compilers/Interpreters
-Synopsis:       An implementation of "Stateful Contracts for Affine Types"
+Synopsis:       An affine language with modules and subtyping
 Build-type:     Simple
 
 Flag editline
@@ -20,7 +20,7 @@ Flag readline
   Description: Enable line editing using the readline package
   Default:     False
 
-Executable affine
+Executable alms
   Main-Is:              Main.hs
   Hs-Source-Dirs:       src
   GHC-Options:          -W -Wall -O2

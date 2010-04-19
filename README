@@ -1,21 +1,15 @@
-This is the prototype implementation of the language in "Stateful
-Contracts for Affine Types" by Jesse Tov and Riccardo Pucella.
+This is a prototype implementation of Alms, an affine language with
+modules and subtyping.
 
-Please see http://www.ccs.neu.edu/home/tov/pubs/affine-contracts/ for
-more information about the paper and other software artifacts.
+Please see http://www.ccs.neu.edu/home/tov/pubs/alms/ for
+more information.
 
 CONTENTS
 
- * WHERE TO FIND STUFF FROM THE PAPER
  * GETTING STARTED
  * USAGE
  * THE LANGUAGE
  * EDITLINE TROUBLE
-
-WHERE TO FIND STUFF FROM THE PAPER
-
-  The affine sockets library is in examples/libsocket-A.aff, and the
-  echo server source code that uses it is in examples/echoServer.aff.
 
 GETTING STARTED
 
@@ -37,7 +31,7 @@ GETTING STARTED
     > runghc Setup.hs configure
     > runghc Setup.hs build
 
-  This produces an executable in "dist\build\affine\affine".
+  This produces an executable in "dist\build\alms\alms".
 
 USAGE
 
@@ -45,11 +39,11 @@ USAGE
   directory.  To try the echo server example on port 10000,
   run:
 
-    % ./affine examples/echoServer.aff 10000
+    % ./alms examples/echoServer.alms 10000
 
   To connect to the echo server, you can run
 
-    % ./affine examples/netcat.aff localhost 10000
+    % ./alms examples/netcat.alms localhost 10000
 
   from another terminal.
 
@@ -66,25 +60,13 @@ USAGE
 
   We can also run the interpreter in interactive mode:
 
-    % ./affine
+    % ./alms
 
   The program also accepts several flags:
 
     -t   Don't type check
     -x   Don't execute
-    -c   Don't add contracts
-    -v   Verbose (show translation, results, types)
-
-THE LANGUAGE
-
-  We follow the paper rather closely, and the examples should give a
-  reasonable idea as to the concrete syntax.
-
-  The sockets examples use exceptions for error handling, rather than
-  just ignoring it like in the paper.
-
-  In the A language, we use -o for affine function types and -> for
-  unlimited function types, rather than \multimap^u and and \multimap^a.
+    -v   Verbose (results, types)
 
 EDITLINE TROUBLE
 
