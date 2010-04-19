@@ -1,0 +1,94 @@
+(*
+    Another session types library.  Doesn't use equirecursive types.
+*)
+
+module SessionType = struct[A]
+  (* Unfortunately, we need several types to be primitive in order to
+   * compute duals. *)
+  open Prim.SessionType
+
+  module C = Channel
+
+  type -'<a ; +'<s
+  type ('<a, '<s) semi = '<a; '<s
+
+  abstype 's rendezvous = Rendezvous of ({{'s channel} C.channel})
+      and +'s channel qualifier A = Chan of {bool C.channel}
+  with
+    let newRendezvous['s] (_: unit) : 's rendezvous =
+      Rendezvous (C.new['s channel] ())
+
+    let request['s] (Rendezvous r: 's rendezvous) : 's channel =
+      C.recv r
+
+    let accept['s] (Rendezvous r: 's rendezvous) : 's dual channel =
+      let c = Chan['s] (C.new[bool] ()) in
+        C.send r c;
+        c
+
+    let newPair['s] () : 's channel * 's dual channel =
+      let c = C.new[bool] () in
+        (Chan['s] c, Chan['s dual] c)
+
+    let send['<a] (a: '<a)
+            ['s] |(Chan c: ('<a send; 's) channel) : unit * 's channel =
+      C.send c (Unsafe.unsafeCoerce[bool] a);
+      ((), Chan['s] c)
+
+    let recv['<a, 's] (Chan c: ('<a recv; 's) channel)
+                      : '<a * 's channel =
+      (Unsafe.unsafeCoerce['<a] (C.recv c), Chan['s] c)
+
+    type '<c follow = '<c recv; unit
+
+    let follow['<c] (c: '<c follow channel) =
+      let (c', _) = recv['<c, unit] c in ((), c')
+
+    type '<c choose = '<c send; unit
+
+    let choose['s,'<c] (ctor: 's channel -> '<c)
+                    (c: '<c choose channel): unit * 's dual channel =
+      let (theirs, mine) = newPair['s] () in
+        send (ctor theirs) c;
+        ((), mine)
+  end
+end
+
+module Test = struct[A]
+  open SessionType
+
+  type state1 = int send; state2 follow
+   and state2 = Done of (int recv; unit) channel
+              | More of (int send; state2 follow) channel
+              | Again of (int recv; state1) channel
+
+  let client (c: state1 channel) =
+    let rec s1 !(c: state1 channel) : int * unit channel =
+              send 1 c;
+              follow c;
+              s2 c
+        and s2 !(c: state2) : int * unit channel =
+          match c with
+          | Done c  -> recv c
+          | More c  -> send 2 c;
+                       follow c;
+                       s2 c
+          | Again c -> let z = recv c in
+                       s1 c
+     in fst (s1 c)
+
+  let server (c: state1 dual channel) =
+    let rec s1 !(c : state1 dual channel) : unit * unit channel =
+      match recv c with
+        | 0 -> choose More c;
+               let z' = recv c in
+               choose Done c;
+               send z' c
+        | 1 -> choose Again c;
+               send 1 c;
+               s1 c
+        | z -> choose Done c;
+               send z c
+     in fst (s1 c)
+end
+
