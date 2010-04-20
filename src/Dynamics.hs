@@ -51,25 +51,18 @@ evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl i -> DDecl
-evalDecl (DcLet _ m)    = evalLet m
-evalDecl (DcTyp _ _)    = return
-evalDecl (DcAbs _ _ ds) = evalDecls ds
-evalDecl (DcOpn _ b)    = evalOpen b
-evalDecl (DcMod _ n b)  = evalMod n b
-evalDecl (DcLoc _ d0 d1)= evalLocal d0 d1
-evalDecl (DcExn _ _)    = return
+evalDecl (DcLet _ n _ e) = evalLet n e
+evalDecl (DcTyp _ _)     = return
+evalDecl (DcAbs _ _ ds)  = evalDecls ds
+evalDecl (DcOpn _ b)     = evalOpen b
+evalDecl (DcMod _ n b)   = evalMod n b
+evalDecl (DcLoc _ d0 d1) = evalLocal d0 d1
+evalDecl (DcExn _ _ _)   = return
 
-evalLet :: Let i -> DDecl
-evalLet (LtC _ x _ e)   env = do
+evalLet :: Lid -> Expr i -> DDecl
+evalLet x e env = do
   v <- valOf e env
   return (env =+= x =:!= nameFun x v)
-evalLet (LtA _ x _ e)   env = do
-  v <- valOf e env
-  return (env =+= x =:!= nameFun x v)
-evalLet (LtInt _ x _ y) env = do
-  case env =..= y of
-    Just v  -> return (env =+= x =:= fmap (nameFun x) v)
-    Nothing -> fail $ "BUG! Unknown variable: " ++ show y
 
 evalOpen :: ModExp i -> DDecl
 evalOpen b env = do
@@ -88,10 +81,7 @@ evalLocal ds ds'  env0 = do
   return (env2 =+= scope)
 
 evalModExp :: ModExp i -> E -> IO Scope
-evalModExp (MeStrC _ ds) env = do
-  scope:_ <- evalDecls ds (genEmpty:env)
-  return scope
-evalModExp (MeStrA _ ds) env = do
+evalModExp (MeStr ds)   env = do
   scope:_ <- evalDecls ds (genEmpty:env)
   return scope
 evalModExp (MeName n)   env = do
@@ -104,7 +94,7 @@ eval env0 (Prog ds (Just e0)) = evalDecls ds env0 >>= valOf e0
 eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
-valOf :: Expr i w -> D
+valOf :: Expr i -> D
 valOf e env = case view e of
   ExId ident -> case view ident of
     Left x     -> case env =..= x of
@@ -172,10 +162,10 @@ valOf e env = case view e of
     valOf e1 env
 
 makeExn :: Monad m => 
-           ExnId -> Maybe (Either (TypeT C) (TypeT A)) -> m Value
+           ExnId -> Maybe TypeT -> m Value
 makeExn _  Nothing   = fail $ "BUG! Cannot construct exception " ++
                                "because type checking was skipped"
-makeExn ei (Just tt) = return $ either makeWith makeWith tt
+makeExn ei (Just tt) = return $ makeWith tt
   where
     makeWith (TyCon _ _ td) | td == tdExn =
       vinj (VExn ei Nothing)

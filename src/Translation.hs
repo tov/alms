@@ -21,15 +21,19 @@ type TEnv = ()
 tenv0 :: TEnv
 tenv0  = ()
 
+{-
 -- | Parties to contracts are module names, but it's worth
 --   keeping them separate from regular variables.
 newtype Party = Party { unParty :: Ident }
 -- | The trail to a particular mention is the module path in
 --   which it appears, which is used to generate a 'Party'
 type Trail    = [Uid]
+-}
 
 -- | Translate a whole program
 translate :: TEnv -> ProgT -> ProgT
+translate = const id
+{-
 translate _ (Prog ds e) =
   Prog (transDecls ds) (transExpr (party (Uid "*Main*")) `fmap` e)
     where ?trail = []
@@ -37,7 +41,10 @@ translate _ (Prog ds e) =
 -- | Translation a sequence of declarations in the context
 --   of a translation environment, returning a new translation
 --   environment
+-}
 translateDecls :: TEnv -> [DeclT] -> (TEnv, [DeclT])
+translateDecls = (,)
+{-
 translateDecls tenv ds = (tenv, transDecls ds) where ?trail = []
 
 transDecls :: (?trail :: Trail) => [DeclT] -> [DeclT]
@@ -351,9 +358,4 @@ instance Culpable (Path Uid BIdent) where party = Party
 
 exUnit :: Expr i C
 exUnit  = exCon (quid "()")
-
-----
----- To make our code cleaner, we have two constructors
----- that perform trivial reduction on the fly:
-----
-
+-}
