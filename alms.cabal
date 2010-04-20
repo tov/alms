@@ -23,7 +23,9 @@ Flag readline
 Executable alms
   Main-Is:              Main.hs
   Hs-Source-Dirs:       src
+  Extra-Source-Files:   src/basis.alms
   GHC-Options:          -W -Wall -O2
+  CPP-Options:          -DALMS_CABAL_BUILD
   Build-Depends:        haskell98,
                         base >= 4,
                         syb >= 0.1,
@@ -32,7 +34,8 @@ Executable alms
                         parsec >= 2.1,
                         mtl >= 1.1,
                         filepath >= 1.1,
-                        network >= 2.2
+                        network >= 2.2,
+                        template-haskell >= 2.0
 
   if flag(readline)
     Build-Depends:  readline >= 1.0

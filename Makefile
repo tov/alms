@@ -1,10 +1,11 @@
 EXE      = alms
 GHC      = ghc
 EXAMPLES = examples
+SRC      = src/*.hs src/Basis/*.hs src/Meta/*.hs
 
 DOC      = dist/doc/html/alms/alms/
 
-default: Setup dist/setup-config
+default: Setup dist/setup-config $(SRC)
 	./Setup build
 	cp dist/build/alms/alms .
 
@@ -13,6 +14,11 @@ dist/setup-config config: Setup alms.cabal
 
 Setup: Setup.hs
 	$(GHC) -o $@ --make $<
+
+# Make sure that changing the source portion of the basis causes
+# the basis code to be rebuilt.
+src/Basis.hs: src/basis.alms
+	touch $@
 
 $(EXE): default
 

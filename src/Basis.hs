@@ -27,7 +27,6 @@ import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
 import Control.Monad
-import Control.Monad.Fix
 
 -- Primitive operations implemented in Haskell
 primBasis :: [Entry]
@@ -56,10 +55,6 @@ primBasis  = [
     typ "'<a option = None | Some of '<a",
     typ "'<a + '<b = Left of '<a | Right of '<b",
 
-    -- Recursion
-    pfun 2 "fix" -: "all 'a 'b. (('a -> 'b) -> ('a -> 'b)) -> ('a -> 'b)"
-      -= (\(VaFun _ f) -> mfix f),
-
     -- Lists
     typ "'<a list = Nil | Cons of '<a * '<a list",
 
@@ -75,6 +70,10 @@ primBasis  = [
       -= (abs :: Integer -> Integer),
     fun "<=" -: "int -> int -> bool"
       -= ((<=) :: Integer -> Integer -> Bool),
+    fun "string_of_int" -: "int -> string"
+      -= (show :: Integer -> String),
+    fun "int_of_string" -: "string -> int"
+      -= (read :: String -> Integer),
 
     -- Floating point arithmetic
     fun "<=." -: "float -> float -> bool"
@@ -107,10 +106,6 @@ primBasis  = [
       -= (show :: Double -> String),
     fun "float_of_string" -: "string -> float"
       -= (read :: String -> Double),
-    fun "string_of_int" -: "int -> string"
-      -= (show :: Integer -> String),
-    fun "int_of_string" -: "string -> int"
-      -= (read :: String -> Integer),
 
     -- Strings
     fun "explode"  -: "string -> int list"
@@ -188,6 +183,7 @@ primBasis  = [
     submod "Thread"  Basis.Thread.entries,
     submod "MVar"    Basis.MVar.entries,
     submod "Future"  Basis.Future.entries,
+    submod "Exn"     Basis.Exn.entries,
 
     submod "Prim" [
       submod "Socket" Basis.Socket.entries,
@@ -198,22 +194,6 @@ primBasis  = [
         "select" `primtype` tdSelect,
         "follow" `primtype` tdFollow
       ]
-    ],
-
-    submod "INTERNALS" [
-      -- Used by contract system -- # names prevent them from appearing
-      -- in a source program (which could result in nasty shadowing)
-      pfun 1 "ref" -: "all 'a. 'a -> 'a ref"
-        -= (\v -> Ref `fmap` newIORef v),
-      pfun 1 "modify" -: "all 'a. 'a ref * 'a -> 'a"
-        -= (\(vr, v1) -> do
-              atomicModifyIORef (unRef vr) (\v0 -> (v1, v0))),
-      fun "blame" -: "string -> string -> unit"
-        -= \who what -> fail $ "Contract violation: " ++
-                               who ++ ": " ++
-                               what :: IO (),
-
-      submod "Exn" Basis.Exn.entries
     ]
   ]
 
@@ -226,4 +206,4 @@ instance Valuable Ref where
 
 -- | Built-in operations implemented in the object language
 srcBasis :: String
-srcBasis  = $(fileString "basis.alms")
+srcBasis  = $(fileString "src/basis.alms") -- hackish

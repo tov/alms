@@ -4,12 +4,16 @@
 GHC      = ghc
 EXE      = alms
 EXAMPLES = ../examples
+SRC      = *.hs Basis/*.hs Meta/*.hs
 
 HCOPTS  = -W -Wall -O0 $(EDITING)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 
-$(EXE) $(EXE)-%: *.hs Basis/*.hs
+$(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
+
+Basis.hs: basis.alms
+	touch $@
 
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
@@ -41,4 +45,3 @@ examples: $(EXE)
 	  echo "$$i"; \
 	  ./$(EXE) "$$src" < "$$i"; \
 	done
-

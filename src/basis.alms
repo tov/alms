@@ -1,28 +1,31 @@
-open INTERNALS.Exn
+open Exn
+
+let failwith (msg: string) =
+  raise (Failure msg)
+
 let not (b: bool) = if b then false else true
 let (!=)['a] (x: 'a) (y: 'a) = not (x == y)
+
 let flip['a,'b,'c] (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y
+
 let (<) (x: int) (y: int) = not (y <= x)
 let (>) = flip (<)
 let (>=) = flip (<=)
 let (>.) = flip (<.)
 let (>=.) = flip (<=.)
+
 let null = fun 'a (x : 'a list) ->
   match x with
   | Nil -> true
   | _   -> false
-let hd = fun 'a (xs : 'a list) ->
-  let Cons(x, _) = xs in x
-let tl = fun 'a (xs : 'a list) ->
-  let Cons(_, xs') = xs in xs'
-let fst['<a,'<b] (x: '<a, _: '<b) = x
-let snd['<a,'<b] (_: '<a, y: '<b) = y
-let (=>!) ['<a] (x: '<a) ['<b] (y: '<b) = (y, x)
 let anull = fun '<a (xs : '<a list) ->
   match xs with
   | Nil          -> (Nil['<a], true)
   | Cons(x, xs') -> (Cons(x, xs'), false)
-
+let hd = fun 'a (xs : 'a list) ->
+  let Cons(x, _) = xs in x
+let tl = fun 'a (xs : 'a list) ->
+  let Cons(_, xs') = xs in xs'
 let foldr =
   let rec foldr '<a '<b (f : '<a -> '<b -o '<b)
                         (z : '<b) |(xs : '<a list) : '<b =
@@ -48,6 +51,20 @@ let lengthA['<a] (xs : '<a list) =
   let count (x : '<a) (n : int, xs' : '<a list) =
        (1 + n, Cons (x, xs')) in
     foldr count (0, Nil['<a]) xs
-let failwith (msg: string) =
-  raise (Failure msg)
+
+let fst['<a,'<b] (x: '<a, _: '<b) = x
+let snd['<a,'<b] (_: '<a, y: '<b) = y
+
+let (=>!) ['<a] (x: '<a) ['<b] (y: '<b) = (y, x)
+
+module Contract = struct
+  type party = string
+  type '<a contract = party * party -> '<a -> '<a
+end
+
+module INTERNALS = struct
+  let ref    = ref
+  let modify = (<-)
+  module Exn = Exn
+end
 

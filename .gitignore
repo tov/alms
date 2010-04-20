@@ -5,6 +5,7 @@ stamp
 .svn
 .*.sw?
 Setup
+alms
 affine
 *.tar.gz
 dist
