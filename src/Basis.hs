@@ -1,10 +1,12 @@
 -- | Built-in operations and types
-{-#
-  LANGUAGE DeriveDataTypeable
-  #-}
+{-# LANGUAGE
+      DeriveDataTypeable,
+      TemplateHaskell #-}
 module Basis (
   primBasis, srcBasis, basis2venv, basis2tenv
 ) where
+
+import Meta.FileString
 
 import Util
 import BasisUtils
@@ -224,58 +226,4 @@ instance Valuable Ref where
 
 -- | Built-in operations implemented in the object language
 srcBasis :: String
-srcBasis  = unlines [
-  "open INTERNALS.Exn",
-  "let not (b: bool) = if b then false else true",
-  "let (!=)['a] (x: 'a) (y: 'a) = not (x == y)",
-  "let flip['a,'b,'c] (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y",
-  "let (<) (x: int) (y: int) = not (y <= x)",
-  "let (>) = flip (<)",
-  "let (>=) = flip (<=)",
-  "let (>.) = flip (<.)",
-  "let (>=.) = flip (<=.)",
-  "let null = fun 'a (x : 'a list) ->",
-  "  match x with",
-  "  | Nil -> true",
-  "  | _   -> false",
-  "let hd = fun 'a (xs : 'a list) ->",
-  "  let Cons(x, _) = xs in x",
-  "let tl = fun 'a (xs : 'a list) ->",
-  "  let Cons(_, xs') = xs in xs'",
-  "let fst['<a,'<b] (x: '<a, _: '<b) = x",
-  "let snd['<a,'<b] (_: '<a, y: '<b) = y",
-  "let (=>!) ['<a] (x: '<a) ['<b] (y: '<b) = (y, x)",
-  "let anull = fun '<a (xs : '<a list) ->",
-  "  match xs with",
-  "  | Nil          -> (Nil['<a], true)",
-  "  | Cons(x, xs') -> (Cons(x, xs'), false)",
-  "",
-  "let foldr =",
-  "  let rec foldr '<a '<b (f : '<a -> '<b -o '<b)",
-  "                        (z : '<b) |(xs : '<a list) : '<b =",
-  "        match xs with",
-  "        | Nil -> z",
-  "        | Cons(x,xs) -> f x (foldr f z xs)",
-  "   in foldr",
-  "let foldl =",
-  "  let rec foldl '<a '<b (f : '<a -> '<b -o '<b)",
-  "                        (z : '<b) |(xs : '<a list) : '<b =",
-  "        match xs with",
-  "        | Nil -> z",
-  "        | Cons(x,xs) -> foldl f (f x z) xs",
-  "   in foldl",
-  "let revApp['<a] (xs : '<a list) (ys : '<a list) =",
-  "  let cons (x : '<a) (acc : '<a list) = Cons (x, acc) in",
-  "    foldl cons ys xs",
-  "let rev['<a] (xs : '<a list) = revApp xs Nil",
-  "let append['<a] (xs : '<a list) = revApp (rev xs)",
-  "let length['<a] (xs : '<a list) =",
-  "  foldr (fun (x : '<a) -> (+) 1) 0 xs",
-  "let lengthA['<a] (xs : '<a list) =",
-  "  let count (x : '<a) (n : int, xs' : '<a list) =",
-  "       (1 + n, Cons (x, xs')) in",
-  "    foldr count (0, Nil['<a]) xs",
-  "let failwith (msg: string) =",
-  "  raise (Failure msg)",
-  ""
-  ]
+srcBasis  = $(fileString "basis.alms")
