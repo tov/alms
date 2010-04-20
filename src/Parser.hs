@@ -1,8 +1,4 @@
 -- | Parser
-{-# LANGUAGE
-      RelaxedPolyRec,
-      ScopedTypeVariables
-  #-}
 module Parser (
   -- * The parsing monad
   P,
@@ -11,8 +7,7 @@ module Parser (
   parseProg, parseDecls, parseDecl,
     parseTyDec, parseType, parseExpr, parsePatt,
   -- * Convenience parsers (quick and dirty)
-  pp, pds, pd, ptd, pt, pe, px,
-  peA, ptA, peC, ptC
+  pp, pds, pd, ptd, pt, pe, px
 ) where
 
 import Util
@@ -26,9 +21,7 @@ import Text.ParserCombinators.Parsec hiding (parse)
 import System.IO.Unsafe (unsafePerformIO)
 import System.FilePath ((</>), dropFileName)
 
-type Lang = LangRepMono
 data St   = St {
-              stLang  :: Maybe Lang,
               stSigma :: Bool
             }
 
@@ -37,24 +30,12 @@ type P a  = CharParser St a
 
 state0 :: St
 state0 = St {
-           stLang  = Nothing,
            stSigma = False
          }
 
 -- | Run a parser, given the source file name, on a given string
 parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p state0
-
-withLang :: Lang -> P a -> P a
-withLang lang p = do
-  st <- getState
-  setState st { stLang = Just lang }
-  r <- p
-  setState st
-  return r
-
-getLang :: P (Maybe Lang)
-getLang  = stLang `fmap` getState
 
 withSigma :: Bool -> P a -> P a
 withSigma = mapSigma . const
@@ -161,11 +142,11 @@ varp  = lidp <|> operatorp
 
 -- Qualified lowercase identifers and operators
 --  - variable occurences
-qvarp :: P QLid
-qvarp  = pathp (varp >>! flip J)
+-- qvarp :: P QLid
+-- qvarp  = pathp (varp >>! flip J)
 
 -- Identifier expressions
-identp :: P (Expr () w)
+identp :: P (Expr ())
 identp  = addLoc $ pathp $ choice
   [ do v <- varp
        return $ \path -> exVar (J path v),
@@ -177,7 +158,7 @@ tyvarp :: P TyVar
 tyvarp  = do
   char '\''
   q <- choice
-       [ do assertLang LA; char '<'; return Qa,
+       [ do char '<'; return Qa,
          return Qu ]
   x <- lidp
   return (TV x q)
@@ -185,10 +166,10 @@ tyvarp  = do
 oplevelp :: Prec -> P Lid
 oplevelp  = liftM Lid . opP
 
-typep  :: Language w => P (Type () w)
+typep  :: P (Type ())
 typep   = typepP precStart
 
-typepP :: Language w => Int -> P (Type () w)
+typepP :: Int -> P (Type ())
 typepP p | p == precStart
          = choice
   [ do tc <- choice
@@ -215,19 +196,16 @@ typepP p | p == precSemi
 typepP p | p == precApp -- this case ensures termination
          = tyarg >>= tyapp'
   where
-  -- This uses ScopedTypeVariables to reify the Language type:
-  tyarg :: Language w => P [Type () w]
+  tyarg :: P [Type ()]
   tyarg  = choice
            [ do args <- parens $ commaSep1 (typepP precStart)
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
              do tc   <- qlidnatp
-                return [TyCon tc [] ()],
-             do t <- braces (langMapType (typepP precStart))
-                return [t] ]
+                return [TyCon tc [] ()] ]
 
-  tyapp' :: [Type () w] -> P (Type () w)
+  tyapp' :: [Type ()] -> P (Type ())
   tyapp' [t] = option t $ do
                  tc <- qlidnatp
                  tyapp' [TyCon tc [t] ()]
@@ -270,7 +248,9 @@ declsp  = choice [
 
 declp :: P (Decl ())
 declp  = addLoc $ choice [
-           tyDecp  >>! dcTyp,
+           do
+             reserved "type"
+             sepBy1 tyDecp (reserved "and") >>! dcTyp,
            letp,
            do
              reserved "open"
@@ -288,75 +268,45 @@ declp  = addLoc $ choice [
              ds1 <- declsp
              reserved "end"
              return (dcLoc ds0 ds1),
-           enterdecl (reserved "abstype") $ \tl lang -> do
-             at <- abstyp tl lang
+           do
+             reserved "abstype"
+             at <- abstyp
              reserved "with"
              ds <- declsp
              reserved "end"
              return (dcAbs at ds),
-           enterdecl (reserved "exception") $ \tl lang ->
-             let exnp kons = do
-                   n  <- uidp
-                   t  <- optionMaybe $ do
-                     reserved "of"
-                     typep
-                   return (dcExn (kons tl n t)) in
-             case lang of
-                    LC -> exnp ExnC
-                    LA -> exnp ExnA
+           do
+             reserved "exception"
+             n  <- uidp
+             t  <- optionMaybe $ do
+               reserved "of"
+               typep
+             return (dcExn n t)
          ]
 
 modexpp :: P (ModExp ())
 modexpp  = choice [
-             enterdecl (reserved "struct") $ \tl lang -> do
+             do
+               reserved "struct"
                ds <- declsp
                reserved "end"
-               return $ case lang of
-                 LC -> MeStrC tl ds
-                 LA -> MeStrA tl ds,
+               return (MeStr ds),
              quidp >>! MeName
            ]
 
 tyDecp :: P TyDec
-tyDecp  = do
-  reserved "type"
+tyDecp = do
+  (arity, tvs, name) <- tyProtp
   choice [
-    withLang LA $ do
-      try (brackets star)
-      tds <- sepBy1 tyDecAp (reserved "and")
-      return (TyDecT tds),
-    enterlang $ \tl lang ->
-      case lang of
-        LC -> do
-          tds <- sepBy1 tyDecCp (reserved "and")
-          return (TyDecC tl tds)
-        LA -> do
-          tds <- sepBy1 tyDecAp (reserved "and")
-          return (TyDecA tl tds)
-    ]
-  where
-    tyDecCp = do
-      (_, tvs, name) <- tyProtp
+    do
+      unless (all (== Invariant) arity) pzero
+      reservedOp "="
       choice [
-        do
-          reservedOp "="
-          choice [
-            typep >>! TdSynC name tvs,
-            altsp >>! TdDatC name tvs ],
-        do
-          return (TdAbsC name tvs) ]
-    tyDecAp = do
-      (arity, tvs, name) <- tyProtp
-      choice [
-        do
-          unless (all (== Invariant) arity) pzero
-          reservedOp "="
-          choice [
-            typep >>! TdSynA name tvs,
-            altsp >>! TdDatA name tvs ],
-        do
-          quals <- qualsp
-          return (TdAbsA name tvs arity quals) ]
+        typep >>! TdSyn name tvs,
+        altsp >>! TdDat name tvs ],
+    do
+      quals <- qualsp
+      return (TdAbs name tvs arity quals) ]
 
 tyProtp :: P ([Variance], [TyVar], Lid)
 tyProtp  = choice [
@@ -372,40 +322,10 @@ tyProtp  = choice [
   ]
 
 letp :: P (Decl ())
-letp  =
-    choice [
-      enterdecl (reserved "let" >> reserved "rec") $ \tl lang ->
-        case lang of
-          LC -> letrecbodyp (LtC tl)
-          LA -> letrecbodyp (LtA tl),
-      do tl   <- toplevelp
-         try (reserved "let" >> reserved "interface")
-         x    <- varp
-         reservedOp ":>"
-         t    <- typep
-         reservedOp "="
-         y    <- qvarp
-         return (dcLet (LtInt tl x t y)),
-      enterdecl (reserved "let") $ \tl lang ->
-        case lang of
-          LC -> letbodyp (LtC tl)
-          LA -> letbodyp (LtA tl)
-      ]
-  where
-    letbodyp :: Language w =>
-                (Lid -> Maybe (Type () w) -> Expr () w -> Let ()) ->
-                P (Decl ())
-    letbodyp build = do
-      f <- varp
-      (sigma, fixt, fixe) <- afargsp
-      t <- optionMaybe $ colon >> typep
-      reservedOp "="
-      e <- withSigma sigma exprp
-      return (dcLet (build f (fmap fixt t) (fixe e)))
-    letrecbodyp :: Language w =>
-                   (Lid -> Maybe (Type () w) -> Expr () w -> Let ()) ->
-                   P (Decl ())
-    letrecbodyp build = do
+letp  = do
+  reserved "let"
+  choice [
+    do
       bindings <- flip sepBy1 (reserved "and") $ do
         f <- varp
         (sigma, fixt, fixe) <- afargsp
@@ -418,45 +338,29 @@ letp  =
           namesExp = foldl1 exPair (map exBVar names)
           namesPat = foldl1 PaPair (map PaVar names)
           tempVar  = Lid "#letrec"
-          decls0   = [ dcLet $
-                         build tempVar Nothing $
-                           exLetRec bindings namesExp ]
-          decls1   = [ dcLet $
-                         build (bnvar binding) Nothing $
-                           exLet namesPat (exBVar tempVar) $
-                              exBVar (bnvar binding)
+          decls0   = [ dcLet tempVar Nothing $
+                         exLetRec bindings namesExp ]
+          decls1   = [ dcLet (bnvar binding) Nothing $
+                         exLet namesPat (exBVar tempVar) $
+                            exBVar (bnvar binding)
                      | binding <- bindings ]
-      return $ dcLoc decls0 decls1
-            {-
-      return $
-        dcLoc
-          (build (exBVar (Lid "#letrec")) Nothing
-            (exLetRec bindings
-              (foldr    (map bnvar bindings)
-        build (bnvar b) (Just (bntype b)) $
-          exLetRec [b] (exBVar (bnvar b))
-      let b:_ = bindings
-      return $
-        build (bnvar b) (Just (bntype b)) $
-          exLetRec [b] (exBVar (bnvar b))
-          -}
+      return $ dcLoc decls0 decls1,
+    do
+      f <- varp
+      (sigma, fixt, fixe) <- afargsp
+      t <- optionMaybe $ colon >> typep
+      reservedOp "="
+      e <- withSigma sigma exprp
+      return (dcLet f (fmap fixt t) (fixe e))
+    ]
 
-abstyp :: Bool -> Lang -> P AbsTy
-abstyp tl LC = do
-  tds <- flip sepBy (reserved "and") $ do
-    (_, tvs, name) <- tyProtp
-    reservedOp "="
-    alts <- altsp
-    return (TdDatC name tvs alts)
-  return (AbsTyC tl tds)
-abstyp tl LA = do
-  tds <- flip sepBy (reserved "and") $ do
-    (arity, tvs, name) <- tyProtp
-    quals        <- qualsp
-    reservedOp "="
-    alts         <- altsp
-    return (arity, quals, TdDatA name tvs alts)
-  return (AbsTyA tl tds)
+abstyp :: P [AbsTy]
+abstyp = flip sepBy (reserved "and") $ do
+  (arity, tvs, name) <- tyProtp
+  quals        <- qualsp
+  reservedOp "="
+  alts         <- altsp
+  return (arity, quals, TdDat name tvs alts)
 
 paramsVp :: P ([Variance], [TyVar])
 paramsVp  = delimList (return ()) parens comma paramVp >>! unzip
@@ -471,14 +375,13 @@ paramVp = do
   return (v, tv)
 
 variancep :: P Variance
-variancep = choice
-  [ do assertLang LA;
-       choice
-         [ char '+' >> return Covariant,
-           char '-' >> return Contravariant,
-           char '0' >> return Omnivariant,
-           char '1' >> return Invariant ],
-    return Invariant ]
+variancep =
+  choice
+    [ char '+' >> return Covariant,
+      char '-' >> return Contravariant,
+      char '0' >> return Omnivariant,
+      char '1' >> return Invariant,
+      return Invariant ]
 
 qualp :: P (Either TyVar Q)
 qualp = choice
@@ -490,10 +393,10 @@ litqualp = choice
   [ qualU    >> return Qu,
     qualA    >> return Qa ]
 
-altsp :: Language w => P [(Uid, Maybe (Type () w))]
+altsp :: P [(Uid, Maybe (Type ()))]
 altsp  = sepBy1 altp (reservedOp "|")
 
-altp  :: Language w => P (Uid, Maybe (Type () w))
+altp  :: P (Uid, Maybe (Type ()))
 altp   = do
   k <- uidp
   t <- optionMaybe $ do
@@ -501,33 +404,7 @@ altp   = do
     typep
   return (k, t)
 
-toplevelp :: P Bool
-toplevelp  = maybe True (const False) `fmap` getLang
-
-languagep :: P Lang
-languagep  = do
-  st <- getLang
-  case st of
-    Nothing   -> brackets $ choice
-                 [ do langC; return LC,
-                   do langA; return LA ]
-    Just lang -> return lang
-
-assertLang :: Lang -> P ()
-assertLang lang = do
-  st <- getLang
-  unless (st == Just lang) pzero
-
-enterlang :: (Bool -> Lang -> P a) -> P a
-enterlang = enterdecl (return ())
-
-enterdecl :: P b -> (Bool -> Lang -> P a) -> P a
-enterdecl name p = do
-  tl   <- toplevelp
-  lang <- try (name >> languagep)
-  withLang lang (p tl lang)
-
-exprp :: forall w. Language w => P (Expr () w)
+exprp :: P (Expr ())
 exprp = expr0 where
   onlyOne [x] = [x True]
   onlyOne xs  = map ($ False) xs
@@ -598,8 +475,7 @@ exprp = expr0 where
                      (PaCon (Uid "Left") (Just xi') Nothing, ei'))
                   xi ei
          let tryQ = qlid $
-                      "INTERNALS.Exn.try" ++
-                      show (reifyLang :: LangRep w)
+                      "INTERNALS.Exn.try"
          return (exCase (exApp (exVar tryQ)
                                (exAbs PaWild (tyNulOp "unit") e1)) $
                   (PaCon (Uid "Right") (Just (PaVar (Lid "x"))) Nothing,
@@ -672,11 +548,8 @@ exprp = expr0 where
            return (foldl exPair e1 es),
         return e1 ]
 
--- maybeBang :: P Bool
--- maybeBang = choice [ bang >> return True, return False ]
-
 -- Parse an infix operator at given precedence
-opappp :: Prec -> P (Expr () w -> Expr () w -> Expr () w)
+opappp :: Prec -> P (Expr () -> Expr () -> Expr ())
 opappp p = do
   loc <- curLoc
   op  <- oplevelp p
@@ -684,8 +557,7 @@ opappp p = do
 
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
-afargsp :: Language w =>
-           P (Bool, Type () w -> Type () w, Expr () w -> Expr () w)
+afargsp :: P (Bool, Type () -> Type (), Expr () -> Expr ())
 afargsp = loop tyArr where
   loop arrcon0 = do
     arrcon <- option arrcon0 $ do
@@ -704,7 +576,7 @@ afargsp = loop tyArr where
         return (False, id, id) ]
 
 -- One or more of (pat:typ, ...), (), tyvar
-argsp1 :: Language w => P (Bool, Expr () w -> Expr () w)
+argsp1 :: P (Bool, Expr () -> Expr ())
 argsp1  = do
            (b, fe) <- argp
            if b
@@ -712,7 +584,7 @@ argsp1  = do
              else second (fe .) `fmap` option (False, id) argsp1
 
 -- Zero or more of (pat:typ, ...), (), tyvar
-argsp :: Language w => P (Bool, Expr () w -> Expr () w)
+argsp :: P (Bool, Expr () -> Expr ())
 argsp  = option (False, id) $ do
            (b, fe) <- argp
            if b
@@ -720,7 +592,7 @@ argsp  = option (False, id) $ do
              else second (fe .) `fmap` argsp
 
 -- Parse a (pat:typ, ...), (), or tyvar
-argp :: Language w => P (Bool, Expr () w -> Expr () w)
+argp :: P (Bool, Expr () -> Expr ())
 argp  = choice [
           do
             (_, fe)    <- tyargp
@@ -731,9 +603,8 @@ argp  = choice [
         ]
 
 -- Parse a (pat:typ, ...) or () argument
-vargp :: Language w =>
-         (Type () w -> Type () w -> Type () w) ->
-         P (Bool, Type () w -> Type () w, Expr () w -> Expr () w)
+vargp :: (Type () -> Type () -> Type ()) ->
+         P (Bool, Type () -> Type (), Expr () -> Expr ())
 vargp arrcon = do
   loc    <- curLoc
   inBang <- bangp
@@ -741,7 +612,7 @@ vargp arrcon = do
   return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
-paty :: Language w => P (Patt, Type () w)
+paty :: P (Patt, Type ())
 paty  = do
   (p, mt) <- pamty
   case (p, mt) of
@@ -751,7 +622,7 @@ paty  = do
     _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
-pamty :: Language w => P (Patt, Maybe (Type () w))
+pamty :: P (Patt, Maybe (Type ()))
 pamty  = parens $ choice
            [
              do
@@ -795,8 +666,7 @@ pamty  = parens $ choice
       return (p, t)
 
 -- Parse a sequence of one or more tyvar arguments
-tyargp :: Language w =>
-          P (Type () w -> Type () w, Expr () w -> Expr () w)
+tyargp :: P (Type () -> Type (), Expr () -> Expr ())
 tyargp  = do
   tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
   return (\t -> foldr (\(_,   tv) -> tyAll tv) t tvs,
@@ -804,9 +674,8 @@ tyargp  = do
     where
   loctv = liftM2 (,) curLoc tyvarp
 
-pattbangp :: Language w =>
-             P (Patt, Bool,
-                Bool -> (Patt -> Expr () w -> b) -> Patt -> Expr () w -> b)
+pattbangp :: P (Patt, Bool,
+                Bool -> (Patt -> Expr () -> b) -> Patt -> Expr () -> b)
 pattbangp = do
   inSigma <- getSigma
   inBang  <- bangp
@@ -815,10 +684,9 @@ pattbangp = do
       wrap  = inBang && inSigma
   return (condMakeBang wrap x, inBang, condSigma trans)
 
-condSigma :: Language w =>
-             Bool -> Bool ->
-             (Patt -> Expr () w -> a) ->
-             Patt -> Expr () w -> a
+condSigma :: Bool -> Bool ->
+             (Patt -> Expr () -> a) ->
+             Patt -> Expr () -> a
 condSigma True  = exSigma
 condSigma False = const id
 
@@ -883,9 +751,9 @@ parseDecl     :: P (Decl ())
 -- | Parse a type declaration
 parseTyDec    :: P TyDec
 -- | Parse a type
-parseType     :: Language w => P (Type () w)
+parseType     :: P (Type ())
 -- | Parse an expression
-parseExpr     :: Language w => P (Expr () w)
+parseExpr     :: P (Expr ())
 -- | Parse a pattern
 parsePatt     :: P Patt
 parseProg      = finish progp
@@ -915,38 +783,17 @@ ptd :: String -> TyDec
 ptd  = makeQaD parseTyDec
 
 -- | Parse a type
-pt  :: Language w => String -> Type () w
-pt   = makeQaDA parseType
+pt  :: String -> Type ()
+pt   = makeQaD parseType
 
 -- | Parse an expression
-pe  :: Language w => String -> Expr () w
-pe   = makeQaDA parseExpr
-
--- | Parse a type
-ptC  :: String -> Type () C
-ptC   = pt
-
--- | Parse an expression
-peC  :: String -> Expr () C
-peC   = pe
-
--- | Parse a type
-ptA  :: String -> Type () A
-ptA   = pt
-
--- | Parse an expression
-peA  :: String -> Expr () A
-peA   = pe
+pe  :: String -> Expr ()
+pe   = makeQaD parseExpr
 
 -- | Parse a pattern
 px  :: String -> Patt
-px   = makeQaDA parsePatt
+px   = makeQaD parsePatt
 
 makeQaD :: P a -> String -> a
 makeQaD parser =
   either (error . show) id . runParser parser state0 "<string>"
-
-makeQaDA :: P a -> String -> a
-makeQaDA parser =
-  either (error . show) id .
-    runParser parser state0 { stLang = Just LA } "<string>"
