@@ -13,7 +13,7 @@ entries = [
     primexn eiIOError      "string",
     primexn eiBlame        "string * string",
     primexn eiPatternMatch "string * string list",
-    src "exception[C] Failure of string",
+    src "exception Failure of string",
 
     pfun 1 "raise" -: "exn -> any"
       -= \exn -> throw (vprj exn :: VExn)

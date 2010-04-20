@@ -326,6 +326,7 @@ letp  = do
   reserved "let"
   choice [
     do
+      reserved "rec"
       bindings <- flip sepBy1 (reserved "and") $ do
         f <- varp
         (sigma, fixt, fixe) <- afargsp

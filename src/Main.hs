@@ -17,8 +17,8 @@ import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
 import Syntax (Prog, ProgT, Decl, DeclT,
-               BIdent(..), LangRep(..), prog2decls)
-import Env (empty, unionSum, unionProduct, toList)
+               BIdent(..), prog2decls)
+import Env (empty, unionProduct, toList)
 
 import Control.Monad (when, unless)
 import System.Exit (exitFailure)
@@ -221,18 +221,14 @@ interactive opt rs0 = do
     printResult :: NewDefs -> NewValues -> IO ()
     printResult defs values = do
       let vals = unionProduct
-                   (unionSum (newAValues defs)
-                             (newCValues defs))
+                   (newValues defs)
                    values
       print $ Ppr.vcat $
         map pprMod (newModules defs) ++
-        map pprType (toList (newATypes defs)) ++
-        map pprType (toList (newCTypes defs)) ++
+        map pprType (toList (newTypes defs)) ++
         map pprValue (toList vals)
 
       where
-      pprKey s lang = text s <> char '[' <> ppr lang <> char ']'
-
       pprMod uid    = text "module" <+> ppr uid
 
       pprType (lid, ti) = ppr (tyInfoToDec lid ti)
@@ -240,12 +236,8 @@ interactive opt rs0 = do
       pprValue (Con _, _)        = Ppr.empty
       pprValue (Var k, (mt, mv)) =
         addHang '=' (fmap ppr mv) $
-          addHang ':' (fmap (either ppr ppr) mt) $
-            pprValLang mt <+> ppr k
-
-      pprValLang Nothing          = text "val"
-      pprValLang (Just (Left _))  = pprKey "val" A
-      pprValLang (Just (Right _)) = pprKey "val" C
+          addHang ':' (fmap ppr mt) $
+            ppr k
 
       addHang c m d = case m of
         Nothing -> d
