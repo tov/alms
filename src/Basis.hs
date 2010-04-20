@@ -272,9 +272,9 @@ srcBasis  = unlines [
   "let length['<a] (xs : '<a list) =",
   "  foldr (fun (x : '<a) -> (+) 1) 0 xs",
   "let lengthA['<a] (xs : '<a list) =",
-  "  let count (x : '<a) (xs' : '<a list, n : int) =",
-  "       (Cons (x, xs'), 1 + n) in",
-  "    foldr count (Nil['<a], 0) xs",
+  "  let count (x : '<a) (n : int, xs' : '<a list) =",
+  "       (1 + n, Cons (x, xs')) in",
+  "    foldr count (0, Nil['<a]) xs",
   "let failwith (msg: string) =",
   "  raise (Failure msg)",
   ""
