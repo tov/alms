@@ -15,11 +15,6 @@ dist/setup-config config: Setup alms.cabal
 Setup: Setup.hs
 	$(GHC) -o $@ --make $<
 
-# Make sure that changing the source portion of the basis causes
-# the basis code to be rebuilt.
-src/Basis.hs: src/basis.alms
-	touch $@
-
 $(EXE): default
 
 test tests: $(EXE)

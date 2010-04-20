@@ -12,9 +12,6 @@ EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
 
-Basis.hs: basis.alms
-	touch $@
-
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 

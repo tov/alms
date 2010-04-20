@@ -6,8 +6,6 @@ module Basis (
   primBasis, srcBasis, basis2venv, basis2tenv
 ) where
 
-import Meta.FileString
-
 import Util
 import BasisUtils
 import Value (Valuable(..), Value(..))
@@ -206,4 +204,4 @@ instance Valuable Ref where
 
 -- | Built-in operations implemented in the object language
 srcBasis :: String
-srcBasis  = $(fileString "src/basis.alms") -- hackish
+srcBasis  = "libbasis.alms"

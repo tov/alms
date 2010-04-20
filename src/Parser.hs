@@ -11,6 +11,7 @@ module Parser (
 ) where
 
 import Util
+import Paths
 import Prec
 import Syntax
 import Sigma
@@ -233,6 +234,7 @@ declsp  = choice [
               return (d : ds),
             do
               sharpLoad
+              name <- stringLiteral
               base <- sourceName `liftM` getPosition
               path <- inDirectoryOf base `liftM` stringLiteral
               let contents = unsafePerformIO $ readFile path

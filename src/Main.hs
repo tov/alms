@@ -9,6 +9,7 @@ import Util
 import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
 import qualified Ppr
 import Parser (parse, parseProg, parseDecls)
+import Paths (findAlmsLib)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
 import Translation (translate, translateDecls, TEnv, tenv0)
@@ -47,12 +48,22 @@ main  = do
   processArgs [] args $ \opts mmsrc filename -> do
   g0  <- basis2tenv primBasis
   e0  <- basis2venv primBasis
-  st0 <- loadSource (RS g0 tenv0 e0) "basis" srcBasis
-  maybe interactive (batch filename) mmsrc (`elem` opts) st0
+  let st0 = RS g0 tenv0 e0
+  st1 <- do
+    basis <- findAlmsLib srcBasis
+    case basis of
+      Nothing -> do
+        carp $ srcBasis ++ ": could not load standard basis"
+        return st0
+      Just n  -> loadFile st0 n
+  maybe interactive (batch filename) mmsrc (`elem` opts) st1
     `handleExns` exitFailure
 
-loadSource :: ReplState -> String -> String -> IO ReplState
-loadSource st name src = do
+loadFile :: ReplState -> String -> IO ReplState
+loadFile st name = readFile name >>= loadString st name
+
+loadString :: ReplState -> String -> String -> IO ReplState
+loadString st name src = do
   case parse parseDecls name src of
     Left e     -> fail (show e)
     Right ast0 -> do
@@ -126,6 +137,11 @@ dynamics (rs, ast) = do
   (e', new) <- addDecls (rsDynamics rs) ast
   return (rs { rsDynamics = e' }, new)
 
+carp :: String -> IO ()
+carp msg = do
+  prog <- getProgName
+  hPutStrLn stderr (prog ++ ": " ++ msg)
+
 handleExns :: IO a -> IO a -> IO a
 handleExns body handler =
   (body
@@ -140,8 +156,7 @@ handleExns body handler =
         handler)
     `Exn.catch`
       \err -> do
-        prog <- getProgName
-        hPutStrLn stderr (prog ++ ": " ++ errorString err)
+        carp (errorString err)
         handler
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()

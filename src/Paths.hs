@@ -8,6 +8,7 @@ import Util
 import Language.Haskell.TH
 import System.FilePath
 import System.Directory (doesFileExist, getCurrentDirectory)
+import System.Environment (getEnv)
 
 #ifdef ALMS_CABAL_BUILD
 import Paths_alms

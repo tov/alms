@@ -1,7 +1,7 @@
 Name:           alms
 Version:        0.1.0
 Copyright:      2010, Jesse A. Tov
-Cabal-Version:  >= 1.2
+Cabal-Version:  >= 1.8
 License:        BSD3
 License-File:   LICENSE
 Stability:      experimental
@@ -11,6 +11,8 @@ Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms
 Category:       Compilers/Interpreters
 Synopsis:       An affine language with modules and subtyping
 Build-type:     Simple
+Data-Dir:       lib
+Data-Files:     *.alms
 
 Flag editline
   Description: Enable line editing using the editline package
@@ -23,7 +25,6 @@ Flag readline
 Executable alms
   Main-Is:              Main.hs
   Hs-Source-Dirs:       src
-  Extra-Source-Files:   src/basis.alms
   GHC-Options:          -W -Wall -O2
   CPP-Options:          -DALMS_CABAL_BUILD
   Build-Depends:        haskell98,
@@ -35,6 +36,7 @@ Executable alms
                         mtl >= 1.1,
                         filepath >= 1.1,
                         network >= 2.2,
+                        directory >= 1.0,
                         template-haskell >= 2.0
 
   if flag(readline)
