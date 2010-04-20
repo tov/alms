@@ -9,13 +9,13 @@ import Util
 entries :: [Entry]
 entries =  [
     -- Threads
-    typeC "thread",
-    fun "fork" -: "(unit -> unit) -> thread" -: ""
+    typ "thread",
+    fun "fork" -: "(unit -> unit) -> thread"
       -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
-    fun "kill" -: "thread -> unit" -: ""
+    fun "kill" -: "thread -> unit"
       -= CC.killThread . unVinj,
-    fun "delay" -:: "int -> unit"
+    fun "delay" -: "int -> unit"
       -= CC.threadDelay . (fromIntegral :: Integer -> Int),
-    fun "print" -: "thread -> thread" -: ""
+    fun "print" -: "thread -> thread"
       -= \t -> do print (t :: Vinj CC.ThreadId); return t
   ]

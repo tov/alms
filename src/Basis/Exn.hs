@@ -2,8 +2,7 @@ module Basis.Exn ( entries, ioexn2vexn ) where
 
 import BasisUtils
 import Value
-import Syntax (LangRepMono(..), ExnId(..),
-               eiIOError, eiBlame, eiPatternMatch)
+import Syntax (ExnId(..), eiIOError, eiBlame, eiPatternMatch)
 
 import Control.Exception
 
@@ -16,19 +15,14 @@ entries = [
     primexn eiPatternMatch "string * string list",
     src "exception[C] Failure of string",
 
-    pfun 1 "raise" -:: "exn -> any"
+    pfun 1 "raise" -: "exn -> any"
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
-    pfun 1 "try" -: ""
-                  -: "all '<a. (unit -o '<a) -> exn + '<a"
+    pfun 1 "try" -: "all '<a. (unit -o '<a) -> exn + '<a"
       -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
                          :: IO (Either VExn Value),
 
-    fun "liftExn" -: ""
-                  -: "{exn} -> exn"
-      -= (id :: Value -> Value),
-
-    fun "raiseBlame" -:: "string -> string -> unit"
+    fun "raiseBlame" -: "string -> string -> unit"
       -= \s1 s2 -> throw VExn {
            exnId    = eiBlame,
            exnParam = Just (vinj (s1 :: String, s2 :: String))

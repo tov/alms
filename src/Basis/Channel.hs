@@ -18,16 +18,13 @@ instance Valuable Channel where
 
 entries :: [Entry]
 entries  = [
-    typeC "'a channel",
+    typ "'a channel",
     pfun 1 "new"  -: "all 'a. unit -> 'a channel"
-                  -: ""
         -= \() -> Channel `fmap` C.newChan,
     pfun 2 "send" -: "all 'a. 'a channel -> 'a -> unit"
-                  -: ""
         -= \c a -> do
              C.writeChan (unChannel c) a
              return (),
     pfun 1 "recv" -: "all 'a. 'a channel -> 'a"
-                  -: ""
         -= \c -> C.readChan (unChannel c)
   ]

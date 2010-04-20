@@ -27,29 +27,27 @@ deriving instance Data IO.IOMode
 
 entries :: [Entry]
 entries = [
-    typeA "handle",
-    typeA "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
+    typ "handle",
+    typ "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
     -- File operations
-    typeC "handle",
-    typeC "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
-    fun "openFile"        -: "string -> ioMode -> handle" -: ""
+    fun "openFile"        -: "string -> ioMode -> handle"
       -= IO.openFile,
-    fun "hGetChar"        -: "handle -> char" -: ""
+    fun "hGetChar"        -: "handle -> char"
       -= fmap char2integer . IO.hGetChar,
-    fun "hGetLine"        -: "handle -> string" -: ""
+    fun "hGetLine"        -: "handle -> string"
       -= IO.hGetLine,
-    fun "hIsEOF"          -: "handle -> bool" -: ""
+    fun "hIsEOF"          -: "handle -> bool"
       -= IO.hIsEOF,
-    fun "hPutChar"        -: "handle -> char -> unit" -: ""
+    fun "hPutChar"        -: "handle -> char -> unit"
       -= \h -> IO.hPutChar h . integer2char,
-    fun "hPutStr"         -: "handle -> string -> unit" -: ""
+    fun "hPutStr"         -: "handle -> string -> unit"
       -= IO.hPutStr,
-    fun "hClose"          -: "handle -> unit" -: ""
+    fun "hClose"          -: "handle -> unit"
       -= IO.hClose,
-    fun "hFlush"          -: "handle -> unit" -: ""
+    fun "hFlush"          -: "handle -> unit"
       -= IO.hFlush,
 
-    val "stdin"  -: "handle" -: "" -= IO.stdin,
-    val "stdout" -: "handle" -: "" -= IO.stdout,
-    val "stderr" -: "handle" -: "" -= IO.stderr
+    val "stdin"  -: "handle" -= IO.stdin,
+    val "stdout" -: "handle" -= IO.stdout,
+    val "stderr" -: "handle" -= IO.stderr
   ]

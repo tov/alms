@@ -98,32 +98,32 @@ deriving instance Data S.AddrInfo
 
 entries :: [Entry]
 entries  = [
-    typeC "portNumber = PortNum of int",
-    typeC "socket",
-    typeC (enumTypeDecl S.AF_INET),
-    typeC (enumTypeDecl S.Stream),
-    typeC "protocolNumber = int",
-    typeC "hostAddress  = int",
-    typeC "flowInfo     = int",
-    typeC "hostAddress6 = int * int * int * int",
-    typeC "scopeID      = int",
-    typeC "sockAddr = SockAddrInet of portNumber * hostAddress"
-          "         | SockAddrInet6 of"
-          "             portNumber * flowInfo * hostAddress6 * scopeID"
-          "         | SockAddrUnix of string",
-    typeC (enumTypeDecl S.AI_ALL),
-    typeC (enumTypeDecl S.ShutdownSend),
-    typeC "addrInfo = AddrInfo of"
-          "  addrInfoFlag list * family * socketType *"
-          "  protocolNumber * sockAddr * string option",
-    typeC "hostName = string",
-    typeC "serviceName = string",
+    typ "portNumber = PortNum of int",
+    typ "socket",
+    typ (enumTypeDecl S.AF_INET),
+    typ (enumTypeDecl S.Stream),
+    typ "protocolNumber = int",
+    typ "hostAddress  = int",
+    typ "flowInfo     = int",
+    typ "hostAddress6 = int * int * int * int",
+    typ "scopeID      = int",
+    typ "sockAddr = SockAddrInet of portNumber * hostAddress"
+        "         | SockAddrInet6 of"
+        "             portNumber * flowInfo * hostAddress6 * scopeID"
+        "         | SockAddrUnix of string",
+    typ (enumTypeDecl S.AI_ALL),
+    typ (enumTypeDecl S.ShutdownSend),
+    typ "addrInfo = AddrInfo of"
+        "  addrInfoFlag list * family * socketType *"
+        "  protocolNumber * sockAddr * string option",
+    typ "hostName = string",
+    typ "serviceName = string",
 
-    val "inaddr_any" -: "hostAddress" -: ""
+    val "inaddr_any" -: "hostAddress"
       -= S.iNADDR_ANY,
-    val "defaultProtocol" -: "protocolNumber" -: ""
+    val "defaultProtocol" -: "protocolNumber"
       -= S.defaultProtocol,
-    val "defaultHints" -: "addrInfo" -: ""
+    val "defaultHints" -: "addrInfo"
       -= S.defaultHints {
            S.addrAddress  = S.SockAddrInet S.aNY_PORT S.iNADDR_ANY,
            S.addrCanonName = Nothing
@@ -131,34 +131,33 @@ entries  = [
 
     fun "getAddrInfo"
       -: ("addrInfo option -> hostName option -> " ++
-          "serviceName option -> addrInfo list") -: ""
+          "serviceName option -> addrInfo list")
       -= S.getAddrInfo,
-    fun "inet_addr" -: "string -> hostAddress" -: ""
+    fun "inet_addr" -: "string -> hostAddress"
       -= S.inet_addr,
 
     fun "socket" -: "family -> socketType -> protocolNumber -> socket"
-                 -: ""
       -= S.socket,
-    fun "bind"   -: "socket -> sockAddr -> unit" -: ""
+    fun "bind"   -: "socket -> sockAddr -> unit"
       -= S.bindSocket,
-    fun "connect"   -: "socket -> sockAddr -> unit" -: ""
+    fun "connect"   -: "socket -> sockAddr -> unit"
       -= S.connect,
-    fun "listen" -: "socket -> int -> unit" -: ""
+    fun "listen" -: "socket -> int -> unit"
       -= S.listen,
-    fun "accept" -: "socket -> socket * sockAddr" -: ""
+    fun "accept" -: "socket -> socket * sockAddr"
       -= S.accept,
-    fun "send" -: "socket -> string -> int" -: ""
+    fun "send" -: "socket -> string -> int"
       -= \sock str -> S.send sock str,
-    fun "recv" -: "socket -> int -> string" -: ""
+    fun "recv" -: "socket -> int -> string"
       -= \sock len -> S.recv sock len,
-    fun "shutdown" -: "socket -> shutdownCmd -> unit" -: ""
+    fun "shutdown" -: "socket -> shutdownCmd -> unit"
       -= S.shutdown,
-    fun "close" -: "socket -> unit" -: ""
+    fun "close" -: "socket -> unit"
       -= S.sClose,
 
-    fun "isReadable" -: "socket -> bool" -: ""
+    fun "isReadable" -: "socket -> bool"
       -= S.sIsReadable,
-    fun "isWritable" -: "socket -> bool" -: ""
+    fun "isWritable" -: "socket -> bool"
       -= S.sIsWritable
   ]
 

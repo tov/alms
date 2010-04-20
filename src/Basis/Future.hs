@@ -21,26 +21,22 @@ instance Valuable Future where
 entries :: [Entry]
 entries  = [
     -- Futures
-    typeA "+'<a future qualifier A",
-    typeA "-'<a cofuture qualifier A",
+    typ "+'<a future qualifier A",
+    typ "-'<a cofuture qualifier A",
 
-    pfun 1 "new" -: ""
-                 -: "all '<a. (unit -o '<a) -> '<a future"
+    pfun 1 "new" -: "all '<a. (unit -o '<a) -> '<a future"
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f () >>= MV.putMVar future)
             return (Future future),
-    pfun 1 "get" -: ""
-                 -: "all '<a. '<a future -> '<a"
+    pfun 1 "get" -: "all '<a. '<a future -> '<a"
       -= (MV.takeMVar . unFuture),
-    pfun 1 "coNew" -: ""
-                   -: "all '<a. ('<a future -o unit) -> '<a cofuture"
+    pfun 1 "coNew" -: "all '<a. ('<a future -o unit) -> '<a cofuture"
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f (Future future) >> return ())
             return (Future future),
-    pfun 1 "coPut" -: ""
-                   -: "all '<a. '<a cofuture -> '<a -o unit"
+    pfun 1 "coPut" -: "all '<a. '<a cofuture -> '<a -o unit"
       -= \future value -> MV.putMVar (unFuture future) value
   ]
 

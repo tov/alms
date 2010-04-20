@@ -14,7 +14,7 @@ module BasisUtils (
   -- *** Modules, exceptions, and arbitrary declarations
   submod, primexn, src,
   -- ** Sugar operators for entry construction
-  (-:), (-::), (-=),
+  (-:), (-=),
   -- ** Environment construction
   basis2venv, basis2tenv,
 
@@ -164,9 +164,7 @@ primexn ei t = ExnEn { enExnId = ei, enExnType = t }
 (-:) = ($)
 (-=) = ($)
 -- | Application twice, for giving the same type in C and A
-(-::) :: (a -> a -> b) -> a -> b
-f -:: x = f x x
-infixl 5 -:, -::
+infixl 5 -:
 infixr 0 -=
 
 -- | Instance of 'fun' for making binary arithmetic functions
