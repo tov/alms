@@ -324,7 +324,7 @@ m |! s = case m of
 infix 1 |!
 
 -- | Check type for closed-ness and and defined-ness, and add info
-tcType ::  (?loc :: Loc, Monad m) =>
+tcType :: (?loc :: Loc, Monad m) =>
           Type i -> TC m TypeT
 tcType = tc where
   tc :: Monad m => Type i -> TC m TypeT
@@ -1176,10 +1176,11 @@ addType gg n td =
 
 -- | Add a new exception variant
 addExn :: Monad m =>
-          S -> Uid -> Maybe TypeT -> Integer -> m S
+          S -> Uid -> Maybe (Type i) -> Integer -> m S
 addExn gg n mt ix =
-  runTC gg .
-    withExnId n mt ix $
+  runTC gg $ do
+    mt' <- maybe (return Nothing) (liftM Just . tcType) mt
+    withExnId n mt' ix $
       saveTC False
   where ?loc = bogus
 

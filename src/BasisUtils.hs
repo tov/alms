@@ -10,7 +10,7 @@ module BasisUtils (
   -- *** Values
   fun, val, pfun, pval, binArith,
   -- *** Types
-  typeC, typeA, typeT, primtype,
+  typ, primtype,
   -- *** Modules, exceptions, and arbitrary declarations
   submod, primexn, src,
   -- ** Sugar operators for entry construction
@@ -40,8 +40,7 @@ data Entry
   --   (may be blank), and a value
   = ValEn {
     enName  :: Lid,
-    enCType :: String,
-    enAType :: String,
+    enType  :: String,
     enValue :: Value
   }
   -- | A declaration entry is just source code
@@ -106,25 +105,25 @@ baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 --   for the sublanguages.  (Leave blank to leave the binding out of
 --   that language.
 fun :: (MkFun r, Valuable v) =>
-       String -> String -> String -> (v -> r) -> Entry
-fun name cty aty f = ValEn (Lid name) cty aty (mkFun (FNNamed [text name]) f)
+       String -> String -> (v -> r) -> Entry
+fun name ty f = ValEn (Lid name) ty (mkFun (FNNamed [text name]) f)
 
 -- | Make a value entry for a Haskell non-function.
-val :: Valuable v => String -> String -> String -> v -> Entry
-val name cty aty v = ValEn (Lid name) cty aty (vinj v)
+val :: Valuable v => String -> String -> v -> Entry
+val name ty v = ValEn (Lid name) ty (vinj v)
 
 -- | Make a value entry for a value that is polymorphic in the object
 --   language: appends the specified number of type lambdas
-pval :: Valuable v => Int -> String -> String -> String -> v -> Entry
-pval 0 name cty aty v = val name cty aty v
-pval n name cty aty v = mkTyAbs (pval (n - 1) name cty aty v)
+pval :: Valuable v => Int -> String -> String -> v -> Entry
+pval 0 name ty v = val name ty v
+pval n name ty v = mkTyAbs (pval (n - 1) name ty v)
 
 -- | Make a value entry for a function that is polymorphic in the object
 --   language: appends the specified number of type lambdas
 pfun :: (MkFun r, Valuable v) =>
-        Int -> String -> String -> String -> (v -> r) -> Entry
-pfun 0 name cty aty f = fun name cty aty f
-pfun n name cty aty f = mkTyAbs (pfun (n - 1) name cty aty f)
+        Int -> String -> String -> (v -> r) -> Entry
+pfun 0 name ty f = fun name ty f
+pfun n name ty f = mkTyAbs (pfun (n - 1) name ty f)
 
 mkTyAbs :: Entry -> Entry
 mkTyAbs entry =
@@ -133,29 +132,19 @@ mkTyAbs entry =
 
 class TypeBuilder r where
   -- | @String String ... -> Entry@ variadic function for building
-  --   source-level A type entries
-  typeA :: String -> r
-  -- | @String String ... -> Entry@ variadic function for building
-  --   source-level C type entries
-  typeC :: String -> r
-  -- | @String String ... -> Entry@ variadic function for building
-  --   source-level shared type entries
-  typeT :: String -> r
+  --   source-level type entries
+  typ :: String -> r
   -- | @String String ... -> Entry@ variadic function for building
   --   source-level declaration entries
   src   :: String -> r
 
 instance TypeBuilder Entry where
-  typeC      = DecEn . ("type[C] " ++)
-  typeA      = DecEn . ("type[A] " ++)
-  typeT      = DecEn . ("type[*] " ++)
+  typ        = DecEn . ("type " ++)
   src        = DecEn
 
 instance TypeBuilder r => TypeBuilder (String -> r) where
-  typeC s    = typeC . (s ++) . ('\n' :)
-  typeA s    = typeA . (s ++) . ('\n' :)
-  typeT s    = typeT . (s ++) . ('\n' :)
-  src s      = src   . (s ++) . ('\n' :)
+  typ s      = typ . (s ++) . ('\n' :)
+  src s      = src . (s ++) . ('\n' :)
 
 -- | Creates a module entry
 submod :: String -> [Entry] -> Entry
@@ -182,7 +171,7 @@ infixr 0 -=
 
 -- | Instance of 'fun' for making binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry
-binArith name = fun name "int -> int -> int" "int -> int -> int"
+binArith name = fun name "int -> int -> int"
 
 -- | Apply an object language function (as a 'Value')
 vapp :: Valuable a => Value -> a -> IO Value
@@ -202,14 +191,8 @@ basis2venv es = foldM add genEmpty es where
 -- | Build the static environment
 basis2tenv :: Monad m => [Entry] -> m S
 basis2tenv  = foldM each env0 where
-  each gg0 (ValEn { enName = n, enCType = ct, enAType = at }) = do
-    gg1 <- if null ct
-      then return gg0
-      else Statics.addVal gg0 n (pt ct :: Type () C)
-    gg2 <- if null at
-      then return gg1
-      else Statics.addVal gg1 n (pt at :: Type () A)
-    return gg2
+  each gg0 (ValEn { enName = n, enType = t }) = do
+    Statics.addVal gg0 n (pt t)
   each gg0 (DecEn { enSrc = s }) = do
     (gg1, _, _) <- tcDecls False gg0 (pds s)
     return gg1
@@ -217,14 +200,11 @@ basis2tenv  = foldM each env0 where
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
-  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiIndex = ix, eiLang = LC },
+  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiIndex = ix },
                     enExnType = s }) =
-    Statics.addExn gg0 n (pt_maybe s) C ix
-  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiIndex = ix, eiLang = LA },
-                    enExnType = s }) =
-    Statics.addExn gg0 n (pt_maybe s) A ix
+    Statics.addExn gg0 n (pt_maybe s) ix
 
-pt_maybe :: Language w => String -> Maybe (Type () w)
+pt_maybe :: String -> Maybe (Type ())
 pt_maybe "" = Nothing
 pt_maybe s  = Just (pt s)
 
