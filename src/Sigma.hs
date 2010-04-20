@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 {-# LANGUAGE
       GeneralizedNewtypeDeriving,
       PatternGuards #-}
@@ -19,10 +20,9 @@ import Data.Foldable (Foldable, toList)
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.  (Boolean specifies whether the result
 --   should include the effect variables.)
-exSigma :: Language w =>
-           Bool ->
-           (Patt -> Expr () w -> a) ->
-           Patt -> Expr () w -> a
+exSigma :: Bool ->
+           (Patt -> Expr () -> a) ->
+           Patt -> Expr () -> a
 exSigma ret binder patt body =
   let (b_vars, b_code) = transform (pv patt) body in
   binder (ren patt) $
@@ -33,10 +33,9 @@ exSigma ret binder patt body =
 
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.
-exAddSigma :: Language w =>
-              Bool ->
-              ([Lid] -> Patt -> Expr () w -> a) ->
-              S.Set Lid -> Patt -> Expr () w -> a
+exAddSigma :: Bool ->
+              ([Lid] -> Patt -> Expr () -> a) ->
+              S.Set Lid -> Patt -> Expr () -> a
 exAddSigma ret binder env patt body =
   let env'             = pv patt
       (b_vars, b_code) = transform (env' `S.union` env) body
@@ -195,8 +194,7 @@ exAddSigma ret binder env patt body =
                 (r2, e.vars)
 -}
 
-transform :: Language w =>
-              S.Set Lid -> Expr () w -> ([Lid], Expr () w)
+transform :: S.Set Lid -> Expr () -> ([Lid], Expr ())
 transform env = loop where
   capture e1
     | vars <- [ v | J [] v <- M.keys (fv e1),
@@ -349,10 +347,10 @@ transform env = loop where
       | vars <- []
         -> (vars, e +:: vars)
 
-(+:+)   :: Expr () w -> [Expr () w] -> Expr () w
+(+:+)   :: Expr () -> [Expr ()] -> Expr ()
 (+:+)    = foldl exPair
 
-(+::)   :: Expr () w -> [Lid] -> Expr () w
+(+::)   :: Expr () -> [Lid] -> Expr ()
 e +:: vs = e +:+ map exBVar vs
 
 (-:-)   :: Patt -> [Patt] -> Patt
@@ -366,7 +364,7 @@ r1 = Lid "r1.!"
 r2 = Lid "r2.!"
 
 {-
-expr2vs :: Expr i w -> Maybe [Lid]
+expr2vs :: Expr i -> Maybe [Lid]
 expr2vs e = case view e of
   ExId (J [] (Var l)) -> return [l]
   ExPair e1 e2
@@ -384,7 +382,7 @@ parseBangPatt (PaCon (Uid "!") mp Nothing) = mp
 parseBangPatt _                            = Nothing
 
 {-
-fbvSet :: Expr i w -> S.Set Lid
+fbvSet :: Expr i -> S.Set Lid
 fbvSet e = S.fromList [ lid | J [] lid <- M.keys (fv e) ]
 -}
 
@@ -393,7 +391,7 @@ disjoint s1 s2 = S.null (s1 `S.intersection` s2)
 
 -- | Transform an expression into a pattern, if possible, using only
 --   the specified variables and type variables
-expr2patt :: S.Set Lid -> S.Set TyVar -> Expr i w -> Maybe Patt
+expr2patt :: S.Set Lid -> S.Set TyVar -> Expr i -> Maybe Patt
 expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
   loop e = case view e of
     ExId (J [] (Var l)) -> do
@@ -430,7 +428,7 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
       else mzero
 
 -- | Transform a pattern to an expression.
-patt2expr :: Patt -> Expr i w
+patt2expr :: Patt -> Expr i
 patt2expr PaWild         = exUnit
 patt2expr (PaVar l)      = exBVar l
 patt2expr (PaCon u Nothing exn)
@@ -486,20 +484,21 @@ remove set = everywhere (mkT expr `extT` patt) where
   expr e               = e
   -}
 
-kill :: Foldable f => f Lid -> Expr () w -> Expr () w
+kill :: Foldable f => f Lid -> Expr () -> Expr ()
 kill  = translate PaVar (const exUnit)
 
 translate :: Foldable f =>
-             (Lid -> Patt) -> (Lid -> Expr () w) ->
-             f Lid -> Expr () w -> Expr () w
+             (Lid -> Patt) -> (Lid -> Expr ()) ->
+             f Lid -> Expr () -> Expr ()
 translate mkpatt mkexpr set =
   case toList set of
     []   -> id
     v:vs -> exLet' (mkpatt v -:- map mkpatt vs)
                    (mkexpr v +:+ map mkexpr vs)
 
-exUnit :: Expr i w
+exUnit :: Expr i
 exUnit  = exBCon (Uid "()")
 
 paUnit :: Patt
 paUnit  = PaCon (Uid "()") Nothing Nothing
+
