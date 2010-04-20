@@ -40,7 +40,7 @@ module Syntax (
   tycon, tyargs, tyinfo,
   setTycon, setTyinfo,
   -- ** Freshness
-  Ftv(..), freshTyVar, freshTyVars,
+  Ftv(..), FtvVs(..), freshTyVar, freshTyVars,
   -- ** Substitutions
   tysubst,
   -- ** Queries and conversions
@@ -264,7 +264,7 @@ data Decl i
   -- | Local block
   | DcLoc Loc [Decl i] [Decl i]
   -- | Exception declaration
-  | DcExn Loc Uid (Maybe (Type ()))
+  | DcExn Loc Uid (Maybe (Type i))
   deriving (Typeable, Data)
 
 -- | Build a constant declaration with bogus source location
@@ -292,7 +292,7 @@ dcLoc :: [Decl i] -> [Decl i] -> Decl i
 dcLoc  = DcLoc bogus
 
 -- | Build an exception declaration with bogus source location
-dcExn :: Uid -> Maybe (Type ()) -> Decl i
+dcExn :: Uid -> Maybe (Type i) -> Decl i
 dcExn  = DcExn bogus
 
 -- | Affine language type declarations
