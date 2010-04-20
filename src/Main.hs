@@ -287,7 +287,7 @@ processArgs opts0 args0 k = loop opts0 args0 where
 
 usage :: IO a
 usage  = do
-  hPutStrLn stderr "Usage: affine [OPTIONS...] [--] [FILENAME] [OPTIONS...]"
+  hPutStrLn stderr "Usage: alms [OPTIONS...] [--] [FILENAME] [OPTIONS...]"
   hPutStrLn stderr ""
   hPutStrLn stderr "Options:"
   hPutStrLn stderr "  -t   Don't type check (implies -c)"

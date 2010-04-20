@@ -2,7 +2,7 @@
 ## preferred way to build, but sometimes this is convenient.
 
 GHC      = ghc
-EXE      = affine
+EXE      = alms
 EXAMPLES = ../examples
 
 HCOPTS  = -W -Wall -fno-warn-unused-imports -O0 $(EDITING)
@@ -18,18 +18,18 @@ clean:
 	$(RM) Basis/*.hi Basis/*.o *.hi *.o $(EXE) $(EXE)-6.*
 
 test tests: $(EXE)
-	@for i in $(EXAMPLES)/ex*.aff; do \
+	@for i in $(EXAMPLES)/ex*.alms; do \
 	  $(EXAMPLES)/run-test.sh $(EXE) "$$i"; \
 	done
 	@for i in $(EXAMPLES)/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
-	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
+	  src="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.alms/'`"; \
 	  echo "$$i"; \
-	  ./$(EXE) "$$aff" < "$$i" | diff "$$out" - ; \
+	  ./$(EXE) "$$src" < "$$i" | diff "$$out" - ; \
 	done
 
 examples: $(EXE)
-	@for i in $(EXAMPLES)/ex*.aff; do \
+	@for i in $(EXAMPLES)/ex*.alms; do \
 	  echo "$$i"; \
 	  head -1 "$$i"; \
 	  ./$(EXE) "$$i"; \
@@ -37,8 +37,8 @@ examples: $(EXE)
 	done
 	@for i in $(EXAMPLES)/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
-	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
+	  src="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.alms/'`"; \
 	  echo "$$i"; \
-	  ./$(EXE) "$$aff" < "$$i"; \
+	  ./$(EXE) "$$src" < "$$i"; \
 	done
 

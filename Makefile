@@ -1,14 +1,14 @@
-EXE      = affine
+EXE      = alms
 GHC      = ghc
 EXAMPLES = examples
 
-DOC      = dist/doc/html/affine/affine/
+DOC      = dist/doc/html/alms/alms/
 
 default: Setup dist/setup-config
 	./Setup build
-	cp dist/build/affine/affine .
+	cp dist/build/alms/alms .
 
-dist/setup-config config: Setup affine.cabal
+dist/setup-config config: Setup alms.cabal
 	./Setup configure --flags="$(FLAGS)"
 
 Setup: Setup.hs
@@ -17,18 +17,18 @@ Setup: Setup.hs
 $(EXE): default
 
 test tests: $(EXE)
-	@for i in $(EXAMPLES)/ex*.aff; do \
+	@for i in $(EXAMPLES)/ex*.alms; do \
 	  $(EXAMPLES)/run-test.sh $(EXE) "$$i"; \
 	done
 	@for i in $(EXAMPLES)/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
-	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
+	  src="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.alms/'`"; \
 	  echo "$$i"; \
-	  ./$(EXE) "$$aff" < "$$i" | diff "$$out" - ; \
+	  ./$(EXE) "$$src" < "$$i" | diff "$$out" - ; \
 	done
 
 examples: $(EXE)
-	@for i in $(EXAMPLES)/ex*.aff; do \
+	@for i in $(EXAMPLES)/ex*.alms; do \
 	  echo "$$i"; \
 	  head -1 "$$i"; \
 	  ./$(EXE) "$$i"; \
@@ -36,9 +36,9 @@ examples: $(EXE)
 	done
 	@for i in $(EXAMPLES)/*.in; do \
 	  out="`echo $$i | sed 's/\.in$$/.out/'`"; \
-	  aff="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.aff/'`"; \
+	  src="`echo $$i | sed 's/-[[:digit:]]*\.in$$/.alms/'`"; \
 	  echo "$$i"; \
-	  ./$(EXE) "$$aff" < "$$i"; \
+	  ./$(EXE) "$$src" < "$$i"; \
 	done
 
 $(DOC): Setup $(wildcard src/*.hs)
@@ -55,7 +55,7 @@ clean:
 
 
 VERSION = 0.12.0
-DISTDIR = affine-contracts-$(VERSION)
+DISTDIR = alms-$(VERSION)
 TARBALL = $(DISTDIR).tar.gz
 
 dist: $(TARBALL)
