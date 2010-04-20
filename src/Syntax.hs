@@ -9,15 +9,9 @@
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
-      EmptyDataDecls,
-      FlexibleContexts,
       FlexibleInstances,
-      GADTs,
       MultiParamTypeClasses,
       ParallelListComp,
-      PatternGuards,
-      RankNTypes,
-      ScopedTypeVariables,
       TypeFamilies #-}
 module Syntax (
   -- * Languages, variances, qualifiers
@@ -39,7 +33,7 @@ module Syntax (
   TyTag(..),
   Quant(..),
   Type(..),
-  TypeT,
+  TypeT, TypeTEq(..),
   -- * Synthetic constructors
   tyAll, tyEx,
   -- ** Accessors and updaters
@@ -207,11 +201,10 @@ data TyTag =
 
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon
-data Type i where
-  TyCon :: QLid -> [Type i] -> i -> Type i
-  TyVar :: TyVar -> Type i
-  TyQu  :: Quant -> TyVar -> Type i -> Type i
-  TyMu  :: TyVar -> Type i -> Type i
+data Type i = TyCon QLid [Type i] i
+            | TyVar TyVar
+            | TyQu  Quant TyVar (Type i)
+            | TyMu  TyVar (Type i)
   deriving Typeable
 
 -- | Type quantifers

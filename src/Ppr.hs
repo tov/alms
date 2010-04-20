@@ -43,14 +43,14 @@ parensIf False doc = doc
 class Separator a where
   separator :: a -> Doc
 
-instance Separator (Type i w) where
+instance Separator (Type i) where
   separator _ = comma
 
 instance (Ppr a, Separator a) => Ppr [a] where
   ppr xs = hcat (intersperse (separator (head xs))
                              (map (pprPrec precCom) xs))
 
-instance Ppr (Type i w) where
+instance Ppr (Type i) where
   -- Print sugar for infix type constructors:
   pprPrec p (TyCon (J [] (Lid ";")) [t1, t2] _)
                   = parensIf (p > precSemi) $
@@ -85,8 +85,6 @@ instance Ppr (Type i w) where
                               pprPrec (precDot + 1) x <>
                               char '.'
                                 >+> pprPrec precDot t
-  pprPrec _ (TyA t)       = braces (ppr t)
-  pprPrec _ (TyC t)       = braces (ppr t)
 
 instance Ppr (Prog i) where
   ppr (Prog ms Nothing)  = vcat (map ppr ms)
@@ -95,18 +93,36 @@ instance Ppr (Prog i) where
                            (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
-  pprPrec p (DcLet _ m)     = pprPrec p m
-  pprPrec p (DcTyp _ td)    = pprPrec p td
-  pprPrec p (DcAbs _ at ds) =
+  ppr (DcLet _ x Nothing e) = sep
+    [ text "let" <+> ppr x,
+      nest 2 $ equals <+> ppr e ]
+  ppr (DcLet _ x (Just t) e) = sep
+    [ text "let" <+> ppr x,
+      nest 2 $ colon <+> ppr t,
+      nest 4 $ equals <+> ppr e ]
+  ppr (DcTyp _ [])       = empty
+  ppr (DcTyp _ (td:tds)) =
+    vcat $
+      text "type" <+> ppr td :
+      [ nest 1 $ text "and" <+> ppr td' | td' <- tds ]
+  ppr (DcAbs _ [] ds) =
     vcat [
-      text "abstype" <> pprPrec p at <+> text "with",
-      nest 2 $ vcat (map (pprPrec p) ds),
+      text "abstype with",
+      nest 2 $ vcat (map ppr ds),
       text "end"
     ]
-  pprPrec _ (DcOpn _ b)     = pprModExp (text "open" <+>) b
-  pprPrec _ (DcMod _ n b)   = pprModExp add b where
+  ppr (DcAbs _ (at:ats) ds) =
+    vcat [
+      vcat (text "abstype" <> pprAbsTy at <+> text "with" :
+            [ nest 4 $ text "and" <+> pprAbsTy ati | ati <- ats ])
+        <+> text "with",
+      nest 2 $ vcat (map ppr ds),
+      text "end"
+    ]
+  ppr (DcOpn _ b)     = pprModExp (text "open" <+>) b
+  ppr (DcMod _ n b)   = pprModExp add b where
     add body = text "module" <+> ppr n <+> equals <+> body
-  pprPrec _ (DcLoc _ d0 d1) =
+  ppr (DcLoc _ d0 d1) =
     vcat [
       text "local",
       nest 2 (vcat (map ppr d0)),
@@ -114,78 +130,21 @@ instance Ppr (Decl i) where
       nest 2 (vcat (map ppr d1)),
       text "end"
     ]
-  pprPrec p (DcExn _ e)     = pprPrec p e
-
-instance Ppr (Let i) where
-  ppr (LtC tl x Nothing e) = sep
-    [ text "let" <> pprLang tl C <+> ppr x,
-      nest 2 $ equals <+> ppr e ]
-  ppr (LtA tl x Nothing e) = sep
-    [ text "let" <> pprLang tl A <+> ppr x,
-      nest 2 $ equals <+> ppr e ]
-  ppr (LtC tl x (Just t) e) = sep
-    [ text "let" <> pprLang tl C <+> ppr x,
-      nest 2 $ colon <+> ppr t,
-      nest 4 $ equals <+> ppr e ]
-  ppr (LtA tl x (Just t) e) = sep
-    [ text "let" <> pprLang tl A <+> ppr x,
-      nest 2 $ colon <+> ppr t,
-      nest 4 $ equals <+> ppr e ]
-  ppr (LtInt _ x t y) = sep
-    [ text "let interface" <+> ppr x,
-      nest 2 $ text ":>" <+> ppr t,
-      nest 4 $ equals <+> ppr y ]
+  ppr (DcExn _ n t)   =
+    text "exception" <+> ppr n <+>
+    maybe empty ((text "of" <+>) . ppr) t
 
 instance Ppr TyDec where
-  ppr (TyDecA _ []) = empty
-  ppr (TyDecC _ []) = empty
-  ppr (TyDecT []) = empty
-  ppr (TyDecA tl (td:tds)) =
-    let lang   = pprLang tl A
-        indent = 1 + length (show lang) in
-      vcat $
-        text "type" <> lang <+> ppr td :
-        [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
-  ppr (TyDecC tl (td:tds)) =
-    let lang   = pprLang tl C
-        indent = 1 + length (show lang) in
-      vcat $
-        text "type" <> lang <+> ppr td :
-        [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
-  ppr (TyDecT (td:tds)) =
-    let lang   = text "[*]"
-        indent = 1 + length (show lang) in
-      vcat $
-        text "type" <> lang <+> ppr td :
-        [ nest indent $ text "and" <+> ppr td' | td' <- tds ]
+  ppr (TdAbs n ps vs qs) = pprProtoV n vs ps >?> pprQuals qs
+  ppr (TdSyn n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
+  ppr (TdDat n ps alts)  = pprProto n ps >?> pprAlternatives alts
 
-instance Ppr TyDecC where
-  ppr (TdAbsC n ps)       = pprProto n ps
-  ppr (TdSynC n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
-  ppr (TdDatC n ps alts)  = pprProto n ps >?> pprAlternatives alts
-
-instance Ppr TyDecA where
-  ppr (TdAbsA n ps vs qs) = pprProtoV n vs ps >?> pprQuals qs
-  ppr (TdSynA n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
-  ppr (TdDatA n ps alts)  = pprProto n ps >?> pprAlternatives alts
-
-instance Ppr AbsTy where
-  ppr (AbsTyC tl decls) =
-    let lang = pprLang tl C <> space in
-    case map ppr decls of
-      [] -> lang
-      d:ds -> lang <> d $$ vcat (map (text "and" <+>) ds)
-  ppr (AbsTyA tl decls) =
-    let lang = pprLang tl A <> space in
-    case map each decls of
-      [] -> lang
-      d:ds -> lang <> d $$ vcat (map (text "and" <+>) ds)
-    where
-    each (variances, qual, TdDatA name params alts) =
-      pprProtoV name variances params
-        >?> pprQuals qual
-        >?> pprAlternatives alts
-    each (_, _, td) = ppr td -- shouldn't happen (yet)
+pprAbsTy :: AbsTy -> Doc
+pprAbsTy (variances, qual, TdDat name params alts) =
+    pprProtoV name variances params
+      >?> pprQuals qual
+      >?> pprAlternatives alts
+pprAbsTy (_, _, td) = ppr td -- shouldn't happen (yet)
 
 pprProto     :: Lid -> [TyVar] -> Doc
 pprProto n [tv1, tv2]
@@ -214,7 +173,7 @@ pprQuals [] = empty
 pprQuals qs = text "qualifier" <+>
               delimList parens (text " \\/") (map (either ppr ppr) qs)
 
-pprAlternatives :: [(Uid, Maybe (Type i w))] -> Doc
+pprAlternatives :: [(Uid, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals
 pprAlternatives (a:as) = sep $
   equals <+> alt a : [ char '|' <+> alt a' | a' <- as ]
@@ -224,25 +183,12 @@ pprAlternatives (a:as) = sep $
 
 pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
 pprModExp add modexp = case modexp of
-    MeStrC tl ds -> pprStruct C tl ds
-    MeStrA tl ds -> pprStruct A tl ds
-    MeName n     -> add (ppr n)
-  where
-    pprStruct lang tl ds =
-      add (text "struct" <> pprLang tl lang)
-      $$ nest 2 (vcat (map ppr ds))
-      $$ text "end"
+    MeName n -> add (ppr n)
+    MeStr ds -> add (text "struct")
+                $$ nest 2 (vcat (map ppr ds))
+                $$ text "end"
 
-instance Ppr ExnDec where
-  pprPrec _ e = case e of
-      ExnC tl n t -> pprExnDec C tl n t
-      ExnA tl n t -> pprExnDec C tl n t
-    where
-      pprExnDec lang tl n t =
-        text "exception" <> pprLang tl lang <+> ppr n <+>
-        maybe empty ((text "of" <+>) . ppr) t
-
-instance Ppr (Expr i w) where
+instance Ppr (Expr i) where
   pprPrec p e0 = case view e0 of
     ExId x    -> ppr x
     ExInt i   -> integer i
@@ -333,7 +279,7 @@ instance Ppr (Expr i w) where
              [ text ":>",
                pprPrec (precCast + 2) t2 ])
 
-pprLet :: Int -> Doc -> Expr i w -> Expr i w -> Doc
+pprLet :: Int -> Doc -> Expr i -> Expr i -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
   hang (text "let" <+> pat <+> pprArgList args <+> equals
           >+> ppr body <+> text "in")
@@ -346,7 +292,7 @@ pprLet p pat e1 e2 = parensIf (p > precDot) $
     isLet (ExCase _ [_]) = True
     isLet _              = False
 
-pprAbs :: Int -> Expr i w -> Doc
+pprAbs :: Int -> Expr i -> Doc
 pprAbs p e = parensIf (p > precDot) $
     text "fun" <+> argsDoc <+> text "->"
       >+> pprPrec precDot body
@@ -357,7 +303,7 @@ pprAbs p e = parensIf (p > precDot) $
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
-pprArgList :: [Either (Patt, Type i w) TyVar] -> Doc
+pprArgList :: [Either (Patt, Type i) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
   eachArg (Left (PaWild, TyCon (J [] (Lid "unit")) [] _))
                           = parens empty
@@ -395,19 +341,12 @@ instance Ppr Patt where
     where pair = [ pprPrec (precCom + 1) tv <> comma,
                    pprPrec precCom x ]
 
-pprLang :: Bool -> LangRep w -> Doc
-pprLang False _ = empty
-pprLang True  C = text "[C]"
-pprLang True  A = text "[A]"
-
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
-instance Show (Let i)    where showsPrec = showFromPpr
 instance Show TyDec      where showsPrec = showFromPpr
-instance Show AbsTy      where showsPrec = showFromPpr
-instance Show (Expr i w) where showsPrec = showFromPpr
+instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show Patt       where showsPrec = showFromPpr
-instance Show (Type i w) where showsPrec = showFromPpr
+instance Show (Type i)   where showsPrec = showFromPpr
 
 instance Ppr Q         where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
@@ -416,12 +355,10 @@ instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
 instance Ppr BIdent    where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
-instance Ppr (LangRep w) where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 
-instance Show TypeTW where
-  showsPrec p (TypeTA t) = showsPrec p t
-  showsPrec p (TypeTC t) = showsPrec p t
+instance Show TypeTEq where
+  showsPrec p (TypeTEq t) = showsPrec p t
 
 showFromPpr :: Ppr a => Int -> a -> ShowS
 showFromPpr p t = shows (pprPrec p t)
