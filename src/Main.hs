@@ -9,7 +9,7 @@ import Util
 import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
 import qualified Ppr
 import Parser (parse, parseProg, parseDecls)
-import Paths (findAlmsLib)
+import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
 import Translation (translate, translateDecls, TEnv, tenv0)
@@ -37,8 +37,9 @@ import IO (hFlush, stdout, getLine)
 data Option = Don'tExecute
             | Don'tType
             | Don'tCoerce
-            | ReType
             | Verbose
+            | Quiet
+            | LoadFile String
   deriving Eq
 
 -- | The main procedure
@@ -48,16 +49,22 @@ main  = do
   processArgs [] args $ \opts mmsrc filename -> do
   g0  <- basis2tenv primBasis
   e0  <- basis2venv primBasis
+  case mmsrc of
+    Nothing | Quiet `notElem` opts -> hPutStrLn stderr versionString
+    _ -> return ()
   let st0 = RS g0 tenv0 e0
-  st1 <- do
-    basis <- findAlmsLib srcBasis
-    case basis of
-      Nothing -> do
-        carp $ srcBasis ++ ": could not load standard basis"
-        return st0
-      Just n  -> loadFile st0 n
-  maybe interactive (batch filename) mmsrc (`elem` opts) st1
+  st1 <- findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
+  st2 <- foldM (\st n -> findAlmsLibRel n "-" >>= tryLoadFile st n)
+               st1 (reverse [ name | LoadFile name <- opts ])
+  maybe interactive (batch filename) mmsrc (`elem` opts) st2
     `handleExns` exitFailure
+
+tryLoadFile :: ReplState -> String -> Maybe String -> IO ReplState
+tryLoadFile st name mfile = case mfile of
+  Nothing -> do
+    carp $ name ++ ": could not load"
+    return st
+  Just file -> loadFile st file
 
 loadFile :: ReplState -> String -> IO ReplState
 loadFile st name = readFile name >>= loadString st name
@@ -80,7 +87,6 @@ batch filename msrc opt st0 = do
         Right ast -> check ast where
           check   :: Prog () -> IO ()
           coerce  :: ProgT   -> IO ()
-          recheck :: Prog i  -> IO ()
           execute :: Prog i  -> IO ()
 
           check ast0 =
@@ -99,14 +105,7 @@ batch filename msrc opt st0 = do
                 let ast2 = translate (rsTranslation st0) ast1
                 when (opt Verbose) $
                   mumble "TRANSLATION" ast2
-                recheck ast2
-
-          recheck ast2 = do
-            when (opt ReType) $ do
-              (t, _) <- tcProg (rsStatics st0) ast2
-              when (opt Verbose) $
-                mumble "RE-TYPE" t
-            execute ast2
+                execute ast2
 
           execute ast2 =
             unless (opt Don'tExecute) $ do
@@ -174,7 +173,6 @@ interactive opt rs0 = do
     doLine st ast = let
       check   :: (ReplState, [Decl ()]) -> IO ReplState
       coerce  :: NewDefs -> (ReplState, [DeclT]) -> IO ReplState
-      recheck :: NewDefs -> (ReplState, [Decl i]) -> IO ReplState
       execute :: NewDefs -> (ReplState, [Decl i]) -> IO ReplState
       display :: NewDefs -> NewValues -> ReplState -> IO ReplState
 
@@ -186,20 +184,12 @@ interactive opt rs0 = do
 
       coerce newDefs stast1
                      = if opt Don'tCoerce
-                         then recheck newDefs stast1
+                         then execute newDefs stast1
                          else do
                            stast2 <- translation stast1
                            when (opt Verbose) $
                              mumbles "TRANSLATION" (snd stast2)
-                           recheck newDefs stast2
-
-      recheck newDefs stast2
-                          = if opt ReType
-                              then do
-                                statics False stast2
-                                execute newDefs stast2
-                              else
-                                execute newDefs stast2
+                           execute newDefs stast2
 
       execute newDefs stast2
                           = if opt Don'tExecute
@@ -213,10 +203,13 @@ interactive opt rs0 = do
                                return st3
 
       in check (st, ast)
+    quiet  = opt Quiet
+    say    = if quiet then const (return ()) else print
+    get    = if quiet then const (readline "") else readline
     reader = loop []
       where
         loop acc = do
-          mline <- readline (if null acc then "#- " else "#= ")
+          mline <- get (if null acc then "#- " else "#= ")
           case (mline, acc) of
             (Nothing, [])        -> return Nothing
             (Nothing, (_,err):_) -> do
@@ -238,7 +231,7 @@ interactive opt rs0 = do
       let vals = unionProduct
                    (newValues defs)
                    values
-      print $ Ppr.vcat $
+      say $ Ppr.vcat $
         map pprMod (newModules defs) ++
         map pprType (toList (newTypes defs)) ++
         map pprValue (toList vals)
@@ -277,13 +270,17 @@ processArgs opts0 args0 k = loop opts0 args0 where
                         = go "-" args opts (Just getContents)
   loop opts ("--":name:args) 
                         = go name args opts (Just (readFile name))
-  loop opts (('-':c:d:e):r)
-                        = loop opts (['-',c]:('-':d:e):r)
+  loop opts ("-l":name:r)
+                        = loop (LoadFile name:opts) r
+  loop opts (('-':'l':name):r)
+                        = loop (LoadFile name:opts) r
   loop opts ("-t":r)    = loop (Don'tType:opts) r
   loop opts ("-x":r)    = loop (Don'tExecute:opts) r
   loop opts ("-c":r)    = loop (Don'tCoerce:opts) r
-  loop opts ("-r":r)    = loop (ReType:opts) r
   loop opts ("-v":r)    = loop (Verbose:opts) r
+  loop opts ("-q":r)    = loop (Quiet:opts) r
+  loop opts (('-':c:d:e):r)
+                        = loop opts (['-',c]:('-':d:e):r)
   loop _    (('-':_):_) = usage
   loop opts (name:args) = go name args opts (Just (readFile name))
 
@@ -294,14 +291,17 @@ processArgs opts0 args0 k = loop opts0 args0 where
 
 usage :: IO a
 usage  = do
-  hPutStrLn stderr "Usage: alms [OPTIONS...] [--] [FILENAME] [OPTIONS...]"
+  hPutStrLn stderr "Usage: alms [OPTIONS...] [--] [FILENAME] [ARGS...]"
   hPutStrLn stderr ""
   hPutStrLn stderr "Options:"
-  hPutStrLn stderr "  -t   Don't type check (implies -c)"
-  hPutStrLn stderr "  -c   Don't add contracts"
-  hPutStrLn stderr "  -x   Don't execute"
-  hPutStrLn stderr "  -r   Re-typecheck after translation (may fail)"
-  hPutStrLn stderr "  -v   Verbose (show translation, results, types)"
+  hPutStrLn stderr "  -l FILE  Load file"
+  hPutStrLn stderr "  -q       Don't print prompt, greeting, responses"
+  hPutStrLn stderr ""
+  hPutStrLn stderr "Debugging options:"
+  hPutStrLn stderr "  -t       Don't type check (implies -c)"
+  hPutStrLn stderr "  -c       Don't add contracts"
+  hPutStrLn stderr "  -x       Don't execute"
+  hPutStrLn stderr "  -v       Verbose (show translation, results, types)"
   exitFailure
 
 initialize :: IO ()

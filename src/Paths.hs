@@ -1,7 +1,11 @@
 {-# LANGUAGE
       CPP,
       TemplateHaskell #-}
-module Paths where
+module Paths (
+  findFirstInPath, findInPath,
+  almsLibPath, findAlmsLib, findAlmsLibRel,
+  version, versionString
+) where
 
 import Util
 
@@ -9,12 +13,10 @@ import Language.Haskell.TH
 import System.FilePath
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getEnv)
+import Data.Version
 
 #ifdef ALMS_CABAL_BUILD
 import Paths_alms
-#else
-import Data.Version (Version(..))
-import System.Environment (getEnv)
 #endif
 
 builddir  :: FilePath
@@ -42,13 +44,21 @@ getDataFileName name = do
   return (dir </> name)
 #endif
 
-findFileInPath :: FilePath -> [FilePath] -> IO (Maybe FilePath)
-findFileInPath _    []     = return Nothing
-findFileInPath name (d:ds) = do
+findFirstInPath :: [FilePath] -> [FilePath] -> IO (Maybe FilePath)
+findFirstInPath []     _  = return Nothing
+findFirstInPath (f:fs) ds = do
+  mpath <- findInPath f ds
+  case mpath of
+    Nothing -> findFirstInPath fs ds
+    Just _  -> return mpath
+
+findInPath :: FilePath -> [FilePath] -> IO (Maybe FilePath)
+findInPath _    []     = return Nothing
+findInPath name (d:ds) = do
   b <- doesFileExist (d </> name)
   if b
     then return (Just (normalise (d </> name)))
-    else findFileInPath name ds
+    else findInPath name ds
 
 almsLibPath :: IO [FilePath]
 almsLibPath = do
@@ -56,8 +66,21 @@ almsLibPath = do
              `catch` \_ -> return []
   system <- getDataDir
   build  <- liftM (</> "lib") getBuildDir
-  return $ "." : user ++ [ system, build ]
+  return $ user ++ [ system, build ]
 
 findAlmsLib :: FilePath -> IO (Maybe FilePath)
-findAlmsLib name = almsLibPath >>= findFileInPath name
+findAlmsLib name = do
+  path <- almsLibPath
+  findFirstInPath [ name, name <.> "alms" ] path
+
+findAlmsLibRel :: FilePath -> FilePath -> IO (Maybe FilePath)
+findAlmsLibRel name rel = do
+  path <- almsLibPath
+  let rel' = case rel of
+               "-"  -> "."
+               _    -> dropFileName rel
+  findFirstInPath [ name, name <.> "alms" ] (rel' : path)
+
+versionString :: String
+versionString  = "Alms, version " ++ showVersion version
 

@@ -20,7 +20,6 @@ import Lexer
 
 import Text.ParserCombinators.Parsec hiding (parse)
 import System.IO.Unsafe (unsafePerformIO)
-import System.FilePath ((</>), dropFileName)
 
 data St   = St {
               stSigma :: Bool
@@ -235,18 +234,20 @@ declsp  = choice [
             do
               sharpLoad
               name <- stringLiteral
-              base <- sourceName `liftM` getPosition
-              path <- inDirectoryOf base `liftM` stringLiteral
-              let contents = unsafePerformIO $ readFile path
-              ds <- case parse parseProg path contents of
+              rel  <- sourceName `liftM` getPosition
+              let mcontents = unsafePerformIO $ do
+                    mfile <- findAlmsLibRel name rel
+                    gmapM readFile mfile
+              contents <- case mcontents of
+                Just contents -> return contents
+                Nothing       -> fail $ "Could not load: " ++ name
+              ds <- case parse parseProg name contents of
                 Left e   -> fail (show e)
                 Right p  -> return (prog2decls p)
               ds' <- declsp
               return (ds ++ ds'),
             return []
           ]
-  where inDirectoryOf "-"  path = path
-        inDirectoryOf base path = dropFileName base </> path
 
 declp :: P (Decl ())
 declp  = addLoc $ choice [
