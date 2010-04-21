@@ -239,7 +239,7 @@ interactive opt rs0 = do
       where
       pprMod uid    = text "module" <+> ppr uid
 
-      pprType (lid, ti) = ppr (tyInfoToDec lid ti)
+      pprType (lid, ti) = text "type" <+> ppr (tyInfoToDec lid ti)
 
       pprValue (Con _, _)        = Ppr.empty
       pprValue (Var k, (mt, mv)) =

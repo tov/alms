@@ -60,11 +60,39 @@ let (=>!) ['<a] (x: '<a) ['<b] (y: '<b) = (y, x)
 module Contract = struct
   type party = string
   type '<a contract = party * party -> '<a -> '<a
+
+  let flat['a] (pred: 'a -> bool) =
+    fun (neg: party, pos: party) (a: 'a) ->
+      if pred a
+        then a
+        else Exn.raiseBlame pos "violated contract"
+
+  let flatA['<a] (pred: '<a -> bool * '<a) =
+    fun (neg: party, pos: party) (a: '<a) ->
+      match pred a with
+      | (true, a)  -> a
+      | (false, _) -> Exn.raiseBlame pos "violated contract"
+
+  let any['<a] (_: party, _: party) (a: '<a) = a
+
+  let func['<a, '<b] (dom: '<a contract, cod: '<b contract) =
+    fun (neg: party, pos: party) (f: '<a -> '<b) ->
+      fun (a: '<a) -> cod (neg, pos) (f (dom (pos, neg) a))
+
+  let funcA['<a, '<b] (dom: '<a contract, cod: '<b contract) =
+    fun (neg: party, pos: party) (f: '<a -o '<b) ->
+      fun (a: '<a) -> cod (neg, pos) (f (dom (pos, neg) a))
+
+  let affunc['<a, '<b] (dom: '<a contract, cod: '<b contract) =
+    fun (neg: party, pos: party) (f: '<a -o '<b) ->
+      let rf = ref (Some f) in
+        fun (a: '<a) ->
+          match rf <- None['<a -o '<b] with
+          | Some f -> cod (neg, pos) (f (dom (pos, neg) a))
+          | None   -> Exn.raiseBlame neg "reused one-shot function"
 end
 
 module INTERNALS = struct
-  let ref    = ref
-  let modify = (<-)
-  module Exn = Exn
+  module Contract = Contract
 end
 

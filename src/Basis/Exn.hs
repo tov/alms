@@ -22,7 +22,7 @@ entries = [
       -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
                          :: IO (Either VExn Value),
 
-    fun "raiseBlame" -: "string -> string -> unit"
+    fun "raiseBlame" -: "string -> string -> any"
       -= \s1 s2 -> throw VExn {
            exnId    = eiBlame,
            exnParam = Just (vinj (s1 :: String, s2 :: String))
