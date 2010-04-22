@@ -454,8 +454,8 @@ exprp = expr0 where
          et <- expr0
          reserved "else"
          ef <- expr0
-         return (exCase ec [(PaCon (quid "true")  Nothing Nothing, et),
-                            (PaCon (quid "false") Nothing Nothing, ef)]),
+         return (exCase ec [(PaCon (quid "true")  Nothing False, et),
+                            (PaCon (quid "false") Nothing False, ef)]),
       do reserved "match"
          e1 <- expr0
          reserved "with"
@@ -476,16 +476,18 @@ exprp = expr0 where
            ei <- mapSigma (sigma ||) expr0
            return $
              lift False (\xi' ei' ->
-                     (PaCon (quid "Left") (Just xi') Nothing, ei'))
+                     -- TODO: Make this robust to redefinition of
+                     -- Left and Right
+                     (PaCon (quid "Left") (Just xi') False, ei'))
                   xi ei
          let tryQ = qlid $
                       "INTERNALS.Exn.tryfun"
          return (exCase (exApp (exVar tryQ)
                                (exAbs PaWild (tyNulOp "unit") e1)) $
-                  (PaCon (quid "Right") (Just (PaVar (Lid "x"))) Nothing,
+                  (PaCon (quid "Right") (Just (PaVar (Lid "x"))) False,
                    exVar (qlid "x")) :
                   clauses ++
-                  [(PaCon (quid "Left") (Just (PaVar (Lid "e"))) Nothing,
+                  [(PaCon (quid "Left") (Just (PaVar (Lid "e"))) False,
                     exApp (exVar (qlid "INTERNALS.Exn.raise"))
                           (exVar (qlid "e")))]),
       do reserved "fun"
@@ -621,7 +623,7 @@ paty  = do
   (p, mt) <- pamty
   case (p, mt) of
     (_, Just t) -> return (p, t)
-    (PaCon (J [] (Uid "()")) Nothing Nothing, Nothing)
+    (PaCon (J [] (Uid "()")) Nothing False, Nothing)
                 -> return (p, tyNulOp "unit")
     _           -> pzero <?> ":"
 
@@ -635,7 +637,7 @@ pamty  = parens $ choice
              do
                p <- pattp
                maybecolon p,
-             return (PaCon (quid "()") Nothing Nothing, Nothing)
+             return (PaCon (quid "()") Nothing False, Nothing)
            ]
   where
     maybecolon p = choice
@@ -723,7 +725,7 @@ pattp  = patt0 where
       do
         qu    <- quidp
         x     <- optionMaybe (try pattA)
-        return (PaCon qu x Nothing),
+        return (PaCon qu x False),
       pattA ]
   pattA = choice
     [ reserved "_"  >>  return PaWild,
@@ -736,7 +738,7 @@ pattp  = patt0 where
   pattN1 = do
     xs <- commaSep patt0
     case xs of
-      []    -> return (PaCon (quid "()") Nothing Nothing)
+      []    -> return (PaCon (quid "()") Nothing False)
       x:xs' -> return (foldl PaPair x xs')
 
 finish :: CharParser st a -> CharParser st a

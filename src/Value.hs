@@ -15,6 +15,8 @@ module Value (
   vaInt, vaUnit,
   -- ** Some pre-defined value types
   Vinj(..), VExn(..),
+  -- *** Exception IDs
+  ExnId(..),
 
   -- * Utilities for algebraic data types
   enumTypeDecl,
@@ -26,7 +28,7 @@ import qualified Data.Char as Char
 import Data.Generics
 
 import Util
-import Syntax (Uid(..), ExnId(..))
+import Syntax (Uid(..), Type)
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             parensIf, precCom, precApp)
 
@@ -304,6 +306,18 @@ instance Show VExn where
 instance Exn.Exception VExn where
   toException = Exn.SomeException
   fromException (Exn.SomeException e) = cast e
+
+-- | Exception identity, generated dynamically
+data ExnId = forall i. ExnId {
+               eiIndex :: Integer,
+               eiName  :: Uid,
+               eiParam :: Maybe (Type i)
+             }
+
+instance Eq ExnId where
+  ei == ei'  =  eiIndex ei == eiIndex ei'
+instance Typeable ExnId where
+  typeOf _ = mkTyConApp (mkTyCon "Value.ExnId") []
 
 -- nasty syb stuff
 

@@ -1,7 +1,10 @@
+{-# LANGUAGE
+      FlexibleInstances,
+      MultiParamTypeClasses #-}
 -- | The dynamics of the interpreter
 module Dynamics (
   -- | Static API
-  E, addVal, addMod, NewValues,
+  E, addVal, addMod, addExn, NewValues,
   -- | Dynamic API
   eval, addDecls, Result
 ) where
@@ -13,7 +16,7 @@ import Env
 import Ppr (Ppr(..), Doc, text, precApp, brackets)
 
 import Data.IORef (newIORef, readIORef, writeIORef)
-import qualified Control.Exception as Exn
+import Control.Exception (throw)
 
 --
 -- Our semantic domains
@@ -27,11 +30,36 @@ type Result   = IO Value
 --   values and modules in the top scope.
 type E        = [Scope]
 -- | Each scope binds paths of uppercase identifiers to flat value
---   environments
-type Scope    = PEnv Uid VE
+--   and exn environments
+type Scope    = PEnv Uid Level
+-- | A level binds values and exceptions
+data Level    = Level {
+                  vlevel :: VE,
+                  xlevel :: XE
+                }
 -- | We bind 'IO' 'Value's rather than values, so that we can use
 -- 'IORef' to set up recursion
 type VE       = Env Lid (IO Value)
+-- | We associate exception names with their identity, since new
+--   kinds of exceptions may be generated at run time.
+type XE       = Env ExnName ExnId
+
+-- | To distinguish exn names from path components.
+newtype ExnName = ExnName Uid
+  deriving (Eq, Ord)
+
+instance GenEmpty Level where
+  genEmpty = Level empty empty
+instance GenLookup Level Lid (IO Value) where
+  level =..= k = vlevel level =..= k
+instance GenLookup Level ExnName ExnId where
+  level =..= k = xlevel level =..= k
+instance GenExtend Level Level where
+  Level ve xe =+= Level ve' xe' = Level (ve =+= ve') (xe =+= xe')
+instance GenExtend Level (Env Lid (IO Value)) where
+  level =+= ve' = level =+= Level ve' empty
+instance GenExtend Level (Env ExnName ExnId) where
+  level =+= xe' = level =+= Level empty xe'
 
 -- | Domain for the meaning of an expression:
 type D        = E -> Result
@@ -57,7 +85,7 @@ evalDecl (DcAbs _ _ ds)  = evalDecls ds
 evalDecl (DcOpn _ b)     = evalOpen b
 evalDecl (DcMod _ n b)   = evalMod n b
 evalDecl (DcLoc _ d0 d1) = evalLocal d0 d1
-evalDecl (DcExn _ _ _)   = return
+evalDecl (DcExn _ n mt)  = evalExn n mt
 
 evalLet :: Lid -> Expr i -> DDecl
 evalLet x e env = do
@@ -89,6 +117,15 @@ evalModExp (MeName n)   env = do
     Just scope -> return scope
     Nothing    -> fail $ "BUG! Unknown module: " ++ show n
 
+evalExn :: Uid -> Maybe (Type i) -> DDecl
+evalExn u mt env = do
+  case env =..= qlid "INTERNALS.Exn.exceptionIdCounter" of
+    Just entry -> do
+      VaFun _ f <- entry
+      ix <- f vaUnit >>= vprjM
+      return (addExn env (ExnId ix u mt))
+    _ -> fail $ "BUG! Can't create new exception ID for: " ++ show u
+
 eval :: E -> Prog i -> Result
 eval env0 (Prog ds (Just e0)) = evalDecls ds env0 >>= valOf e0
 eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
@@ -100,9 +137,9 @@ valOf e env = case view e of
     Left x     -> case env =..= x of
       Just v     -> v
       Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
-    Right c    -> case getExnId e of
-      Nothing -> return (VaCon (jname c) Nothing)
-      Just ei -> makeExn ei (exprType e)
+    Right c    -> case isExn e of
+      True  -> makeExn env c
+      False -> return (VaCon (jname c) Nothing)
   ExStr s    -> return (vinj s)
   ExInt z    -> return (vinj z)
   ExFloat f  -> return (vinj f)
@@ -111,9 +148,10 @@ valOf e env = case view e of
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
           Just env' -> valOf ei env'
           Nothing   -> loop rest
-        loop []              =
-          Exn.throw VExn {
-            exnId    = eiPatternMatch,
+        loop []              = do
+          ei <- getExnId env (quid "INTERNALS.Exn.PatternMatch")
+          throw VExn {
+            exnId    = ei,
             exnParam = Just (vinj (show v1, map (show . fst) clauses))
           }
     loop clauses
@@ -161,36 +199,34 @@ valOf e env = case view e of
   ExCast e1 _ _          ->
     valOf e1 env
 
-makeExn :: Monad m => 
-           ExnId -> Maybe TypeT -> m Value
-makeExn _  Nothing   = fail $ "BUG! Cannot construct exception " ++
-                               "because type checking was skipped"
-makeExn ei (Just tt) = return $ makeWith tt
-  where
-    makeWith (TyCon _ _ td) | td == tdExn =
-      vinj (VExn ei Nothing)
-    makeWith _ =
-      VaFun (FNAnonymous [ppr (eiName ei)]) $ \v ->
-        return (vinj (VExn ei (Just v)))
+makeExn :: Monad m => E -> QUid -> m Value
+makeExn env c = do
+  ei <- getExnId env c
+  return $ case ei of
+    ExnId { eiParam = Nothing }
+      -> vinj (VExn ei Nothing)
+    _ -> VaFun (FNAnonymous [ppr (eiName ei)]) $ \v ->
+           return (vinj (VExn ei (Just v)))
+
+getExnId :: Monad m => E -> QUid -> m ExnId
+getExnId env c = case env =..= ExnName `fmap` c of
+  Nothing -> fail $ "BUG! could not lookup exception: " ++ show c
+  Just ei -> return ei
 
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
   PaVar lid    -> return (env =+= lid =:!= (lid `nameFun` v))
-  PaCon (J _ uid) mx Nothing -> case (mx, v) of
+  PaCon (J _ uid) mx False -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
     _                                             -> perr
-  ---- statically allocated exception IDs are insufficient for safety
-  ---- when "let exception" can create different exceptions with the
-  ---- same ID at run time.
-  -- PaCon _ mx (Just ei) -> case (mx, vprjM v) of
-    -- (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
-    -- (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
-  PaCon _ mx (Just _) -> case (mx, vprjM v) of
-    (Nothing, Just (VExn _ Nothing  )) -> return env
-    (Just x,  Just (VExn _ (Just v'))) -> bindPatt x v' env
-    _                                    -> perr
+  PaCon qu mx True -> do
+    ei <- getExnId env qu
+    case (mx, vprjM v) of
+      (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
+      (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
+      _                                                -> perr
   PaPair x y   -> case vprjM v of
     Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
     Nothing       -> perr
@@ -239,15 +275,16 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- | For printing in the REPL, 'addDecls' returns an environment
 --   mapping any newly bound names to their values
-type NewValues = Env Lid Value
+type NewValues = (Env Lid Value, [ExnId])
 
 -- | Interpret declarations by adding to the environment, potentially
 --   with side effects
 addDecls :: E -> [Decl i] -> IO (E, NewValues)
 addDecls env decls = do
   env' <- evalDecls decls (genEmpty : [collapse env])
-  let PEnv _ ve : _ = env'
-  mapAccumM (\v e -> v >>= \w -> return (e, w)) env' ve
+  let PEnv _ level : _ = env'
+  vl' <- mapValsM id (vlevel level)
+  return (env', (vl', range (xlevel level)))
 
 -- | Bind a name to a value
 addVal :: E -> Lid -> Value -> E
@@ -257,4 +294,8 @@ addVal e n v     = e =+= n =:= (return v :: IO Value)
 --   environment
 addMod :: E -> Uid -> E -> E
 addMod e n e' = e =+= n =:= collapse e'
+
+-- | To register an exception ID.
+addExn :: E -> ExnId -> E
+addExn env exnid = env =+= ExnName (eiName exnid) =:= exnid
 

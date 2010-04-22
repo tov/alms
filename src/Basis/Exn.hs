@@ -2,18 +2,29 @@ module Basis.Exn ( entries, ioexn2vexn ) where
 
 import BasisUtils
 import Value
-import Syntax (eiIOError, eiBlame, eiPatternMatch)
+import Syntax (Type, tyNulOp, tyTuple)
 
 import Control.Exception
 
--- raiseExn :: Valueable v => String -> Maybe v
+tyString :: Type ()
+tyString  = tyNulOp "string"
+
+eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId
+eiFailure       = ExnId (-21) (Uid "Failure")
+                    (Just tyString)
+eiIOError       = ExnId (-22) (Uid "IOError")
+                    (Just tyString)
+eiBlame         = ExnId (-23) (Uid "Blame")
+                    (Just (tyString `tyTuple` tyString))
+eiPatternMatch  = ExnId (-24) (Uid "PatternMatch")
+                    (Just (tyString `tyTuple` tyString `tyTuple` tyString))
 
 entries :: [Entry]
 entries = [
+    primexn eiFailure      "string",
     primexn eiIOError      "string",
     primexn eiBlame        "string * string",
     primexn eiPatternMatch "string * string list",
-    src "exception Failure of string",
 
     pfun 1 "raise" -: "exn -> any"
       -= \exn -> throw (vprj exn :: VExn)

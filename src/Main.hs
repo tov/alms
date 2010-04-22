@@ -13,7 +13,7 @@ import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
 import Coercion (translate, translateDecls, TEnv, tenv0)
-import Value (VExn(..), vppr)
+import Value (VExn(..), vppr, ExnId(..))
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
@@ -193,7 +193,7 @@ interactive opt rs0 = do
 
       execute newDefs stast2
                           = if opt Don'tExecute
-                              then display newDefs empty (fst stast2)
+                              then display newDefs (empty, []) (fst stast2)
                               else do
                                 (st3, newVals) <- dynamics stast2
                                 display newDefs newVals st3
@@ -227,19 +227,25 @@ interactive opt rs0 = do
                   Left derr ->
                     loop ((line, derr) : acc)
     printResult :: NewDefs -> NewValues -> IO ()
-    printResult defs values = do
+    printResult defs (values, exns) = do
       let vals = unionProduct
                    (newValues defs)
                    values
       say $ Ppr.vcat $
         map pprMod (newModules defs) ++
         map pprType (toList (newTypes defs)) ++
+        map pprExn exns ++
         map pprValue (toList vals)
 
       where
       pprMod uid    = text "module" <+> ppr uid
 
       pprType (lid, ti) = text "type" <+> ppr (tyInfoToDec lid ti)
+
+      pprExn (ExnId { eiName = uid, eiParam = Just t })
+        = text "exception" <+> ppr uid <+> text "of" <+> ppr t
+      pprExn (ExnId { eiName = uid })
+        = text "exception" <+> ppr uid
 
       pprValue (Con _, _)        = Ppr.empty
       pprValue (Var k, (mt, mv)) =

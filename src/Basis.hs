@@ -181,10 +181,10 @@ primBasis  = [
     submod "Thread"  Basis.Thread.entries,
     submod "MVar"    Basis.MVar.entries,
     submod "Future"  Basis.Future.entries,
-    submod "Exn"     Basis.Exn.entries,
 
     submod "Prim" [
       submod "Socket" Basis.Socket.entries,
+      submod "Exn"    Basis.Exn.entries,
       submod "SessionType" [
         "dual"   `primtype` tdDual,
         "send"   `primtype` tdSend,

@@ -49,7 +49,7 @@ usage x e = case M.lookup x (fv e) of
 data TyInfo = TiAbs TyTag
             | TiSyn [TyVar] TypeT
             | TiDat TyTag [TyVar] (Env Uid (Maybe TypeT))
-            | TiExn TyTag (Env Uid (Maybe TypeT, ExnId))
+            | TiExn
   deriving (Data, Typeable, Show)
 
 -- Type environments
@@ -284,7 +284,7 @@ getTypeTag who n = do
       who ++ " expects an abstract or data type, but " ++
       "got type synonym: " ++ show n
     TiDat td _ _ -> return td
-    TiExn td _   -> return td
+    TiExn        -> return tdExn
 
 -- | Look up a module, or fail
 getModule :: (?loc :: Loc, Monad m) => QUid -> TC m Scope
@@ -345,9 +345,9 @@ tcType = tc where
         checkLength (length (ttArity td))
         checkBound (ttBound td) ts'
         return (TyCon n ts' td)
-      TiExn td _ -> do
+      TiExn      -> do
         checkLength 0
-        return (TyCon n ts' td)
+        return (TyCon n ts' tdExn)
     where
       checkLength len =
         tassert (length ts == len) $
@@ -391,8 +391,7 @@ tcExpr = tc where
   tc e0 = let ?loc = getLoc e0 in case view e0 of
     ExId x -> do
       tx    <- getVar x
-      exnix <- findExnId x tx
-      let e' = exId x `setExnId` exnix
+      let e' = exId x `setExn` findIsExn tx
       return (tx, e' *:* tx)
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
@@ -581,13 +580,14 @@ tcPatt t x0 = case x0 of
           -> return (params, Nothing, res)
       tassgot (t <: tysubsts params ts res)
         "Pattern" t ("constructor " ++ show u)
+      let isexn = findIsExn t
       case (mt, mx) of
         (Nothing, Nothing) ->
-          return (empty, empty, PaCon u Nothing Nothing)
+          return (empty, empty, PaCon u Nothing isexn)
         (Just t1, Just x1) -> do
           let t1' = tysubsts params ts t1
           (dx1, gx1, x1') <- tcPatt t1' x1
-          return (dx1, gx1, PaCon u (Just x1') Nothing)
+          return (dx1, gx1, PaCon u (Just x1') isexn)
         _ -> tgot "Pattern" t "wrong arity"
     _ -> tgot "Pattern" t ("constructor " ++ show u)
   PaPair x y -> do
@@ -924,42 +924,18 @@ withExn :: (?loc :: Loc, Monad m) =>
            Uid -> Maybe (Type i) ->
            (Maybe TypeT -> TC m a) -> TC m a
 withExn n mt k = do
-  index <- newIndex
   mt'   <- gmapM tcType mt
-  withExnId n mt' index (k mt')
+  withVars (Con n =:= maybe tyExnT (`tyArrT` tyExnT) mt') $
+    k mt'
 
-withExnId :: (?loc :: Loc, Monad m) =>
-             Uid -> Maybe TypeT -> Integer ->
-             TC m a -> TC m a
-withExnId n mt index k = do
-  ti    <- getType (qlid "exn")
-  let env' = n =:= (mt, ExnId index n)
-  ti'   <- case ti of
-    TiExn tag env     -> return $ TiExn tag (env =+= env')
-    _                 -> terr $ "Cannot extend exn type because " ++
-                                "exn is shadowed"
-  withTypes (Lid "exn" =:= ti') .
-    withVars (Con n =:= maybe tyExnT (`tyArrT` tyExnT) mt) $
-      k
-
--- | Find the current exn id associated with a name, given
---   the expected type for the exn datacon
-findExnId :: (?loc::Loc, Monad m) =>
-             Ident -> TypeT -> TC m (Maybe ExnId)
-findExnId ident t = case view ident of
-    Right (J [] uid) -> case t of
-      TyCon _ [_, TyCon _ _ td'] td
-        | td == tdArr && td' == tdExn -> getIdOf uid
-      TyCon _ [] td
-        | td == tdExn                 -> getIdOf uid
-      _                               -> return Nothing
-    _                                 -> return Nothing
-  where
-    getIdOf n = do
-      ti <- getType (qlid "exn")
-      case ti of
-        TiExn _ alts -> return (fmap snd (alts =..= n))
-        _            -> return Nothing
+-- Is the given type the type of an exception constructor?
+findIsExn :: TypeT -> Bool
+findIsExn (TyCon _ [_, TyCon _ _ tag'] tag)
+  = tag == tdArr && tag' == tdExn
+findIsExn (TyCon _ _ tag)
+  = tag == tdExn
+findIsExn _
+  = False
 
 -- | Run a computation in the context of a module
 withMod :: (?loc :: Loc, Monad m) =>
@@ -992,8 +968,8 @@ hideInvisible (PEnv me level) = do
         Just (TiDat tag' _ _)
           | tag' == tag  -> t
         Just (TiSyn _ _) -> t
-        Just (TiExn tag' _)
-          | tag' == tag  -> t
+        Just TiExn
+          | tdExn == tag -> t
         _                -> t `setTycon` hide (tyinfo t) name
     repair t = return t
 
@@ -1033,7 +1009,7 @@ requalifyTypes uids env = map (fmap repairLevel) env where
   tagOfTyInfo (TiAbs tag)     = [tag]
   tagOfTyInfo (TiSyn _ _)     = []
   tagOfTyInfo (TiDat tag _ _) = [tag]
-  tagOfTyInfo (TiExn tag _)   = [tag]
+  tagOfTyInfo TiExn           = [tdExn]
 
   chooseQLid :: QLid -> QLid -> QLid
   chooseQLid q1@(J p1 _) q2@(J p2 _)
@@ -1168,11 +1144,10 @@ addType gg n td =
 
 -- | Add a new exception variant
 addExn :: Monad m =>
-          S -> Uid -> Maybe (Type i) -> Integer -> m S
-addExn gg n mt ix =
+          S -> Uid -> Maybe (Type i) -> m S
+addExn gg n mt =
   runTC gg $ do
-    mt' <- maybe (return Nothing) (liftM Just . tcType) mt
-    withExnId n mt' ix $
+    withExn n mt $ \_ ->
       saveTC False
   where ?loc = bogus
 
@@ -1214,7 +1189,7 @@ env0  = S e0 0 where
     tenv0   = Lid "unit" -:- TiDat tdUnit [] (
                 Uid "()"    -:- Nothing
               ) -+-
-              Lid "exn"  -:- TiExn tdExn empty
+              Lid "exn"  -:- TiExn
 
 -- | Reconstruct the declaration from a tycon binding, for printing
 tyInfoToDec :: Lid -> TyInfo -> TyDec
@@ -1225,9 +1200,7 @@ tyInfoToDec n ti = case ti of
   TiAbs tag       -> TdAbs n (zipWith const tyvars (ttArity tag))
                            (ttArity tag)
                            (qsToList tyvars (ttQual tag))
-  TiExn _ alts    -> TdDat (Lid "exn") []
-                           [ (uid, fmap removeTyTags mt)
-                           | (uid, (mt, _)) <- toList alts ]
+  TiExn           -> TdAbs (Lid "exn") [] [] [Right Qa]
   where
     tyvars   = map (flip TV Qu . Lid) alphabet
     alphabet = map return ['a' .. 'z'] ++

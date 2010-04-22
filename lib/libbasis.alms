@@ -1,7 +1,15 @@
-open Exn
+module Exn = struct
+  open Prim.Exn
 
-let failwith (msg: string) =
-  raise (Failure msg)
+  let failwith (msg: string) =
+    raise (Failure msg)
+
+  let exceptionIdCounter =
+    let index = ref 0 in
+    fun () -> index <- !index + 1
+end
+
+open Exn
 
 let not (b: bool) = if b then false else true
 let (!=)['a] (x: 'a) (y: 'a) = not (x == y)

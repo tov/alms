@@ -376,11 +376,11 @@ expr2vs e = case view e of
 -}
 
 makeBangPatt :: Patt -> Patt
-makeBangPatt p = PaCon (J [] (Uid "!")) (Just p) Nothing
+makeBangPatt p = PaCon (J [] (Uid "!")) (Just p) False
 
 parseBangPatt :: Patt -> Maybe Patt
-parseBangPatt (PaCon (J [] (Uid "!")) mp Nothing) = mp
-parseBangPatt _                                   = Nothing
+parseBangPatt (PaCon (J [] (Uid "!")) mp False) = mp
+parseBangPatt _                                 = Nothing
 
 {-
 fbvSet :: Expr i -> S.Set Lid
@@ -400,7 +400,7 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
         sawVar l
         return (PaVar l)
       Left (J _ _)  -> mzero
-      Right qu      -> return (PaCon qu Nothing (getExnId e))
+      Right qu      -> return (PaCon qu Nothing (isExn e))
     -- no string or integer literals
     ExPair e1 e2        -> do
       p1 <- loop e1
@@ -411,7 +411,7 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
       Right qu   <- view ident
                         -> do
         p2 <- loop e2
-        return (PaCon qu (Just p2) (getExnId e1))
+        return (PaCon qu (Just p2) (isExn e1))
     ExTApp e1 _         -> loop e1
     ExPack Nothing (TyVar tv) e2 -> do
       sawTyVar tv
@@ -436,7 +436,7 @@ patt2expr :: Patt -> Expr i
 patt2expr PaWild         = exUnit
 patt2expr (PaVar l)      = exBVar l
 patt2expr (PaCon u Nothing exn)
-                         = exCon u `setExnId` exn
+                         = exCon u `setExn` exn
 patt2expr (PaCon u (Just p) exn)
                          = exApp e1 e2 where
   e1 = patt2expr (PaCon u Nothing exn)
@@ -504,5 +504,5 @@ exUnit :: Expr i
 exUnit  = exCon (quid "()")
 
 paUnit :: Patt
-paUnit  = PaCon (quid "()") Nothing Nothing
+paUnit  = PaCon (quid "()") Nothing False
 

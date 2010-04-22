@@ -60,11 +60,6 @@ module Syntax (
   -- ** Operations
   prog2decls,
 
-  -- * Exceptions
-  ExnId(..),
-  -- ** Built-in exceptions
-  eiIOError, eiBlame, eiPatternMatch,
-
   -- * Expressions
   Expr(), ExprT, Expr'(..),
   -- ** Two-level expression constructors
@@ -77,7 +72,7 @@ module Syntax (
   -- ** Optimizing expression constructors
   exLet', exLetVar', exAbs', exAbsVar', exTAbs',
   -- ** Expression accessors and updaters
-  fv, exprType, (*:*), setExnId, getExnId, (*<*),
+  fv, exprType, (*:*), setExn, isExn, (*<*),
   syntacticValue,
 
   -- * Patterns and bindings
@@ -343,8 +338,8 @@ data Expr i
       fv_    :: FV,
       -- | possibly its type (used for translation)
       type_  :: Maybe TypeT,
-      -- | if it's an exception constructor, its identity
-      exnid_ :: Maybe ExnId,
+      -- | is it an exception constructor?
+      isexn_ :: Bool,
       -- | the underlying sum type
       expr_  :: Expr' i
     }
@@ -387,15 +382,6 @@ data Expr' i
 -- but a map from names to a count of maximum occurrences.
 type FV        = M.Map QLid Integer
 
--- | Exceptions need identity beyond their names, since one
--- exception declaration can shadow another, and we need to catch
--- only the right ones a run time.
-data ExnId     = ExnId {
-                   eiIndex :: Integer,
-                   eiName  :: Uid
-                 }
-  deriving (Eq, Show, Typeable, Data)
-
 -- | Let-rec bindings require us to give types
 data Binding i = Binding {
   bnvar  :: Lid,
@@ -411,7 +397,7 @@ data Patt
   -- | variable pattern
   | PaVar Lid
   -- | datacon, possibly with parameter, possibly an exception
-  | PaCon QUid (Maybe Patt) (Maybe ExnId)
+  | PaCon QUid (Maybe Patt) Bool
   -- | pair pattern
   | PaPair Patt Patt
   -- | string literal
@@ -451,18 +437,18 @@ e *:* t = e {
   type_ = Just t
 }
 
--- | Get the exception id of an expression
-getExnId :: Expr i -> Maybe ExnId
-getExnId  = exnid_
+-- | Is the given expression an exception constructor?
+isExn :: Expr i -> Bool
+isExn  = isexn_
 
--- | Update the exception id of an expression
-setExnId :: Expr i -> Maybe ExnId -> Expr i
-setExnId e mz = e { exnid_ = mz }
+-- | Make the expression an exception constructor
+setExn :: Expr i -> Bool -> Expr i
+setExn e b = e { isexn_ = b }
 
--- | Clone the type and exception id from the right expression
+-- | Clone the type and exceptionness from the right expression
 -- onto the left expression
 (*<*) :: Expr i -> Expr i' -> Expr i
-e *<* e' = e { type_ = type_ e', exnid_ = exnid_ e' }
+e *<* e' = e { type_ = type_ e', isexn_ = isexn_ e' }
 
 -- | The set of variables bound by a pattern
 pv :: Patt -> S.Set Lid
@@ -484,7 +470,7 @@ expr0  = Expr {
   eloc_  = bogus,
   fv_    = M.empty,
   type_  = Nothing,
-  exnid_ = Nothing,
+  isexn_ = False,
   expr_  = undefined
 }
 
@@ -651,7 +637,7 @@ exTAbs' tv e = case view e of
 p -==+ e = case (p, view e) of
   (PaVar l,                   ExId (J [] (Var l')))
     -> l == l'
-  (PaCon (J [] (Uid "()")) Nothing Nothing, ExId (J [] (Con (Uid "()"))))
+  (PaCon (J [] (Uid "()")) Nothing False, ExId (J [] (Con (Uid "()"))))
     -> True
   (PaPair p1 p2,              ExPair e1 e2)
     -> p1 -==+ e1 && p2 -==+ e2
@@ -1223,16 +1209,6 @@ tdSend       = TyTag (-12) [1]  minBound [maxBound]
 tdRecv       = TyTag (-13) [-1] minBound [maxBound]
 tdSelect     = TyTag (-14) [1]  minBound [minBound]
 tdFollow     = TyTag (-15) [1]  minBound [minBound]
-
--- | Relay Haskell's IO exceptions
-eiIOError      :: ExnId
-eiIOError       = ExnId (-21) (Uid "IOError")
--- | Contract blame errors
-eiBlame        :: ExnId
-eiBlame         = ExnId (-22) (Uid "Blame")
--- | Failed pattern match errors
-eiPatternMatch :: ExnId
-eiPatternMatch  = ExnId (-23) (Uid "PatternMatch")
 
 tyNulOp       :: String -> Type ()
 tyNulOp s      = TyCon (qlid s) [] ()

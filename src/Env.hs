@@ -20,7 +20,7 @@ module Env (
   -- ** Higher-order constructors
   unionWith, unionSum, unionProduct,
   -- ** Higher-order destructors
-  mapAccum, mapAccumM,
+  mapValsM, mapAccum, mapAccumM,
   -- ** List conversions
   toList, fromList, domain, range,
 
@@ -126,6 +126,11 @@ infix 5 `unionSum`, `unionProduct`
 
 instance Ord k => Functor (Env k) where
   fmap f = Env . M.map f . unEnv
+
+-- | Map over the values of an environment (monadic)
+mapValsM :: (Ord k, Monad m) =>
+            (v -> m w) -> Env k v -> m (Env k w)
+mapValsM f = liftM snd . mapAccumM (\v _ -> (,) () `liftM` f v) ()
 
 -- | Map over an environment, with an opportunity to maintain an
 --   accumulator

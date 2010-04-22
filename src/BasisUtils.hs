@@ -25,14 +25,15 @@ module BasisUtils (
   text, Uid(..),
 ) where
 
-import Dynamics (E, addVal, addMod)
+import Dynamics (E, addVal, addMod, addExn)
 import Env (GenEmpty(..))
 import Parser (pt, pds)
 import Ppr (ppr, pprPrec, text, precApp)
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
 import Util
-import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
+import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
+              ExnId(..))
 
 -- | An entry in the initial environment
 data Entry
@@ -182,6 +183,8 @@ basis2venv es = foldM add genEmpty es where
           = return (Dynamics.addVal e n v)
   add e (ModEn { enModName = n, enEnts = es' })
           = Dynamics.addMod e n `liftM` basis2venv es'
+  add e (ExnEn { enExnId = exnId })
+          = return (Dynamics.addExn e exnId)
   add e _ = return e
 
 -- | Build the static environment
@@ -196,9 +199,8 @@ basis2tenv  = foldM each env0 where
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
-  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiIndex = ix },
-                    enExnType = s }) =
-    Statics.addExn gg0 n (pt_maybe s) ix
+  each gg0 (ExnEn { enExnId = ExnId { eiName = n }, enExnType = s }) =
+    Statics.addExn gg0 n (pt_maybe s)
 
 pt_maybe :: String -> Maybe (Type ())
 pt_maybe "" = Nothing
