@@ -1,7 +1,8 @@
 #!/bin/sh
 
+name=alms
 host=spelunker.ccs.neu.edu
-remote=public_html/pubs/alms
+remote=public_html/pubs/$name
 
 if [ -z "$1" ]; then
   set showVersion
@@ -16,20 +17,20 @@ while [ -n "$1" ]; do
       set version "$ver" ci "version bump: $ver" clean dist send link $@
       ;;
     clean)
-      rm alms*.tar.gz
+      rm $name*.tar.gz
       ;;
     dist)
       make dist
       ;;
     send)
-      scp -p alms*.tar.gz $host:$remote/
+      scp -p $name*.tar.gz $host:$remote/
       ;;
     link)
       version="`$0 showVersion`"
       ssh $host "cd $remote;
-                 DISPLAY='' ex -c '/alms-[0-9.]*[.]tar[.]gz/s/-[0-9.]*[.]tar/-$version.tar/|:wq' index.html;
-                 rm alms.tar.gz;
-                 ln -s 'alms-$version.tar.gz' alms.tar.gz"
+                 DISPLAY='' ex -c '/$name-[0-9.]*[.]tar[.]gz/s/-[0-9.]*[.]tar/-$version.tar/|:wq' index.html;
+                 rm $name.tar.gz;
+                 ln -s '$name-$version.tar.gz' $name.tar.gz"
       ;;
     edit)
       ssh $host -t vim $remote/index.html
@@ -55,7 +56,7 @@ while [ -n "$1" ]; do
       version="$1"
       shift
       ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
-      ex -c "/^Version: /s/\\(: *\\).*/\\1$version/|:wq" affine.cabal
+      ex -c "/^Version: /s/\\(: *\\).*/\\1$version/|:wq" $name.cabal
       $0 showVersion
       ;;
     showVersion)
