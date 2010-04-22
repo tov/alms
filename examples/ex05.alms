@@ -1,11 +1,9 @@
-(* A Call from A into C *)
-
-let[C] ap : (int -> int) -> int -> int =
+let ap : (int -> int) -> int -> int =
   fun f: (int -> int) ->
     fun x: int ->
       f x
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int -> ap (fun z: int -> z + 1) y
 
 in print[int] (inc 5)

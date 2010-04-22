@@ -1,13 +1,13 @@
-(* An Interface Module Intervenes *)
+(* An Interface Intervenes *)
 
-let[C] ap : (int -> int) -> int -> int =
+let ap : (int -> int) -> int -> int =
   fun f: (int -> int) ->
     fun x: int ->
       f x
 
-let interface iap :> (int -o int) -> int -o int = ap
+let iap = (ap :> (int -o int) -> int -o int)
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     (fun g: (int -o int) ->
        iap g y)

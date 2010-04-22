@@ -1,11 +1,10 @@
-(* A Blameworthy C Module (blame inc2) *)
+(* A Blameworthy Coercion *)
 
-let[A] ap =
+let ap =
   fun f: (int -o int) ->
-    fun x: int ->
-      f x
+    ( (fun x: int -> f x) :> int -> int )
 
-let[C] inc2 =
+let inc2 =
   fun y: int ->
     let g = ap (fun z: int -> z + 1) in
       g (g y)   (* g is used twice here *)

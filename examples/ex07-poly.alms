@@ -1,14 +1,14 @@
-(* Polymorphic version: An Interface Module Intervenes *)
+(* Polymorphic version: An Interface Intervenes *)
 
-let[C] ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
+let ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
   fun 'a 'b ->
     fun f: ('a -> 'b) ->
       fun x: 'a ->
         f x
 
-let interface iap :> all 'a 'b. ('a -o 'b) -> 'a -o 'b = ap
+let iap = (ap :> all 'a 'b. ('a -o 'b) -> 'a -o 'b)
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     (fun g: (int -o int) ->
        iap[int,int] g y)

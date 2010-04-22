@@ -1,13 +1,13 @@
-(* A Lying Interface Module (blame iap2) *)
+(* A Lying Interface *)
 
-let[C] ap : (int -> int) -> int -> int =
+let ap : (int -> int) -> int -> int =
   fun f: (int -> int) ->
     fun x: int ->
       f (f x)    (* f is used twice here, despite what iap2 claims *)
 
-let interface iap2 :> (int -o int) -> int -o int = ap
+let iap2 = (ap :> (int -o int) -> int -o int)
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     (fun g: (int -o int) ->
        iap2 g y)

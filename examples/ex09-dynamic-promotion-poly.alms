@@ -1,12 +1,12 @@
 (* Polymorphic version: A Dynamic Promotion Intervenes (like ex7.aff) *)
 
-let[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
+let ap : all 'a. ('a -> 'a) -> 'a -> 'a =
   fun 'a ->
     fun f: ('a -> 'a) ->
       fun x: 'a ->
         f x
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     (fun g: (int -o int) ->
        (ap[int] :  (int -> int) -> int -> int

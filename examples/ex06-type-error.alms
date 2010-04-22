@@ -1,11 +1,9 @@
-(* An Ill-Typed A-to-C Call (type error) *)
-
-let[C] ap : (int -> int) -> int -> int =
+let ap : (int -> int) -> int -> int =
   fun f: (int -> int) ->
     fun x: int ->
       f x
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     let g = (fun z:int  -> z + 1 : int -> int :> int -o int) in
       ap g y         (* g: (int -o int) is used as an (int -> int) *)

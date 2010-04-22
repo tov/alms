@@ -1,11 +1,11 @@
-(* The C Module, Corrected *)
+(* Ex04 Corrected *)
 
-let[A] ap : (int -o int) -> int -o int =
+let ap : (int -o int) -> int -o int =
   fun f: (int -o int) ->
     fun x: int ->
       f x
 
-let[C] inc2 : int -> int =
+let inc2 : int -> int =
   fun y: int ->
     let g = ap (fun z: int -> z + 1) in
     let h = ap (fun z: int -> z + 1) in

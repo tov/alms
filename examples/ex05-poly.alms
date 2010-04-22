@@ -1,12 +1,10 @@
-(* Polymorphic version: A Call from A into C *)
-
-let[C] ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
+let ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
   fun 'a 'b ->
     fun f: ('a -> 'b) ->
       fun x: 'a ->
         f x
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int -> ap[int,int] (fun z: int -> z + 1) y
 
 in print[int] (inc 5)

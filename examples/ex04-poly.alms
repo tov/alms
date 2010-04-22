@@ -1,9 +1,9 @@
-(* Polymorphic version: The C Module, Corrected *)
+(* Polymorphic version: ex03 corrected *)
 
-let[A] ap : all 'a 'b. ('a -o 'b) -> 'a -o 'b =
+let ap : all 'a 'b. ('a -o 'b) -> 'a -o 'b =
   fun 'a 'b (f: 'a -o 'b) (x : 'a) -> f x
 
-let[C] inc2 : int -> int =
+let inc2 : int -> int =
   fun y: int ->
     let g = ap[int,int] (fun z: int -> z + 1) in
     let h = ap[int,int] (fun z: int -> z + 1) in

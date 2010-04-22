@@ -1,11 +1,11 @@
 (* A Dynamic Promotion Intervenes (like ex7.aff) *)
 
-let[C] ap : (int -> int) -> int -> int =
+let ap : (int -> int) -> int -> int =
   fun f: (int -> int) ->
     fun x: int ->
       f x
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     (fun g: (int -o int) ->
        (ap : (int -> int) -> int -> int

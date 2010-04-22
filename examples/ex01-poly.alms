@@ -1,10 +1,10 @@
 (* Polymorphic version: A Type-Correct, Blame-Free Program *)
 
-let[A] ap =
+let ap =
   fun '<a '<b (f: '<a -o '<b) (x: '<a) ->
     f x
 
-let[A] inc =
+let inc =
   fun y: int -> ap (fun z:int -> z + 1) y
 
 in print (inc 5)
