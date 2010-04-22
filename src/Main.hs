@@ -12,7 +12,7 @@ import Parser (parse, parseProg, parseDecls)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
-import Translation (translate, translateDecls, TEnv, tenv0)
+import Coercion (translate, translateDecls, TEnv, tenv0)
 import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)

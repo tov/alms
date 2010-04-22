@@ -23,7 +23,7 @@ import Syntax
 import Loc
 import Env as Env
 import Ppr ()
-import Translation (coerceExpression)
+import Coercion (coerceExpression)
 
 import Data.Data (Typeable, Data)
 import Data.Generics (everywhere, mkT, everywhereM, mkM)
