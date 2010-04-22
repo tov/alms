@@ -1,6 +1,6 @@
 (* A bad example with threads.  (type error!) *)
 
-let[A] printer : unit -> unit =
+let printer : unit -> unit =
   let rec loop (_ : unit) : unit =
     Thread.delay 100000;
     putStr "x";
@@ -8,20 +8,20 @@ let[A] printer : unit -> unit =
     loop ()
   in loop
 
-let[A] startStop : unit -> unit -o unit =
+let startStop : unit -> unit -o unit =
   fun _: unit ->
     let id = Thread.fork printer in
     let id = Thread.print id in
       fun _: unit ->
         Thread.kill id
 
-let[A] after : int -> (unit -o unit) -> unit =
+let after : int -> (unit -o unit) -> unit =
   fun delay: int ->
     fun stop: (unit -o unit) ->
       Thread.fork (fun _:unit  -> Thread.delay delay; stop ());
       ()
 
-let[A] main : unit -> unit =
+let main : unit -> unit =
   fun _: unit ->
     let stop = startStop () in
       after 2000000 stop;

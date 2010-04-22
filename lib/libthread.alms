@@ -2,7 +2,8 @@
 
 module AThread = struct
   abstype thread qualifier A = T of Thread.thread with
-    let fork = ( Thread.fork :> (unit -o unit) -> Thread.thread )
+    let fork (thunk : unit -o unit) = 
+      T ((Thread.fork :> (unit -o unit) -> Thread.thread) thunk)
 
     let kill (T th: thread) =
       Thread.kill th

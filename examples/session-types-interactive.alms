@@ -2,15 +2,15 @@
    Reads natural numbers (very brittle) from standard input
    until getting a blank line, then prints the sum. *)
 
-#load "libthread-A.aff"
-#load "libsessiontype.aff"
+#load "libthread"
+#load "libsessiontype"
 
 open SessionType
 
-type[A] protocol =
+type protocol =
   mu 'r. (int recv; unit + int send; 'r) select
 
-let[A] server =
+let server =
   let rec loop (acc : int)
                (c   : protocol dual channel)
                : unit =
@@ -23,7 +23,7 @@ let[A] server =
             loop (acc + x) c
    in loop 0
 
-let[A] client =
+let client =
   let rec loop (c : protocol channel) : int =
     let s = getLine () in
       if s == ""
@@ -37,7 +37,7 @@ let[A] client =
             loop c
    in loop
 
-let[A] main =
+let main =
   fun _ : unit ->
     let rv = newRendezvous[protocol] () in
       AThread.fork (fun _:unit -> server (accept rv));

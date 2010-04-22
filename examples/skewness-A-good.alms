@@ -10,11 +10,11 @@
     writing it.
 *)
 
-#load "libarray-A.aff"
+#load "libarraycap"
 
 open AArray
 
-module SkewnessExample = struct[A]
+module SkewnessExample = struct
   let sum ['t,'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
     fold (+.) 0.0 a c
   

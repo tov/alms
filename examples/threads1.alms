@@ -1,6 +1,6 @@
 (* An example with threads. *)
 
-let[A] printer : unit -> unit =
+let printer : unit -> unit =
   let rec loop (_ : unit) : unit =
     Thread.delay 100000;
     putStr "x";
@@ -8,7 +8,7 @@ let[A] printer : unit -> unit =
     loop ()
   in loop
 
-let[A] timer : unit -> unit =
+let timer : unit -> unit =
   fun _: unit ->
     let id = Thread.fork printer in
       Thread.delay 2000000;

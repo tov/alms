@@ -1,24 +1,22 @@
 (* An example with futures *)
 
-#load "libthread-A.aff"
+#load "libthread"
 
-open AThread
-
-let[A] prompt : unit -> string future =
+let prompt : unit -> string Future.future =
   fun _:unit -> Future.new getLine
 
-let[C] printDots : int -> int -> unit =
+let printDots : int -> int -> unit =
   let rec loop (count : int) (delay : int) : unit =
     if count <= 0
       then ()
       else
         putStr ".";
         flush ();
-        threadDelay (1000 * delay);
+        AThread.delay (1000 * delay);
         loop (count - 1) delay
   in loop
 
-let[A] main : string -> unit =
+let main : string -> unit =
   fun message: string ->
     putStrLn message;
     let future = prompt () in

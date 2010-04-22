@@ -1,20 +1,17 @@
 (* Demonstrates (affine) abstract types.  Correct. *)
 
 (*
-    This program is like ex25-array.aff, except that the main
-    algorithm is written in C, which means that it uses contract
-    checks on the array capabilities rather than static checks.
+    This program demonstrats how a [C] client is protected from abusing
+    the affinity constraints of an [A] library.  This program has the
+    same affinity violation as ex26-array.aff, except that as in
+    ex27-array.aff, it's checked dynamically.
 *)
 
-#load "libarray-A.aff"
+#load "libarraycap"
 
 open AArray
 
-module SkewnessExample = struct[C]
-  type ('a, 't) array   = {({'a}, {'t}) array}
-  type ('t, 'c) readcap = {({'t}, {'c}) readcap}
-  type 't writecap      = {({'t}) writecap}
-
+module SkewnessExample = struct
   let sum ['t,'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
     fold (+.) 0.0 a c
 
@@ -46,6 +43,7 @@ module SkewnessExample = struct[C]
                          (ts: transformation list)
                          (a: (float, 't) array)
                          (c0: 't writecap) =
+    let get_c0 = (fun () -> c0 :> unit -> 't writecap) in
     let rec replace (i: int)
                     (T(_, ft) as t: transformation)
                     (c: 't writecap)
@@ -72,9 +70,9 @@ module SkewnessExample = struct[C]
                          (sk, t, c))
                    c
                 in if absf sk2 <. absf sk1
-                     then (sk2, t2, c)
+                     then (replace 0 t1 (get_c0 ()); (sk2, t2, c))
                      else (sk1, t1, c) in
-    let (sk, t, c) = find 0 ts c0 in
+    let (sk, t, c) = find 0 ts (get_c0 ()) in
       (sk, t, replace 0 t c)
 
   let newDistribution
