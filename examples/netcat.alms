@@ -5,7 +5,7 @@ open Prim.Socket
 local
   open IO
 with
-  let rec[C] sendThread (sock: socket): unit =
+  let rec sendThread (sock: socket): unit =
     if hIsEOF stdin
       then
         shutdown sock ShutdownSend
@@ -16,22 +16,22 @@ with
         with
           IOError _ -> ()
 
-  let rec[C] recvThread (sock: socket): unit =
+  let rec recvThread (sock: socket): unit =
     try
       putStr (recv sock 1024); recvThread sock
     with
       IOError _ -> ()
 end
 
-let[C] setupConnection (addr: sockAddr): socket =
+let setupConnection (addr: sockAddr): socket =
   let s = socket AF_INET Stream defaultProtocol in
     connect s addr;
     s
 
-let[C] teardownConnection (sock: socket): unit =
+let teardownConnection (sock: socket): unit =
   close sock
 
-let[C] getAddr (): sockAddr =
+let getAddr (): sockAddr =
   match getArgs () with
   | Cons(host, Cons(port, Nil))
       -> let info = AddrInfo(Nil[addrInfoFlag], AF_INET,
@@ -42,7 +42,7 @@ let[C] getAddr (): sockAddr =
           | _ -> failwith ("Could not resolve address "^host^":"^port))
   | _ -> failwith ("Usage: " ^ getProgName () ^ " HOST SERVICE")
 
-let[A] main () =
+let main () =
   let sock = setupConnection (getAddr ()) in
   let wait = Future.new (fun () -> recvThread sock) in
     sendThread sock;
