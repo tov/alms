@@ -2,7 +2,7 @@
     A simple sockets library.
 *)
 
-module Socket = struct[C]
+module Socket = struct
   local
     module S = Prim.Socket
   with

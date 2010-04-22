@@ -2,7 +2,7 @@
   An array library.
 *)
 
-module Array = struct[C]
+module Array = struct
   exception ArrayIndex of string
   abstype 'a array = Array of int * (int -> 'a) ref with
     let newArray['a] (size : int): 'a array =

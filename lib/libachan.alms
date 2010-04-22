@@ -1,6 +1,7 @@
-#load "libqueue-C.aff"
+(* Asynchronous channels *)
+#load "libqueue"
 
-module AChan = struct[C]
+module AChan = struct
   local
     module Q = Queue
     module M = MVar
@@ -23,7 +24,7 @@ module AChan = struct[C]
           match repr with
           | Readers readers -> wait readers
           | Writers writers ->
-              match Q.first_dequeue writers with
+              match Q.firstA writers with
               | None          -> wait Q.empty['a mvar]
               | Some (x, xs)  -> (Writers xs, fun () -> x))
           ()
@@ -33,7 +34,7 @@ module AChan = struct[C]
           match repr with
           | Writers writers -> Writers (Q.enqueue x writers)
           | Readers readers ->
-              match Q.first_dequeue readers with
+              match Q.firstA readers with
               | None -> Writers (Q.enqueue x Q.empty['a])
               | Some (reader, readers')
                      -> M.put reader x;
@@ -44,7 +45,7 @@ module AChan = struct[C]
           match repr with
           | Readers readers -> (repr, None['a])
           | Writers writers ->
-              match Q.first_dequeue writers with
+              match Q.firstA writers with
               | None          -> (repr, None['a])
               | Some (x, xs)  -> (Writers xs, Some x))
 
@@ -55,7 +56,7 @@ module AChan = struct[C]
           match repr with
           | Writers writers -> (repr, false)
           | Readers readers ->
-              match Q.first_dequeue readers with
+              match Q.firstA readers with
               | None -> (repr, false)
               | Some (reader, readers')
                      -> M.put reader x;

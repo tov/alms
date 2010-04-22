@@ -2,16 +2,16 @@
   An affine array library.
 *)
 
-#load "libarray-C.aff"
+#load "libarray"
 
-module AArray = struct[A]
+module AArray = struct
   type '<a / '<b
   type () 1
   type () 2
   local
     module A = Array
   with
-    abstype ('a, 't) array = Array of {{'a} A.array} with
+    abstype ('a, 't) array = Array of 'a A.array with
       abstype ('t, 'c) readcap qualifier A = MkCap with
         type 't writecap = ('t, 1) readcap
 

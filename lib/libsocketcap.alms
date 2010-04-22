@@ -7,13 +7,13 @@
     the capability if presented with the corresponding socket.
 *)
 
-#load "libsocket-C.aff"
+#load "libsocket"
 
-module ASocket = struct[A]
+module ASocket = struct
   module S = Socket
   let getAddrByName = S.getAddrByName
 
-  abstype 't socket  = Sock of {S.socket}
+  abstype 't socket  = Sock of S.socket
       and 't initial   qualifier A = Initial
       and 't bound     qualifier A = Bound
       and 't listening qualifier A = Listening
@@ -25,10 +25,10 @@ module ASocket = struct[A]
      * it goes with.  (This requires a dynamic check.)  This lets us
      * recover the capability with a type paramater that matches any
      * extant sockets that go with it. *)
-    abstype frozenInitial   qualifier A = FInitial of {S.socket}
-        and frozenBound     qualifier A = FBound of {S.socket}
-        and frozenListening qualifier A = FListening of {S.socket}
-        and frozenConnected qualifier A = FConnected of {S.socket}
+    abstype frozenInitial   qualifier A = FInitial of S.socket
+        and frozenBound     qualifier A = FBound of S.socket
+        and frozenListening qualifier A = FListening of S.socket
+        and frozenConnected qualifier A = FConnected of S.socket
     with
       let freezeInitial['t] (Sock sock: 't socket) (_: 't initial) =
             FInitial sock
