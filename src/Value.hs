@@ -10,6 +10,7 @@
 module Value (
   -- * Value and function representation
   Valuable(..), FunName(..), Value(..),
+  funNameDocs,
   -- ** Common values
   vaInt, vaUnit,
   -- ** Some pre-defined value types
@@ -39,9 +40,13 @@ import Control.Monad.State as M.S
 -- | The name of a function
 data FunName
   -- | An anonymous function, whose name is overwritten by binding
-  = FNAnonymous Doc
+  = FNAnonymous [Doc]
   -- | An already-named function
-  | FNNamed [Doc]
+  | FNNamed Doc
+
+funNameDocs :: FunName -> [Doc]
+funNameDocs (FNAnonymous docs) = docs
+funNameDocs (FNNamed doc)      = [doc]
 
 -- | Class for Haskell values that can be injected as object-language
 --   values
@@ -141,10 +146,8 @@ vaUnit  = vinj ()
 -- Ppr instances
 
 instance Ppr FunName where
-  pprPrec _ (FNAnonymous doc) = hang (text "#<fn") 4 $
-                                  doc <> char '>'
-  pprPrec _ (FNNamed docs)    = hang (text "#<fn") 4 $
-                                  sep docs <> char '>'
+  pprPrec _ fn  = hang (text "#<fn") 4 $
+                  sep (funNameDocs fn) <> char '>'
 
 instance Ppr Value where
   pprPrec = vpprPrec

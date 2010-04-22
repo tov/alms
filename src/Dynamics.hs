@@ -137,7 +137,7 @@ valOf e env = case view e of
     v2 <- valOf e2 env
     return (vinj (v1, v2))
   ExAbs x _ e'           ->
-    return (VaFun (FNAnonymous (ppr e))
+    return (VaFun (FNAnonymous [pprPrec (precApp + 1) e])
                   (\v -> bindPatt x v env >>= valOf e'))
   ExApp e1 e2            -> do
     v1  <- valOf e1 env
@@ -149,7 +149,7 @@ valOf e env = case view e of
       _         -> fail $ "BUG! applied non-function " ++ show v1
                            ++ " to argument " ++ show v2
   ExTAbs _ e'            ->
-    return (VaSus (FNAnonymous (ppr e)) (valOf e' env))
+    return (VaSus (FNAnonymous [ppr e]) (valOf e' env))
   ExTApp e' t2           -> do
     v' <- valOf e' env
     case v' of
@@ -170,7 +170,7 @@ makeExn ei (Just tt) = return $ makeWith tt
     makeWith (TyCon _ _ td) | td == tdExn =
       vinj (VExn ei Nothing)
     makeWith _ =
-      VaFun (FNAnonymous (ppr (eiName ei))) $ \v ->
+      VaFun (FNAnonymous [ppr (eiName ei)]) $ \v ->
         return (vinj (VExn ei (Just v)))
 
 bindPatt :: Monad m => Patt -> Value -> E -> m E
@@ -213,16 +213,17 @@ force v           = return v
 -- Add the given name to an anonymous function
 nameFun :: Lid -> Value -> Value
 nameFun (Lid x) (VaFun (FNAnonymous _) lam)
-  | x /= "it"          = VaFun (FNNamed [text x]) lam
+  | x /= "it"          = VaFun (FNNamed (text x)) lam
 nameFun (Lid x) (VaSus (FNAnonymous _) lam)
-  | x /= "it"          = VaSus (FNNamed [text x]) lam
+  | x /= "it"          = VaSus (FNNamed (text x)) lam
 nameFun _       value  = value
 
+-- Get the name of an applied function
 nameApp :: FunName -> Doc -> Value -> Value
-nameApp (FNNamed docs) arg (VaFun (FNAnonymous _) lam)
-  = VaFun (FNNamed (docs ++ [ arg ])) lam
-nameApp (FNNamed docs) arg (VaSus (FNAnonymous _) lam)
-  = VaSus (FNNamed (docs ++ [ arg ])) lam
+nameApp fn arg (VaFun (FNAnonymous _) lam)
+  = VaFun (FNAnonymous (funNameDocs fn ++ [ arg ])) lam
+nameApp fn arg (VaSus (FNAnonymous _) lam)
+  = VaSus (FNAnonymous (funNameDocs fn ++ [ arg ])) lam
 nameApp _ _ value = value
 
 collapse :: E -> Scope

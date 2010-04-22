@@ -28,11 +28,11 @@ module BasisUtils (
 import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
 import Parser (pt, pds)
-import Ppr (ppr, text)
+import Ppr (ppr, pprPrec, text, precApp)
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
 import Util
-import Value (Valuable(..), FunName(..), Value(..))
+import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
 
 -- | An entry in the initial environment
 data Entry
@@ -74,9 +74,7 @@ instance (Valuable v, MkFun r) => MkFun (v -> r) where
   mkFun n f = VaFun n $ \v ->
     vprjM v >>! mkFun (next v) . f
     where
-      next v = case n of
-        FNAnonymous doc -> FNAnonymous doc
-        FNNamed docs    -> FNNamed (docs ++ [ppr v])
+      next v = FNAnonymous (funNameDocs n ++ [pprPrec precApp v])
 
 -- Base cases for various return types
 
@@ -106,7 +104,7 @@ baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 --   that language.
 fun :: (MkFun r, Valuable v) =>
        String -> String -> (v -> r) -> Entry
-fun name ty f = ValEn (Lid name) ty (mkFun (FNNamed [text name]) f)
+fun name ty f = ValEn (Lid name) ty (mkFun (FNNamed (ppr (Lid name))) f)
 
 -- | Make a value entry for a Haskell non-function.
 val :: Valuable v => String -> String -> v -> Entry
@@ -128,7 +126,7 @@ pfun n name ty f = mkTyAbs (pfun (n - 1) name ty f)
 mkTyAbs :: Entry -> Entry
 mkTyAbs entry =
   let v     = enValue entry in
-  entry { enValue = VaSus (FNNamed [ppr (enName entry)]) (return v) }
+  entry { enValue = VaSus (FNNamed (ppr (enName entry))) (return v) }
 
 class TypeBuilder r where
   -- | @String String ... -> Entry@ variadic function for building
