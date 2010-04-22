@@ -182,7 +182,7 @@ bindPatt x0 v env = case x0 of
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
     _                                             -> perr
   ---- statically allocated exception IDs are insufficient for safety
-  ---- when "let exception" can create difference exceptions with the
+  ---- when "let exception" can create different exceptions with the
   ---- same ID at run time.
   -- PaCon _ mx (Just ei) -> case (mx, vprjM v) of
     -- (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
