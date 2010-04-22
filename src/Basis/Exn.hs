@@ -2,7 +2,7 @@ module Basis.Exn ( entries, ioexn2vexn ) where
 
 import BasisUtils
 import Value
-import Syntax (ExnId(..), eiIOError, eiBlame, eiPatternMatch)
+import Syntax (eiIOError, eiBlame, eiPatternMatch)
 
 import Control.Exception
 

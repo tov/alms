@@ -23,6 +23,7 @@ import Syntax
 import Loc
 import Env as Env
 import Ppr ()
+import Translation (coerceExpression)
 
 import Data.Data (Typeable, Data)
 import Data.Generics (everywhere, mkT, everywhereM, mkM)
@@ -483,10 +484,9 @@ tcExpr = tc where
         "cast (:>)" t' "function type"
       tassgot (t1 <: t')
         "cast (:>)" t1 (show t')
-      t1 \/? ta' |!
-        "Mismatch in cast: types " ++ show t1 ++
-        " and " ++ show t' ++ " are incompatible"
-      return (ta', exCast e1' (Just t') ta')
+      e1'' <- coerceExpression (e1' <<@ e0) t' ta'
+      tcExpr e1'' -- re-type check the coerced expression
+      return (ta', e1'')
 
   -- | Assert that type given to a name is allowed by its usage
   checkSharing :: (Monad m, ?loc :: Loc) =>
@@ -533,6 +533,7 @@ tcExApp tc e0 = do
         b <- unifies [] t ta
         tassgot b "Application (operand)" t (show ta)
         arrows tr ts
+      arrows (TyMu tv t') ts = arrows (tysubst tv (TyMu tv t') t') ts
       arrows t' _ = tgot "Application (operator)" t' "function type"
       unifies tvs ta tf =
         case tryUnify tvs ta tf of

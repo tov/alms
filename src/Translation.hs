@@ -1,17 +1,18 @@
--- | Translation inserts coercions while translating language A to
---   language C.
+-- | Converts coercion expressions to dynamic checks.
 {-# LANGUAGE
-      FlexibleInstances,
-      ImplicitParams,
-      MultiParamTypeClasses,
-      PatternGuards,
-      RelaxedPolyRec #-}
-module Translation (
+      PatternGuards #-}
+module Translation  (
+  coerceExpression,
   translate, translateDecls, TEnv, tenv0
 ) where
 
 import Util
 import Syntax
+import Loc
+import Ppr ()
+
+import qualified Data.Map as M
+import qualified Control.Monad.State as CMS
 
 -- | The translation environment.  This currently doesn't carry
 --   any information, but we keep it in the interface for later use.
@@ -21,341 +22,114 @@ type TEnv = ()
 tenv0 :: TEnv
 tenv0  = ()
 
-{-
--- | Parties to contracts are module names, but it's worth
---   keeping them separate from regular variables.
-newtype Party = Party { unParty :: Ident }
--- | The trail to a particular mention is the module path in
---   which it appears, which is used to generate a 'Party'
-type Trail    = [Uid]
--}
-
 -- | Translate a whole program
 translate :: TEnv -> ProgT -> ProgT
-translate = const id
-{-
-translate _ (Prog ds e) =
-  Prog (transDecls ds) (transExpr (party (Uid "*Main*")) `fmap` e)
-    where ?trail = []
+translate _ = id
 
 -- | Translation a sequence of declarations in the context
 --   of a translation environment, returning a new translation
 --   environment
--}
 translateDecls :: TEnv -> [DeclT] -> (TEnv, [DeclT])
-translateDecls = (,)
-{-
-translateDecls tenv ds = (tenv, transDecls ds) where ?trail = []
+translateDecls tenv decls = (tenv, decls)
 
-transDecls :: (?trail :: Trail) => [DeclT] -> [DeclT]
-transDecls = map transDecl
-
-transDecl :: (?trail :: Trail) => DeclT -> DeclT
-transDecl (DcLet loc m)      = DcLet loc (transLet m)
-transDecl (DcTyp loc td)     = DcTyp loc td
-transDecl (DcAbs loc at ds0) = DcAbs loc at (transDecls ds0)
-transDecl (DcMod loc x b)    = DcMod loc x (transMod x b)
-transDecl (DcOpn loc b)      = DcOpn loc (transOpen b)
-transDecl (DcLoc loc d0 d1)  = let (d0', d1') = transLocal d0 d1
-                                in DcLoc loc d0' d1'
-transDecl (DcExn loc e)      = DcExn loc e
-
-transLet :: (?trail :: Trail) => LetT -> LetT
-transLet (LtC tl x mt e) =
-   LtC tl x mt (transExpr (getNeg x) e)
-transLet (LtA tl x mt e) =
-   LtC tl x (fmap atype2ctype mt) (transExpr (getNeg x) e)
-transLet (LtInt tl x t y)      =
-   LtC tl x (Just ty) $
-     exLetVar' z
-         (transExpr (getNeg x) (exVar y *:* ty :: ExprT C)) $
-       ac (party y) (getNeg x) z t
-    where z  = y /./ "z"
-          ty = atype2ctype t
-
-transOpen :: (?trail :: Trail) => ModExpT -> ModExpT
-transOpen b = transModExp b
-
-transLocal :: (?trail :: Trail) =>
-              [DeclT] -> [DeclT] -> ([DeclT], [DeclT])
-transLocal ds0 ds1 = (transDecls ds0, transDecls ds1)
-
-transMod :: (?trail :: Trail) =>
-            Uid -> ModExpT -> ModExpT
-transMod x b = transModExp b where ?trail = x : ?trail
-
-transModExp :: (?trail :: Trail) => ModExpT -> ModExpT
-transModExp (MeName n)     = MeName n
-transModExp (MeStrC tl ds) = MeStrC tl (transDecls ds)
-transModExp (MeStrA tl ds) = MeStrC tl (transDecls ds)
-
-getNeg :: (?trail :: Trail, Culpable p) => p -> Party
-getNeg def = case ?trail of
-  []   -> party def
-  p:ps -> party (J (reverse ps) p)
-
-transExpr :: Language w => Party -> ExprT w -> ExprT C
-transExpr neg = te where
-  te e0 = case view e0 of
-    ExId i    -> case view i of
-      Right k  -> exCon k *<* e0 -- Dynamics needs metadata for exns
-      Left x   -> case exprType e0 of
-                    Nothing         -> error $
-                      "Cannot add contracts to variable if " ++
-                      "type checking was skipped."
-                    Just (Left tc)  -> transVar (reifyLang1 e0) tc neg x
-                    Just (Right ta) -> transVar (reifyLang1 e0) ta neg x
-    ExStr s   -> exStr s
-    ExInt z   -> exInt z
-    ExFloat f -> exFloat f
-    ExCase e1 clauses -> exCase (te e1)
-                                [ (xi, te ei)
-                                | (xi, ei) <- clauses ]
-    ExLetRec bs e2 -> exLetRec
-                        [ Binding x (type2ctype t) (te e)
-                        | Binding x t e <- bs ]
-                        (te e2)
-    ExLetDecl d e2 -> let ?trail = jpath (unParty neg) in
-                      let d' = transDecl d in
-                        exLetDecl d' (te e2)
-    ExPair e1 e2 -> exPair (te e1) (te e2)
-    ExAbs x t e -> exAbs x (type2ctype t) (te e)
-    ExApp e1 e2 -> exApp (te e1) (te e2)
-    ExTAbs tv e -> exTAbs tv (te e)
-    ExTApp e1 t2 -> exTApp (te e1) (type2ctype t2)
-    ExPack t1 t2 e -> exPack (fmap type2ctype t1) (type2ctype t2) (te e)
-    ExCast e1 t ta -> transCast neg (te e1) t ta
-
-type2ctype :: Language w => TypeT w -> TypeT C
-type2ctype t = langCase t id atype2ctype
-
--- Get the LangRep from a term:
-reifyLang1 :: Language w => f w -> LangRep w
-reifyLang1 _ = reifyLang
-
--- How do we refer to a variable from a given language?
-transVar :: (Language w') =>
-            LangRep w -> TypeT w' -> Party -> QLid -> ExprT C
-transVar lang_neg t_pos neg x =
-  case (lang_neg, reifyLang1 t_pos) of
-    (C, A) -> addName C x $ \x' -> ca neg (party x) x' t_pos
-    (A, C) -> addName A x $ \x' -> ac neg (party x) x' (ctype2atype t_pos)
-    (C, C)
-      | J [] _ <- x  -> exVar x
-      | otherwise    -> addName C x $ \x' -> cc neg (party x) x' t_pos
-    (A, A) -> exVar x
-
-addName :: LangRep w -> QLid -> (Lid -> ExprT C) -> ExprT C
-addName lang name k =
-  exLet' (PaVar name1)
-         (exLet' (PaVar name2) (exVar name) (k name2))
-    (exBVar name1)
+coerceExpression :: Monad m => ExprT -> TypeT -> TypeT -> m ExprT
+coerceExpression e tfrom tto = do
+  prj <- CMS.evalStateT (build M.empty tfrom tto) 0
+  return $ exApp (exApp prj (exPair (exStr neg) (exStr pos))) e
   where
-  name1 = Lid ("_1" ++ show name ++ "[" ++ show lang ++ "]")
-  name2 = Lid ("_2" ++ show name ++ "[" ++ show lang ++ "]")
+  neg = "context at " ++ show (getLoc e)
+  pos = "value at " ++ show (getLoc e)
 
--- Translate a cast ("dynamic promotion")
---
---  - In C, given (e : t :> ta), we know that e follows t, but we have
---    no reason to believe it follows ta, nor does its context.  Thus,
---    we protect in both directions by ta.
---
---  - In A, given (e : t :> ta), we know from A's type system that e
---    follows t and the context follows ta.  Thus, we need ensure that
---    e follows ta and that the context follows t.
---
-transCast :: Language w =>
-             Party -> ExprT C -> Maybe (TypeT w) -> TypeT A -> ExprT C
-transCast neg e mt' ta =
-  exLetVar' y e $
-    exLetVar' z (ac neg pos y ta) $   -- protect the value
-      langCase (WMT mt')
-        (\_ -> ca neg pos z ta)       -- protect the context, or
-        (\(WMT mt) -> case mt of
-           Just t  -> ca neg pos z t  -- protect the context
-           Nothing -> error $
-             "Cannot add contracts to cast expression if " ++
-             "type checking was skipped")
-  where y   = neg /./ "y"
-        z   = neg /./ "z"
-        pos = neg /./ "(:>)"
+build :: Monad m =>
+         M.Map (TyVar, TyVar) (Maybe Lid) -> TypeT -> TypeT ->
+         CMS.StateT Integer m ExprT
+build recs tfrom tto
+  | (tvs,  TyCon _ [t1,  t2]  info)  <- unfoldTyQu Forall tfrom,
+    (tvs', TyCon _ [t1', t2'] info') <- unfoldTyQu Forall tto,
+    length tvs == length tvs',
+    info `elem` funtypes && info' `elem` funtypes,
+    which <- "INTERNALS.Contract." ++
+               if info == tdArr
+                 then "func"
+                 else if info' == tdArr
+                   then "affunc"
+                   else "funcA"
+    = do
+        let recs' = foldr2
+                      M.insert
+                      (shadow tvs tvs' recs)
+                      (zip tvs tvs')
+                      (repeat Nothing)
+        dom <- build recs' t1' t1
+        cod <- build recs' t2 t2'
+        let body = exApp (exApp (exVar (qlid which)) dom) cod
+        return $ if null tvs
+          then body
+          else absContract $
+               exAbsVar' (Lid "f") tfrom $
+               foldr (\tv0 acc -> exTAbs tv0 . acc) id tvs $
+               exAbsVar' (Lid "x") t1' $
+               instContract body `exApp`
+               foldl (\acc tv0 -> exTApp acc (TyVar tv0))
+                     (exBVar (Lid "f")) tvs `exApp`
+               exBVar (Lid "x")
+build recs (TyQu Exists tv t) (TyQu Exists tv' t') = do
+  let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
+  body <- build recs' t t'
+  let tv'' = freshTyVar tv (ftv (tv, tv'))
+  return $
+    absContract $
+      exAbs (PaPack tv'' (PaVar (Lid "e")))
+            (TyQu Exists tv t) $
+        exPack (Just (TyQu Exists tv' t'))
+               (TyVar tv'') $
+          instContract body `exApp` exBVar (Lid "e")
+build recs (TyMu tv t) (TyMu tv' t') = do
+  lid  <- freshLid
+  let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
+  body <- build recs' t t'
+  return $
+    exLetRec [Binding {
+                bnvar  = lid,
+                bntype = tyTupleT tyPartyT tyPartyT
+                          `tyArrT` TyMu tv t
+                          `tyArrT` TyMu tv' t',
+                bnexpr = exAbsVar' (Lid "parties")
+                                   (tyTupleT tyPartyT tyPartyT) $
+                           body `exApp` exBVar (Lid "parties")
+             }] $
+      exBVar lid
+build recs (TyVar tv) (TyVar tv')
+  | Just (Just lid) <- M.lookup (tv, tv') recs
+    = return $ exBVar lid
+build recs (TyVar tv) (TyVar tv')
+  | Just Nothing <- M.lookup (tv, tv') recs
+    = return $ exTApp (exVar (qlid "INTERNALS.Contract.any")) (TyVar tv')
+build _ t t' =
+  if t <: t'
+    then return $ exTApp (exVar (qlid "INTERNALS.Contract.any")) t'
+    else fail $ "No coercion from " ++ show t ++ " to " ++ show t'
 
-newtype WrapMaybeType w = WMT (Maybe (TypeT w))
+shadow :: [TyVar] -> [TyVar] ->
+          M.Map (TyVar, TyVar) a -> M.Map (TyVar, TyVar) a
+shadow tvs tvs' = M.filterWithKey
+                    (\(tv, tv') _ -> tv `notElem` tvs && tv' `notElem` tvs')
 
--- Given negative and positive blame labels, the name of an A
--- language variable we wish to protect, and the A type the variable
--- should have, generates an expression that projects that variable.
---
--- This wrapper protects the positive party and may blame the
--- negative party.
-ca :: Party -> Party -> Lid -> TypeT A -> ExprT C
-ca neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
-  exAbsVar' y (atype2ctype s1) $
-    exLetVar' z (exApp (exBVar x) (ac pos neg y s1)) $
-      ca neg pos z s2
-  where y = x /./ "y"
-        z = x /./ "z"
-ca neg pos x (TyCon _ [s1, s2] td) | td == tdLol =
-  exLetVar' u createContract $
-    exAbsVar' y (atype2ctype s1) $
-      exSeq (checkContract u neg "applied one-shot function twice") $
-        exLetVar' z (exApp (exBVar x) (ac pos neg y s1)) $
-          ca neg pos z s2
-  where u = x /./ "u"
-        y = x /./ "y"
-        z = x /./ "z"
-ca neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
-  exLet' (PaPair (PaVar y) (PaVar z)) (exBVar x) $
-    exPair (ca neg pos y s1) (ca neg pos z s2)
-  where y = x /./ "y"
-        z = x /./ "z"
-ca neg pos x (TyQu Forall tv t) =
-  exTAbs' tv' $
-    exLetVar' u (exTApp (exBVar x) (TyVar tv')) $
-      ca neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
-  where tv' = TV (tvname tv /./ "v") Qu
-        u   = tvname tv /./ "u"
-ca neg pos x (TyQu Exists _ t) =
-  ca neg pos x t
-ca _   _   x t
-  | transparent t      = exBVar x
-ca _   _   x (TyVar tv)
-  | tvqual tv <: Qu    = exBVar x
-ca _   _   x (TyC _)   = exBVar x
-ca neg _   x ta
-  | qualifier ta <: Qu = exAbs' PaWild tyUnitT (exBVar x)
-  | otherwise          =
-      exLetVar' u createContract $
-        exAbs' PaWild tyUnitT $
-          exSeq (checkContract u neg "passed one-shot value twice") $
-            exBVar x
-      where u = x /./ "u"
+absContract :: ExprT -> ExprT
+absContract  =
+  exAbs (PaPair (PaVar (Lid "neg")) (PaVar (Lid "pos")))
+        (tyTupleT tyPartyT tyPartyT)
 
--- Given negative and positive blame labels, the name of a C
--- language variable we wish to protect, and the A type the variable
--- should have, generates an expression that projects that variable.
---
--- This wrapper protects the negative party and may blame the
--- positive party.
-ac :: Party -> Party -> Lid -> TypeT A -> ExprT C
-ac neg pos x (TyCon _ [s1, s2] td) | td `elem` funtypes =
-  exAbsVar' y (atype2ctype s1) $
-    exLetVar' z (exApp (exBVar x) (ca pos neg y s1)) $
-      ac neg pos z s2
-  where y = x /./ "y"
-        z = x /./ "z"
-ac neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
-  exLet' (PaPair (PaVar y) (PaVar z)) (exBVar x) $
-    exPair (ac neg pos y s1) (ac neg pos z s2)
-  where y = x /./ "y"
-        z = x /./ "z"
-ac neg pos x (TyQu Forall tv t) =
-  exTAbs' tv' $
-    exLetVar' u (exTApp (exBVar x) (TyVar tv')) $
-      ac neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
-  where tv' = TV (tvname tv /./ "v") Qu
-        u   = tvname tv /./ "u"
-ac neg pos x (TyQu Exists _ t) =
-  ac neg pos x t
-ac _   _   x t
-  | transparent t      = exBVar x
-ac _   _   x (TyVar tv)
-  | tvqual tv <: Qu    = exBVar x
-ac _   _   x (TyC _)   = exBVar x
-ac _   _   x _         = exApp (exBVar x) exUnit
+instContract :: ExprT -> ExprT
+instContract  =
+  (`exApp` exPair (exBVar (Lid "neg")) (exBVar (Lid "pos")))
 
--- Given negative and positive blame labels, the name of a C
--- language variable we wish to protect, and the C type the variable
--- should have, generates an expression that projects that C modules
--- from each other.  This only generates coercions when the C type
--- has an A type embedded in it.
---
--- This isn't necessary for soundness, but is necessary to place
--- the blame on the correct C module.
---
--- This wrapper protects either party and may blame either party.
-cc :: Party -> Party -> Lid -> TypeT C -> ExprT C
-cc neg pos x (TyCon _ [s1, s2] td) | td == tdArr =
-  exAbsVar' y s1 $
-    exLetVar' z (exApp (exBVar x) (cc pos neg y s1)) $
-      cc neg pos z s2
-  where y = x /./ "y"
-        z = x /./ "z"
-cc neg pos x (TyCon _ [s1, s2] td) | td == tdTuple =
-  exLet' (PaPair (PaVar y) (PaVar z)) (exBVar x) $
-    exPair (cc neg pos y s1) (cc neg pos z s2)
-  where y = x /./ "y"
-        z = x /./ "z"
-cc neg _   x (TyA ta) | not (qualifier ta <: Qu) =
-  exLetVar' u createContract $
-    exAbs' PaWild tyUnitT $
-      exSeq (checkContract u neg "passed one-shot value twice") $
-        exApp (exBVar x) exUnit
-  where u = x /./ "u"
-cc neg pos x (TyQu Forall tv t) =
-  exTAbs' tv' $
-    exLetVar' u (exTApp (exBVar x) (TyVar tv')) $
-      cc neg pos u (tysubst tv (TyVar tv' `asTypeOf` t) t)
-  where tv' = TV (tvname tv /./ "v") Qu
-        u   = tvname tv /./ "u"
-cc neg pos x (TyQu Exists _ t) =
-  cc neg pos x t
-cc _   _   x _ = exBVar x
+freshLid :: Monad m => CMS.StateT Integer m Lid
+freshLid = do
+  n <- CMS.get
+  CMS.put (n + 1)
+  return (Lid ("c" ++ show n))
 
--- Generate an expression to create an initial (blessed) cell
-createContract :: ExprT C
-createContract = exApp (exTApp (exVar (qlid "INTERNALS.ref"))
-                               (tyUnitT `tyArrT` tyUnitT))
-                       (exAbs PaWild tyUnitT exUnit)
+tyPartyT :: TypeT
+tyPartyT  = TyCon (qlid "INTERNALS.Contract.party") [] tdString
 
--- Given a variable containing a reference cell, generate code
--- to check it
-checkContract :: Lid -> Party -> String -> ExprT C
-checkContract x (Party who) what =
-  exLetVar' f (exApp (exTApp (exVar (qlid "INTERNALS.modify"))
-                             (tyUnitT `tyArrT` tyUnitT))
-                     (exBVar x `exPair` blameFun (show who) what)) $
-    exApp (exBVar f) exUnit
-  where f = x /./ "f"
-
--- Generate a function that raises blame
-blameFun :: String -> String -> ExprT C
-blameFun who what =
-  exAbs PaWild tyUnitT $
-    exApp (exApp (exVar (qlid "INTERNALS.Exn.raiseBlame"))
-                 (exStr who))
-          (exStr what)
-
--- Sort of a gensym -- safe in the context where we use it.
-
-infixl 4 /./
-
-class Renamable a b where
-  (/./) :: a -> String -> b
-
-instance Renamable Lid Lid where
-  Lid n /./ s = Lid (n ++ '#' : s)
-
-instance Renamable k k => Renamable k (Path p k) where
-  n /./ s = J [] (n /./ s)
-
-instance Show n => Renamable (Path Uid n) Lid where
-  n /./ s = Lid ('_' : show n) /./ s
-
-instance Renamable Party Lid where
-  Party n /./ s = n /./ s
-
-instance Renamable Party Party where
-  Party (J ns (Con n)) /./ s = Party (J ns (Con (Uid (show n ++ s))))
-  Party (J ns (Var n)) /./ s = Party (J ns (Var (Lid (show n ++ s))))
-
-class Culpable a where party :: a -> Party
-instance Culpable Lid where party = party . J ([] :: [Uid])
-instance Culpable Uid where party = party . J ([] :: [Uid])
-instance Culpable (Path Uid Lid) where party = party . fmap Var
-instance Culpable (Path Uid Uid) where party = party . fmap Con
-instance Culpable (Path Uid BIdent) where party = Party
-
-exUnit :: Expr i C
-exUnit  = exCon (quid "()")
--}

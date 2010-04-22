@@ -188,10 +188,11 @@ exAddSigma ret binder env patt body =
 
     e1.env  = e.env
     e2.env  = e.env `union` pv p1
-    e.vars  = e1.vars
+    e.vars  = e1.vars `union` (e2.vars `intersection` e.env)
     e.code  = let (p1!, e1.vars) = e1.code in
               let (r2,  e2.vars) = e2.code in
-                (r2, e.vars)
+                ((r2, p1!), e.vars)
+    [assuming no shadowing]
 -}
 
 transform :: S.Set Lid -> Expr () -> ([Lid], Expr ())

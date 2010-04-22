@@ -1317,10 +1317,10 @@ syntacticConstructor e = case view e of
 
 -- | Is the type promotable to a lower-qualifier type?
 castableType :: TypeT -> Bool
-castableType (TyVar _)      = False
-castableType (TyCon _ _ td) = td `elem` funtypes
-castableType (TyQu _ _ t)   = castableType t
-castableType (TyMu _ t)     = castableType t
+castableType (TyVar _)         = False
+castableType (TyCon _ _ td)    = td `elem` funtypes
+castableType (TyQu _ _ t)      = castableType t
+castableType (TyMu _ t)        = castableType t
 
 -- | Turn a program into a sequence of declarations by replacing
 -- the final expression with a declaration of variable 'it'.
