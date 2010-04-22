@@ -376,11 +376,11 @@ expr2vs e = case view e of
 -}
 
 makeBangPatt :: Patt -> Patt
-makeBangPatt p = PaCon (Uid "!") (Just p) Nothing
+makeBangPatt p = PaCon (J [] (Uid "!")) (Just p) Nothing
 
 parseBangPatt :: Patt -> Maybe Patt
-parseBangPatt (PaCon (Uid "!") mp Nothing) = mp
-parseBangPatt _                            = Nothing
+parseBangPatt (PaCon (J [] (Uid "!")) mp Nothing) = mp
+parseBangPatt _                                   = Nothing
 
 {-
 fbvSet :: Expr i -> S.Set Lid
@@ -395,21 +395,24 @@ disjoint s1 s2 = S.null (s1 `S.intersection` s2)
 expr2patt :: S.Set Lid -> S.Set TyVar -> Expr i -> Maybe Patt
 expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
   loop e = case view e of
-    ExId (J [] (Var l)) -> do
-      sawVar l
-      return (PaVar l)
-    ExId (J [] (Con u)) -> return (PaCon u Nothing (getExnId e))
+    ExId ident -> case view ident of
+      Left (J [] l) -> do
+        sawVar l
+        return (PaVar l)
+      Left (J _ _)  -> mzero
+      Right qu      -> return (PaCon qu Nothing (getExnId e))
     -- no string or integer literals
     ExPair e1 e2        -> do
       p1 <- loop e1
       p2 <- loop e2
       return (PaPair p1 p2)
     ExApp e1 e2 |
-      ExId (J [] (Con l)) <- view (snd (unfoldExTApp e1))
+      ExId ident <- view (snd (unfoldExTApp e1)),
+      Right qu   <- view ident
                         -> do
         p2 <- loop e2
-        return (PaCon l (Just p2) (getExnId e1))
-    ExTApp e1 _          -> loop e1
+        return (PaCon qu (Just p2) (getExnId e1))
+    ExTApp e1 _         -> loop e1
     ExPack Nothing (TyVar tv) e2 -> do
       sawTyVar tv
       p2 <- loop e2
@@ -433,7 +436,7 @@ patt2expr :: Patt -> Expr i
 patt2expr PaWild         = exUnit
 patt2expr (PaVar l)      = exBVar l
 patt2expr (PaCon u Nothing exn)
-                         = exBCon u `setExnId` exn
+                         = exCon u `setExnId` exn
 patt2expr (PaCon u (Just p) exn)
                          = exApp e1 e2 where
   e1 = patt2expr (PaCon u Nothing exn)
@@ -498,8 +501,8 @@ translate mkpatt mkexpr set =
                    (mkexpr v +:+ map mkexpr vs)
 
 exUnit :: Expr i
-exUnit  = exBCon (Uid "()")
+exUnit  = exCon (quid "()")
 
 paUnit :: Patt
-paUnit  = PaCon (Uid "()") Nothing Nothing
+paUnit  = PaCon (quid "()") Nothing Nothing
 

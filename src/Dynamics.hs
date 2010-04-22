@@ -177,14 +177,20 @@ bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   PaWild       -> return env
   PaVar lid    -> return (env =+= lid =:!= (lid `nameFun` v))
-  PaCon uid mx Nothing -> case (mx, v) of
+  PaCon (J _ uid) mx Nothing -> case (mx, v) of
     (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
     (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
     _                                             -> perr
-  PaCon _ mx (Just ei) -> case (mx, vprjM v) of
-    (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
-    (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
-    _                                                -> perr
+  ---- statically allocated exception IDs are insufficient for safety
+  ---- when "let exception" can create difference exceptions with the
+  ---- same ID at run time.
+  -- PaCon _ mx (Just ei) -> case (mx, vprjM v) of
+    -- (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
+    -- (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
+  PaCon _ mx (Just _) -> case (mx, vprjM v) of
+    (Nothing, Just (VExn _ Nothing  )) -> return env
+    (Just x,  Just (VExn _ (Just v'))) -> bindPatt x v' env
+    _                                    -> perr
   PaPair x y   -> case vprjM v of
     Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
     Nothing       -> perr

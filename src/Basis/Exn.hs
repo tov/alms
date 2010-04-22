@@ -18,7 +18,7 @@ entries = [
     pfun 1 "raise" -: "exn -> any"
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
-    pfun 1 "try" -: "all '<a. (unit -o '<a) -> exn + '<a"
+    pfun 1 "tryfun" -: "all '<a. (unit -o '<a) -> exn + '<a"
       -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
                          :: IO (Either VExn Value),
 

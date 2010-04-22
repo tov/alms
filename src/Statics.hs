@@ -571,34 +571,25 @@ tcPatt :: (?loc :: Loc, Monad m) =>
 tcPatt t x0 = case x0 of
   PaWild     -> return (empty, empty, PaWild)
   PaVar x    -> return (empty, Var x =:= t, PaVar x)
-  PaCon u mx _ -> do
-    case t of
-      TyCon name ts tag -> do
-        tcon <- getType name
-        case tcon of
-          TiDat tag' params alts | tag == tag' -> do
-            case alts =..= u of
-              Nothing -> tgot "Pattern" t ("constructor " ++ show u)
-              Just mt -> case (mt, mx) of
-                (Nothing, Nothing) ->
-                  return (empty, empty, PaCon u Nothing Nothing)
-                (Just t1, Just x1) -> do
-                  let t1' = tysubsts params ts t1
-                  (dx1, gx1, x1') <- tcPatt t1' x1
-                  return (dx1, gx1, PaCon u (Just x1') Nothing)
-                _ -> tgot "Pattern" t "different arity"
-          TiExn tag' alts | tag == tag' -> do
-            case alts =..= u of
-              Nothing       -> tgot "Pattern" t ("constructor " ++ show u)
-              Just (mt, ei) -> case (mt, mx) of
-                (Nothing, Nothing) ->
-                  return (empty, empty, PaCon u Nothing (Just ei))
-                (Just t1, Just x1) -> do
-                  (dx1, gx1, x1') <- tcPatt t1 x1
-                  return (dx1, gx1, PaCon u (Just x1') (Just ei))
-                _ -> tgot "Pattern" t "different arity"
-          _ -> tgot "Pattern" t ("constructor " ++ show u)
-      _ -> tgot "Pattern" t ("constructor " ++ show u)
+  PaCon u mx _ -> case t of
+    TyCon _ ts _ -> do
+      tu <- getVar (fmap Con u)
+      (params, mt, res) <- case unfoldTyQu Forall tu of
+        (params, TyCon _ [arg, res] info) | info == tdArr
+          -> return (params, Just arg, res)
+        (params, res)
+          -> return (params, Nothing, res)
+      tassgot (t <: tysubsts params ts res)
+        "Pattern" t ("constructor " ++ show u)
+      case (mt, mx) of
+        (Nothing, Nothing) ->
+          return (empty, empty, PaCon u Nothing Nothing)
+        (Just t1, Just x1) -> do
+          let t1' = tysubsts params ts t1
+          (dx1, gx1, x1') <- tcPatt t1' x1
+          return (dx1, gx1, PaCon u (Just x1') Nothing)
+        _ -> tgot "Pattern" t "wrong arity"
+    _ -> tgot "Pattern" t ("constructor " ++ show u)
   PaPair x y -> do
     case t of
       TyCon (J [] (Lid "*")) [tx, ty] td | td == tdTuple

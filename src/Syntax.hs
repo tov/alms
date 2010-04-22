@@ -411,7 +411,7 @@ data Patt
   -- | variable pattern
   | PaVar Lid
   -- | datacon, possibly with parameter, possibly an exception
-  | PaCon Uid (Maybe Patt) (Maybe ExnId)
+  | PaCon QUid (Maybe Patt) (Maybe ExnId)
   -- | pair pattern
   | PaPair Patt Patt
   -- | string literal
@@ -651,7 +651,7 @@ exTAbs' tv e = case view e of
 p -==+ e = case (p, view e) of
   (PaVar l,                   ExId (J [] (Var l')))
     -> l == l'
-  (PaCon (Uid "()") Nothing Nothing,   ExId (J [] (Con (Uid "()"))))
+  (PaCon (J [] (Uid "()")) Nothing Nothing, ExId (J [] (Con (Uid "()"))))
     -> True
   (PaPair p1 p2,              ExPair e1 e2)
     -> p1 -==+ e1 && p2 -==+ e2

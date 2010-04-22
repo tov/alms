@@ -196,8 +196,8 @@ instance Ppr (Expr i) where
     ExStr s   -> text (show s)
     ExCase e1 clauses ->
       case clauses of
-        [ (PaCon (Uid "true")  Nothing Nothing, et),
-          (PaCon (Uid "false") Nothing Nothing, ef) ] ->
+        [ (PaCon (J [] (Uid "true"))  Nothing Nothing, et),
+          (PaCon (J [] (Uid "false")) Nothing Nothing, ef) ] ->
             parensIf (p > precDot) $
               sep [ text "if" <+> ppr e1,
                     nest 2 $ text "then" <+> ppr et,
