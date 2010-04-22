@@ -9,9 +9,6 @@
     without error!  But if 1 happens first, then 2 will wait
     for input, and when it tries to kill the printer thread,
     that's a contract violation.
-
-    We're able to duplicate the kill function because we do in
-    in language C.
 *)
 
 #load "libthread"

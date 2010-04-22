@@ -1,7 +1,7 @@
 (* Demonstrates (affine) abstract types.  Correct. *)
 
 (*
-    This is like ex25-array.aff, but it has an error in its capability
+    This is like skewness-good.alms, but it has an error in its capability
     threading, which manifests as a type error.
 *)
 
