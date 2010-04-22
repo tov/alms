@@ -1,61 +1,47 @@
 -- Sutherland-Hodgman (1974) re-entrant polygon clipping
 
-#load "libthread-A.aff"
-#load "libsessiontype.aff"
+#load "libthread"
+#load "libsessiontype"
 
 open SessionType
 
 -- Some basic, low-level stuff
-let[C] putAny 'a (x: 'a) = putStr (string_of x)
+let putAny 'a (x: 'a) = putStr (string_of x)
 
 --
 -- We first build a 3-D geometry library in sublanguage C:
 --
 
 -- Points and planes in R^3.
-type[C] point = Point of float * float * float
-type[C] plane = Plane of float * float * float * float
+type point = Point of float * float * float
+type plane = Plane of float * float * float * float
 
 -- We use the plane Plane(a, b, c, d) to represent the open half-space
 -- { Point(x, y, z) | ax + by + cz + d > 0 }
 
-let[C] string_of_point (Point(x, y, z): point) =
+let string_of_point (Point(x, y, z): point) =
     "(" ^ string_of x ^ ", " ^ string_of y ^ ", " ^ string_of z ^ ")"
 
-let[C] string_of_plane (Plane(a, b, c, d): plane) =
+let string_of_plane (Plane(a, b, c, d): plane) =
     string_of a ^ "x + " ^ string_of b ^ "y + " ^
     string_of c ^ "z + " ^ string_of d ^ " > 0"
 
-let[C] revC['a] (lst: 'a list) : 'a list =
-    let rec rev_acc (acc: 'a list) (xs: 'a list) : 'a list =
-              match xs with
-              | Nil         -> acc
-              | Cons(x,xs') -> rev_acc (Cons(x,acc)) xs'
-     in rev_acc Nil['a] lst
-
-let[A] revA['<a] (xs: '<a list) : '<a list =
-    let rec rev_acc (acc: '<a list)| (xs: '<a list) : '<a list =
-              match xs with
-              | Nil         -> acc
-              | Cons(x,xs') -> rev_acc (Cons(x,acc)) xs'
-     in rev_acc Nil['<a] xs
-
-let[C] splitWhile['a] : ('a -> bool) -> 'a list -> 'a list * 'a list
+let splitWhile['a] : ('a -> bool) -> 'a list -> 'a list * 'a list
   = fun pred: ('a -> bool) ->
       let rec loop (acc: 'a list) (xs: 'a list) : 'a list * 'a list =
                 match xs with
-                | Nil         -> (revC acc, Nil['a])
+                | Nil         -> (rev acc, Nil['a])
                 | Cons(x,xs') -> if pred x
                                    then loop (Cons(x,acc)) xs'
-                                   else (revC acc, xs)
+                                   else (rev acc, xs)
        in loop Nil['a]
 
-let[C] not (b: bool) = if b then false else true
+let not (b: bool) = if b then false else true
 
-let[C] notp['a] (pred: 'a -> bool): 'a -> bool =
+let notp['a] (pred: 'a -> bool): 'a -> bool =
   fun a: 'a -> not (pred a)
 
-let[C] isSpace (c: int): bool =
+let isSpace (c: int): bool =
   match c with
   | ' '  -> true
   | '\t' -> true
@@ -63,10 +49,10 @@ let[C] isSpace (c: int): bool =
   | '\r' -> true
   | _    -> false
 
-let[C] dropSpace (cs : int list) : int list =
+let dropSpace (cs : int list) : int list =
   let (_, result) = splitWhile isSpace cs in result
 
-let[C] parsePoint (s : string) : point =
+let parsePoint (s : string) : point =
   let foil (x: int list) = float_of_string (implode x) in
     let cs = explode s in
     let Cons('(', cs) = dropSpace cs in
@@ -75,7 +61,7 @@ let[C] parsePoint (s : string) : point =
     let (z, Cons(_,cs)) = splitWhile (notp ((==) ')')) (dropSpace cs) in
       Point (foil x, foil y, foil z)
 
-let[C] parsePlane (s: string) : plane =
+let parsePlane (s: string) : plane =
   let foil (x: int list) = float_of_string (implode x) in
     let cs = explode s in
     let (a, Cons(_,cs)) = splitWhile (notp ((==) 'x')) (dropSpace cs) in
@@ -89,13 +75,13 @@ let[C] parsePlane (s: string) : plane =
       Plane (foil a, foil b, foil c, foil d)
 
 -- Is the point above the plane?  (i.e., in the semi-space)
-let[C] isPointAbovePlane (Point(x, y, z): point)
+let isPointAbovePlane (Point(x, y, z): point)
                          (Plane(a, b, c, d): plane): bool =
   a *. x +. b *. y +. c *. z +. d >. 0.0
 
 -- Does the line segment between the two points intersect the plane,
 -- and if so, where?
-let[C] intersect (Point(x1, y1, z1) as p1 : point)
+let intersect (Point(x1, y1, z1) as p1 : point)
                  (Point(x2, y2, z2) as p2 : point)
                  (Plane(a, b, c, d) as plane : plane): point option =
  if isPointAbovePlane p1 plane == isPointAbovePlane p2 plane
@@ -112,26 +98,23 @@ let[C] intersect (Point(x1, y1, z1) as p1 : point)
 --
 -- When we implement the algorithm in A, we will treat points
 -- and planes as opaque objects, so there's no need to marshal them,
--- but we do need to marshal options for the result of [C]intersect.
+-- but we do need to marshal options for the result of intersect.
 -- The standard way to do this is to write an elimination function
 -- in the "from" sublanguage and then call the elimination function
 -- with "to" constructors in the "to" sublanguage:
 --
 
-let[C] maybeC['a,'r] (some: 'a -> 'r) (none: 'r) (opt: 'a option): 'r =
+let maybeC['a,'r] (some: 'a -> 'r) (none: 'r) (opt: 'a option): 'r =
   match opt with
   | Some a -> some a
   | None   -> none
-
-let[A] copt2aopt['a] (opt: {{'a} option}) : 'a option =
-  maybeC Some['a] None['a] opt
 
 --
 -- In sublanguage A, our protocol is to send an unbounded
 -- sequence of points:
 --
 
-type[A] 'a stream = mu 'x. (unit + 'a recv; 'x) follow
+type 'a stream = mu 'x. (unit + 'a recv; 'x) follow
 
 --
 -- Each transducer takes a plane to clip by, and two rendezvous objects,
@@ -139,20 +122,20 @@ type[A] 'a stream = mu 'x. (unit + 'a recv; 'x) follow
 -- which it will send points.
 --
 
-let[A] clipper (plane: {plane})
-               (ic: {point} stream channel)|
-               (oc: {point} stream dual channel): unit =
-       let finish (oc: {point} stream dual channel) =
+let clipper (plane: plane)
+               (ic: point stream channel)|
+               (oc: point stream dual channel): unit =
+       let finish (oc: point stream dual channel) =
              sel1 oc; () in
-       let put (oc: {point} stream dual channel) (pt: {point}) =
+       let put (oc: point stream dual channel) (pt: point) =
              send (sel2 oc) pt in
-       let putCross (oc: {point} stream dual channel)
-                    (p1: {point}) (p2: {point}) =
-             match copt2aopt[{point}] (intersect p1 p2 plane) with
+       let putCross (oc: point stream dual channel)
+                    (p1: point) (p2: point) =
+             match intersect p1 p2 plane with
              | Some pt -> put oc pt
              | None    -> oc in
-       let putVisible (oc: {point} stream dual channel)
-                      (pt: {point}) =
+       let putVisible (oc: point stream dual channel)
+                      (pt: point) =
              if isPointAbovePlane pt plane
                then put oc pt
                else oc in
@@ -160,9 +143,9 @@ let[A] clipper (plane: {plane})
          | Left _   -> finish oc
          | Right ic ->
              let (pt0, ic) = recv ic in
-             let rec loop (ic: {point} stream channel)|
-                          (oc: {point} stream dual channel)
-                          (pt: {point}) : unit =
+             let rec loop (ic: point stream channel)|
+                          (oc: point stream dual channel)
+                          (pt: point) : unit =
                        let oc = putVisible oc pt in
                          match follow ic with
                          | Left _   -> let oc = putCross oc pt pt0 in
@@ -172,8 +155,8 @@ let[A] clipper (plane: {plane})
                                          loop ic oc pt'
                in loop ic oc pt0
 
-let[A] printer : {point} stream channel -> unit =
-  let rec loop (ic: {point} stream channel): unit =
+let printer : point stream channel -> unit =
+  let rec loop (ic: point stream channel): unit =
             match follow ic with
             | Left _   -> ()
             | Right ic -> let (pt, ic) = recv ic in
@@ -183,16 +166,16 @@ let[A] printer : {point} stream channel -> unit =
 
 -- The main protocol for the program, which lets us split our parser
 -- from our main loop.
-type[A] main_prot = mu 'x. ({point} stream + {plane} recv; 'x) follow
+type main_prot = mu 'x. (point stream + plane recv; 'x) follow
 
-let[A] parser : main_prot dual channel -> unit =
+let parser : main_prot dual channel -> unit =
   let rec plane_loop (oc: main_prot dual channel): unit =
             match getLine () with
             | "" -> point_loop (sel1 oc)
             | s  -> let plane = parsePlane s in
                     let oc    = send (sel2 oc) plane in
                       plane_loop oc
-      and point_loop (oc: {point} stream dual channel): unit =
+      and point_loop (oc: point stream dual channel): unit =
             match getLine () with
             | "" -> sel1 oc; ()
             | s  -> let point = parsePoint s in
@@ -200,27 +183,27 @@ let[A] parser : main_prot dual channel -> unit =
                       point_loop oc
    in plane_loop
 
-let[A] main : unit -> unit =
-  let rec get_planes (acc: {plane} list) (ic: main_prot channel)
-                     : {plane} list * {point} stream channel =
+let main : unit -> unit =
+  let rec get_planes (acc: plane list) (ic: main_prot channel)
+                     : plane list * point stream channel =
             match follow ic with
-            | Left ic  -> (revA acc, ic)
+            | Left ic  -> (rev acc, ic)
             | Right ic -> let (plane, ic) = recv ic in
                             get_planes (Cons(plane,acc)) ic in
-  let rec connect (planes: {plane} list)
-                  (ic: {point} stream channel)
-                  : {point} stream channel =
+  let rec connect (planes: plane list)
+                  (ic: point stream channel)
+                  : point stream channel =
             match planes with
             | Nil              -> ic
             | Cons(plane,rest) ->
-                let outrv = newRendezvous[{point} stream] () in
+                let outrv = newRendezvous[point stream] () in
                   AThread.fork (fun _: unit ->
                     clipper plane ic (accept outrv));
                   connect rest (request outrv) in
   fun _: unit ->
     let rv           = newRendezvous[main_prot] () in
     let _            = AThread.fork (fun _: unit -> parser (accept rv)) in
-    let (planes, ic) = get_planes Nil[{plane}] (request rv) in
+    let (planes, ic) = get_planes Nil[plane] (request rv) in
     let ic           = connect planes ic in
       printer ic
 
