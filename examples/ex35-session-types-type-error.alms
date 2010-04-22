@@ -1,15 +1,15 @@
 (* An example with session types, including choice. (Type error) *)
 
-#load "libthread-A.aff"
-#load "libsessiontype.aff"
+#load "libthread"
+#load "libsessiontype"
 
 open SessionType
 
-type[A] 'a protocol = ('a send; 'a send; 'a recv; unit
+type 'a protocol = ('a send; 'a send; 'a recv; unit
                        +
                        'a send; 'a recv; unit) select
 
-let[A] server =
+let server =
   fun c : int protocol dual channel ->
     match follow c with
     | Left c ->
@@ -22,7 +22,7 @@ let[A] server =
           send c (0 - x);
           ()
 
-let[A] client =
+let client =
   fun c : int protocol channel ->
     fun (x : int) (y : int) ->
       let c = sel1 c in
@@ -31,7 +31,7 @@ let[A] client =
       let (r, _) = recv c in
         r
 
-let[A] main =
+let main =
   fun (x : int) (y : int) ->
     let rv = newRendezvous[int protocol] () in
       AThread.fork (fun _:unit -> server (accept rv));

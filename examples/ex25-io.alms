@@ -2,15 +2,15 @@
 
 open IO
 
-abstype[C] in_channel = InChannel of handle with
+abstype in_channel' = InChannel of handle with
   let open_in (s: string) = InChannel (openFile s ReadMode)
-  let input_char (InChannel h: in_channel) = hGetChar h
-  let input_line (InChannel h: in_channel) = hGetLine h
-  let eof_in (InChannel h: in_channel)     = hIsEOF h
-  let close_in (InChannel h: in_channel)   = hClose h
+  let input_char (InChannel h: in_channel') = hGetChar h
+  let input_line (InChannel h: in_channel') = hGetLine h
+  let eof_in (InChannel h: in_channel')     = hIsEOF h
+  let close_in (InChannel h: in_channel')   = hClose h
 end
 
-abstype[C] out_channel = OutChannel of handle with
+abstype out_channel = OutChannel of handle with
   let open_out (s: string) = OutChannel (openFile s WriteMode)
   let output_char (OutChannel h: out_channel)   = hPutChar h
   let output_string (OutChannel h: out_channel) = hPutStr h
@@ -18,7 +18,7 @@ abstype[C] out_channel = OutChannel of handle with
   let close_out (OutChannel h: out_channel)     = hClose h
 end
 
-abstype[A] in_channel qualifier A = InChannel of {in_channel} with
+abstype in_channel qualifier A = InChannel of in_channel' with
   let a_open_in (s: string) = InChannel (open_in s)
   let a_input_char (InChannel rep as ic: in_channel) =
         (input_char rep, ic)
@@ -32,7 +32,7 @@ abstype[A] in_channel qualifier A = InChannel of {in_channel} with
       else Some ic
 end
 
-let[A] cat (filename: string) =
+let cat (filename: string) =
   let rec loop (ic: in_channel): unit =
     match a_eof_in ic with
     | None    -> ()

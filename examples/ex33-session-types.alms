@@ -1,20 +1,20 @@
 (* An example with session types *)
 
-#load "libthread-A.aff"
-#load "libsessiontype.aff"
+#load "libthread"
+#load "libsessiontype"
 
 open SessionType
 
-type[A] protocol = int send; int send; int recv; unit
+type protocol = int send; int send; int recv; unit
 
-let[A] server =
+let server =
   fun c : protocol dual channel ->
     let (x, c) = recv c in
     let (y, c) = recv c in
       send c (x + y);
       ()
 
-let[A] client =
+let client =
   fun c : protocol channel ->
     fun (x : int) (y : int) ->
       let c = send c x in
@@ -22,7 +22,7 @@ let[A] client =
       let (r, _) = recv c in
         r
 
-let[A] main =
+let main =
   fun (x : int) (y : int) ->
     let rv = newRendezvous[protocol] () in
       AThread.fork (fun _:unit -> server (accept rv));

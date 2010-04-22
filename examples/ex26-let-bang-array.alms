@@ -1,11 +1,11 @@
 (* An encoding of Wadler's let! construct.
    Allows temporarily viewing an array as unlimited/read-only. *)
 
-#load "libarray-A.aff"
+#load "libarraycap"
 
 open AArray
 
-abstype[A] ('t, 'c) ureadcap_rep qualifier A
+abstype ('t, 'c) ureadcap_rep qualifier A
   = Available of ('t, 'c) readcap
   | CheckedOut
   | Defunct
@@ -63,9 +63,9 @@ with
   end
 end
 
-type[A] 't uwritecap = ('t, 1) ureadcap
+type 't uwritecap = ('t, 1) ureadcap
 
-let[A] test () =
+let test () =
   let n = 10 in
   let Pack('t, a, cap) = new[int] n in
     let rec loop (i: int) (cap: 't writecap): 't writecap =

@@ -1,10 +1,10 @@
 (* Do IO exceptions get converted? (should print nothing.) *)
 
-#load "../examples/libsocket-C.aff"
+#load "libsocket"
 
 open Socket
 
-let[C] dummy =
+let dummy =
   let sock = socket () in
   try bind sock 3; failwith "bug: didn't raise!" with
   | IOError _ -> ()

@@ -1,11 +1,11 @@
 (* Exception tests -- should print nothing *)
 
-let[C] assert (b: bool) (msg: string) =
+let assert (b: bool) (msg: string) =
   if b
     then ()
     else putStrLn ("Failed assertion: "^msg)
 
-module Group1 = struct[C]
+module Group1 = struct
   exception A
   exception B of int
 
@@ -28,9 +28,9 @@ module Group1 = struct[C]
   exception B of int
 end
 
-exception[C] C of int
+exception C of int
 
-module Group2 = struct[A]
+module Group2 = struct
   exception A
   exception B of int
 

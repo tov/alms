@@ -18,16 +18,16 @@
 
 *)
 
-let[A] length['<a] (xs: '<a list) : int * '<a list =
+let length['<a] (xs: '<a list) : int * '<a list =
   foldr (fun (x: '<a) (n: int, xs: '<a list) ->
            (n + 1, Cons (x, xs)))
         (0, Nil['<a]) xs
 
-let[A] snoc['<a] (x: '<a) | (xs: '<a list) : '<a list =
+let snoc['<a] (x: '<a) | (xs: '<a list) : '<a list =
   foldr (fun (x: '<a) (xs: '<a list) -> Cons (x, xs))
         (Cons (x, Nil['<a])) xs
 
-let[A] revAppN =
+let revAppN =
   let rec loop['<a] (n: int) (xs: '<a list) | (acc: '<a list)
                     : '<a list * '<a list =
         match n with
@@ -37,19 +37,19 @@ let[A] revAppN =
                | xs          -> (acc, xs)
   in loop
 
-let[A] rev['<a] (xs: '<a list) : '<a list =
+let rev['<a] (xs: '<a list) : '<a list =
   let (_, acc) = revAppN (-1) xs Nil['<a] 
    in acc
 
-let[A] swapN['<a] (ix: int) (y: '<a) | (xs: '<a list)
+let swapN['<a] (ix: int) (y: '<a) | (xs: '<a list)
        : '<a * '<a list =
   let (Cons(x, xs), acc) = revAppN ix xs Nil['<a] in
   let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
     (x, xs)
 
-abstype[A] ('t, '<a) region qualifier A = Rgn of '<a list
-       and ('t, '<a) region1 qualifier A = Rgn1 of '<a
-       and 't ptr qualifier U = Ptr of int
+abstype ('t, '<a) region qualifier A = Rgn of '<a list
+    and ('t, '<a) region1 qualifier A = Rgn1 of '<a
+    and 't ptr qualifier U = Ptr of int
 with
   let newRgn['<a] () =
     Pack[ex 't. ('t, '<a) region] (unit, Rgn[unit] (Nil['<a]))
