@@ -2,7 +2,7 @@
     Another session types library.  Doesn't use equirecursive types.
 *)
 
-module SessionType = struct[A]
+module SessionType = struct
   (* Unfortunately, we need several types to be primitive in order to
    * compute duals. *)
   open Prim.SessionType
@@ -12,8 +12,8 @@ module SessionType = struct[A]
   type -'<a ; +'<s
   type ('<a, '<s) semi = '<a; '<s
 
-  abstype 's rendezvous = Rendezvous of ({{'s channel} C.channel})
-      and +'s channel qualifier A = Chan of {bool C.channel}
+  abstype 's rendezvous = Rendezvous of ('s channel C.channel)
+      and +'s channel qualifier A = Chan of bool C.channel
   with
     let newRendezvous['s] (_: unit) : 's rendezvous =
       Rendezvous (C.new['s channel] ())
@@ -54,7 +54,7 @@ module SessionType = struct[A]
   end
 end
 
-module Test = struct[A]
+module SessionType2Test = struct
   open SessionType
 
   type state1 = int send; state2 follow

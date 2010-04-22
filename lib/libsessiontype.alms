@@ -2,7 +2,7 @@
     A session types library
 *)
 
-module SessionType = struct[A]
+module SessionType = struct
   (* Unfortunately, we need several types to be primitive in order to
    * compute duals. *)
   open Prim.SessionType
@@ -12,8 +12,8 @@ module SessionType = struct[A]
   type -'<a ; +'<s
   type ('<a, '<s) semi = '<a; '<s
 
-  abstype 's rendezvous = Rendezvous of ({{'s channel} C.channel})
-      and +'s channel qualifier A = Chan of {bool C.channel}
+  abstype 's rendezvous = Rendezvous of ('s channel C.channel)
+      and +'s channel qualifier A = Chan of bool C.channel
   with
     let newRendezvous['s] (_: unit) : 's rendezvous =
       Rendezvous (C.new['s channel] ())
