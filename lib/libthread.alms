@@ -2,13 +2,7 @@
 
 module AThread = struct
   abstype thread qualifier A = T of Thread.thread with
-    let fork (thunk: (unit -o unit)) =
-      (* Ad-hoc affine contract, for now *)
-      let thunkref = ref (Some thunk) in
-      T (Thread.fork (fun () ->
-           match thunkref <- None with
-           | None   -> failwith "fork': called thunk more than once"
-           | Some t -> t ()))
+    let fork = ( Thread.fork :> (unit -o unit) -> Thread.thread )
 
     let kill (T th: thread) =
       Thread.kill th
