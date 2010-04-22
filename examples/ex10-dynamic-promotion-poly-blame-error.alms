@@ -1,12 +1,12 @@
 (* Polymorphic: A Lying Dynamic Promotion (like ex8.aff -- blame inc(:>)) *)
 
-let[C] ap : all 'a. ('a -> 'a) -> 'a -> 'a =
+let ap : all 'a. ('a -> 'a) -> 'a -> 'a =
   fun 'a ->
     fun f: ('a -> 'a) ->
       fun x: 'a ->
         f (f x)    (* f is used twice here, despite what iap2 claims *)
 
-let[A] inc : int -> int =
+let inc : int -> int =
   fun y: int ->
     (fun g: (int -o int) ->
        (ap[int] :  (int -> int) -> int -> int   (* This cast goes bad *)
