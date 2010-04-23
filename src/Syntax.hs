@@ -247,7 +247,7 @@ data Prog i = Prog [Decl i] (Maybe (Expr i))
 -- | Declarations
 data Decl i
   -- | Constant declaration
-  = DcLet Loc Lid (Maybe (Type i)) (Expr i)
+  = DcLet Loc Patt (Maybe (Type i)) (Expr i)
   -- | Type declaration
   | DcTyp Loc [TyDec]
   -- | Abstype block declaration
@@ -263,7 +263,7 @@ data Decl i
   deriving (Typeable, Data)
 
 -- | Build a constant declaration with bogus source location
-dcLet :: Lid -> Maybe (Type i) -> Expr i -> Decl i
+dcLet :: Patt -> Maybe (Type i) -> Expr i -> Decl i
 dcLet  = DcLet bogus
 
 -- | Build a type declaration with bogus source location
@@ -1302,7 +1302,7 @@ castableType (TyMu _ t)        = castableType t
 -- the final expression with a declaration of variable 'it'.
 prog2decls :: Prog i -> [Decl i]
 prog2decls (Prog ds (Just e))
-  = ds ++ [DcLet (getLoc e) (Lid "it") Nothing e]
+  = ds ++ [DcLet (getLoc e) (PaVar (Lid "it")) Nothing e]
 prog2decls (Prog ds Nothing)
   = ds
 

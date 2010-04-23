@@ -79,7 +79,7 @@ evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl i -> DDecl
-evalDecl (DcLet _ n _ e) = evalLet n e
+evalDecl (DcLet _ x _ e) = evalLet x e
 evalDecl (DcTyp _ _)     = return
 evalDecl (DcAbs _ _ ds)  = evalDecls ds
 evalDecl (DcOpn _ b)     = evalOpen b
@@ -87,10 +87,12 @@ evalDecl (DcMod _ n b)   = evalMod n b
 evalDecl (DcLoc _ d0 d1) = evalLocal d0 d1
 evalDecl (DcExn _ n mt)  = evalExn n mt
 
-evalLet :: Lid -> Expr i -> DDecl
+evalLet :: Patt -> Expr i -> DDecl
 evalLet x e env = do
   v <- valOf e env
-  return (env =+= x =:!= nameFun x v)
+  case bindPatt x v env of
+    Just env' -> return env'
+    Nothing   -> throwPatternMatch v [show x] env
 
 evalOpen :: ModExp i -> DDecl
 evalOpen b env = do
@@ -148,12 +150,7 @@ valOf e env = case view e of
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
           Just env' -> valOf ei env'
           Nothing   -> loop rest
-        loop []              = do
-          ei <- getExnId env (quid "INTERNALS.Exn.PatternMatch")
-          throw VExn {
-            exnId    = ei,
-            exnParam = Just (vinj (show v1, map (show . fst) clauses))
-          }
+        loop [] = throwPatternMatch v1 (map (show . fst) clauses) env
     loop clauses
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
@@ -243,6 +240,14 @@ bindPatt x0 v env = case x0 of
   where perr = fail $
                  "Pattern match failure: " ++ show x0 ++
                  " does not match " ++ show v
+
+throwPatternMatch :: Value -> [String] -> E -> IO a
+throwPatternMatch v ps env = do
+  ei <- getExnId env (quid "INTERNALS.Exn.PatternMatch")
+  throw VExn {
+    exnId    = ei,
+    exnParam = Just (vinj (show v, ps))
+  }
 
 ---
 --- helpful stuff

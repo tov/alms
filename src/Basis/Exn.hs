@@ -2,12 +2,15 @@ module Basis.Exn ( entries, ioexn2vexn ) where
 
 import BasisUtils
 import Value
-import Syntax (Type, tyNulOp, tyTuple)
+import Syntax (Type, tyNulOp, tyUnOp, tyTuple)
 
 import Control.Exception
 
 tyString :: Type ()
 tyString  = tyNulOp "string"
+
+tyList   :: Type () -> Type ()
+tyList    = tyUnOp "string"
 
 eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId
 eiFailure       = ExnId (-21) (Uid "Failure")
@@ -17,7 +20,7 @@ eiIOError       = ExnId (-22) (Uid "IOError")
 eiBlame         = ExnId (-23) (Uid "Blame")
                     (Just (tyString `tyTuple` tyString))
 eiPatternMatch  = ExnId (-24) (Uid "PatternMatch")
-                    (Just (tyString `tyTuple` tyString `tyTuple` tyString))
+                    (Just (tyString `tyTuple` tyList tyString))
 
 entries :: [Entry]
 entries = [

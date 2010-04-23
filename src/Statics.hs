@@ -873,25 +873,28 @@ tyConsOfType here (TyMu _ ty)      = tyConsOfType here ty
 
 -- | Run a computation in the context of a let declaration
 withLet :: (?loc :: Loc, Monad m) =>
-           Lid -> Maybe (Type i) -> Expr i ->
-           (Maybe TypeT -> ExprT -> TC m a) -> TC m a
+           Patt -> Maybe (Type i) -> Expr i ->
+           (Patt -> Maybe TypeT -> ExprT -> TC m a) -> TC m a
 withLet x mt e k = do
   (te, e') <- tcExpr e
   t' <- case mt of
     Just t  -> do
       t' <- tcType t
       tassert (qualifier t' == Qu) $
-        "Declared type of function " ++ show x ++ " is not unlimited"
+        "Declared type of top-level binding " ++ show x ++ " is not unlimited"
       tassert (te <: t') $
-        "Declared type for function " ++ show x ++ " : " ++ show t' ++
+        "Declared type for top-level binding " ++ show x ++ " : " ++ show t' ++
         " is not subsumed by actual type " ++ show te
       return t'
     Nothing -> do
       tassert (qualifier te == Qu) $
-        "Type of top-level function " ++ show x ++ " is not unlimited"
+        "Type of top-level binding " ++ show x ++ " is not unlimited"
       return te
-  withVars (Var x =:= t') $
-    k (Just t') e'
+  (d, g, x') <- tcPatt t' x
+  tassert (isEmpty d) $
+    "Cannot unpack existential in top-level binding"
+  withVars g $
+    k x' (Just t') e'
 
 -- | Run a computation in the context of a module open declaration
 withOpen :: (?loc :: Loc, Monad m) =>
@@ -1072,7 +1075,7 @@ withDecl :: Monad m =>
 withDecl decl k =
   let ?loc = getLoc decl in
     case decl of
-      DcLet loc n t e ->  withLet n t e ((.) k . DcLet loc n)
+      DcLet loc x t e ->  withLet x t e (\x' t' -> k . DcLet loc x' t')
       DcTyp loc tds   ->  withTyDecs tds (k . DcTyp loc)
       DcAbs loc at ds ->  withAbsTy at ds (k . DcAbs loc at)
       DcMod loc x b   ->  withMod x b (k . DcMod loc x)
@@ -1087,6 +1090,7 @@ withDecls []     k = k []
 withDecls (d:ds) k = withDecl d $ \d' ->
                        withDecls ds $ \ds' ->
                          k (d':ds')
+
 -- | Type check a sequence of declarations
 --
 -- Returns information for printing new declarations in the REPL

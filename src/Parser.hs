@@ -352,9 +352,9 @@ letp  = do
           namesExp = foldl1 exPair (map exBVar names)
           namesPat = foldl1 PaPair (map PaVar names)
           tempVar  = Lid "#letrec"
-          decls0   = [ dcLet tempVar Nothing $
+          decls0   = [ dcLet (PaVar tempVar) Nothing $
                          exLetRec bindings namesExp ]
-          decls1   = [ dcLet (bnvar binding) Nothing $
+          decls1   = [ dcLet (PaVar (bnvar binding)) Nothing $
                          exLet namesPat (exBVar tempVar) $
                             exBVar (bnvar binding)
                      | binding <- bindings ]
@@ -365,7 +365,13 @@ letp  = do
       t <- optionMaybe $ colon >> typep
       reservedOp "="
       e <- withSigma sigma exprp
-      return (dcLet f (fmap fixt t) (fixe e))
+      return (dcLet (PaVar f) (fmap fixt t) (fixe e)),
+    do
+      x <- pattp
+      t <- optionMaybe $ colon >> typep
+      reservedOp "="
+      e <- exprp
+      return (dcLet x t e)
     ]
 
 abstyp :: P [AbsTy]
