@@ -239,7 +239,7 @@ removeTyTags  = untype where
   untype (TyQu quant tv t)  = TyQu quant tv (untype t)
   untype (TyMu tv t)        = TyMu tv (untype t)
 
--- | A program is a sequence of declarations, maybe followed by a C
+-- | A program is a sequence of declarations, maybe followed by an
 -- expression
 data Prog i = Prog [Decl i] (Maybe (Expr i))
   deriving (Typeable, Data)
