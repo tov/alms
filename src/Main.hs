@@ -8,7 +8,7 @@ module Main (
 import Util
 import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
 import qualified Ppr
-import Parser (parse, parseProg, parseDecls)
+import Parser (parse, parseRepl, parseProg)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyInfoToDec)
@@ -71,10 +71,10 @@ loadFile st name = readFile name >>= loadString st name
 
 loadString :: ReplState -> String -> String -> IO ReplState
 loadString st name src = do
-  case parse parseDecls name src of
+  case parse parseProg name src of
     Left e     -> fail (show e)
     Right ast0 -> do
-      (st1, _, ast1) <- statics False (st, ast0)
+      (st1, _, ast1) <- statics False (st, prog2decls ast0)
       (st2, ast2)    <- translation (st1, ast1)
       (st3, _)       <- dynamics (st2, ast2)
       return st3
@@ -220,10 +220,10 @@ interactive opt rs0 = do
             (Just "", _)         -> loop acc
             (Just line, _)       ->
               let cmd = unlines (reverse (line : map fst acc)) in
-                case parse parseProg "-" cmd of
+                case parse parseRepl "-" cmd of
                   Right ast -> do
                     addHistory cmd
-                    return (Just (prog2decls ast))
+                    return (Just ast)
                   Left derr ->
                     loop ((line, derr) : acc)
     printResult :: NewDefs -> NewValues -> IO ()

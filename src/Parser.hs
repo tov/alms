@@ -4,7 +4,7 @@ module Parser (
   P,
   parse,
   -- ** Parsers
-  parseProg, parseDecls, parseDecl,
+  parseProg, parseRepl, parseDecls, parseDecl,
     parseTyDec, parseType, parseExpr, parsePatt,
   -- * Convenience parsers (quick and dirty)
   pp, pds, pd, ptd, pt, pe, px
@@ -223,6 +223,16 @@ progp  = choice [
               e  <- optionMaybe (reserved "in" >> exprp)
               return (Prog ds e),
            exprp >>! (Prog [] . Just)
+         ]
+
+replp :: P [Decl ()]
+replp  = choice [
+           try $ do
+             ds <- declsp
+             when (null ds) pzero
+             eof
+             return ds,
+           exprp >>! (prog2decls . Prog [] . Just)
          ]
 
 declsp :: P [Decl ()]
@@ -750,6 +760,8 @@ finish p = do
 
 -- | Parse a program
 parseProg     :: P (Prog ())
+-- | Parse a REPL line
+parseRepl     :: P [Decl ()]
 -- | Parse a sequence of declarations
 parseDecls    :: P [Decl ()]
 -- | Parse a declaration
@@ -763,6 +775,7 @@ parseExpr     :: P (Expr ())
 -- | Parse a pattern
 parsePatt     :: P Patt
 parseProg      = finish progp
+parseRepl      = finish replp
 parseDecls     = finish declsp
 parseDecl      = finish declp
 parseTyDec     = finish tyDecp
