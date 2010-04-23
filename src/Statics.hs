@@ -367,16 +367,6 @@ tcType = tc where
       "does not match its own type variable."
     return (TyMu tv' t')
 
--- | Given a list of type variables and types, perform all the
---   substitutions, avoiding capture between them.
-tysubsts :: [TyVar] -> [TypeT] -> TypeT -> TypeT
-tysubsts ps ts t =
-  let ps'     = freshTyVars ps (ftv (t:ts))
-      substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
-  substs ps' ts .
-    substs ps (map TyVar ps') $
-      t
-
 -- | Remove all instances of t2 from t1, replacing with
 --   a new type variable 
 makeExType :: TypeT -> TypeT -> TypeT
@@ -392,7 +382,7 @@ tcExpr = tc where
     ExId x -> do
       tx    <- getVar x
       let e' = exId x `setExn` findIsExn tx
-      return (tx, e' *:* tx)
+      return (tx, e')
     ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
     ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
     ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)

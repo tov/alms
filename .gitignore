@@ -11,3 +11,5 @@ affine
 dist
 affine-6.*
 html
+*.hi-boot
+*.o-boot
