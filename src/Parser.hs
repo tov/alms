@@ -2,7 +2,7 @@
 module Parser (
   -- * The parsing monad
   P,
-  parse,
+  parse, parseQuasi,
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl,
     parseTyDec, parseType, parseExpr, parsePatt,
@@ -18,11 +18,15 @@ import Sigma
 import Loc
 import Lexer
 
+import Data.Generics (Data)
+import qualified Language.Haskell.TH as TH
 import Text.ParserCombinators.Parsec hiding (parse)
+import qualified Text.ParserCombinators.Parsec.Pos as Pos
 import System.IO.Unsafe (unsafePerformIO)
 
 data St   = St {
-              stSigma :: Bool
+              stSigma :: Bool,
+              stAnti  :: Bool
             }
 
 -- | A 'Parsec' character parser, with abstract state
@@ -30,12 +34,63 @@ type P a  = CharParser St a
 
 state0 :: St
 state0 = St {
-           stSigma = False
+           stSigma = False,
+           stAnti  = False
          }
 
 -- | Run a parser, given the source file name, on a given string
 parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p state0
+
+-- | Run a parser on the given string in quasiquote mode
+parseQuasi :: Data a => String -> (Bool -> Maybe String -> P a) -> TH.Q a
+parseQuasi str p = do
+  setter <- TH.location >>! mkSetter
+  let parser = do
+        setter
+        iflag <- option False (do char '+'; return True)
+        lflag <- choice [
+                   do char '@'
+                      choice [ char '=' >> identp_no_ws >>! Just,
+                               char '!' >> return Nothing ],
+                   return (Just "_loc")
+                 ]
+        p iflag lflag
+  case runParser parser state0 { stAnti = True } "-" str of
+    Left e  -> fail (show e)
+    Right a -> return (scrub a)
+  where
+  mkSetter loc = setPosition $
+    Pos.newPos (TH.loc_filename loc)
+               (fst (TH.loc_start loc))
+               (snd (TH.loc_start loc))
+
+class TyParam i where
+  typaramp   :: P i
+  getTdArr   :: i
+  getTdLol   :: i
+  getTdUnit  :: i
+  getTdTuple :: i
+  liftUnit   :: f () -> f i
+  dropUnit   :: f i -> f ()
+
+instance TyParam () where
+  typaramp   = return ()
+  getTdArr   = ()
+  getTdLol   = ()
+  getTdUnit  = ()
+  getTdTuple = ()
+  liftUnit   = id
+  dropUnit   = id
+
+instance TyParam TyTag where
+  typaramp   = antip >>! TyTagAnti
+  getTdArr   = tdArr
+  getTdLol   = tdLol
+  getTdUnit  = tdUnit
+  getTdTuple = tdTuple
+  liftUnit   = error "BUG! Cannot use exSigma in quasi mode"
+  dropUnit   = error "BUG! Cannot use exSigma in quasi mode"
 
 withSigma :: Bool -> P a -> P a
 withSigma = mapSigma . const
@@ -96,6 +151,28 @@ chainr1last each sep final = start where
                      b       <- final
                      return (\a -> a `build` b) ]
 
+-- Antiquote
+antip :: P Anti
+antip  = (<?> "antiquote") . lexeme . try $ do
+  char '$'
+  s1 <- identp_no_ws
+  assertAnti
+  choice
+    [ char ':' >> identp_no_ws >>! Anti s1,
+      return (Anti "" s1) ]
+
+identp_no_ws :: P String
+identp_no_ws = do
+  c <- lower <|> char '_'
+  cs <- many (alphaNum <|> oneOf "_'")
+  return (c:cs)
+
+-- Fail if we should not recognize antiquotes
+assertAnti :: P ()
+assertAnti = do
+  st <- getState
+  unless (stAnti st) (unexpected "antiquote")
+
 -- Just uppercase identifiers
 uidp :: P Uid
 uidp  = uid >>! Uid
@@ -146,7 +223,7 @@ varp  = lidp <|> operatorp
 -- qvarp  = pathp (varp >>! flip J)
 
 -- Identifier expressions
-identp :: P (Expr ())
+identp :: P (Expr i)
 identp  = addLoc $ pathp $ choice
   [ do v <- varp
        return $ \path -> exVar (J path v),
@@ -166,10 +243,10 @@ tyvarp  = do
 oplevelp :: Prec -> P Lid
 oplevelp  = liftM Lid . opP
 
-typep  :: P (Type ())
+typep  :: TyParam i => P (Type i)
 typep   = typepP precStart
 
-typepP :: Int -> P (Type ())
+typepP :: TyParam i => Int -> P (Type i)
 typepP p | p == precStart
          = choice
   [ do tc <- choice
@@ -183,40 +260,50 @@ typepP p | p == precStart
     typepP (p + 1) ]
 typepP p | p == precArr
          = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = choice [ arrow, lolli ] >>! tyBinOp
+             tyop = tybinopp [arrow, lolli]
 typepP p | p == precPlus
          = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = plus >>! tyBinOp
+             tyop = tybinopp [plus]
 typepP p | p == precStar
          = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = choice [ star, slash ] >>! tyBinOp
+             tyop = tybinopp [star, slash]
 typepP p | p == precSemi
          = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = semi >>! tyBinOp
+             tyop = tybinopp [semi]
 typepP p | p == precApp -- this case ensures termination
          = tyarg >>= tyapp'
   where
-  tyarg :: P [Type ()]
+  tyarg :: TyParam i => P [Type i]
   tyarg  = choice
            [ do args <- parens $ commaSep1 (typepP precStart)
                 return args,
              do tv   <- tyvarp
                 return [TyVar tv],
              do tc   <- qlidnatp
-                return [TyCon tc [] ()] ]
+                i    <- typaramp
+                return [TyCon tc [] i],
+             antip >>! (:[]) . TyAnti ]
 
-  tyapp' :: [Type ()] -> P (Type ())
+  tyapp' :: TyParam i => [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
                  tc <- qlidnatp
-                 tyapp' [TyCon tc [t] ()]
+                 i  <- typaramp
+                 tyapp' [TyCon tc [t] i]
   tyapp' ts  = do
                  tc <- qlidnatp
-                 tyapp' [TyCon tc ts ()]
+                 i  <- typaramp
+                 tyapp' [TyCon tc ts i]
 typepP p | p <= precMax
          = typepP (p + 1)
 typepP _ = typepP precStart
 
-progp :: P (Prog ())
+tybinopp :: TyParam i => [P String] -> P (Type i -> Type i -> Type i)
+tybinopp ops = do
+  op <- choice ops
+  i  <- typaramp
+  return (tyBinOpT i op)
+
+progp :: TyParam i => P (Prog i)
 progp  = choice [
            do ds <- declsp
               when (null ds) pzero
@@ -225,7 +312,7 @@ progp  = choice [
            exprp >>! (Prog [] . Just)
          ]
 
-replp :: P [Decl ()]
+replp :: TyParam i => P [Decl i]
 replp  = choice [
            try $ do
              ds <- declsp
@@ -235,7 +322,7 @@ replp  = choice [
            exprp >>! (prog2decls . Prog [] . Just)
          ]
 
-declsp :: P [Decl ()]
+declsp :: TyParam i => P [Decl i]
 declsp  = choice [
             do
               d  <- declp
@@ -259,7 +346,7 @@ declsp  = choice [
             return []
           ]
 
-declp :: P (Decl ())
+declp :: TyParam i => P (Decl i)
 declp  = addLoc $ choice [
            do
              reserved "type"
@@ -297,7 +384,7 @@ declp  = addLoc $ choice [
              return (dcExn n t)
          ]
 
-modexpp :: P (ModExp ())
+modexpp :: TyParam i => P (ModExp i)
 modexpp  = choice [
              do
                reserved "struct"
@@ -334,7 +421,7 @@ tyProtp  = choice [
     return (arity, tvs, name)
   ]
 
-letp :: P (Decl ())
+letp :: TyParam i => P (Decl i)
 letp  = do
   reserved "let"
   choice [
@@ -413,10 +500,10 @@ litqualp = choice
   [ qualU    >> return Qu,
     qualA    >> return Qa ]
 
-altsp :: P [(Uid, Maybe (Type ()))]
+altsp :: TyParam i => P [(Uid, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
 
-altp  :: P (Uid, Maybe (Type ()))
+altp  :: TyParam i => P (Uid, Maybe (Type i))
 altp   = do
   k <- uidp
   t <- optionMaybe $ do
@@ -424,7 +511,7 @@ altp   = do
     typep
   return (k, t)
 
-exprp :: P (Expr ())
+exprp :: TyParam i => P (Expr i)
 exprp = expr0 where
   onlyOne [x] = [x True]
   onlyOne xs  = map ($ False) xs
@@ -499,7 +586,8 @@ exprp = expr0 where
          let tryQ = qlid $
                       "INTERNALS.Exn.tryfun"
          return (exCase (exApp (exVar tryQ)
-                               (exAbs PaWild (tyNulOp "unit") e1)) $
+                               (exAbs PaWild (tyNulOpT getTdUnit "unit")
+                                  e1)) $
                   (PaCon (quid "Right") (Just (PaVar (Lid "x"))) False,
                    exVar (qlid "x")) :
                   clauses ++
@@ -553,9 +641,8 @@ exprp = expr0 where
              return (foldl exTApp e (concat ts))
   exprA = addLoc $ choice
     [ identp,
-      integerOrFloat >>! either exInt exFloat,
-      charLiteral    >>! (exInt . fromIntegral . fromEnum),
-      stringLiteral  >>! exStr,
+      antip          >>! exAnti,
+      litp           >>! exLit,
       parens (exprN1 <|> return (exBCon (Uid "()")))
     ]
   exprN1 = addLoc $ do
@@ -571,7 +658,7 @@ exprp = expr0 where
         return e1 ]
 
 -- Parse an infix operator at given precedence
-opappp :: Prec -> P (Expr () -> Expr () -> Expr ())
+opappp :: TyParam i => Prec -> P (Expr i -> Expr i -> Expr i)
 opappp p = do
   loc <- curLoc
   op  <- oplevelp p
@@ -579,12 +666,12 @@ opappp p = do
 
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
-afargsp :: P (Bool, Type () -> Type (), Expr () -> Expr ())
-afargsp = loop tyArr where
+afargsp :: TyParam i => P (Bool, Type i -> Type i, Expr i -> Expr i)
+afargsp = loop (tyBinOpT getTdArr "->") where
   loop arrcon0 = do
     arrcon <- option arrcon0 $ do
       reservedOp "|"
-      return tyLol
+      return (tyBinOpT getTdLol "-o")
     choice
       [ do (tvt, tve) <- tyargp
            (b, ft, fe) <- loop arrcon
@@ -598,7 +685,7 @@ afargsp = loop tyArr where
         return (False, id, id) ]
 
 -- One or more of (pat:typ, ...), (), tyvar
-argsp1 :: P (Bool, Expr () -> Expr ())
+argsp1 :: TyParam i => P (Bool, Expr i -> Expr i)
 argsp1  = do
            (b, fe) <- argp
            if b
@@ -606,7 +693,7 @@ argsp1  = do
              else second (fe .) `fmap` option (False, id) argsp1
 
 -- Zero or more of (pat:typ, ...), (), tyvar
-argsp :: P (Bool, Expr () -> Expr ())
+argsp :: TyParam i => P (Bool, Expr i -> Expr i)
 argsp  = option (False, id) $ do
            (b, fe) <- argp
            if b
@@ -614,7 +701,7 @@ argsp  = option (False, id) $ do
              else second (fe .) `fmap` argsp
 
 -- Parse a (pat:typ, ...), (), or tyvar
-argp :: P (Bool, Expr () -> Expr ())
+argp :: TyParam i => P (Bool, Expr i -> Expr i)
 argp  = choice [
           do
             (_, fe)    <- tyargp
@@ -625,8 +712,9 @@ argp  = choice [
         ]
 
 -- Parse a (pat:typ, ...) or () argument
-vargp :: (Type () -> Type () -> Type ()) ->
-         P (Bool, Type () -> Type (), Expr () -> Expr ())
+vargp :: TyParam i =>
+         (Type i -> Type i -> Type i) ->
+         P (Bool, Type i -> Type i, Expr i -> Expr i)
 vargp arrcon = do
   loc    <- curLoc
   inBang <- bangp
@@ -634,17 +722,17 @@ vargp arrcon = do
   return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
-paty :: P (Patt, Type ())
+paty :: TyParam i => P (Patt, Type i)
 paty  = do
   (p, mt) <- pamty
   case (p, mt) of
     (_, Just t) -> return (p, t)
     (PaCon (J [] (Uid "()")) Nothing False, Nothing)
-                -> return (p, tyNulOp "unit")
+                -> return (p, tyNulOpT getTdUnit "unit")
     _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
-pamty :: P (Patt, Maybe (Type ()))
+pamty :: TyParam i => P (Patt, Maybe (Type i))
 pamty  = parens $ choice
            [
              do
@@ -681,14 +769,15 @@ pamty  = parens $ choice
               p <- pattp
               colonType p
           ]
-      return (foldl PaPair p0 ps, Just (foldl tyTuple t0 ts))
+      return (foldl PaPair p0 ps, Just (foldl tyTupleI t0 ts))
     colonType p = do
       colon
       t <- typep
       return (p, t)
+    tyTupleI = tyBinOpT getTdTuple "*"
 
 -- Parse a sequence of one or more tyvar arguments
-tyargp :: P (Type () -> Type (), Expr () -> Expr ())
+tyargp :: TyParam i => P (Type i -> Type i, Expr i -> Expr i)
 tyargp  = do
   tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
   return (\t -> foldr (\(_,   tv) -> tyAll tv) t tvs,
@@ -696,8 +785,9 @@ tyargp  = do
     where
   loctv = liftM2 (,) curLoc tyvarp
 
-pattbangp :: P (Patt, Bool,
-                Bool -> (Patt -> Expr () -> b) -> Patt -> Expr () -> b)
+pattbangp :: TyParam i =>
+             P (Patt, Bool,
+                Bool -> (Patt -> Expr i -> b) -> Patt -> Expr i -> b)
 pattbangp = do
   inSigma <- getSigma
   inBang  <- bangp
@@ -706,10 +796,12 @@ pattbangp = do
       wrap  = inBang && inSigma
   return (condMakeBang wrap x, inBang, condSigma trans)
 
-condSigma :: Bool -> Bool ->
-             (Patt -> Expr () -> a) ->
-             Patt -> Expr () -> a
-condSigma True  = exSigma
+condSigma :: TyParam i =>
+             Bool -> Bool ->
+             (Patt -> Expr i -> a) ->
+             Patt -> Expr i -> a
+condSigma True  =
+  \b f p e -> exSigma b (\p' e' -> f p' (liftUnit e')) p (dropUnit e)
 condSigma False = const id
 
 condMakeBang :: Bool -> Patt -> Patt
@@ -746,9 +838,8 @@ pattp  = patt0 where
   pattA = choice
     [ reserved "_"  >>  return PaWild,
       varp          >>! PaVar,
-      integer       >>! PaInt,
-      charLiteral   >>! (PaInt . fromIntegral . fromEnum),
-      stringLiteral >>! PaStr,
+      litp          >>! PaLit,
+      antip         >>! PaAnti,
       parens pattN1
     ]
   pattN1 = do
@@ -756,6 +847,13 @@ pattp  = patt0 where
     case xs of
       []    -> return (PaCon (quid "()") Nothing False)
       x:xs' -> return (foldl PaPair x xs')
+
+litp :: P Lit
+litp = choice [
+         integerOrFloat >>! either LtInt LtFloat,
+         charLiteral    >>! (LtInt . fromIntegral . fromEnum),
+         stringLiteral  >>! LtStr
+       ]
 
 finish :: CharParser st a -> CharParser st a
 finish p = do
@@ -765,19 +863,19 @@ finish p = do
   return r
 
 -- | Parse a program
-parseProg     :: P (Prog ())
+parseProg     :: TyParam i => P (Prog i)
 -- | Parse a REPL line
-parseRepl     :: P [Decl ()]
+parseRepl     :: TyParam i => P [Decl i]
 -- | Parse a sequence of declarations
-parseDecls    :: P [Decl ()]
+parseDecls    :: TyParam i => P [Decl i]
 -- | Parse a declaration
-parseDecl     :: P (Decl ())
+parseDecl     :: TyParam i => P (Decl i)
 -- | Parse a type declaration
 parseTyDec    :: P TyDec
 -- | Parse a type
-parseType     :: P (Type ())
+parseType     :: TyParam i => P (Type i)
 -- | Parse an expression
-parseExpr     :: P (Expr ())
+parseExpr     :: TyParam i => P (Expr i)
 -- | Parse a pattern
 parsePatt     :: P Patt
 parseProg      = finish progp

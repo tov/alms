@@ -24,12 +24,14 @@ module Syntax.Type (
   -- ** Type information
   tdUnit, tdInt, tdFloat, tdString, tdExn,
   tdArr, tdLol, tdTuple,
+  getTdByName,
   -- ** Session types
   dualSessionType,
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
   -- ** Convenience type constructors
   tyNulOp, tyUnOp, tyBinOp,
   tyArr, tyLol, tyTuple,
+  tyNulOpT, tyUnOpT, tyBinOpT,
   tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
   -- ** Type tag queries
   funtypes, castableType,
@@ -38,6 +40,7 @@ module Syntax.Type (
   dumpType
 ) where
 
+import Syntax.Anti
 import Syntax.POClass
 import Syntax.Kind
 import Syntax.Ident
@@ -61,6 +64,11 @@ data TyTag =
     -- upper qualifier bounds for parameters
     ttBound :: [Q]
   }
+  |
+  TyTagAnti {
+    -- Type tag antiquote
+    ttAnti :: Anti
+  }
   deriving (Show, Typeable, Data)
 
 -- | Type quantifers
@@ -69,10 +77,11 @@ data Quant = Forall | Exists
 
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon
-data Type i = TyCon QLid [Type i] i
-            | TyVar TyVar
-            | TyQu  Quant TyVar (Type i)
-            | TyMu  TyVar (Type i)
+data Type i = TyCon  QLid [Type i] i
+            | TyVar  TyVar
+            | TyQu   Quant TyVar (Type i)
+            | TyMu   TyVar (Type i)
+            | TyAnti Anti
   deriving (Typeable, Data)
 
 -- | A type-checked type (has tycon info)
@@ -110,6 +119,7 @@ removeTyTags  = untype where
   untype (TyVar tv)         = TyVar tv
   untype (TyQu quant tv t)  = TyQu quant tv (untype t)
   untype (TyMu tv t)        = TyMu tv (untype t)
+  untype (TyAnti a)         = antierror "removeTyTags" a
 
 -- | Given a type tag and something traversable, find all type tags
 --   with the same identity as the given type tag, and replace them.
@@ -126,11 +136,12 @@ replaceTyTags tag' = everywhere (mkT each) where
 qualifier     :: TypeT -> Q
 qualifier (TyCon _ ps td) = bigVee qs' where
   qs  = map qualifier ps
-  qs' = q : map (qs !!) (S.toList ixs)
+  qs' = q : map (qs !!) ixs
   QualSet q ixs = ttQual td
 qualifier (TyVar (TV _ q))   = q
 qualifier (TyQu _ _ t)       = qualifier t
 qualifier (TyMu _ t)         = qualifier t
+qualifier (TyAnti a)         = antierror "qualifier" a
 
 -- | Class for getting free type variables (from types, expressions,
 -- lists thereof, pairs thereof, etc.)
@@ -142,6 +153,7 @@ instance Ftv (Type i) where
   ftv (TyVar tv)     = S.singleton tv
   ftv (TyQu _ tv t)  = S.delete tv (ftv t)
   ftv (TyMu tv t)    = S.delete tv (ftv t)
+  ftv (TyAnti a)     = antierror "ftv" a
 
 instance Ftv a => Ftv [a] where
   ftv = S.unions . map ftv
@@ -163,6 +175,7 @@ instance FtvVs (Type TyTag) where
   ftvVs (TyVar tv)     = M.singleton tv 1
   ftvVs (TyQu _ tv t)  = M.delete tv (ftvVs t)
   ftvVs (TyMu tv t)    = M.delete tv (ftvVs t)
+  ftvVs (TyAnti a)     = antierror "ftvVs" a
 
 instance FtvVs a => FtvVs [a] where
   ftvVs = M.unionsWith (+) . map ftvVs
@@ -229,6 +242,7 @@ tysubst a t = ts where
                       in TyMu a'' (ts (tysubst a' (TyVar a'') t'))
   ts (TyCon c tys td)
                 = TyCon c (map ts tys) td
+  ts (TyAnti an) = antierror "tysubst" an
 
 
 instance Eq TyTag where
@@ -298,6 +312,7 @@ instance PO (Type TyTag) where
     clean (TyMu a t)
       | a `S.member` ftv t = TyMu a (clean t)
       | otherwise          = clean t
+    clean (TyAnti a)       = antierror "ifMJ" a
 
     chk, cmp :: Monad m =>
                 [((Bool, TypeTEq, TypeTEq), TyVar)] ->
@@ -373,7 +388,7 @@ tdArr        = TyTag (-5)  [-1, 1]     minBound  [maxBound, maxBound]
 tdLol        = TyTag (-6)  [-1, 1]     maxBound  [maxBound, maxBound]
 tdExn        = TyTag (-7)  []          maxBound  []
 tdTuple      = TyTag (-8)  [1, 1]      qualSet   [maxBound, maxBound]
-  where qualSet = QualSet minBound (S.fromList [0, 1])
+  where qualSet = QualSet minBound [0, 1]
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:
@@ -382,6 +397,23 @@ tdSend       = TyTag (-12) [1]  minBound [maxBound]
 tdRecv       = TyTag (-13) [-1] minBound [maxBound]
 tdSelect     = TyTag (-14) [1]  minBound [minBound]
 tdFollow     = TyTag (-15) [1]  minBound [minBound]
+
+getTdByName :: String -> Maybe TyTag
+getTdByName name = case name of
+  "unit" -> Just tdUnit
+  "int" -> Just tdInt
+  "float" -> Just tdFloat
+  "string" -> Just tdString
+  "arr" -> Just tdArr
+  "lol" -> Just tdLol
+  "exn" -> Just tdExn
+  "tuple" -> Just tdTuple
+  "dual" -> Just tdDual
+  "send" -> Just tdSend
+  "recv" -> Just tdRecv
+  "select" -> Just tdSelect
+  "follow" -> Just tdFollow
+  _ -> Nothing
 
 --- Convenience constructors
 
@@ -403,20 +435,29 @@ tyLol          = tyBinOp "-o"
 tyTuple       :: Type () -> Type () -> Type ()
 tyTuple        = tyBinOp "*"
 
+tyNulOpT       :: i -> String -> Type i
+tyNulOpT i s    = TyCon (qlid s) [] i
+
+tyUnOpT        :: i -> String -> Type i -> Type i
+tyUnOpT i s a   = TyCon (qlid s) [a] i
+
+tyBinOpT       :: i -> String -> Type i -> Type i -> Type i
+tyBinOpT i s a b = TyCon (qlid s) [a, b] i
+
 tyUnitT        :: TypeT
-tyUnitT         = TyCon (qlid "unit") [] tdUnit
+tyUnitT         = tyNulOpT tdUnit "unit"
 
 tyArrT         :: TypeT -> TypeT -> TypeT
-tyArrT a b      = TyCon (qlid "->") [a, b] tdArr
+tyArrT          = tyBinOpT tdArr "->"
 
 tyLolT         :: TypeT -> TypeT -> TypeT
-tyLolT a b      = TyCon (qlid "-o") [a, b] tdLol
+tyLolT          = tyBinOpT tdLol "-o"
 
 tyTupleT       :: TypeT -> TypeT -> TypeT
-tyTupleT a b    = TyCon (qlid "*") [a, b] tdTuple
+tyTupleT        = tyBinOpT tdTuple "*"
 
 tyExnT         :: TypeT
-tyExnT          = TyCon (qlid "exn") [] tdExn
+tyExnT          = tyNulOpT tdExn "exn"
 
 infixr 8 `tyArr`, `tyLol`, `tyArrT`, `tyLolT`
 infixl 7 `tyTuple`, `tyTupleT`
@@ -452,6 +493,7 @@ castableType (TyVar _)         = False
 castableType (TyCon _ _ td)    = td `elem` funtypes
 castableType (TyQu _ _ t)      = castableType t
 castableType (TyMu _ t)        = castableType t
+castableType (TyAnti a)        = antierror "castableType" a
 
 -- | Noisy type printer for debugging (includes type tags that aren't
 --   normally pretty-printed)
@@ -472,3 +514,5 @@ dumpType i t0 = do
       print $ "mu " ++ show a ++ ". {"
       dumpType (i + 2) t
       putStrLn (replicate i ' ' ++ "}")
+    TyAnti a -> do
+      print a

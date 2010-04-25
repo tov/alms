@@ -10,7 +10,7 @@ module Syntax.Ident (
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
   TyVar(..),
-  isOperator, qlid, quid
+  isOperator, qlid, quid,
 ) where
 
 import Env (Path(..), (:>:)(..))
@@ -95,4 +95,3 @@ instance (Ord p, (:>:) k k') =>
 
 instance (:>:) BIdent Lid     where liftKey = Var
 instance (:>:) BIdent Uid     where liftKey = Con
-

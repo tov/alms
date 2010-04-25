@@ -1,14 +1,20 @@
 {-# LANGUAGE
       FlexibleInstances,
-      MultiParamTypeClasses #-}
+      MultiParamTypeClasses,
+      QuasiQuotes #-}
 -- | The dynamics of the interpreter
 module Dynamics (
-  -- | Static API
+  -- * Static API
   E, addVal, addMod, addExn, NewValues,
-  -- | Dynamic API
-  eval, addDecls, Result
+  -- * Dynamic API
+  eval, addDecls, Result,
+  -- * Re-export to remove warning (!)
+  -- | We need to import Quasi for the TH phase, but using it at the
+  --   TH phase isn't sufficient to prevent an unused import warning.
+  module Quasi
 ) where
 
+import Quasi
 import Value
 import Util
 import Syntax
@@ -142,9 +148,10 @@ valOf e env = case view e of
     Right c    -> case isExn e of
       True  -> makeExn env c
       False -> return (VaCon (jname c) Nothing)
-  ExStr s    -> return (vinj s)
-  ExInt z    -> return (vinj z)
-  ExFloat f  -> return (vinj f)
+  ExLit lt   -> case lt of
+    LtStr s   -> return (vinj s)
+    LtInt z   -> return (vinj z)
+    LtFloat f -> return (vinj f)
   ExCase e1 clauses -> do
     v1 <- valOf e1 env
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
@@ -195,6 +202,8 @@ valOf e env = case view e of
     valOf e1 env
   ExCast e1 _ _          ->
     valOf e1 env
+  ExAnti a               ->
+    antifail "dynamics" a
 
 makeExn :: Monad m => E -> QUid -> m Value
 makeExn env c = do
@@ -212,31 +221,46 @@ getExnId env c = case env =..= ExnName `fmap` c of
 
 bindPatt :: Monad m => Patt -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
-  PaWild       -> return env
-  PaVar lid    -> return (env =+= lid =:!= (lid `nameFun` v))
-  PaCon (J _ uid) mx False -> case (mx, v) of
-    (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
-    (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
-    _                                             -> perr
-  PaCon qu mx True -> do
-    ei <- getExnId env qu
-    case (mx, vprjM v) of
-      (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
-      (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
-      _                                                -> perr
-  PaPair x y   -> case vprjM v of
-    Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
-    Nothing       -> perr
-  PaStr s      -> if v == vinj s
-                    then return env
-                    else perr
-  PaInt z      -> if v == vinj z
-                    then return env
-                    else perr
-  PaPack _ x   -> bindPatt x v env
-  PaAs x lid   -> do
-    env' <- bindPatt x v env
-    return (env' =+= lid =:!= v)
+  [$pa| _ |] 
+    -> return env
+  [$pa| $lid:lid |]
+    -> return (env =+= lid =:!= (lid `nameFun` v))
+  PaCon (J _ uid) mx False
+    -> case (mx, v) of
+      (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
+      (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
+      _                                             -> perr
+  PaCon qu mx True
+    -> do
+      ei <- getExnId env qu
+      case (mx, vprjM v) of
+        (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
+        (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
+        _                                                -> perr
+  [$pa| ($x, $y) |]
+    -> case vprjM v of
+      Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
+      Nothing       -> perr
+  [$pa| $str:s |]
+    -> if v == vinj s
+         then return env
+         else perr
+  [$pa| $int:z |]
+    -> if v == vinj z
+         then return env
+         else perr
+  [$pa| $float:f |]
+    -> if v == vinj f
+         then return env
+         else perr
+  PaPack _ x
+    -> bindPatt x v env
+  PaAs x lid
+    -> do
+      env' <- bindPatt x v env
+      return (env' =+= lid =:!= v)
+  [$pa| $anti:anti |]
+    -> antifail "dynamics" anti
   where perr = fail $
                  "Pattern match failure: " ++ show x0 ++
                  " does not match " ++ show v

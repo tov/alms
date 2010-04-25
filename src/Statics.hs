@@ -5,6 +5,7 @@
       FlexibleInstances,
       ImplicitParams,
       MultiParamTypeClasses,
+      QuasiQuotes,
       ScopedTypeVariables,
       TypeSynonymInstances #-}
 module Statics (
@@ -18,6 +19,7 @@ module Statics (
   NewDefs(..), V, T, emptyNewDefs, TyInfo, tyInfoToDec
 ) where
 
+import Quasi
 import Util
 import Syntax
 import Loc
@@ -329,7 +331,7 @@ tcType :: (?loc :: Loc, Monad m) =>
           Type i -> TC m TypeT
 tcType = tc where
   tc :: Monad m => Type i -> TC m TypeT
-  tc (TyVar tv)   = do
+  tc [$ty| $tv:tv |] = do
     tv' <- getTV tv
     return (TyVar tv')
   tc (TyCon n ts _) = do
@@ -366,6 +368,7 @@ tcType = tc where
       "Recursive type " ++ show (TyMu tv t) ++ " qualifier " ++
       "does not match its own type variable."
     return (TyMu tv' t')
+  tc [$ty| $anti:a |] = antifail "statics" a
 
 -- | Remove all instances of t2 from t1, replacing with
 --   a new type variable 
@@ -383,9 +386,10 @@ tcExpr = tc where
       tx    <- getVar x
       let e' = exId x `setExn` findIsExn tx
       return (tx, e')
-    ExStr s   -> return (TyCon (qlid "string") [] tdString, exStr s)
-    ExInt z   -> return (TyCon (qlid "int") [] tdInt, exInt z)
-    ExFloat f -> return (TyCon (qlid "float") [] tdFloat, exFloat f)
+    ExLit lt -> case lt of
+      LtStr s   -> return ([$ty|+ string $td:string |], exStr s)
+      LtInt z   -> return ([$ty|+ int $td:int |],       exInt z)
+      LtFloat f -> return ([$ty|+ float $td:float |],   exFloat f)
     ExCase e clauses -> do
       (t0, e') <- tc e
       (t1:ts, clauses') <- liftM unzip . forM clauses $ \(xi, ei) -> do
@@ -428,15 +432,15 @@ tcExpr = tc where
     ExPair e1 e2  -> do
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2
-      return (TyCon (qlid "*") [t1, t2] tdTuple, exPair e1' e2')
+      return ([$ty|+ $t1 * $td:tuple $t2 |], exPair e1' e2')
     ExAbs x t e     -> do
       t' <- tcType t
       (gx, x', te, e') <- withPatt t' x $ tc e
       checkSharing "lambda" gx e
       unworthy <- isUnworthy e0
       if unworthy
-        then return (tyLolT t' te, exAbs x' t' e')
-        else return (tyArrT t' te, exAbs x' t' e')
+        then return ([$ty|+ $t' -o $td:lol $te |], exAbs x' t' e')
+        else return ([$ty|+ $t' -> $td:arr $te |], exAbs x' t' e')
     ExApp _  _    -> do
       tcExApp tc e0
     ExTAbs tv e   ->
@@ -476,6 +480,7 @@ tcExpr = tc where
       e1'' <- coerceExpression (e1' <<@ e0) t' ta'
       tcExpr e1'' -- re-type check the coerced expression
       return (ta', e1'')
+    ExAnti a -> antifail "statics" a
 
   -- | Assert that type given to a name is allowed by its usage
   checkSharing :: (Monad m, ?loc :: Loc) =>
@@ -582,24 +587,29 @@ tcPatt t x0 = case x0 of
     _ -> tgot "Pattern" t ("constructor " ++ show u)
   PaPair x y -> do
     case t of
-      TyCon (J [] (Lid "*")) [tx, ty] td | td == tdTuple
+      TyCon (J [] (Lid "*")) [xt, yt] td | td == tdTuple
         -> do
-          (dx, gx, x') <- tcPatt tx x
-          (dy, gy, y') <- tcPatt ty y
+          (dx, gx, x') <- tcPatt xt x
+          (dy, gy, y') <- tcPatt yt y
           tassert (isEmpty (gx -|- gy)) $
             "Pattern " ++ show x0 ++ " binds variable twice"
           tassert (isEmpty (dx -|- dy)) $
             "Pattern " ++ show x0 ++ " binds type variable twice"
           return (dx =+= dy, gx =+= gy, PaPair x' y')
       _ -> tgot "Pattern " t "pair type"
-  PaStr s    -> do
-    tassgot (tyinfo t == tdString)
-      "Pattern" t "string"
-    return (empty, empty, PaStr s)
-  PaInt z    -> do
-    tassgot (tyinfo t == tdInt)
-      "Pattern" t "int"
-    return (empty, empty, PaInt z)
+  PaLit lt   -> case lt of
+    LtStr s    -> do
+      tassgot (tyinfo t == tdString)
+        "Pattern" t "string"
+      return (empty, empty, PaLit (LtStr s))
+    LtInt z    -> do
+      tassgot (tyinfo t == tdInt)
+        "Pattern" t "int"
+      return (empty, empty, PaLit (LtInt z))
+    LtFloat f  -> do
+      tassgot (tyinfo t == tdFloat)
+        "Pattern" t "float"
+      return (empty, empty, PaLit (LtFloat f))
   PaAs x y   -> do
     (dx, gx, x') <- tcPatt t x
     let gy        = y =:= t
@@ -619,6 +629,7 @@ tcPatt t x0 = case x0 of
             "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
           return (dx =+= tv =:+= tv', gx, PaPack tv' x')
       _ -> tgot "Pattern" t "existential type"
+  PaAnti a -> antifail "tcPatt" a
 
 -- | Run a computation in the context of the bindings from
 --   a pattern.
@@ -720,10 +731,10 @@ withTyDecs tds0 k0 = do
       withTypes (name =:= TiDat tag params empty) k
     withStub _           k = k
     --
-    getEdge (TdSyn name _ ty)   = (name, tyConsOfType True ty)
+    getEdge (TdSyn name _ t)    = (name, tyConsOfType True t)
     getEdge (TdAbs name _ _ _)  = (name, S.empty)
     getEdge (TdDat name _ alts) = (name, names) where
-       names = S.unions [ tyConsOfType True ty | (_, Just ty) <- alts ]
+       names = S.unions [ tyConsOfType True t | (_, Just t) <- alts ]
     --
     partition td (atds, stds, dtds) =
       case td of
@@ -809,6 +820,7 @@ typeQual d0 = qsFromList d0 . S.toList . loop where
   loop (TyVar tv)    = S.singleton (Left tv)
   loop (TyQu _ tv t) = S.delete (Left tv) (loop t)
   loop (TyMu tv t)   = S.delete (Left tv) (loop t)
+  loop (TyAnti a)    = antierror "statics" a
 
 -- | Generic topological sort
 --
@@ -856,8 +868,9 @@ tyConsOfType here (TyCon n ts _) =
     _                -> S.empty)
   `S.union` S.unions (map (tyConsOfType here) ts)
 tyConsOfType _    (TyVar _)        = S.empty
-tyConsOfType here (TyQu _ _ ty)    = tyConsOfType here ty
-tyConsOfType here (TyMu _ ty)      = tyConsOfType here ty
+tyConsOfType here (TyQu _ _ t)     = tyConsOfType here t
+tyConsOfType here (TyMu _ t)       = tyConsOfType here t
+tyConsOfType _    (TyAnti a)       = antierror "statics" a
 
 -- END type decl checking
 

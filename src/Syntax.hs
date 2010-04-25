@@ -8,10 +8,12 @@
 
 module Syntax (
   -- * Identifiers
+  module Syntax.Anti,
   module Syntax.POClass,
   module Syntax.Kind,
   module Syntax.Ident,
   module Syntax.Type,
+  module Syntax.Lit,
   module Syntax.Patt,
   module Syntax.Expr,
   module Syntax.Decl,
@@ -24,10 +26,12 @@ module Syntax (
   module Viewable
 ) where
 
+import Syntax.Anti
 import Syntax.POClass
 import Syntax.Kind
 import Syntax.Ident
 import Syntax.Type
+import Syntax.Lit
 import Syntax.Patt
 import Syntax.Expr
 import Syntax.Decl

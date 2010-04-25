@@ -4,16 +4,15 @@ module Syntax.Kind (
   -- * Qualifiers, qualifiers sets, and variance
   Q(..), QualSet(..), Variance(..),
   -- ** Qualifier operations
-  qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList
+  qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
 ) where
 
 import Syntax.POClass
 import Util
 
 import Control.Monad.Identity (runIdentity)
-import Data.List (elemIndex)
+import Data.List (elemIndex, union, intersect)
 import Data.Generics (Typeable(..), Data(..))
-import qualified Data.Set as S
 
 -- QUALIFIERS, VARIANCES
 
@@ -33,7 +32,7 @@ data Q
 -- @
 --    |(t1, ..., tk) c| = q \\sqcup \\bigsqcup { qi | i <- set }
 -- @
-data QualSet = QualSet Q (S.Set Int)
+data QualSet = QualSet Q [Int]
   deriving (Typeable, Data)
 
 -- | Tycon parameter variance (like sign analysis)
@@ -49,13 +48,13 @@ data Variance
   deriving (Eq, Ord, Typeable, Data)
 
 qsConst :: Q -> QualSet
-qsConst  = flip QualSet S.empty
+qsConst  = flip QualSet []
 
 qsVar   :: Int -> QualSet
 qsVar    = qsVars . return
 
 qsVars  :: [Int] -> QualSet
-qsVars   = QualSet minBound . S.fromList
+qsVars   = QualSet minBound
 
 qsFromListM :: (Eq tv, Monad m) => (tv -> m QualSet) ->
                [tv] -> [Either tv Q] -> m QualSet
@@ -72,7 +71,7 @@ qsToList   :: Eq tv => [tv] -> QualSet -> [Either tv Q]
 qsToList _ qs | qs == minBound
   = []
 qsToList tvs (QualSet q ixs) 
-  = Right q : [ Left (tvs !! ix) | ix <- S.toList ixs ]
+  = Right q : [ Left (tvs !! ix) | ix <- ixs ]
 
 instance Show Q where
   showsPrec _ Qa = ('A':)
@@ -80,7 +79,7 @@ instance Show Q where
 
 instance Show QualSet where
   show (QualSet q ixs) =
-    show q ++ " \\/ bigVee " ++ show (S.toList ixs)
+    show q ++ " \\/ bigVee " ++ show ixs
 
 instance Show Variance where
   showsPrec _ Invariant     = ('1':)
@@ -98,8 +97,8 @@ instance Bounded Q where
   maxBound = Qa
 
 instance Bounded QualSet where
-  minBound = QualSet minBound S.empty
-  maxBound = QualSet maxBound S.empty
+  minBound = QualSet minBound []
+  maxBound = QualSet maxBound []
 
 instance Bounded Variance where
   minBound = Omnivariant
@@ -146,13 +145,13 @@ instance Ord Q where
 -- (relation only defined for same-length qualsets)
 instance PO QualSet where
   QualSet q ixs /\? QualSet q' ixs'
-    | q == q' = return (QualSet q (ixs /\ ixs'))
+    | q == q' = return (QualSet q (ixs `intersect` ixs'))
   qs /\? qs'  = fail $
       "GLB " ++ show qs ++ " /\\ " ++ show qs' ++ " does not exist"
   QualSet q ixs \/ QualSet q' ixs'
-    | q == maxBound  = QualSet maxBound S.empty
-    | q' == maxBound = QualSet maxBound S.empty
-    | otherwise      = QualSet (q \/ q') (ixs \/ ixs')
+    | q == maxBound  = QualSet maxBound []
+    | q' == maxBound = QualSet maxBound []
+    | otherwise      = QualSet (q \/ q') (ixs `union` ixs')
 
 -- | Variance has a bit more structure still -- it does sign analysis:
 instance Num Variance where

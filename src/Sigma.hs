@@ -444,10 +444,10 @@ patt2expr (PaCon u (Just p) exn)
 patt2expr (PaPair p1 p2) = exPair e1 e2 where
   e1 = patt2expr p1
   e2 = patt2expr p2
-patt2expr (PaStr s)      = exStr s
-patt2expr (PaInt z)      = exInt z
+patt2expr (PaLit lt)     = exLit lt
 patt2expr (PaAs _ l)     = exBVar l
 patt2expr (PaPack a p)   = exPack Nothing (TyVar a) (patt2expr p)
+patt2expr (PaAnti a)     = antierror "exSigma" a
 
 -- | Transform a pattern to a flattened pattern.
 flatpatt :: Patt -> Patt
@@ -462,10 +462,10 @@ flatpatt p0 = case loop p0 of
   loop (PaCon _ (Just p) _)
                       = loop p
   loop (PaPair p1 p2) = loop p1 ++ loop p2
-  loop (PaStr _)      = []
-  loop (PaInt _)      = []
+  loop (PaLit _)      = []
   loop (PaAs _ l)     = [PaVar l]
   loop (PaPack a p)   = [PaPack a (flatpatt p)]
+  loop (PaAnti a)     = antierror "exSigma" a
 
 ren :: Data a => a -> a
 ren = everywhere (mkT each) where

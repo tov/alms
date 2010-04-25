@@ -85,6 +85,7 @@ instance Ppr (Type i) where
                               pprPrec (precDot + 1) x <>
                               char '.'
                                 >+> pprPrec precDot t
+  pprPrec p (TyAnti a)    = pprPrec p a
 
 instance Ppr (Prog i) where
   ppr (Prog ms Nothing)  = vcat (map ppr ms)
@@ -190,10 +191,8 @@ pprModExp add modexp = case modexp of
 
 instance Ppr (Expr i) where
   pprPrec p e0 = case view e0 of
-    ExId x    -> ppr x
-    ExInt i   -> integer i
-    ExFloat f -> double f
-    ExStr s   -> text (show s)
+    ExId x    -> pprPrec p x
+    ExLit lt  -> pprPrec p lt
     ExCase e1 clauses ->
       case clauses of
         [ (PaCon (J [] (Uid "true"))  Nothing False, et),
@@ -278,6 +277,7 @@ instance Ppr (Expr i) where
              ]) t1 ++
              [ text ":>",
                pprPrec (precCast + 2) t2 ])
+    ExAnti a -> pprPrec p a
 
 pprLet :: Int -> Doc -> Expr i -> Expr i -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
@@ -331,8 +331,7 @@ instance Ppr Patt where
   pprPrec p (PaPair x y)           = parensIf (p > precCom) $
                                        pprPrec precCom x <> comma <+>
                                        pprPrec (precCom + 1) y
-  pprPrec _ (PaStr s)              = text (show s)
-  pprPrec _ (PaInt z)              = text (show z)
+  pprPrec p (PaLit lt)             = pprPrec p lt
   pprPrec p (PaAs x lid)           = parensIf (p > precDot) $
                                        pprPrec (precDot + 1) x <+>
                                        text "as" <+> ppr lid
@@ -340,12 +339,19 @@ instance Ppr Patt where
                                        text "Pack" <+> parens (sep pair)
     where pair = [ pprPrec (precCom + 1) tv <> comma,
                    pprPrec precCom x ]
+  pprPrec p (PaAnti a)             = pprPrec p a
+
+instance Ppr Lit where
+  ppr (LtInt i)   = integer i
+  ppr (LtFloat f) = double f
+  ppr (LtStr s)   = text (show s)
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
 instance Show TyDec      where showsPrec = showFromPpr
 instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show Patt       where showsPrec = showFromPpr
+instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
 
 instance Ppr Q         where pprPrec = pprFromShow
@@ -355,6 +361,8 @@ instance Ppr Lid       where pprPrec = pprFromShow
 instance Ppr Uid       where pprPrec = pprFromShow
 instance Ppr BIdent    where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
+instance Ppr Anti      where pprPrec = pprFromShow
+instance Show a => Ppr (MAnti a) where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 
 instance Show TypeTEq where

@@ -74,7 +74,7 @@ loadString st name src = do
   case parse parseProg name src of
     Left e     -> fail (show e)
     Right ast0 -> do
-      (st1, _, ast1) <- statics False (st, prog2decls ast0)
+      (st1, _, ast1) <- statics False (st, prog2decls (ast0 :: Prog ()))
       (st2, ast2)    <- translation (st1, ast1)
       (st3, _)       <- dynamics (st2, ast2)
       return st3

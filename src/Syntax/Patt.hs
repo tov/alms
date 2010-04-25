@@ -4,10 +4,12 @@ module Syntax.Patt (
   Patt(..), pv, ptv
 ) where
 
+import Syntax.Anti
 import Syntax.Ident
+import Syntax.Lit
 
 import qualified Data.Set as S
-import Data.Generics (Typeable(..), Data(..), everything, mkQ)
+import Data.Generics (Typeable, Data, everything, mkQ, extQ)
 
 -- | Patterns
 data Patt
@@ -19,14 +21,14 @@ data Patt
   | PaCon QUid (Maybe Patt) Bool
   -- | pair pattern
   | PaPair Patt Patt
-  -- | string literal
-  | PaStr String
-  -- | integer literal
-  | PaInt Integer
+  -- | literal pattern
+  | PaLit Lit
   -- | bind an identifer and a pattern (@as@)
   | PaAs Patt Lid
   -- | existential opening
   | PaPack TyVar Patt
+  -- | antiquote
+  | PaAnti Anti
   deriving (Typeable, Data)
 
 -- | The set of variables bound by a pattern
@@ -36,11 +38,10 @@ pv (PaVar x)            = S.singleton x
 pv (PaCon _ Nothing _)  = S.empty
 pv (PaCon _ (Just x) _) = pv x
 pv (PaPair x y)         = pv x `S.union` pv y
-pv (PaStr _)            = S.empty
-pv (PaInt _)            = S.empty
+pv (PaLit _)            = S.empty
 pv (PaAs x y)           = pv x `S.union` S.singleton y
 pv (PaPack _ x)         = pv x
+pv (PaAnti a)           = antierror "pv" a
 
 ptv :: Patt -> S.Set TyVar
-ptv = everything S.union (mkQ S.empty S.singleton)
-
+ptv = everything S.union $ mkQ S.empty S.singleton `extQ` unAnti "ptv"

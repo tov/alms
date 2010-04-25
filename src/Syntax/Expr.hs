@@ -3,17 +3,19 @@
       TypeFamilies #-}
 module Syntax.Expr (
   -- * Expressions
-  Expr(), ExprT, Expr'(..),
+  Expr(..), ExprT, Expr'(..),
   -- ** Letrec bindings
   Binding(..), BindingT,
 
   -- * Two-level expression constructors
   -- | These fill in the source location field based on the
   -- subexpressions and perform the free variable analysis
-  exId, exStr, exInt, exFloat, exCase, exLetRec, exLetDecl, exPair,
-  exAbs, exApp, exTAbs, exTApp, exPack, exCast,
+  exId, exLit, exCase, exLetRec, exLetDecl, exPair,
+  exAbs, exApp, exTAbs, exTApp, exPack, exCast, exAnti,
   -- ** Synthetic expression constructors
-  exVar, exCon, exBVar, exBCon, exLet, exSeq,
+  exVar, exCon, exBVar, exBCon,
+  exStr, exInt, exFloat,
+  exLet, exSeq,
   -- ** Optimizing expression constructors
   exLet', exLetVar', exAbs', exAbsVar', exTAbs',
 
@@ -23,8 +25,10 @@ module Syntax.Expr (
 ) where
 
 import Loc as Loc
+import Syntax.Anti
 import Syntax.Ident
 import Syntax.Type
+import Syntax.Lit
 import Syntax.Patt
 import {-# SOURCE #-} Syntax.Decl
 import Viewable
@@ -58,12 +62,8 @@ data Expr i
 data Expr' i
   -- | variables and datacons
   = ExId Ident
-  -- | string literals
-  | ExStr String
-  -- | integer literals
-  | ExInt Integer
-  -- | floating point literals
-  | ExFloat Double
+  -- | literals
+  | ExLit Lit
   -- | case expressions (including desugared @if@ and @let@)
   | ExCase (Expr i) [(Patt, Expr i)]
   -- | recursive let expressions
@@ -84,6 +84,8 @@ data Expr' i
   | ExPack (Maybe (Type i)) (Type i) (Expr i)
   -- | dynamic promotion
   | ExCast (Expr i) (Maybe (Type i)) (Type i)
+  -- | antiquotes
+  | ExAnti Anti
   deriving (Typeable, Data)
 
 -- | Let-rec bindings require us to give types
@@ -127,14 +129,8 @@ expr0  = Expr {
 mkexpr0   :: Expr' i -> Expr i
 mkexpr0 e' = expr0 { expr_  = e' }
 
-exStr :: String -> Expr i
-exStr  = mkexpr0 . ExStr
-
-exInt :: Integer -> Expr i
-exInt  = mkexpr0 . ExInt
-
-exFloat :: Double -> Expr i
-exFloat  = mkexpr0 . ExFloat
+exLit :: Lit -> Expr i
+exLit  = mkexpr0 . ExLit
 
 exCase  :: Expr i -> [(Patt, Expr i)] -> Expr i
 exCase e clauses = expr0 {
@@ -218,6 +214,12 @@ exCast e t1 t2 = expr0 {
   expr_  = ExCast e t1 t2
 }
 
+exAnti :: Anti -> Expr i
+exAnti a = expr0 {
+  fv_    = antierror "fv" a,
+  expr_  = ExAnti a
+}
+
 exVar :: QLid -> Expr i
 exVar  = exId . fmap Var
 
@@ -229,6 +231,15 @@ exBVar  = exId . J [] . Var
 
 exBCon :: Uid -> Expr i
 exBCon  = exId . J [] . Con
+
+exStr :: String -> Expr i
+exStr  = exLit . LtStr
+
+exInt :: Integer -> Expr i
+exInt  = exLit . LtInt
+
+exFloat :: Double -> Expr i
+exFloat  = exLit . LtFloat
 
 exLet :: Patt -> Expr i -> Expr i -> Expr i
 exLet x e1 e2 = exCase e1 [(x, e2)]
@@ -285,11 +296,12 @@ exTAbs' tv e = case view e of
 --   safely handle data constructors, because they may fail to match.
 (-==+) :: Patt -> Expr i -> Bool
 p -==+ e = case (p, view e) of
-  (PaVar l,                   ExId (J [] (Var l')))
+  (PaVar l,      ExId (J [] (Var l')))
     -> l == l'
-  (PaCon (J [] (Uid "()")) Nothing False, ExId (J [] (Con (Uid "()"))))
+  (PaCon (J [] (Uid "(")) Nothing False,
+   ExId (J [] (Con (Uid "()"))))
     -> True
-  (PaPair p1 p2,              ExPair e1 e2)
+  (PaPair p1 p2, ExPair e1 e2)
     -> p1 -==+ e1 && p2 -==+ e2
   _ -> False
 infix 4 -==+
@@ -322,13 +334,13 @@ instance Locatable (Binding i) where
 syntacticValue :: Expr i -> Bool
 syntacticValue e = case view e of
   ExId _       -> True
-  ExStr _      -> True
-  ExInt _      -> True
+  ExLit _      -> True
   ExPair e1 e2 -> syntacticValue e1 && syntacticValue e2
   ExAbs _ _ _  -> True
   ExApp e1 e2  -> syntacticConstructor e1 && syntacticValue e2
   ExTAbs _ _   -> True
   ExTApp e1 _  -> syntacticValue e1
+  ExAnti a     -> antierror "syntacticValue" a
   _            -> False
 
 syntacticConstructor :: Expr i -> Bool
@@ -336,5 +348,6 @@ syntacticConstructor e = case view e of
   ExId (J [] (Con _)) -> True
   ExTApp e1 _         -> syntacticConstructor e1
   ExApp e1 e2         -> syntacticConstructor e1 && syntacticValue e2
+  ExAnti a            -> antierror "syntacticConstructor" a
   _                   -> False
 
