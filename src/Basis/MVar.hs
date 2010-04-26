@@ -4,7 +4,6 @@ module Basis.MVar (entries) where
 import Data.Typeable (Typeable)
 import BasisUtils
 import Value (Value, Valuable(..))
-import Ppr (text)
 import Util
 
 import qualified Control.Concurrent.MVar as MV

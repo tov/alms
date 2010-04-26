@@ -17,7 +17,6 @@ module Lexer (
   colon, dot, semiSep, semiSep1, commaSep, commaSep1
 ) where
 
-import Util
 import Prec
 
 import Data.Char (isUpper)

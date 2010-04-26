@@ -6,6 +6,7 @@
       MultiParamTypeClasses,
       OverlappingInstances,
       ScopedTypeVariables,
+      TypeOperators,
       UndecidableInstances #-}
 module Env (
   -- * Basic type and operations

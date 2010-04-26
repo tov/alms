@@ -21,17 +21,16 @@ import Syntax (Prog, ProgT, Decl, DeclT,
                BIdent(..), prog2decls)
 import Env (empty, unionProduct, toList)
 
-import Control.Monad (when, unless)
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
-import IO (readFile, hPutStr, hPutStrLn, stderr)
+import IO (hPutStr, hPutStrLn, stderr)
 import qualified Control.Exception as Exn
 
 #ifdef USE_READLINE
 import qualified USE_READLINE as RL
 #else
-import IO (hFlush, stdout, getLine)
+import IO (hFlush, stdout)
 #endif
 
 data Option = Don'tExecute

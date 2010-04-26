@@ -3,10 +3,10 @@
       DeriveDataTypeable #-}
 module Loc (
   -- * Type and constructors
-  Loc,
+  Loc(..),
   initial, bogus,
   -- * Destructors
-  file, line, col, isBogus,
+  isBogus,
 
   -- * Generic function for clearing source locations everywhere
   scrub,
@@ -18,35 +18,24 @@ module Loc (
   toSourcePos, fromSourcePos
 ) where
 
-import Data.Typeable ()
-import Data.Generics
+import Data.Generics (Typeable, Data, everywhere, mkT)
 import Text.ParserCombinators.Parsec.Pos
 
 -- | Source locations
-newtype Loc = Loc {
-  -- | Extract a 'Parsec' source position
-  toSourcePos :: SourcePos
+data Loc = Loc {
+    file :: !String,
+    line :: !Int,
+    col  :: !Int
   }
-  deriving (Eq, Ord, Typeable)
+  deriving (Eq, Ord, Typeable, Data)
+
+-- | Extract a 'Parsec' source position
+toSourcePos :: Loc -> SourcePos
+toSourcePos loc = newPos (file loc) (line loc) (col loc)
 
 -- | Create from a 'Parsec' source position
 fromSourcePos :: SourcePos -> Loc
-fromSourcePos  = Loc
-
-new :: String -> Int -> Int -> Loc
-new f l c = fromSourcePos (newPos f l c)
-
--- | The source file of a location
-file :: Loc -> String
-file  = sourceName . toSourcePos
-
--- | The source line of a location
-line :: Loc -> Int
-line  = sourceLine . toSourcePos
-
--- | The source column of a location
-col  :: Loc -> Int
-col   = sourceColumn . toSourcePos
+fromSourcePos pos = Loc (sourceName pos) (sourceLine pos) (sourceColumn pos)
 
 -- | The initial location for a named source file
 initial :: String -> Loc
@@ -55,7 +44,7 @@ initial = fromSourcePos . initialPos
 -- | The bogus location.
 --   (Avoids need for @Maybe Loc@ and lifting)
 bogus   :: Loc
-bogus    = new "<bogus>" (-1) (-1)
+bogus    = Loc "<bogus>" (-1) (-1)
 
 -- | Is the location bogus?
 isBogus :: Loc -> Bool
@@ -162,17 +151,4 @@ scrub a = everywhere (mkT bogosify) a where
 
 instance Show Loc where
   showsPrec p loc = showsPrec p (toSourcePos loc)
-
-tyLoc  :: DataType
-tyLoc   = mkDataType "Loc.Loc" [conLoc]
-conLoc :: Constr
-conLoc  = mkConstr tyLoc "Loc" [] Prefix
-
-instance Data Loc where
-  gfoldl f z loc = z new `f` file loc `f` line loc `f` col loc
-  gunfold k z c  = case constrIndex c of
-                     1 -> k (k (k (z new)))
-                     _ -> error "gunfold"
-  toConstr _     = conLoc
-  dataTypeOf _   = tyLoc
 

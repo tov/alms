@@ -3,7 +3,8 @@
       DeriveDataTypeable,
       FlexibleInstances,
       MultiParamTypeClasses,
-      TypeFamilies #-}
+      TypeFamilies,
+      TypeSynonymInstances #-}
 module Syntax.Ident (
   -- * Identifiers
   Path(..),
@@ -11,11 +12,14 @@ module Syntax.Ident (
   Ident, QLid, QUid,
   TyVar(..),
   isOperator, qlid, quid,
+  -- ** Identifier antiquotes
+  AntiIdentifier(..)
 ) where
 
 import Env (Path(..), (:>:)(..))
 import Util
 import Viewable
+import Syntax.Anti
 import Syntax.Kind
 
 import Data.Char (isAlpha, isDigit)
@@ -68,6 +72,7 @@ quid s = case reverse (splitBy (=='.') s) of
 instance Show Lid where
   showsPrec _ (Lid s) = case s of
     '_':_             -> (s++)
+    '{':_             -> (s++)
     c  :_ | isAlpha c -> (s++)
     c  :_ | isDigit c -> (s++)
     '*':_             -> ("( "++) . (s++) . (" )"++)
@@ -95,3 +100,41 @@ instance (Ord p, (:>:) k k') =>
 
 instance (:>:) BIdent Lid     where liftKey = Var
 instance (:>:) BIdent Uid     where liftKey = Con
+
+---
+--- Identifier antiquotes
+---
+
+class AntiIdentifier a where
+  antiToIdent  :: Anti -> a
+  identToAnti  :: a -> Maybe Anti
+
+instance AntiIdentifier String where
+  antiToIdent (Anti t a) =
+    "{$" ++ t ++ ":" ++ a ++ "}"
+  identToAnti s = do
+    [ '{':'$':t , n' ] <- return $ splitBy (== ':') s
+    [ n              ] <- return $ splitBy (== '}') n'
+    return (Anti t n)
+
+instance AntiIdentifier Lid where
+  antiToIdent = Lid . antiToIdent
+  identToAnti = identToAnti . unLid
+
+instance AntiIdentifier Uid where
+  antiToIdent = Uid . antiToIdent
+  identToAnti = identToAnti . unUid
+
+instance AntiIdentifier TyVar where
+  antiToIdent = flip TV Qu . antiToIdent
+  identToAnti = identToAnti . tvname
+
+instance AntiIdentifier BIdent where
+  antiToIdent         = Var . antiToIdent
+  identToAnti (Var l) = identToAnti l
+  identToAnti (Con u) = identToAnti u
+
+instance AntiIdentifier a => AntiIdentifier (Path Uid a) where
+  antiToIdent          = J [] . antiToIdent
+  identToAnti (J [] i) = identToAnti i
+  identToAnti _        = Nothing

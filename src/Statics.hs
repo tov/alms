@@ -705,7 +705,7 @@ indexQuals name = qsFromListM unbound where
 
 -- | Run a computation in the context of type declarations
 withTyDecs :: (?loc :: Loc, Monad m) =>
-              [TyDec] -> ([TyDec] -> TC m a) -> TC m a
+              [TyDec i] -> ([TyDecT] -> TC m a) -> TC m a
 withTyDecs tds0 k0 = do
   tassert (unique (map tdaName tds0)) $
     "Duplicate type(s) in recursive type declaration"
@@ -747,7 +747,7 @@ withTyDecs tds0 k0 = do
 -- whether the type metadata has changed, which allows for iterating
 -- to a fixpoint.
 withTyDec :: (?loc :: Loc, Monad m) =>
-             TyDec -> ((TyDec, Bool) -> TC m a) -> TC m a
+             TyDec i -> ((TyDecT, Bool) -> TC m a) -> TC m a
 withTyDec (TdAbs name params variances quals) k = do
   index  <- newIndex
   quals' <- indexQuals name params quals
@@ -760,9 +760,11 @@ withTyDec (TdAbs name params variances quals) k = do
      })
     (k (TdAbs name params variances quals, False))
 withTyDec (TdSyn name params rhs) k = do
-  t' <- withTVs params $ \params' -> TiSyn params' `liftM` tcType rhs
-  withTypes (name =:= t')
-    (k (TdSyn name params rhs, False))
+  (params', rhs') <- withTVs params $ \params' -> do
+    rhs' <- tcType rhs
+    return (params', rhs')
+  withTypes (name =:= TiSyn params' rhs')
+    (k (TdSyn name params' rhs', False))
 withTyDec (TdDat name params alts) k = do
   TiDat tag _ _ <- getType (J [] name)
   (params', alts') <-
@@ -782,7 +784,7 @@ withTyDec (TdDat name params alts) k = do
       tag'    = tag { ttArity = arity, ttQual = qual }
   withTypes (name =:= TiDat tag' params' (fromList alts')) $
     withVars (alts2env name params' tag' alts') $
-      (k (TdDat name params alts, changed))
+      (k (TdDat name params alts', changed))
 
 -- | Are all elements of the list unique?
 unique :: Ord a => [a] -> Bool
@@ -1039,16 +1041,17 @@ tcModExp (MeStr ds) =
 tcModExp (MeName n)   = do
   scope <- getModule n
   return (MeName n, scope)
+tcModExp (MeAnti a)   = antifail "statics" a
 
 -- | Run a computation in the context of an abstype block
 withAbsTy :: (?loc :: Loc, Monad m) =>
-             [AbsTy] -> [Decl i] -> ([DeclT] -> TC m a) -> TC m a
+             [AbsTy i] -> [Decl i] -> ([AbsTyT] -> [DeclT] -> TC m a) -> TC m a
 withAbsTy atds ds k0 =
-  let (_, _, tds) = unzip3 atds in
-  withTyDecs tds $ \_ ->
+  let (vars, quals, tds) = unzip3 atds in
+  withTyDecs tds $ \tds' ->
     withDecls ds $ \ds' ->
       mapCont absDecl atds $ \tags' ->
-        k0 (foldr replaceTyTags ds' tags')
+        k0 (zip3 vars quals tds') (foldr replaceTyTags ds' tags')
   where
     absDecl (arity, quals, TdDat name params _) k = do
       tag     <- getTypeTag "abstract-with-end" (J [] name)
@@ -1080,11 +1083,12 @@ withDecl decl k =
     case decl of
       DcLet loc x t e ->  withLet x t e (\x' t' -> k . DcLet loc x' t')
       DcTyp loc tds   ->  withTyDecs tds (k . DcTyp loc)
-      DcAbs loc at ds ->  withAbsTy at ds (k . DcAbs loc at)
+      DcAbs loc at ds ->  withAbsTy at ds ((.) k . DcAbs loc)
       DcMod loc x b   ->  withMod x b (k . DcMod loc x)
       DcOpn loc b     ->  withOpen b (k . DcOpn loc)
       DcLoc loc d0 d1 ->  withLocal d0 d1 ((.) k . DcLoc loc)
       DcExn loc n mt  ->  withExn n mt (k . DcExn loc n)
+      DcAnti a        ->  antifail "statics" a
 
 -- | Run a computation in the context of a declaration sequence
 withDecls :: Monad m =>
@@ -1199,7 +1203,7 @@ env0  = S e0 0 where
               Lid "exn"  -:- TiExn
 
 -- | Reconstruct the declaration from a tycon binding, for printing
-tyInfoToDec :: Lid -> TyInfo -> TyDec
+tyInfoToDec :: Lid -> TyInfo -> TyDec ()
 tyInfoToDec n ti = case ti of
   TiSyn ps rhs    -> TdSyn n ps (removeTyTags rhs)
   TiDat _ ps alts -> TdDat n ps [ (uid, fmap removeTyTags mt)

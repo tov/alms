@@ -342,7 +342,7 @@ swapChan (Chan m) a' = join $ transactMVar m modify
       NoQ readers -> do
         message <- newEmptyMVar
         r       <- newIORef (Just message)
-        commit (RQ (readers |> r))
+        _       <- commit (RQ (readers |> r))
         return $ do
           a <- takeMVar message `clear` r
           -- Race condition here!  I think we'd need a different
@@ -355,7 +355,7 @@ swapChan (Chan m) a' = join $ transactMVar m modify
           Just a  -> do
             r'       <- newIORef (Just a')
             confirm' <- newEmptyMVar
-            block $ do
+            _        <- block $ do
               putMVar confirm ()
               commit (WQ ((r', confirm') <| writers))
             return $ do

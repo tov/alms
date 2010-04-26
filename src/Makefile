@@ -6,7 +6,7 @@ EXE      = alms
 EXAMPLES = ../examples
 SRC      = *.hs Basis/*.hs Meta/*.hs
 
-HCOPTS  = -W -Wall -O0 $(EDITING)
+HCOPTS  = -W -Wall -O0 $(EDITING) -fno-warn-unused-do-bind
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 
 $(EXE) $(EXE)-%: $(SRC)

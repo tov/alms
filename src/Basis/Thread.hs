@@ -4,7 +4,6 @@ module Basis.Thread (entries) where
 import qualified Control.Concurrent as CC
 import BasisUtils
 import Value (Vinj(..))
-import Util
 
 entries :: [Entry]
 entries =  [

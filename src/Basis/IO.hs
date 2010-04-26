@@ -10,7 +10,6 @@ import qualified IO
 import Data.Data (Typeable, Data)
 import BasisUtils
 import Value (Valuable(..), vinjData, vprjDataM)
-import Ppr (text)
 import Util
 
 instance Valuable IO.Handle where

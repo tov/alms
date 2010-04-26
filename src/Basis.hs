@@ -9,7 +9,6 @@ module Basis (
 import Util
 import BasisUtils
 import Value (Valuable(..), Value(..))
-import Ppr (text)
 import Syntax
 
 import qualified Basis.IO
@@ -24,7 +23,6 @@ import qualified IO
 import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import Data.Typeable
-import Control.Monad
 
 -- Primitive operations implemented in Haskell
 primBasis :: [Entry]

@@ -1,7 +1,8 @@
 -- | Pretty-printing
 {-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
-      PatternGuards
+      PatternGuards,
+      QuasiQuotes
     #-}
 module Ppr (
   -- * Pretty-printing class
@@ -14,6 +15,7 @@ module Ppr (
 ) where
 
 import Prec
+import Quasi
 import Syntax
 
 import Text.PrettyPrint
@@ -52,11 +54,11 @@ instance (Ppr a, Separator a) => Ppr [a] where
 
 instance Ppr (Type i) where
   -- Print sugar for infix type constructors:
-  pprPrec p (TyCon (J [] (Lid ";")) [t1, t2] _)
+  pprPrec p [$ty| $t1 ; $t2 |]
                   = parensIf (p > precSemi) $
                       sep [ pprPrec (precSemi + 1) t1 <> text ";",
                             pprPrec precSemi t2 ]
-  pprPrec p (TyCon (J [] (Lid n)) [t1, t2] _)
+  pprPrec p [$ty| ($t1, $t2) $name:n |]
     | isOperator (Lid n)
                   = case precOp n of
         Left prec  -> parensIf (p > prec) $
@@ -65,27 +67,30 @@ instance Ppr (Type i) where
         Right prec -> parensIf (p > prec) $
                       sep [ pprPrec (prec + 1) t1,
                             text n <+> pprPrec prec t2]
-  pprPrec _ (TyCon n [] _)  = ppr n
-  pprPrec p (TyCon n [t] _) = parensIf (p > precApp) $
+  pprPrec _ [$ty| $qlid:n |]  = ppr n
+  pprPrec p [$ty| $t $n |] = parensIf (p > precApp) $
                                 sep [ pprPrec precApp t,
                                       ppr n ]
-  pprPrec p (TyCon n ts _)  = parensIf (p > precApp) $
+  pprPrec p [$ty| $list:ts $n |]
+                          = parensIf (p > precApp) $
                                 sep [ parens (pprPrec p ts),
                                       ppr n ]
-  pprPrec p (TyVar x)     = pprPrec p x
-  pprPrec p (TyQu u x t)  = parensIf (p > precDot) $
-                              ppr u <+>
+  pprPrec p [$ty| '$x |]  = pprPrec p x
+  pprPrec p [$ty| $qu '$x. $t |]
+                          = parensIf (p > precDot) $
+                              ppr qu <+>
                               fsep (map (pprPrec (precDot + 1))
                                         tvs) <>
                               char '.'
                                 >+> pprPrec precDot body
-      where (tvs, body) = unfoldTyQu u (TyQu u x t)
-  pprPrec p (TyMu x t)    = parensIf (p > precDot) $
+      where (tvs, body) = unfoldTyQu qu [$ty| $qu '$x. $t |]
+  pprPrec p [$ty| mu '$x. $t |]
+                          = parensIf (p > precDot) $
                               text "mu" <+>
                               pprPrec (precDot + 1) x <>
                               char '.'
                                 >+> pprPrec precDot t
-  pprPrec p (TyAnti a)    = pprPrec p a
+  pprPrec p [$ty| $anti:a |] = pprPrec p a
 
 instance Ppr (Prog i) where
   ppr (Prog ms Nothing)  = vcat (map ppr ms)
@@ -94,10 +99,10 @@ instance Ppr (Prog i) where
                            (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
-  ppr (DcLet _ x Nothing e) = sep
+  ppr [$dc| let $x = $e |] = sep
     [ text "let" <+> ppr x,
       nest 2 $ equals <+> ppr e ]
-  ppr (DcLet _ x (Just t) e) = sep
+  ppr [$dc| let $x : $t = $e |] = sep
     [ text "let" <+> ppr x,
       nest 2 $ colon <+> ppr t,
       nest 4 $ equals <+> ppr e ]
@@ -120,8 +125,8 @@ instance Ppr (Decl i) where
       nest 2 $ vcat (map ppr ds),
       text "end"
     ]
-  ppr (DcOpn _ b)     = pprModExp (text "open" <+>) b
-  ppr (DcMod _ n b)   = pprModExp add b where
+  ppr [$dc| open $b |] = pprModExp (text "open" <+>) b
+  ppr [$dc| module $n = $b |] = pprModExp add b where
     add body = text "module" <+> ppr n <+> equals <+> body
   ppr (DcLoc _ d0 d1) =
     vcat [
@@ -131,16 +136,17 @@ instance Ppr (Decl i) where
       nest 2 (vcat (map ppr d1)),
       text "end"
     ]
-  ppr (DcExn _ n t)   =
+  ppr [$dc| exception $n of $maybe:t |] =
     text "exception" <+> ppr n <+>
     maybe empty ((text "of" <+>) . ppr) t
+  ppr [$dc| $anti:a |] = ppr a
 
-instance Ppr TyDec where
+instance Ppr (TyDec i) where
   ppr (TdAbs n ps vs qs) = pprProtoV n vs ps >?> pprQuals qs
   ppr (TdSyn n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
   ppr (TdDat n ps alts)  = pprProto n ps >?> pprAlternatives alts
 
-pprAbsTy :: AbsTy -> Doc
+pprAbsTy :: AbsTy i -> Doc
 pprAbsTy (variances, qual, TdDat name params alts) =
     pprProtoV name variances params
       >?> pprQuals qual
@@ -188,6 +194,7 @@ pprModExp add modexp = case modexp of
     MeStr ds -> add (text "struct")
                 $$ nest 2 (vcat (map ppr ds))
                 $$ text "end"
+    MeAnti a -> add (ppr a)
 
 instance Ppr (Expr i) where
   pprPrec p e0 = case view e0 of
@@ -348,7 +355,7 @@ instance Ppr Lit where
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
-instance Show TyDec      where showsPrec = showFromPpr
+instance Show (TyDec i)  where showsPrec = showFromPpr
 instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show Patt       where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr

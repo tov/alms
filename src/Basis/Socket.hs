@@ -12,7 +12,6 @@ import qualified Network.Socket as S
 import Basis.IO ()
 import BasisUtils
 import Value
-import Ppr (text)
 
 instance Valuable S.Socket where
   veq = (==)
@@ -74,7 +73,7 @@ instance Data S.PortNumber where
   dataTypeOf _ = portNumberType
 
 instance Data.Data CInt where
-  toConstr x = mkIntConstr cIntType (fromIntegral x)
+  toConstr x = mkIntegralConstr cIntType (fromIntegral x :: CInt)
   gunfold _ z c = case constrRep c of
                     (IntConstr x) -> z (fromIntegral x)
                     _ -> error "gunfold"

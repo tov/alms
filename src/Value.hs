@@ -321,6 +321,9 @@ instance Typeable ExnId where
 
 -- nasty syb stuff
 
+isString :: Data a => a -> Bool
+isString a = typeOf a == typeOf ""
+
 -- | Use SYB to attempt to turn a Haskell data type into an object
 --   language type declaration
 enumTypeDecl :: Data a => a -> String
@@ -328,9 +331,13 @@ enumTypeDecl a =
   case dataTypeRep ty of
     IntRep     -> add "int"
     FloatRep   -> add "float"
-    StringRep  -> add "string"
+    CharRep    -> add "char"
     NoRep      -> name
-    AlgRep cs  -> add (unwords (List.intersperse " | " (map showConstr cs)))
+    AlgRep cs 
+      | isString a
+               -> add "string"
+      | otherwise 
+               -> add (unwords (List.intersperse " | " (map showConstr cs)))
   where
     ty = dataTypeOf a
     add body = name ++ " = " ++ body
@@ -354,9 +361,12 @@ vinjData = generic
     where
   generic datum = case constrRep r of
       IntConstr    v -> vinj v
-      StringConstr v -> vinj v
-      FloatConstr  v -> vinj v
-      AlgConstr    _ -> c (unConst (gfoldl k z datum))
+      CharConstr   v -> vinj v
+      FloatConstr  v -> vinj (fromRational v :: Double)
+      AlgConstr    _
+        | Just s <- cast datum
+                     -> vinj (s :: String)
+        | otherwise  -> c (unConst (gfoldl k z datum))
     where
       r = toConstr datum
       k (Const Nothing)  x = Const (Just (vinjData x))
@@ -419,12 +429,14 @@ vprjDataM = generic
     IntRep       | Just i <- vprjM v,
                    Just d <- cast (i :: Integer)
             -> return d
+    -- May be broken in 6.12:
     FloatRep     | Just f <- vprjM v,
                    Just d <- cast (f :: Double)
             -> return d
-    StringRep    | Just s <- vprjM v,
-                   Just d <- cast (s :: String)
+    CharRep      | Just c <- vprjM v,
+                   Just d <- cast (c :: Char)
             -> return d
+    -- need special case for string?
     _       -> fail $ "(BUG) Can't project (VaDyn) " ++ show v ++
                       " as datatype: " ++ show ty
   generic v = fail $ "(BUG) Can't project " ++ show v ++

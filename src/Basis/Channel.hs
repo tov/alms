@@ -4,8 +4,6 @@ module Basis.Channel (Channel, entries) where
 import Data.Typeable (Typeable)
 import BasisUtils
 import Value (Value, Valuable(..))
-import Ppr (text)
-import Util
 
 import qualified Basis.Channel.Haskell as C
 

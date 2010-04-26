@@ -72,7 +72,7 @@ data TyTag =
   deriving (Show, Typeable, Data)
 
 -- | Type quantifers
-data Quant = Forall | Exists
+data Quant = Forall | Exists | QuantAnti Anti
   deriving (Typeable, Data, Eq)
 
 -- | Types are parameterized by [@i@], the type of information
@@ -301,6 +301,7 @@ instance Eq (Type TyTag) where
 instance Show Quant where
   show Forall = "all"
   show Exists = "ex"
+  show (QuantAnti a) = show a
 
 -- | The Type partial order
 instance PO (Type TyTag) where
