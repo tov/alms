@@ -335,7 +335,7 @@ tcType = tc where
   tc [$ty| '$tv |] = do
     tv' <- getTV tv
     return (TyVar tv')
-  tc (TyCon n ts _) = do
+  tc [$ty| ($list:ts) $qlid:n |] = do
     ts'  <- mapM tc ts
     tcon <- getType n
     case tcon of
@@ -362,8 +362,9 @@ tcType = tc where
           "Type constructor " ++ show n ++
           " used at " ++ show (map qualifier ts') ++
           " where at most " ++ show quals ++ " is permitted"
-  tc (TyQu u tv t) = withTVs [tv] $ \[tv'] -> TyQu u tv' `liftM` tc t
-  tc (TyMu  tv t) = withTVs [tv] $ \[tv'] -> do
+  tc [$ty| $quant:u '$tv . $t |] =
+    withTVs [tv] $ \[tv'] -> TyQu u tv' `liftM` tc t
+  tc [$ty| mu '$tv . $t |] = withTVs [tv] $ \[tv'] -> do
     t' <- tc t
     tassert (qualifier t' == tvqual tv) $
       "Recursive type " ++ show (TyMu tv t) ++ " qualifier " ++

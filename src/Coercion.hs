@@ -82,8 +82,8 @@ build recs (TyQu Exists tv t) (TyQu Exists tv' t') = do
   let tv''  = freshTyVar tv (ftv (tv, tv'))
   return $
     absContract $
-      [$ex|+@! fun (Pack('$tv'', e) : exists '$tv . $t) ->
-                 Pack[exists '$tv' . $t']('$tv'', $body e) |]
+      [$ex|+@! fun (Pack('$tv'', e) : ex '$tv . $t) ->
+                 Pack[ex '$tv' . $t']('$tv'', $body e) |]
 build recs (TyMu tv t) (TyMu tv' t') = do
   lid  <- freshLid
   let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
