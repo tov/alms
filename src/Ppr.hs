@@ -1,5 +1,4 @@
 -- | Pretty-printing
-{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       PatternGuards,
       QuasiQuotes

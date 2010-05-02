@@ -112,7 +112,7 @@ semi             = T.semi tok
 comma           :: CharParser st String
 comma            = T.comma tok
 colon           :: CharParser st String
-colon            = T.colon tok
+colon            = T.reservedOp tok ":" >> return ":"
 dot             :: CharParser st String
 dot              = T.dot tok
 semiSep         :: CharParser st a -> CharParser st [a]

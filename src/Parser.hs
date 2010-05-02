@@ -261,7 +261,7 @@ oplevelp  = liftM Lid . opP
 
 quantp :: P Quant
 quantp  = Forall <$ reserved "all"
-      <|> Exists <$ reserved "exists"
+      <|> Exists <$ reserved "ex"
       <|> antiblep
 
 typep  :: TyTagMode i => P (Type i)

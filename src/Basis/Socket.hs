@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -fcontext-stack=50 -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
       StandaloneDeriving
