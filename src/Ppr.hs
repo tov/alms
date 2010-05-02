@@ -257,12 +257,12 @@ instance Ppr (Expr i) where
           -> parensIf (p > p') $
                text x <+> pprPrec p' e2
     [$ex| ($name:x $e12) $e2 |] 
-      | (pl, pr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
+      | (dl, dr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
         p' < 9
           -> parensIf (p > p') $
-               sep [ pprPrec (p' + pl) e12,
+               sep [ pprPrec (p' + dl) e12,
                      text x,
-                     pprPrec (p' + pr) e2 ]
+                     pprPrec (p' + dr) e2 ]
     [$ex| $e1 $e2 |]
           -> parensIf (p > precApp) $
                sep [ pprPrec precApp e1,

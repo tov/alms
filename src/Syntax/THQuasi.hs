@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       DeriveDataTypeable,
       TemplateHaskell,
@@ -50,10 +51,10 @@ hsApp hs1 hs2              = HsApp hs1 hs2
 hsToExpQ :: HsAst -> ExpQ
 hsToExpQ hs0 = do
   name <- newName "underscore"
-  exp  <- loop (antiName name) hs0
+  expr <- loop (antiName name) hs0
   if hasUnderscore hs0
-    then lam1E (varP name) (return exp)
-    else return exp
+    then lam1E (varP name) (return expr)
+    else return expr
   where
   antiName def "_"  = def
   antiName _   name = mkName name

@@ -157,22 +157,23 @@ valOf e env = case view e of
     LtAnti a  -> antifail "dynamics" a
   ExCase e1 clauses -> do
     v1 <- valOf e1 env
-    let loop ((xi, ei):rest) = case bindPatt xi v1 env of
+    let loop (CaseAlt xi ei:rest) = case bindPatt xi v1 env of
           Just env' -> valOf ei env'
           Nothing   -> loop rest
-        loop [] = throwPatternMatch v1 (map (show . fst) clauses) env
+        loop [] = throwPatternMatch v1 (map (show . capatt) clauses) env
+        loop (CaAnti a:_) = antifail "dynamics" a
     loop clauses
   ExLetRec bs e2         -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
           return (envI =+= bnvar b =:= join (readIORef r), r : rs)
-    (env', rev_rs) <- foldM extend (env, []) (unAnti "dynamics" bs)
+    (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
       (\r b -> do
          v <- valOf (bnexpr b) env'
          writeIORef r (return v))
       (reverse rev_rs)
-      (unAnti "dynamics" bs)
+      bs
     valOf e2 env'
   ExLetDecl d e2         -> do
     env' <- evalDecl d env
@@ -228,12 +229,13 @@ bindPatt x0 v env = case x0 of
     -> return env
   [$pa| $lid:lid |]
     -> return (env =+= lid =:!= (lid `nameFun` v))
-  PaCon (J _ uid) mx False
-    -> case (mx, v) of
+  [$pa| $quid:qu $opt:mx |]
+    -> let uid = jname qu in
+       case (mx, v) of
       (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
       (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
       _                                             -> perr
-  PaCon qu mx True
+  [$pa| $quid:qu $opt:mx !!! |]
     -> do
       ei <- getExnId env qu
       case (mx, vprjM v) of
@@ -256,14 +258,16 @@ bindPatt x0 v env = case x0 of
     -> if v == vinj f
          then return env
          else perr
-  PaPack _ x
+  [$pa| Pack('$_, $x) |]
     -> bindPatt x v env
-  PaAs x lid
+  [$pa| $x as $lid:lid |]
     -> do
       env' <- bindPatt x v env
       return (env' =+= lid =:!= v)
-  [$pa| $anti:anti |]
-    -> antifail "dynamics" anti
+  [$pa| $anti:a |]
+    -> antifail "dynamics" a
+  [$pa| $antiL:a |]
+    -> antifail "dynamics" a
   where perr = fail $
                  "Pattern match failure: " ++ show x0 ++
                  " does not match " ++ show v

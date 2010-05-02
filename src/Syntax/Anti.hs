@@ -96,7 +96,7 @@ stx !!! msg = case prjAnti stx of
 deriveAntible :: TH.Name -> TH.Name -> TH.Q [TH.Dec]
 deriveAntible con = deriveAntibleType (resType =<< reify con) con
   where
-  resType (TH.DataConI _ t _ _) = loop t where
+  resType (TH.DataConI _ t0 _ _) = loop t0 where
     loop (TH.ForallT _ _ t) = loop t
     loop (TH.AppT (TH.AppT TH.ArrowT _) t) = return t
     loop _  = fail $ "deriveAntible: `" ++ show con ++ "' does not " ++
@@ -120,7 +120,7 @@ deriveAntibleType typ con dict =
                        ])
         dictOf _    = $(varE dict)
         injAntiList     = return . injAnti
-        prjAntiList [a] = prjAnti a
+        prjAntiList [b] = prjAnti b
         prjAntiList _   = Nothing
         dictOfList      = const listAntis
   |]

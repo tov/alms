@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-orphans #-}
 {-# LANGUAGE
       FlexibleInstances,
       QuasiQuotes,
@@ -31,7 +32,7 @@ class Ftv a where
   ftv :: a -> S.Set TyVar
 
 instance Ftv (Type i) where
-  ftv (TyCon _ ts _) = S.unions (map ftv (unAnti "ftv" ts))
+  ftv (TyCon _ ts _) = S.unions (map ftv ts)
   ftv (TyVar tv)     = S.singleton tv
   ftv (TyQu _ tv t)  = S.delete tv (ftv t)
   ftv (TyMu tv t)    = S.delete tv (ftv t)
@@ -53,7 +54,7 @@ instance FtvVs (Type TyTag) where
   ftvVs (TyCon _ ts td)= M.unionsWith (+)
                          [ M.map (* var) m
                          | var <- ttArity td
-                         | m   <- map ftvVs (unAnti "ftvVs" ts) ]
+                         | m   <- map ftvVs ts ]
   ftvVs (TyVar tv)     = M.singleton tv 1
   ftvVs (TyQu _ tv t)  = M.delete tv (ftvVs t)
   ftvVs (TyMu tv t)    = M.delete tv (ftvVs t)
@@ -123,14 +124,14 @@ tysubst a t = ts where
                      let a'' = freshTyVar a' (ftv (a, [t, t']))
                       in TyMu a'' (ts (tysubst a' (TyVar a'') t'))
   ts (TyCon c tys td)
-                = TyCon c (map ts `fmap` tys) td
+                = TyCon c (map ts tys) td
   ts (TyAnti an) = antierror "tysubst" an
 
 -- | Remove tycon information from a type
 removeTyTags :: Type i -> Type ()
 removeTyTags  = untype where
   untype :: Type i -> Type ()
-  untype (TyCon con args _) = TyCon con (map untype `fmap` args) ()
+  untype (TyCon con args _) = TyCon con (map untype args) ()
   untype (TyVar tv)         = TyVar tv
   untype (TyQu quant tv t)  = TyQu quant tv (untype t)
   untype (TyMu tv t)        = TyMu tv (untype t)
@@ -149,8 +150,8 @@ replaceTyTags tag' = everywhere (mkT each) where
 -- | Find the qualifier of a type (which must be decorated with
 --   tycon info)
 qualifier     :: TypeT -> Q
-qualifier [$ty|+ $listM:ps $qlid:_ $td |] = bigVee qs' where
-  qs  = map qualifier (unAnti "qualifier" ps)
+qualifier [$ty|+ ($list:ps) $qlid:_ $td |] = bigVee qs' where
+  qs  = map qualifier ps
   qs' = q : map (qs !!) ixs
   QualSet q ixs = ttQual td
 qualifier [$ty|+ '$tv |]              = tvqual tv
@@ -168,8 +169,8 @@ instance Eq TypeTEq where
   te1 == te2 = unTypeTEq te1 === unTypeTEq te2
     where
       (===) :: TypeT -> TypeT -> Bool
-      [$ty|+ $list:ps $qlid:_ $td |]
-        === [$ty|+@! $list:ps' $qlid:_ $td' |]
+      [$ty|+ ($list:ps) $qlid:_ $td |]
+        === [$ty|+@! ($list:ps') $qlid:_ $td' |]
                                  = td == td' && all2 (===) ps ps'
       TyVar x       === TyVar x' = x == x'
       TyQu u x t    === TyQu u' x' t'
@@ -198,8 +199,8 @@ instance Eq (Type TyTag) where
     t `cmp` [$ty|+ $p $qlid:_ $td:dual |]  = t `chk` dualSessionType p
     TyMu a t       `cmp` t'              = tysubst a (TyMu a t) t `chk` t'
     t'             `cmp` TyMu a t        = t' `chk` tysubst a (TyMu a t) t
-    [$ty|+ $list:ps $qlid:_ $td |]
-      `cmp` [$ty|+@! $list:ps' $qlid:_ $td' |]
+    [$ty|+ ($list:ps) $qlid:_ $td |]
+      `cmp` [$ty|+@! ($list:ps') $qlid:_ $td' |]
       | td == td'   = allM2 chk ps ps'
     TyVar x        `cmp` TyVar x'        = return (x == x')
     TyQu u x t     `cmp` TyQu u' x' t' 
@@ -212,7 +213,7 @@ instance Eq (Type TyTag) where
 instance PO (Type TyTag) where
   ifMJ bi t1i t2i = clean `liftM` chk [] bi t1i t2i where
     clean :: TypeT -> TypeT
-    clean (TyCon c ps td)  = TyCon c (map clean `fmap` ps) td
+    clean (TyCon c ps td)  = TyCon c (map clean ps) td
     clean (TyVar a)        = TyVar a
     clean (TyQu u a t)     = TyQu u a (clean t)
     clean (TyMu a t)
@@ -252,8 +253,8 @@ instance PO (Type TyTag) where
                               then TyCon (qlid "-o") ps0 tdLol
                               else TyCon (qlid "->") ps0 tdArr
     -- Otherwise:
-    cmp seen b [$ty|+ $list:ps $qlid:tc $td |]
-               [$ty|+ $list:ps' $qlid:_ $td' |] =
+    cmp seen b [$ty|+ ($list:ps) $qlid:tc $td |]
+               [$ty|+ ($list:ps') $qlid:_ $td' |] =
       if td == td' then do
         params <- sequence
           [ case var of
@@ -265,7 +266,7 @@ instance PO (Type TyTag) where
              | var <- ttArity td
              | p   <- ps
              | p'  <- ps' ]
-        return [$ty|+ $list:params $qlid:tc $td |]
+        return [$ty|+ ($list:params) $qlid:tc $td |]
       else fail "\\/? or /\\?: Does not exist"
     cmp seen b (TyQu u a t) (TyQu u' a' t') | u == u' = do
       qual <- ifMJ (not b) (tvqual a) (tvqual a')
@@ -289,11 +290,11 @@ dualSessionType  = d where
     = [$ty|+ $ta recv $td:recv ; $semi $tr' |] where tr' = d tr
   d [$ty|+ $ta recv $td:recv ; $semi $tr |]
     = [$ty|+ $ta send $td:send ; $semi $tr' |] where tr' = d tr
-  d [$ty|+ ($t1 + $sum $t2) select $td:select |]
-    = [$ty|+ ($t1' + $sum $t2') follow $td:follow |]
+  d [$ty|+ ($t1 + $plus $t2) select $td:select |]
+    = [$ty|+ ($t1' + $plus $t2') follow $td:follow |]
       where t1' = d t1; t2' = d t2
-  d [$ty|+ ($t1 + $sum $t2) follow $td:follow |]
-    = [$ty|+ ($t1' + $sum $t2') select $td:select |]
+  d [$ty|+ ($t1 + $plus $t2) follow $td:follow |]
+    = [$ty|+ ($t1' + $plus $t2') select $td:select |]
       where t1' = d t1; t2' = d t2
   d [$ty|+ mu '$tv . $t |]
     = [$ty|+ mu '$tv . $t' |] where t' = d t
