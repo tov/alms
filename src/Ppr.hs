@@ -68,22 +68,23 @@ instance Ppr (Type i) where
                       sep [ pprPrec (prec + 1) t1,
                             text n <+> pprPrec prec t2]
   pprPrec _ [$ty| $qlid:n |]  = ppr n
-  pprPrec p [$ty| $t $n |] = parensIf (p > precApp) $
+  pprPrec p [$ty| $t $qlid:n |]
+                              = parensIf (p > precApp) $
                                 sep [ pprPrec precApp t,
                                       ppr n ]
-  pprPrec p [$ty| $list:ts $n |]
+  pprPrec p [$ty| ($list:ts) $qlid:n |]
                           = parensIf (p > precApp) $
-                                sep [ parens (pprPrec p ts),
+                                sep [ parens (ppr ts),
                                       ppr n ]
   pprPrec p [$ty| '$x |]  = pprPrec p x
-  pprPrec p [$ty| $qu '$x. $t |]
+  pprPrec p [$ty| $quant:qu '$x. $t |]
                           = parensIf (p > precDot) $
                               ppr qu <+>
                               fsep (map (pprPrec (precDot + 1))
                                         tvs) <>
                               char '.'
                                 >+> pprPrec precDot body
-      where (tvs, body) = unfoldTyQu qu [$ty| $qu '$x. $t |]
+      where (tvs, body) = unfoldTyQu qu [$ty| $quant:qu '$x. $t |]
   pprPrec p [$ty| mu '$x. $t |]
                           = parensIf (p > precDot) $
                               text "mu" <+>
@@ -93,10 +94,10 @@ instance Ppr (Type i) where
   pprPrec p [$ty| $anti:a |] = pprPrec p a
 
 instance Ppr (Prog i) where
-  ppr (Prog ms Nothing)  = vcat (map ppr ms)
-  ppr (Prog [] (Just e)) = ppr e
-  ppr (Prog ms (Just e)) = vcat (map (ppr) ms) $+$
-                           (text "in" >+> ppr e)
+  ppr [$pr| $list:ms |]       = vcat (map ppr ms)
+  ppr [$pr| $expr:e |]        = ppr e
+  ppr [$pr| $list:ms in $e |] = vcat (map ppr ms) $+$
+                                 (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
   ppr [$dc| let $x = $e |] = sep
@@ -106,29 +107,32 @@ instance Ppr (Decl i) where
     [ text "let" <+> ppr x,
       nest 2 $ colon <+> ppr t,
       nest 4 $ equals <+> ppr e ]
-  ppr (DcTyp _ [])       = empty
-  ppr (DcTyp _ (td:tds)) =
+  ppr [$dc| type $list:tds0 |]
+    | td:tds <- tds0 =
     vcat $
       text "type" <+> ppr td :
       [ nest 1 $ text "and" <+> ppr td' | td' <- tds ]
-  ppr (DcAbs _ [] ds) =
-    vcat [
-      text "abstype with",
-      nest 2 $ vcat (map ppr ds),
-      text "end"
-    ]
-  ppr (DcAbs _ (at:ats) ds) =
-    vcat [
-      vcat (text "abstype" <> pprAbsTy at <+> text "with" :
-            [ nest 4 $ text "and" <+> pprAbsTy ati | ati <- ats ])
-        <+> text "with",
-      nest 2 $ vcat (map ppr ds),
-      text "end"
-    ]
+    | otherwise      = empty
+  ppr [$dc| abstype $list:ats0 with $list:ds end |] =
+    case ats0 of
+      []     ->
+        vcat [
+          text "abstype with",
+          nest 2 $ vcat (map ppr ds),
+          text "end"
+        ]
+      at:ats ->
+        vcat [
+          vcat (text "abstype" <> pprAbsTy at :
+                [ nest 4 $ text "and" <+> pprAbsTy ati | ati <- ats ])
+            <+> text "with",
+          nest 2 $ vcat (map ppr ds),
+          text "end"
+        ]
   ppr [$dc| open $b |] = pprModExp (text "open" <+>) b
-  ppr [$dc| module $n = $b |] = pprModExp add b where
+  ppr [$dc| module $uid:n = $b |] = pprModExp add b where
     add body = text "module" <+> ppr n <+> equals <+> body
-  ppr (DcLoc _ d0 d1) =
+  ppr [$dc| local $list:d0 with $list:d1 end |] =
     vcat [
       text "local",
       nest 2 (vcat (map ppr d0)),
@@ -136,22 +140,25 @@ instance Ppr (Decl i) where
       nest 2 (vcat (map ppr d1)),
       text "end"
     ]
-  ppr [$dc| exception $n of $maybe:t |] =
-    text "exception" <+> ppr n <+>
-    maybe empty ((text "of" <+>) . ppr) t
+  ppr [$dc| exception $uid:n |] =
+    text "exception" <+> ppr n
+  ppr [$dc| exception $uid:n of $t |] =
+    text "exception" <+> ppr n <+> text "of" <+> ppr t
   ppr [$dc| $anti:a |] = ppr a
 
 instance Ppr (TyDec i) where
   ppr (TdAbs n ps vs qs) = pprProtoV n vs ps >?> pprQuals qs
   ppr (TdSyn n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
   ppr (TdDat n ps alts)  = pprProto n ps >?> pprAlternatives alts
+  ppr (TdAnti a)         = ppr a
 
 pprAbsTy :: AbsTy i -> Doc
-pprAbsTy (variances, qual, TdDat name params alts) =
+pprAbsTy (AbsTy variances qual (TdDat name params alts)) =
     pprProtoV name variances params
       >?> pprQuals qual
       >?> pprAlternatives alts
-pprAbsTy (_, _, td) = ppr td -- shouldn't happen (yet)
+pprAbsTy (AbsTy _ _ td) = ppr td -- shouldn't happen (yet)
+pprAbsTy (AbsTyAnti a) = ppr a
 
 pprProto     :: Lid -> [TyVar] -> Doc
 pprProto n [tv1, tv2]
@@ -190,41 +197,40 @@ pprAlternatives (a:as) = sep $
 
 pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
 pprModExp add modexp = case modexp of
-    MeName n -> add (ppr n)
-    MeStr ds -> add (text "struct")
-                $$ nest 2 (vcat (map ppr ds))
-                $$ text "end"
-    MeAnti a -> add (ppr a)
+  [$me| $quid:n |] -> add (ppr n)
+  [$me| struct $list:ds end |] ->
+    add (text "struct")
+    $$ nest 2 (vcat (map ppr ds))
+    $$ text "end"
+  [$me| $anti:a |] -> add (ppr a)
 
 instance Ppr (Expr i) where
-  pprPrec p e0 = case view e0 of
-    ExId x    -> pprPrec p x
-    ExLit lt  -> pprPrec p lt
-    ExCase e1 clauses ->
-      case clauses of
-        [ (PaCon (J [] (Uid "true"))  Nothing False, et),
-          (PaCon (J [] (Uid "false")) Nothing False, ef) ] ->
-            parensIf (p > precDot) $
-              sep [ text "if" <+> ppr e1,
-                    nest 2 $ text "then" <+> ppr et,
-                    nest 2 $ text "else" <+> pprPrec precDot ef ]
-        [ (PaWild, e2) ] ->
-            parensIf (p > precSemi) $
-              sep [ pprPrec (precSemi + 1) e1 <> semi,
-                    ppr e2 ]
-        [ (x, e2) ] ->
-            pprLet p (ppr x) e1 e2
-        _ ->
-            parensIf (p > precDot) $
-              vcat (sep [ text "match",
-                          nest 2 $ ppr e1,
-                          text "with" ] : map alt clauses)
-            where
-              alt (xi, ei) =
-                hang (char '|' <+> pprPrec precDot xi <+> text "->")
-                      4
-                      (pprPrec precDot ei)
-    ExLetRec bs e2 ->
+  pprPrec p e0 = case e0 of
+    [$ex| $id:x |]   -> pprPrec p x
+    [$ex| $lit:lt |] -> pprPrec p lt
+    [$ex| if $ec then $et else $ef |] ->
+      parensIf (p > precDot) $
+        sep [ text "if" <+> ppr ec,
+              nest 2 $ text "then" <+> ppr et,
+              nest 2 $ text "else" <+> pprPrec precDot ef ]
+    [$ex| $e1; $e2 |] ->
+      parensIf (p > precSemi) $
+        sep [ pprPrec (precSemi + 1) e1 <> semi,
+              ppr e2 ]
+    [$ex| let $lid:x = $e1 in $e2 |] ->
+      pprLet p (ppr x) e1 e2
+    [$ex| match $e1 with $list:clauses |] ->
+      parensIf (p > precDot) $
+        vcat (sep [ text "match",
+                    nest 2 $ ppr e1,
+                    text "with" ] : map alt clauses)
+      where
+        alt (CaseAlt xi ei) =
+          hang (char '|' <+> pprPrec precDot xi <+> text "->")
+                4
+                (pprPrec precDot ei)
+        alt (CaAnti a)      = char '|' <+> ppr a
+    [$ex| let rec $list:bs in $e2 |] ->
       text "let" <+>
       vcat (zipWith each ("rec" : repeat "and") bs) $$
       text "in" <+> pprPrec precDot e2
@@ -236,46 +242,45 @@ instance Ppr (Expr i) where
                        (colon <+> ppr t <+> equals))
                  2
                  (ppr e)
-    ExLetDecl d e2 ->
+          each kw (BnAnti a) = text kw <+> ppr a
+    [$ex| let $decl:d in $e2 |] ->
       text "let" <+> ppr d $$
       (text "in" >+> pprPrec precDot e2)
-    ExPair e1 e2 ->
+    [$ex| ($e1, $e2) |] ->
       parensIf (p > precCom) $
         sep [ pprPrec precCom e1 <> comma,
               pprPrec (precCom + 1) e2 ]
-    ExAbs _ _ _ -> pprAbs p e0
-    ExApp e1 e2
-      | ExId (J [] (Var (Lid x))) <- view e1,
-        Right p' <- precOp x,
+    [$ex| fun $_ : $_ -> $_ |] -> pprAbs p e0
+    [$ex| $name:x $e2 |]
+      | Right p' <- precOp x,
         p' == 10
           -> parensIf (p > p') $
                text x <+> pprPrec p' e2
-      | ExApp e11 e12 <- view e1,
-        ExId (J [] (Var (Lid x))) <- view e11,
-        (pl, pr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
+    [$ex| ($name:x $e12) $e2 |] 
+      | (pl, pr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
         p' < 9
           -> parensIf (p > p') $
                sep [ pprPrec (p' + pl) e12,
                      text x,
                      pprPrec (p' + pr) e2 ]
-      | otherwise
+    [$ex| $e1 $e2 |]
           -> parensIf (p > precApp) $
                sep [ pprPrec precApp e1,
                      pprPrec (precApp + 1) e2 ]
-    ExTAbs _ _  -> pprAbs p e0
-    ExTApp _ _  ->
+    [$ex| fun '$_ -> $_ |] -> pprAbs p e0
+    [$ex| $_ [$_] |] ->
       parensIf (p > precTApp) $
         cat [ pprPrec precTApp op,
               brackets . fsep . punctuate comma $
                 map (pprPrec precCom) args ]
       where 
         (args, op) = unfoldExTApp e0
-    ExPack t1 t2 e ->
+    [$ex| Pack[$opt:t1]($t2, $e) |] ->
       parensIf (p > precApp) $
         text "Pack" <> maybe empty (brackets . ppr) t1 <+>
         parens (sep [ pprPrec (precCom + 1) t2 <> comma,
                       pprPrec precCom e ])
-    ExCast e t1 t2 ->
+    [$ex| ( $e : $opt:t1 :> $t2 ) |] ->
       parensIf (p > precCast) $
         sep (pprPrec (precCast + 2) e :
              maybe [] (\t1' -> [
@@ -284,7 +289,7 @@ instance Ppr (Expr i) where
              ]) t1 ++
              [ text ":>",
                pprPrec (precCast + 2) t2 ])
-    ExAnti a -> pprPrec p a
+    [$ex| $anti:a |] -> pprPrec p a
 
 pprLet :: Int -> Doc -> Expr i -> Expr i -> Doc
 pprLet p pat e1 e2 = parensIf (p > precDot) $
@@ -305,14 +310,14 @@ pprAbs p e = parensIf (p > precDot) $
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         argsDoc = case args of
-          [Left (PaWild, TyCon (J [] (Lid "unit")) [] _)]
+          [Left ([$pa| _ |], [$ty| unit |])]
                         -> parens empty
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
 pprArgList :: [Either (Patt, Type i) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
-  eachArg (Left (PaWild, TyCon (J [] (Lid "unit")) [] _))
+  eachArg (Left ([$pa| _ |], [$ty| unit |]))
                           = parens empty
   eachArg (Left (x, t))   = parens $
                               ppr x
@@ -329,29 +334,36 @@ pprArgList = fsep . map eachArg . combine where
     each (Left a)  es              = Left a : es
 
 instance Ppr Patt where
-  pprPrec _ PaWild                 = text "_"
-  pprPrec _ (PaVar lid)            = ppr lid
-  pprPrec _ (PaCon uid Nothing _)  = ppr uid
-  pprPrec p (PaCon uid (Just x) _) = parensIf (p > precApp) $
-                                       pprPrec precApp uid <+>
+  pprPrec _ [$pa| _ |]             = text "_"
+  pprPrec _ [$pa| $lid:lid |]      = ppr lid
+  pprPrec _ [$pa| $quid:qu |]      = ppr qu
+  pprPrec p [$pa| $quid:qu $x |]   = parensIf (p > precApp) $
+                                       pprPrec precApp qu <+>
                                        pprPrec (precApp + 1) x
-  pprPrec p (PaPair x y)           = parensIf (p > precCom) $
+  -- ICK!  TODO: get rid of the next two cases:
+  pprPrec _ [$pa| $quid:qu !!! |]  = ppr qu
+  pprPrec p [$pa| $quid:qu $x !!! |]
+                                   = parensIf (p > precApp) $
+                                       pprPrec precApp qu <+>
+                                       pprPrec (precApp + 1) x
+  pprPrec p [$pa| ($x, $y) |]      = parensIf (p > precCom) $
                                        pprPrec precCom x <> comma <+>
                                        pprPrec (precCom + 1) y
-  pprPrec p (PaLit lt)             = pprPrec p lt
-  pprPrec p (PaAs x lid)           = parensIf (p > precDot) $
+  pprPrec p [$pa| $lit:lt |]       = pprPrec p lt
+  pprPrec p [$pa| $x as $lid:l |]  = parensIf (p > precDot) $
                                        pprPrec (precDot + 1) x <+>
-                                       text "as" <+> ppr lid
-  pprPrec p (PaPack tv x)          = parensIf (p > precApp) $
+                                       text "as" <+> ppr l
+  pprPrec p [$pa| Pack('$tv,$x) |] = parensIf (p > precApp) $
                                        text "Pack" <+> parens (sep pair)
     where pair = [ pprPrec (precCom + 1) tv <> comma,
                    pprPrec precCom x ]
-  pprPrec p (PaAnti a)             = pprPrec p a
+  pprPrec p [$pa| $anti:a |]       = pprPrec p a
 
 instance Ppr Lit where
   ppr (LtInt i)   = integer i
   ppr (LtFloat f) = double f
   ppr (LtStr s)   = text (show s)
+  ppr (LtAnti a)  = ppr a
 
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
@@ -369,11 +381,7 @@ instance Ppr Uid       where pprPrec = pprFromShow
 instance Ppr BIdent    where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
 instance Ppr Anti      where pprPrec = pprFromShow
-instance Show a => Ppr (MAnti a) where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
-
-instance Show TypeTEq where
-  showsPrec p (TypeTEq t) = showsPrec p t
 
 showFromPpr :: Ppr a => Int -> a -> ShowS
 showFromPpr p t = shows (pprPrec p t)

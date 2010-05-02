@@ -279,11 +279,11 @@ transform env = loop where
               Just pj' ->
                 (ren pj',
                  transform (env `S.union` pv pj) ej)
-          | (pj, ej) <- bs ],
+          | CaseAlt pj ej <- bs ],
         vars <- [ v | v <- foldl L.union e0_vars (map (fst . snd) bs'),
                       v `S.member` ren env ],
         code <- exCase e0_code $
-                  [ (pj, kill (pv (ren p0) `S.difference` pv pj) $
+                  [ CaseAlt pj (kill (pv (ren p0) `S.difference` pv pj) $
                          exLet' (PaVar r1 -:: ej_vars) ej_code $
                            (exBVar r1 +:: vars))
                   | (pj, (ej_vars, ej_code)) <- bs' ]
@@ -297,17 +297,19 @@ transform env = loop where
                             (length bs == 1)
                             (\vars patt expr -> (patt, (vars, expr)))
                             env pj' ej
-          | (pj, ej) <- bs ],
+          | CaseAlt pj ej <- bs ],
         vars <- foldl L.union e0_vars (map (fst . snd) bs'),
         code <- exLet' (PaVar r1 -:: e0_vars) e0_code $
                 exCase (exBVar r1) $
-                  [ (pj, exLet' (PaVar r2 -:: ej_vars) ej_code $
-                           (exBVar r2 +:: vars))
+                  [ CaseAlt pj
+                            (exLet' (PaVar r2 -:: ej_vars) ej_code $
+                               exBVar r2 +:: vars)
                   | (pj, (ej_vars, ej_code)) <- bs' ]
         -> (vars, code)
 
     ExLetRec bs e1
-        -> binder (exLetRec bs) (shadow (S.fromList (map bnvar bs)) e1)
+        -> binder (exLetRec bs)
+             (shadow (S.fromList (map bnvar bs)) e1)
 
     ExLetDecl ds e1
         -> binder (exLetDecl ds) (loop e1)

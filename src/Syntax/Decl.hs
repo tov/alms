@@ -1,10 +1,11 @@
 {-# LANGUAGE
-      DeriveDataTypeable #-}
+      DeriveDataTypeable,
+      TemplateHaskell #-}
 module Syntax.Decl (
   -- * Declarations
   Decl(..), DeclT,
   -- ** Type declarations
-  TyDec(..), AbsTy,
+  TyDec(..), AbsTy(..),
   TyDecT, AbsTyT,
   -- ** Modules
   ModExp(..), ModExpT,
@@ -103,11 +104,18 @@ data TyDec i
     tdaParams    :: [TyVar],
     tdaAlts      :: [(Uid, Maybe (Type i))]
   }
+  | TdAnti Anti
   deriving (Typeable, Data)
 
 -- | An abstract type in language A needs to specify variances
 -- and the qualifier
-type AbsTy i = ([Variance], [Either TyVar Q], TyDec i)
+data AbsTy i = AbsTy {
+                 atvariance :: [Variance],
+                 atquals    :: [Either TyVar Q],
+                 atdecl     :: TyDec i
+               }
+             | AbsTyAnti Anti
+  deriving (Typeable, Data)
 
 -- | A module expression
 data ModExp i

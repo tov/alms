@@ -154,6 +154,7 @@ valOf e env = case view e of
     LtStr s   -> return (vinj s)
     LtInt z   -> return (vinj z)
     LtFloat f -> return (vinj f)
+    LtAnti a  -> antifail "dynamics" a
   ExCase e1 clauses -> do
     v1 <- valOf e1 env
     let loop ((xi, ei):rest) = case bindPatt xi v1 env of
@@ -165,13 +166,13 @@ valOf e env = case view e of
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
           return (envI =+= bnvar b =:= join (readIORef r), r : rs)
-    (env', rev_rs) <- foldM extend (env, []) bs
+    (env', rev_rs) <- foldM extend (env, []) (unAnti "dynamics" bs)
     zipWithM_
       (\r b -> do
          v <- valOf (bnexpr b) env'
          writeIORef r (return v))
       (reverse rev_rs)
-      bs
+      (unAnti "dynamics" bs)
     valOf e2 env'
   ExLetDecl d e2         -> do
     env' <- evalDecl d env

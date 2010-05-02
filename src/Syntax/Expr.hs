@@ -6,6 +6,7 @@ module Syntax.Expr (
   Expr(..), ExprT, Expr'(..),
   -- ** Letrec bindings
   Binding(..), BindingT,
+  CaseAlt(..), CaseAltT,
 
   -- * Two-level expression constructors
   -- | These fill in the source location field based on the
@@ -65,7 +66,7 @@ data Expr' i
   -- | literals
   | ExLit Lit
   -- | case expressions (including desugared @if@ and @let@)
-  | ExCase (Expr i) [(Patt, Expr i)]
+  | ExCase (Expr i) [CaseAlt i]
   -- | recursive let expressions
   | ExLetRec [Binding i] (Expr i)
   -- | nested declarations
@@ -90,16 +91,26 @@ data Expr' i
 
 -- | Let-rec bindings require us to give types
 data Binding i = Binding {
-  bnvar  :: Lid,
-  bntype :: Type i,
-  bnexpr :: Expr i
-}
+                   bnvar  :: Lid,
+                   bntype :: Type i,
+                   bnexpr :: Expr i
+               }
+               | BnAnti Anti
+  deriving (Typeable, Data)
+
+data CaseAlt i = CaseAlt {
+                   capatt :: Patt,
+                   caexpr :: Expr i
+               }
+               | CaAnti Anti
   deriving (Typeable, Data)
 
 -- | A type-checked expression (has tycon info)
 type ExprT    = Expr TyTag
 -- | A type-checked let-rec binding (has tycon info)
 type BindingT = Binding TyTag
+-- | A type-checked case clause (has tycon info)
+type CaseAltT = CaseAlt TyTag
 
 -- | Accessor for the free variables field of expressions
 fv :: Expr i -> FV
@@ -132,12 +143,13 @@ mkexpr0 e' = expr0 { expr_  = e' }
 exLit :: Lit -> Expr i
 exLit  = mkexpr0 . ExLit
 
-exCase  :: Expr i -> [(Patt, Expr i)] -> Expr i
-exCase e clauses = expr0 {
-  eloc_  = getLoc (e, map snd clauses),
+exCase  :: Expr i -> [CaseAlt i] -> Expr i
+exCase e alts = expr0 {
+  eloc_  = getLoc (e, alts),
   fv_    = fv e |*|
-           foldl (|+|) M.empty [ fv ex |--| pv x | (x, ex) <- clauses ],
-  expr_  = ExCase e clauses
+           foldl (|+|) M.empty [ fv ex |--| pv x
+                               | CaseAlt x ex <- alts ],
+  expr_  = ExCase e alts
 }
 
 exLetRec :: [Binding i] -> Expr i -> Expr i
@@ -242,10 +254,10 @@ exFloat :: Double -> Expr i
 exFloat  = exLit . LtFloat
 
 exLet :: Patt -> Expr i -> Expr i -> Expr i
-exLet x e1 e2 = exCase e1 [(x, e2)]
+exLet x e1 e2 = exCase e1 [CaseAlt x e2]
 
 exSeq :: Expr i -> Expr i -> Expr i
-exSeq e1 e2 = exCase e1 [(PaWild, e2)]
+exSeq e1 e2 = exCase e1 [CaseAlt PaWild e2]
 
 -- | Constructs a let expression, but with a special case:
 --
@@ -328,7 +340,12 @@ instance Relocatable (Expr i) where
   setLoc e loc = e { eloc_ = loc }
 
 instance Locatable (Binding i) where
-  getLoc = getLoc . bnexpr
+  getLoc Binding { bnexpr = e } = getLoc e
+  getLoc (BnAnti _) = bogus
+
+instance Locatable (CaseAlt i) where
+  getLoc CaseAlt { caexpr = e } = getLoc e
+  getLoc (CaAnti _) = bogus
 
 -- | Is the expression conservatively side-effect free?
 syntacticValue :: Expr i -> Bool

@@ -1,3 +1,5 @@
+{-# LANGUAGE
+      TemplateHaskell #-}
 -----------------------------------------------------------------------------
 -- |
 -- This module provides syntax and basic syntax operations for
@@ -39,6 +41,24 @@ import Syntax.Decl
 import Util
 import Viewable
 
+deriveAntible 'LtAnti    'litAntis
+deriveAntible 'PaAnti    'pattAntis
+deriveAntible 'ExAnti    'noAntis
+deriveAntible 'BnAnti    'bindingAntis
+deriveAntible 'CaAnti    'caseAltAntis
+deriveAntible 'TyAnti    'typeAntis
+deriveAntible 'QuantAnti 'quantAntis
+deriveAntible 'TyTagAnti 'tyTagAntis
+deriveAntible 'DcAnti    'declAntis
+deriveAntible 'TdAnti    'tyDecAntis
+deriveAntible 'AbsTyAnti 'absTyAntis
+deriveAntible 'MeAnti    'modExpAntis
+
+instance Antible (Expr i) where
+  injAnti = exAnti
+  prjAnti = prjAnti . view
+  dictOf  = const exprAntis
+
 -- Unfolding various sequences
 
 -- | Get the list of formal parameters and body of a
@@ -73,8 +93,9 @@ unfoldExApp  = unscanl each where
 -- | Get the list of argument types and result type of a function type
 unfoldTyFun :: TypeT -> ([TypeT], TypeT)
 unfoldTyFun  = unscanr each where
-  each (TyCon _ [ta, tr] td) | td `elem` funtypes = Just (ta, tr)
-  each _                                         = Nothing
+  each (TyCon _ [ta, tr] td)
+    | td `elem` funtypes = Just (ta, tr)
+  each _                 = Nothing
 
 unfoldTupleExpr :: Expr i -> ([Expr i], Expr i)
 unfoldTupleExpr  = unscanl each where

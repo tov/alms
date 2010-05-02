@@ -12,8 +12,6 @@ module Syntax.Ident (
   Ident, QLid, QUid,
   TyVar(..),
   isOperator, qlid, quid,
-  -- ** Identifier antiquotes
-  AntiIdentifier(..)
 ) where
 
 import Env (Path(..), (:>:)(..))
@@ -105,36 +103,46 @@ instance (:>:) BIdent Uid     where liftKey = Con
 --- Identifier antiquotes
 ---
 
-class AntiIdentifier a where
-  antiToIdent  :: Anti -> a
-  identToAnti  :: a -> Maybe Anti
-
-instance AntiIdentifier String where
-  antiToIdent (Anti t a) =
-    "{$" ++ t ++ ":" ++ a ++ "}"
-  identToAnti s = do
-    [ '{':'$':t , n' ] <- return $ splitBy (== ':') s
-    [ n              ] <- return $ splitBy (== '}') n'
+instance Antible Char where
+  injAntiList (Anti t a) =
+    "$" ++ t ++ ":" ++ a
+  prjAntiList s = do
+    [ '$':t , n ] <- return $ splitBy (== ':') s
     return (Anti t n)
+  dictOfList _  = error "dictOf: No AntiDict for String"
+  injAnti _ = error "injAnti: Not defined for Char"
+  prjAnti _ = error "prjAnti: Not defined for Char"
+  dictOf _  = error "dictOf: Not defined for Char"
 
-instance AntiIdentifier Lid where
-  antiToIdent = Lid . antiToIdent
-  identToAnti = identToAnti . unLid
+instance Antible Lid where
+  injAnti = Lid . injAnti
+  prjAnti = prjAnti . unLid
+  dictOf  = const lidAntis
 
-instance AntiIdentifier Uid where
-  antiToIdent = Uid . antiToIdent
-  identToAnti = identToAnti . unUid
+instance Antible Uid where
+  injAnti = Uid . injAnti
+  prjAnti = prjAnti . unUid
+  dictOf  = const uidAntis
 
-instance AntiIdentifier TyVar where
-  antiToIdent = flip TV Qu . antiToIdent
-  identToAnti = identToAnti . tvname
+instance Antible TyVar where
+  injAnti = flip TV Qu . injAnti
+  prjAnti = prjAnti . tvname
+  dictOf  = const tyVarAntis
 
-instance AntiIdentifier BIdent where
-  antiToIdent         = Var . antiToIdent
-  identToAnti (Var l) = identToAnti l
-  identToAnti (Con u) = identToAnti u
+instance Antible Ident where
+  injAnti         = J [] . Var . injAnti
+  prjAnti (J [] (Var l)) = prjAnti l
+  prjAnti _              = Nothing
+  dictOf                 = const idAntis
 
-instance AntiIdentifier a => AntiIdentifier (Path Uid a) where
-  antiToIdent          = J [] . antiToIdent
-  identToAnti (J [] i) = identToAnti i
-  identToAnti _        = Nothing
+instance Antible QLid where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qlidAntis
+
+instance Antible QUid where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const quidAntis

@@ -1,15 +1,18 @@
 -- | Converts coercion expressions to dynamic checks.
 {-# LANGUAGE
-      PatternGuards #-}
+      PatternGuards,
+      QuasiQuotes #-}
 module Coercion  (
   coerceExpression,
   translate, translateDecls, TEnv, tenv0
 ) where
 
-import Util
-import Syntax
 import Loc
 import Ppr ()
+import Quasi
+import Syntax
+import TypeRel
+import Util
 
 import qualified Data.Map as M
 import qualified Control.Monad.State as CMS
@@ -44,8 +47,8 @@ build :: Monad m =>
          M.Map (TyVar, TyVar) (Maybe Lid) -> TypeT -> TypeT ->
          CMS.StateT Integer m ExprT
 build recs tfrom tto
-  | (tvs,  TyCon _ [t1,  t2]  info)  <- unfoldTyQu Forall tfrom,
-    (tvs', TyCon _ [t1', t2'] info') <- unfoldTyQu Forall tto,
+  | (tvs,  [$ty|+ ($t1, $t2)   $qlid:_ $info  |]) <- unfoldTyQu Forall tfrom,
+    (tvs', [$ty|+ ($t1', $t2') $qlid:_ $info' |]) <- unfoldTyQu Forall tto,
     length tvs == length tvs',
     info `elem` funtypes && info' `elem` funtypes,
     which <- "INTERNALS.Contract." ++
@@ -75,30 +78,24 @@ build recs tfrom tto
                exBVar (Lid "x")
 build recs (TyQu Exists tv t) (TyQu Exists tv' t') = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
-  body <- build recs' t t'
-  let tv'' = freshTyVar tv (ftv (tv, tv'))
+  body <- build recs' t t' >>! instContract
+  let tv''  = freshTyVar tv (ftv (tv, tv'))
   return $
     absContract $
-      exAbs (PaPack tv'' (PaVar (Lid "e")))
-            (TyQu Exists tv t) $
-        exPack (Just (TyQu Exists tv' t'))
-               (TyVar tv'') $
-          instContract body `exApp` exBVar (Lid "e")
+      [$ex|+@! fun (Pack('$tv'', e) : exists '$tv . $t) ->
+                 Pack[exists '$tv' . $t']('$tv'', $body e) |]
 build recs (TyMu tv t) (TyMu tv' t') = do
   lid  <- freshLid
   let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
   body <- build recs' t t'
   return $
-    exLetRec [Binding {
-                bnvar  = lid,
-                bntype = tyTupleT tyPartyT tyPartyT
-                          `tyArrT` TyMu tv t
-                          `tyArrT` TyMu tv' t',
-                bnexpr = exAbsVar' (Lid "parties")
-                                   (tyTupleT tyPartyT tyPartyT) $
-                           body `exApp` exBVar (Lid "parties")
-             }] $
-      exBVar lid
+    [$ex|+@!
+      let rec $lid:lid
+              (parties : party $tdString * $tdTuple party $tdString)
+                       : (mu '$tv . $t) -> $tdArr mu '$tv' . $t'
+          = $body parties
+       in $lid:lid
+    |]
 build recs (TyVar tv) (TyVar tv')
   | Just (Just lid) <- M.lookup (tv, tv') recs
     = return $ exBVar lid
@@ -131,5 +128,5 @@ freshLid = do
   return (Lid ("c" ++ show n))
 
 tyPartyT :: TypeT
-tyPartyT  = TyCon (qlid "INTERNALS.Contract.party") [] tdString
+tyPartyT  = [$ty|+ INTERNALS.Contract.party $td:string |]
 

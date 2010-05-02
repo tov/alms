@@ -1,5 +1,6 @@
 {-# LANGUAGE
-      DeriveDataTypeable #-}
+      DeriveDataTypeable,
+      TemplateHaskell #-}
 module Syntax.Patt (
   Patt(..), pv, ptv
 ) where
@@ -9,7 +10,7 @@ import Syntax.Ident
 import Syntax.Lit
 
 import qualified Data.Set as S
-import Data.Generics (Typeable, Data, everything, mkQ, extQ)
+import Data.Generics (Typeable, Data, everything, mkQ)
 
 -- | Patterns
 data Patt
@@ -44,4 +45,4 @@ pv (PaPack _ x)         = pv x
 pv (PaAnti a)           = antierror "pv" a
 
 ptv :: Patt -> S.Set TyVar
-ptv = everything S.union $ mkQ S.empty S.singleton `extQ` unAnti "ptv"
+ptv = everything S.union $ mkQ S.empty S.singleton

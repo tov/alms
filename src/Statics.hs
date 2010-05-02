@@ -25,6 +25,7 @@ import Syntax
 import Loc
 import Env as Env
 import Ppr ()
+import TypeRel
 import Coercion (coerceExpression)
 
 import Data.Data (Typeable, Data)
@@ -331,7 +332,7 @@ tcType :: (?loc :: Loc, Monad m) =>
           Type i -> TC m TypeT
 tcType = tc where
   tc :: Monad m => Type i -> TC m TypeT
-  tc [$ty| $tv:tv |] = do
+  tc [$ty| '$tv |] = do
     tv' <- getTV tv
     return (TyVar tv')
   tc (TyCon n ts _) = do
@@ -402,7 +403,7 @@ tcExpr = tc where
             t1 ts
       return (tr, exCase e' clauses')
     ExLetRec bs e2 -> do
-      tfs <- mapM (tcType . bntype) bs
+      tfs <- mapM (tcType . bntype) (unAnti "statics" bs)
       let makeG seen (b:bs') (t:ts') = do
             tassert (bnvar b `notElem` seen) $
               "Duplicate binding in let rec: " ++ show (bnvar b)
@@ -413,8 +414,9 @@ tcExpr = tc where
             g' <- makeG (bnvar b : seen) bs' ts'
             return (g' =+= bnvar b =:= t)
           makeG _    _       _       = return empty
-      g'  <- makeG [] bs tfs
-      (tas, e's) <- unzip `liftM` mapM (withVars g' . tc . bnexpr) bs
+      g'  <- makeG [] (unAnti "statics" bs) tfs
+      (tas, e's) <- unzip `liftM` mapM (withVars g' . tc . bnexpr)
+                                       (unAnti "statics" bs)
       zipWithM_ (\tf ta ->
                    tassert (ta <: tf) $
                       "Actual type " ++ show ta ++
@@ -423,8 +425,8 @@ tcExpr = tc where
                 tfs tas
       (t2, e2') <- withVars g' $ tc e2
       let b's = zipWith3 (\b tf e' -> b { bntype = tf, bnexpr = e' })
-                         bs tfs e's
-      return (t2, exLetRec b's e2')
+                         (unAnti "statics" bs) tfs e's
+      return (t2, exLetRec (JA b's) e2')
     ExLetDecl d e2 ->
       withDecl d $ \d' -> do
         (t2, e2') <- tc e2
@@ -457,7 +459,7 @@ tcExpr = tc where
     ExPack mt1 t2 e -> do
       t2'      <- tcType t2
       (te, e') <- tc e
-      t1'      <- case mt1 of
+      t1'      <- case unAnti "statics" mt1 of
         Just t1 -> tcType t1
         Nothing -> return (makeExType te t2')
       case t1' of
@@ -467,11 +469,11 @@ tcExpr = tc where
             "Could not pack type " ++ show te ++
             " (abstracting " ++ show t2 ++
             ") to get " ++ show t1'
-          return (t1', exPack (Just t1') t2' e')
+          return (t1', exPack (JA (Just t1')) t2' e')
         _ -> tgot "Pack[-]" t1' "ex(istential) type"
     ExCast e1 mt ta -> do
       (t1, e1') <- tc e1
-      t'  <- maybe (return t1) tcType mt
+      t'  <- maybe (return t1) tcType (unAnti "statics" mt)
       ta' <- tcType ta
       tassgot (castableType ta')
         "cast (:>)" t' "function type"
@@ -1177,14 +1179,14 @@ addMod gg0 x k = do
 tcProg :: Monad m => S -> Prog i -> m (TypeT, ProgT)
 tcProg gg (Prog ds me) =
   runTC gg $
-    withDecls ds $ \ds' -> do
+    withDecls (unAnti "statics" ds) $ \ds' -> do
       (t, e') <- case me of
                    Just e  -> do
                      (t, e') <- tcExpr e
                      return (t, Just e')
                    Nothing -> do
                      return (tyUnitT, Nothing)
-      return (t, Prog ds' e')
+      return (t, Prog (JA ds') e')
 
 -- | The initial type-checking state
 --

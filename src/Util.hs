@@ -25,13 +25,15 @@ module Util (
 
   -- * Re-exports
   module Control.Arrow,
-  module Control.Monad
+  module Control.Monad,
+  module Control.Applicative
 ) where
 
 import Data.Char (chr, ord)
 import Data.Maybe (fromJust)
 import Control.Arrow hiding (loop, (<+>))
 import Control.Monad
+import Control.Applicative (Applicative(..), (<$>), (<$), (<**>))
 
 -- | Right-associative monadic fold
 foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a
