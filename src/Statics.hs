@@ -443,8 +443,8 @@ tcExpr = tc where
       checkSharing "lambda" gx e
       unworthy <- isUnworthy e0
       return (if unworthy
-                then [$ty|+ $t' -o $td:lol $te |]
-                else [$ty|+ $t' -> $td:arr $te |],
+                then [$ty|+ $t' -o $te |]
+                else [$ty|+ $t' -> $te |],
               [$ex|+ fun ($x' : $t') -> $e' |])
     [$ex| $_ $_ |] -> do
       tcExApp tc e0
@@ -528,7 +528,7 @@ tcExApp tc e0 = do
         arrows t1' ts
       arrows tr                   [] = return tr
       arrows t'@(TyQu Forall _ _) ts = foralls t' ts
-      arrows (TyCon _ [ta, tr] td) (t:ts) | td `elem` funtypes = do
+      arrows [$ty| $ta -[$_]> $tr |] (t:ts) = do
         b <- unifies [] t ta
         tassgot b "Application (operand)" t (show ta)
         arrows tr ts
@@ -574,7 +574,7 @@ tcPatt t x0 = case x0 of
     TyCon _ ts _ -> do
       tu <- getVar (fmap Con u)
       (params, mt, res) <- case unfoldTyQu Forall tu of
-        (params, TyCon _ [arg, res] info) | info == tdArr
+        (params, [$ty|+ $arg -> $res |])
           -> return (params, Just arg, res)
         (params, res)
           -> return (params, Nothing, res)
@@ -945,7 +945,7 @@ withExn n mt k = do
 
 -- Is the given type the type of an exception constructor?
 findIsExn :: TypeT -> Bool
-findIsExn [$ty|+ $_ -> $td:arr $qlid:_ $td:exn |] = True
+findIsExn [$ty|+ $_ -> $qlid:_ $td:exn |] = True
 findIsExn [$ty|+ $qlid:_ $td:exn |] = True
 findIsExn _ = False
 

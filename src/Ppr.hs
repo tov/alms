@@ -57,6 +57,13 @@ instance Ppr (Type i) where
                   = parensIf (p > precSemi) $
                       sep [ pprPrec (precSemi + 1) t1 <> text ";",
                             pprPrec precSemi t2 ]
+  pprPrec p [$ty| $t1 -[$q]> $t2 |]
+                  = parensIf (p > precArr) $
+                    sep [ pprPrec (precArr + 1) t1,
+                          pprArr q <+> pprPrec precArr t2 ]
+    where pprArr [$ty| U |] = text "->"
+          pprArr [$ty| A |] = text "-o"
+          pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
   pprPrec p [$ty| ($t1, $t2) $name:n |]
     | isOperator (Lid n)
                   = case precOp n of
@@ -67,6 +74,7 @@ instance Ppr (Type i) where
                       sep [ pprPrec (prec + 1) t1,
                             text n <+> pprPrec prec t2]
   pprPrec _ [$ty| $qlid:n |]  = ppr n
+    -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   pprPrec p [$ty| $t $qlid:n |]
                               = parensIf (p > precApp) $
                                 sep [ pprPrec precApp t,
@@ -75,6 +83,7 @@ instance Ppr (Type i) where
                           = parensIf (p > precApp) $
                                 sep [ parens (ppr ts),
                                       ppr n ]
+    -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   pprPrec p [$ty| '$x |]  = pprPrec p x
   pprPrec p [$ty| $quant:qu '$x. $t |]
                           = parensIf (p > precDot) $

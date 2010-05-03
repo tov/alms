@@ -5,8 +5,9 @@ module Lexer (
 
   -- * Special, unreserved operators
   sharpLoad,
-  bang, lolli, arrow, star, slash, plus,
-  qualU, qualA, langC, langA,
+  bang, star, slash, plus,
+  lolli, arrow, funbraces, funbraceLeft, funbraceRight,
+  qualU, qualA,
   opP,
 
   -- * Token parsers from Parsec
@@ -126,19 +127,30 @@ commaSep1        = T.commaSep1 tok
 
 -- | The @#load@ pragma
 sharpLoad       :: CharParser st ()
-sharpLoad        = try (symbol "#load") >> return ()
+sharpLoad        = reserved "#load"
 
 -- | @!@, which has special meaning in let patterns
 bang            :: CharParser st String
 bang             = symbol "!"
 
 -- | The @-o@ type operator, which violates our other lexer rules
-lolli           :: CharParser st String
-lolli            = try (symbol "-o")
+lolli           :: CharParser st ()
+lolli            = reserved "-o"
 
 -- | The @->@ type operator
-arrow           :: CharParser st String
-arrow            = try (symbol "->")
+arrow           :: CharParser st ()
+arrow            = reservedOp "->"
+
+-- | The left part of the $-[_]>$ operator
+funbraceLeft    :: CharParser st ()
+funbraceLeft     = try (symbol "-[") >> return ()
+
+-- | The right part of the $-[_]>$ operator
+funbraceRight   :: CharParser st ()
+funbraceRight    = try (symbol "]>") >> return ()
+
+funbraces       :: CharParser st a -> CharParser st a
+funbraces        = between funbraceLeft funbraceRight
 
 -- | @*@, which is reserved in types but not in expressions
 star            :: CharParser st String
@@ -154,19 +166,12 @@ plus             = symbol "+"
 
 -- | Qualifier @U@ (not reserved)
 qualU    :: CharParser st ()
-qualU     = symbol "U" >> return ()
+qualU     = reserved "U"
 -- | Qualifier @A@ (not reserved)
 qualA    :: CharParser st ()
-qualA     = symbol "A" >> return ()
+qualA     = reserved "A"
 
--- | Language @C@ (not reserved)
-langC    :: CharParser st ()
-langC     = symbol "C" >> return ()
--- | Language @A@ (not reserved)
-langA    :: CharParser st ()
-langA     = symbol "A" >> return ()
-
--- | Is the string an oppercase identifier?  (Special case: @true@ and
+-- | Is the string an uppercase identifier?  (Special case: @true@ and
 --   @false@ are consider uppercase.)
 isUpperIdentifier :: String -> Bool
 isUpperIdentifier "true"  = True

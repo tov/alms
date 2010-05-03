@@ -47,14 +47,13 @@ build :: Monad m =>
          M.Map (TyVar, TyVar) (Maybe Lid) -> TypeT -> TypeT ->
          CMS.StateT Integer m ExprT
 build recs tfrom tto
-  | (tvs,  [$ty|+ ($t1, $t2)   $qlid:_ $info  |]) <- unfoldTyQu Forall tfrom,
-    (tvs', [$ty|+ ($t1', $t2') $qlid:_ $info' |]) <- unfoldTyQu Forall tto,
+  | (tvs,  [$ty|+ $t1  -[$q ]> $t2  |]) <- unfoldTyQu Forall tfrom,
+    (tvs', [$ty|+ $t1' -[$q']> $t2' |]) <- unfoldTyQu Forall tto,
     length tvs == length tvs',
-    info `elem` funtypes && info' `elem` funtypes,
     which <- "INTERNALS.Contract." ++
-               if info == tdArr
+               if qualifier q <: Qu
                  then "func"
-                 else if info' == tdArr
+                 else if qualifier q' <: Qu
                    then "affunc"
                    else "funcA"
     = do
@@ -92,7 +91,7 @@ build recs [$ty|+ mu '$tv. $t |] [$ty|+ mu '$tv'. $t' |] = do
     [$ex|+@!
       let rec $lid:lid
               (parties : string $td:string * $td:tuple string $td:string)
-                       : (mu '$tv. $t) -> $tdArr mu '$tv'. $t'
+                       : (mu '$tv. $t) -> mu '$tv'. $t'
           = $body parties
        in $lid:lid
     |]

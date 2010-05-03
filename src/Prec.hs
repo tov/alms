@@ -19,6 +19,7 @@ precOp :: String -> Prec
 precOp ('*':'*':_)    = Right precExp
 precOp ('-':'>':_)    = Right precArr
 precOp ('-':'o':_)    = Right precArr
+precOp "-[]>"         = Right precArr
 precOp (';':_)        = Right precSemi
 precOp "!="           = Left precEq
 precOp (c:_)

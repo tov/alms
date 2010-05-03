@@ -70,18 +70,27 @@ class TyTagMode i where
   injTd      :: TyTag -> i
   liftUnit   :: f () -> f i
   dropUnit   :: f i -> f ()
+  tyArrI     :: Type i -> Type i -> Type i
+  tyLolI     :: Type i -> Type i -> Type i
+  tyFunI     :: Type i -> Type i -> Type i -> Type i
 
 instance TyTagMode () where
   tytagp     = punit
   injTd      = const ()
   liftUnit   = id
   dropUnit   = id
+  tyArrI     = tyArr
+  tyLolI     = tyLol
+  tyFunI     = tyFun
 
 instance TyTagMode TyTag where
   tytagp     = antiblep
   injTd      = id
   liftUnit   = error "BUG! Cannot use exSigma in quasi mode"
   dropUnit   = error "BUG! Cannot use exSigma in quasi mode"
+  tyArrI     = tyArrT
+  tyLolI     = tyLolT
+  tyFunI     = tyFunT
 
 withSigma :: Bool -> P a -> P a
 withSigma = mapSigma . const
@@ -264,43 +273,50 @@ typep  :: TyTagMode i => P (Type i)
 typep   = typepP precStart
 
 typepP :: TyTagMode i => Int -> P (Type i)
-typepP p | p == precStart
-         = choice
-  [ do tc <- choice
-         [ quantp >>! TyQu,
-           reserved "mu"  >> return TyMu ]
-       tvs <- many tyvarp
-       dot
-       t   <- typepP p
-       return (foldr tc t tvs),
-    typepP (p + 1) ]
-typepP p | p == precArr
-         = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = tybinopp [arrow, lolli]
-typepP p | p == precPlus
-         = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = tybinopp [plus]
-typepP p | p == precStar
-         = chainl1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = tybinopp [star, slash]
-typepP p | p == precSemi
-         = chainr1last (typepP (p + 1)) tyop (typepP precStart) where
-             tyop = tybinopp [semi]
-typepP p | p == precApp -- this case ensures termination
+typepP p
+  | p == precStart
+         = do
+             tc <- TyQu <$> quantp
+               <|> TyMu <$  reserved "mu"
+             tvs <- many tyvarp
+             dot
+             t   <- typepP p
+             return (foldr tc t tvs)
+           <|> typepP (p + 1)
+  | p == precArr
+         = chainr1last (typepP (p + 1))
+             (choice
+              [ tyArrI <$ arrow,
+                tyLolI <$ lolli,
+                funbraces (tyFunI <$> typepP precStart) ])
+             (typepP precStart)
+  | p == precPlus
+         = chainl1last (typepP (p + 1))
+             (tybinopp [plus]) (typepP precStart) 
+  | p == precStar
+         = chainl1last (typepP (p + 1))
+             (tybinopp [star, slash]) (typepP precStart)
+  | p == precSemi
+         = chainr1last (typepP (p + 1))
+             (tybinopp [semi]) (typepP precStart)
+  | p == precApp -- this case ensures termination
          = tyarg >>= tyapp'
+  | p <= precMax
+         = typepP (p + 1)
+  | otherwise
+         = typepP precStart
   where
   tyarg :: TyTagMode i => P [Type i]
   tyarg  = choice
-           [ do args <- parens $
-                          antiblep <|> commaSep1 (typepP precStart)
-                return args,
-             do tv   <- tyvarp
-                return [TyVar tv],
-             do tc   <- qlidnatp
-                i    <- tytagp
-                return [TyCon tc [] i],
-             do ty   <- antiblep
-                return [ty] ]
+           [ parens $ antiblep <|> commaSep1 (typepP precStart),
+             (:[]) <$> tyatom ]
+
+  tyatom :: TyTagMode i => P (Type i)
+  tyatom  = TyVar <$> tyvarp
+        <|> TyCon <$> qlidnatp <*> pure [] <*> tytagp
+        <|> antiblep
+        <|> tyNulOpT (injTd tdUn) "U" <$ qualU
+        <|> tyNulOpT (injTd tdAf) "A" <$ qualA
 
   tyapp' :: TyTagMode i => [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
@@ -311,9 +327,6 @@ typepP p | p == precApp -- this case ensures termination
                  tc <- qlidnatp
                  i  <- tytagp
                  tyapp' [TyCon tc ts i]
-typepP p | p <= precMax
-         = typepP (p + 1)
-typepP _ = typepP precStart
 
 tybinopp :: TyTagMode i => [P String] -> P (Type i -> Type i -> Type i)
 tybinopp ops = do
@@ -429,7 +442,7 @@ tyProtp :: P ([Variance], [TyVar], Lid)
 tyProtp  = choice [
   try $ do
     (v1, tv1) <- paramVp
-    con <- choice [ arrow, lolli, semi, star, slash, plus ] >>! Lid
+    con <- choice [ semi, star, slash, plus ] >>! Lid
     (v2, tv2) <- paramVp
     return ([v1, v2], [tv1, tv2], con),
   do
@@ -698,11 +711,11 @@ opappp p = do
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
 afargsp :: TyTagMode i => P (Bool, Type i -> Type i, Expr i -> Expr i)
-afargsp = loop (tyBinOpT (injTd tdArr) "->") where
+afargsp = loop tyArrI where
   loop arrcon0 = do
     arrcon <- option arrcon0 $ do
       reservedOp "|"
-      return (tyBinOpT (injTd tdLol) "-o")
+      return tyLolI
     choice
       [ do (tvt, tve) <- tyargp
            (b, ft, fe) <- loop arrcon

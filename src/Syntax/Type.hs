@@ -15,17 +15,18 @@ module Syntax.Type (
   -- * Built-in types
   -- ** Type information
   tdUnit, tdInt, tdFloat, tdString, tdExn,
-  tdArr, tdLol, tdTuple,
+  tdUn, tdAf, tdFun, tdTuple,
   getTdByName,
   -- ** Session types
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
   -- ** Convenience type constructors
   tyNulOp, tyUnOp, tyBinOp,
-  tyArr, tyLol, tyTuple,
+  tyUn, tyAf, tyFun, tyArr, tyLol, tyTuple,
   tyNulOpT, tyUnOpT, tyBinOpT,
-  tyUnitT, tyArrT, tyLolT, tyTupleT, tyExnT,
+  tyUnitT, tyUnT, tyAfT, tyFunT, tyArrT, tyLolT,
+  tyTupleT, tyExnT,
   -- ** Type tag queries
-  funtypes, castableType,
+  castableType,
 
   -- * Miscellany
   dumpType
@@ -109,16 +110,18 @@ instance Show Quant where
 ---
 
 tdUnit, tdInt, tdFloat, tdString,
-  tdArr, tdLol, tdExn, tdTuple :: TyTag
+  tdUn, tdAf, tdFun, tdExn, tdTuple :: TyTag
 
 tdUnit       = TyTag (-1)  []          minBound  []
 tdInt        = TyTag (-2)  []          minBound  []
 tdFloat      = TyTag (-3)  []          minBound  []
 tdString     = TyTag (-4)  []          minBound  []
-tdArr        = TyTag (-5)  [-1, 1]     minBound  [maxBound, maxBound]
-tdLol        = TyTag (-6)  [-1, 1]     maxBound  [maxBound, maxBound]
-tdExn        = TyTag (-7)  []          maxBound  []
-tdTuple      = TyTag (-8)  [1, 1]      qualSet   [maxBound, maxBound]
+tdUn         = TyTag (-5)  []          minBound  []
+tdAf         = TyTag (-6)  []          maxBound  []
+tdFun        = TyTag (-7)  [1, -1, 1]  qualSet   (replicate 3 maxBound)
+  where qualSet = QualSet minBound [0]
+tdExn        = TyTag (-8)  []          maxBound  []
+tdTuple      = TyTag (-9)  [1, 1]      qualSet   [maxBound, maxBound]
   where qualSet = QualSet minBound [0, 1]
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
@@ -135,8 +138,9 @@ getTdByName name = case name of
   "int" -> Just tdInt
   "float" -> Just tdFloat
   "string" -> Just tdString
-  "arr" -> Just tdArr
-  "lol" -> Just tdLol
+  "u" -> Just tdUn
+  "a" -> Just tdAf
+  "fun" -> Just tdFun
   "exn" -> Just tdExn
   "tuple" -> Just tdTuple
   "dual" -> Just tdDual
@@ -157,11 +161,20 @@ tyUnOp s a     = TyCon (qlid s) [a] ()
 tyBinOp       :: String -> Type () -> Type () -> Type ()
 tyBinOp s a b  = TyCon (qlid s) [a, b] ()
 
+tyAf          :: Type ()
+tyAf           = tyNulOp "A"
+
+tyUn          :: Type ()
+tyUn           = tyNulOp "U"
+
+tyFun         :: Type () -> Type () -> Type () -> Type ()
+tyFun q a b    = TyCon (qlid "-[]>") [q, a, b] ()
+
 tyArr         :: Type () -> Type () -> Type ()
-tyArr          = tyBinOp "->"
+tyArr          = tyFun tyUn
 
 tyLol         :: Type () -> Type () -> Type ()
-tyLol          = tyBinOp "-o"
+tyLol          = tyFun tyAf
 
 tyTuple       :: Type () -> Type () -> Type ()
 tyTuple        = tyBinOp "*"
@@ -178,11 +191,20 @@ tyBinOpT i s a b = TyCon (qlid s) [a, b] i
 tyUnitT        :: TypeT
 tyUnitT         = tyNulOpT tdUnit "unit"
 
-tyArrT         :: TypeT -> TypeT -> TypeT
-tyArrT          = tyBinOpT tdArr "->"
+tyAfT         :: TypeT
+tyAfT          = tyNulOpT tdAf "A"
 
-tyLolT         :: TypeT -> TypeT -> TypeT
-tyLolT          = tyBinOpT tdLol "-o"
+tyUnT         :: TypeT
+tyUnT          = tyNulOpT tdUn "U"
+
+tyFunT        :: TypeT -> TypeT -> TypeT -> TypeT
+tyFunT q a b   = TyCon (qlid "-[]>") [q, a, b] tdFun
+
+tyArrT        :: TypeT -> TypeT -> TypeT
+tyArrT         = tyFunT tyUnT
+
+tyLolT        :: TypeT -> TypeT -> TypeT
+tyLolT         = tyFunT tyAfT
 
 tyTupleT       :: TypeT -> TypeT -> TypeT
 tyTupleT        = tyBinOpT tdTuple "*"
@@ -193,14 +215,10 @@ tyExnT          = tyNulOpT tdExn "exn"
 infixr 8 `tyArr`, `tyLol`, `tyArrT`, `tyLolT`
 infixl 7 `tyTuple`, `tyTupleT`
 
--- | Constructors for function types
-funtypes    :: [TyTag]
-funtypes     = [tdArr, tdLol]
-
 -- | Is the type promotable to a lower-qualifier type?
 castableType :: TypeT -> Bool
 castableType (TyVar _)         = False
-castableType (TyCon _ _ td)    = td `elem` funtypes
+castableType (TyCon _ _ td)    = td == tdFun
 castableType (TyQu _ _ t)      = castableType t
 castableType (TyMu _ t)        = castableType t
 castableType (TyAnti a)        = antierror "castableType" a

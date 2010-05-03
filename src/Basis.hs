@@ -45,8 +45,9 @@ primBasis  = [
     "string" `primtype` tdString,
 
     "*"    `primtype` tdTuple,
-    "->"   `primtype` tdArr,
-    "-o"   `primtype` tdLol,
+    "-[]>" `primtype` tdFun,
+    "U"    `primtype` tdUn,
+    "A"    `primtype` tdAf,
 
     -- Sums
     dec [$dc| type '<a option = None | Some of '<a |],

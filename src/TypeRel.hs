@@ -244,17 +244,9 @@ instance PO (Type TyTag) where
                                     = chk seen b (dualSessionType p) t
     cmp seen b t [$ty|+ $p $qlid:_ $td:dual |]
                                     = chk seen b t (dualSessionType p)
-    -- Special cases for ->/-o subtyping:
-    cmp seen b (TyCon _ ps td) (TyCon _ ps' td')
-      | (td == tdArr && td' == tdLol) || (td == tdLol && td' == tdArr)
-                                    = chk seen b (build ps) (build ps')
-          where build ps0 = if b
-                              then TyCon (qlid "-o") ps0 tdLol
-                              else TyCon (qlid "->") ps0 tdArr
     -- Otherwise:
-    cmp seen b [$ty|+ ($list:ps) $qlid:tc $td |]
-               [$ty|+ ($list:ps') $qlid:_ $td' |] =
-      if td == td' then do
+    cmp seen b [$ty|+ ($list:ps)  $qlid:tc $td  |]
+               [$ty|+ ($list:ps') $qlid:_  $td' |] | td == td' = do
         params <- sequence
           [ case var of
               Covariant     -> chk seen b p p'
@@ -266,7 +258,6 @@ instance PO (Type TyTag) where
              | p   <- ps
              | p'  <- ps' ]
         return [$ty|+ ($list:params) $qlid:tc $td |]
-      else fail "\\/? or /\\?: Does not exist"
     cmp seen b (TyQu u a t) (TyQu u' a' t') | u == u' = do
       qual <- ifMJ (not b) (tvqual a) (tvqual a')
       let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
@@ -275,10 +266,15 @@ instance PO (Type TyTag) where
       TyQu u a1 `liftM` chk seen b t1 t'1
     cmp seen b (TyMu a t) t' = chk seen b (tysubst a (TyMu a t) t) t'
     cmp seen b t' (TyMu a t) = chk seen b t' (tysubst a (TyMu a t) t)
-    cmp _    _ t t' =
-      if t == t'
-        then return t
-        else fail "\\/? or /\\?: Does not exist"
+    cmp _    _ t t' | t == t' = return t
+    cmp _    False t [$ty|+ U |] | qualifier t <: Qu = return t
+    cmp _    False [$ty|+ U |] t | qualifier t <: Qu = return t
+    cmp _    False t [$ty|+ A |] = return t
+    cmp _    False [$ty|+ A |] t = return t
+    cmp _    True t t'
+      | qualifier t <: Qu && qualifier t' <: Qu = return [$ty|+ U |]
+      | otherwise                               = return [$ty|+ A |]
+    cmp _    _    _ _ = fail "\\/? or /\\?: Does not exist"
 
 -- |
 -- Helper for finding the dual of a session type (since we can't
