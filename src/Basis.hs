@@ -111,15 +111,15 @@ primBasis  = [
       -= map integer2char,
     fun "^" -: [$ty| string -> string -> string |]
       -= ((++) :: String -> String -> String),
-    pfun 1 "string_of" -: [$ty| all 'a. 'a -> string |]
+    fun "string_of" -: [$ty| all 'a. 'a -> string |]
       -= (return . show :: Value -> IO String),
     fun "string_length" -: [$ty| string -> int |]
       -= \s -> toInteger (length (s :: String)),
 
     -- "Magic" equality and print; failure
-    pfun 1 "==" -: [$ty| all 'a. 'a -> 'a -> bool |]
+    fun "==" -: [$ty| all 'a. 'a -> 'a -> bool |]
       -= ((==) :: Value -> Value -> Bool),
-    pfun 1 "print" -: [$ty| all 'a. 'a -> unit |]
+    fun "print" -: [$ty| all 'a. 'a -> unit |]
       -= (print :: Value -> IO ()),
 
     -- I/O
@@ -149,30 +149,30 @@ primBasis  = [
     -- References
     dec [$dc| type '<a ref qualifier U |],
     dec [$dc| type '<a aref qualifier A |],
-    pfun 1 "ref" -: [$ty| all '<a. '<a -> '<a ref |]
+    fun "ref" -: [$ty| all '<a. '<a -> '<a ref |]
       -= (\v -> Ref `fmap` newIORef v),
-    pfun 1 "aref" -: [$ty| all '<a. '<a -> '<a aref |]
+    fun "aref" -: [$ty| all '<a. '<a -> '<a aref |]
       -= (\v -> Ref `fmap` newIORef v),
 
-    pfun 1 "!" -: [$ty| all 'a. 'a ref -> 'a |]
+    fun "!" -: [$ty| all 'a. 'a ref -> 'a |]
       -= (\r -> readIORef (unRef r)),
-    pfun 1 "!!" -: [$ty| all 'a. 'a aref -> 'a aref * 'a |]
+    fun "!!" -: [$ty| all 'a. 'a aref -> 'a aref * 'a |]
       -= (\r -> do
            v <- readIORef (unRef r)
            return (r, v)),
-    pfun 1 "<-" -: [$ty| all '<a. '<a ref -> '<a -o '<a |]
+    fun "<-" -: [$ty| all '<a. '<a ref -> '<a -o '<a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, v'))),
-    pfun 1 "<-!" -: [$ty| all '<a '<b. '<a aref ->
+    fun "<-!" -: [$ty| all '<a '<b. '<a aref ->
                             '<b -o '<b aref * '<a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
     submod "Unsafe" [
       -- Unsafe coercions
-      pfun 2 "unsafeCoerce" -: [$ty| all '<b '<a. '<a -> '<b |]
+      fun "unsafeCoerce" -: [$ty| all '<b '<a. '<a -> '<b |]
         -= (id :: Value -> Value),
-      pfun 1 "unsafeDup" -: [$ty| all '<a. '<a -> '<a * '<a |]
+      fun "unsafeDup" -: [$ty| all '<a. '<a -> '<a * '<a |]
         -= ((\v -> (v, v)) :: Value -> (Value, Value))
     ],
 

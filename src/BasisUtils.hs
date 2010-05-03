@@ -8,7 +8,7 @@ module BasisUtils (
   Entry,
   -- ** Entry constructors
   -- *** Values
-  fun, val, pfun, pval, binArith,
+  fun, val, binArith,
   -- *** Types
   dec, typ, primtype,
   -- *** Modules, exceptions, and arbitrary declarations
@@ -119,34 +119,8 @@ fun :: (MkFun r, Valuable v) =>
        String -> Type () -> (v -> r) -> Entry
 fun name t f = ValEn (Lid name) t (mkFun (FNNamed (ppr (Lid name))) f)
 
--- | Make a value entry for a value that is polymorphic in the object
---   language: appends the specified number of type lambdas
-pval :: Valuable v => Int -> String -> Type () -> v -> Entry
-pval 0 name t v = val name t v
-pval n name t v = mkTyAbs (pval (n - 1) name t v)
-
--- | Make a value entry for a function that is polymorphic in the object
---   language: appends the specified number of type lambdas
-pfun :: (MkFun r, Valuable v) =>
-        Int -> String -> Type () -> (v -> r) -> Entry
-pfun 0 name t f = fun name t f
-pfun n name t f = mkTyAbs (pfun (n - 1) name t f)
-
-mkTyAbs :: Entry -> Entry
-mkTyAbs entry =
-  let v     = enValue entry in
-  entry { enValue = VaSus (FNNamed (ppr (enName entry))) (return v) }
-
-class TypeBuilder r where
-  -- | @String String ... -> Entry@ variadic function for building
-  --   source-level type entries
-  typ :: String -> r
-
-instance TypeBuilder Entry where
-  typ s      = DecEn [$dc|@! type $tydec:td |] where td = ptd s
-
-instance TypeBuilder r => TypeBuilder (String -> r) where
-  typ s      = typ . (s ++) . ('\n' :)
+typ :: String -> Entry
+typ s      = DecEn [$dc|@! type $tydec:td |] where td = ptd s
 
 -- | Creates a declaration entry
 dec :: Decl () -> Entry

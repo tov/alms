@@ -129,8 +129,6 @@ vcast a = case cast a of
 data Value
   -- | A function
   = VaFun FunName (Value -> IO Value)
-  -- | A type abstraction
-  | VaSus FunName (IO Value)
   -- | A datacon, potentially applied
   | VaCon Uid (Maybe Value)
   -- | Any other embeddable Haskell type
@@ -218,7 +216,6 @@ instance Valuable Value where
   veq (VaDyn a)   b           = veqDyn a b
   veq _           _           = False
   vpprPrec p (VaFun n _)        = pprPrec p n
-  vpprPrec p (VaSus n _)        = pprPrec p n
   vpprPrec p (VaCon c Nothing)  = pprPrec p c
   vpprPrec p (VaCon c (Just v)) = parensIf (p > precApp) $
                                     pprPrec precApp c <+>

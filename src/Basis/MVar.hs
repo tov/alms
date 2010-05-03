@@ -22,39 +22,39 @@ instance Valuable MVar where
 entries :: [Entry]
 entries  = [
     dec [$dc| type '<a mvar qualifier U |],
-    pfun 1 "new" -: [$ty| all '<a. '<a -> '<a mvar |]
+    fun "new" -: [$ty| all '<a. '<a -> '<a mvar |]
       -= liftM MVar . MV.newMVar,
-    pfun 1 "newEmpty"
+    fun "newEmpty"
                  -: [$ty| all '<a. unit -> '<a mvar |]
       -= \() -> MVar `liftM` MV.newEmptyMVar,
-    pfun 1 "take"
+    fun "take"
                  -: [$ty| all '<a. '<a mvar -> '<a |]
       -= MV.takeMVar . unMVar,
-    pfun 1 "put"
+    fun "put"
                  -: [$ty| all '<a. '<a mvar -> '<a -> unit |]
       -= MV.putMVar . unMVar,
-    pfun 1 "read"
+    fun "read"
                  -: [$ty| all 'a. 'a mvar -> 'a |] -- important!
       -= MV.readMVar . unMVar,
-    pfun 1 "swap"
+    fun "swap"
                  -: [$ty| all '<a. '<a mvar -> '<a -> '<a |]
       -= MV.swapMVar . unMVar,
-    pfun 1 "tryTake"
+    fun "tryTake"
                  -: [$ty| all '<a. '<a mvar -> '<a option |]
       -= MV.tryTakeMVar . unMVar,
-    pfun 1 "tryPut"
+    fun "tryPut"
                  -: [$ty| all '<a. '<a mvar -> '<a -> bool |]
       -= MV.tryPutMVar . unMVar,
-    pfun 1 "isEmpty"
+    fun "isEmpty"
                  -: [$ty| all '<a. '<a mvar -> bool |]
       -= MV.isEmptyMVar . unMVar,
-    pfun 1 "callWith"
+    fun "callWith"
                  -: [$ty| all '<a '<b. '<a mvar -> ('<a -> '<b) -> '<b |]
       -= \mv callback -> MV.withMVar (unMVar mv) (vapp callback),
-    pfun 1 "modify_"
+    fun "modify_"
                  -: [$ty| all '<a. '<a mvar -> ('<a -> '<a) -> unit |]
       -= \mv callback -> MV.modifyMVar_ (unMVar mv) (vapp callback),
-    pfun 1 "modify"
+    fun "modify"
                  -: [$ty| all '<a '<b. '<a mvar -> ('<a -> '<a * '<b) -> '<b |]
       -= \mv callback -> MV.modifyMVar (unMVar mv) $ \v -> do
                            result <- vapp callback v

@@ -26,10 +26,10 @@ entries = [
     primexn eiBlame        $ Just [$ty| string * string |],
     primexn eiPatternMatch $ Just [$ty| string * string list |],
 
-    pfun 1 "raise" -: [$ty| exn -> any |]
+    fun "raise" -: [$ty| exn -> any |]
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
-    pfun 1 "tryfun" -: [$ty| all '<a. (unit -o '<a) -> exn + '<a |]
+    fun "tryfun" -: [$ty| all '<a. (unit -o '<a) -> exn + '<a |]
       -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
                          :: IO (Either VExn Value),
 

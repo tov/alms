@@ -1,7 +1,8 @@
 {-# LANGUAGE
       FlexibleInstances,
       MultiParamTypeClasses,
-      QuasiQuotes #-}
+      QuasiQuotes,
+      TemplateHaskell #-}
 -- | The dynamics of the interpreter
 module Dynamics (
   -- * Static API
@@ -19,7 +20,7 @@ import Value
 import Util
 import Syntax
 import Env
-import Ppr (Ppr(..), Doc, text, precApp, brackets)
+import Ppr (Ppr(..), Doc, text, precApp)
 
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Control.Exception (throw)
@@ -188,26 +189,16 @@ valOf e env = case view e of
   ExApp e1 e2            -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env
-    v1' <- force v1  -- Magic type application
-    case v1' of
+    case v1 of
       VaFun n f -> f v2 >>! nameApp n (pprPrec (precApp + 1) v2) 
       VaCon c _ -> return (VaCon c (Just v2))
       _         -> fail $ "BUG! applied non-function " ++ show v1
                            ++ " to argument " ++ show v2
-  ExTAbs _ e'            ->
-    return (VaSus (FNAnonymous [ppr e]) (valOf e' env))
-  ExTApp e' t2           -> do
-    v' <- valOf e' env
-    case v' of
-      VaSus n f -> f >>! nameApp n (brackets (ppr t2))
-      VaCon _ _ -> return v'
-      _         -> fail $ "BUG! type-applied non-typefunction: " ++ show v'
-  ExPack _ _ e1          ->
-    valOf e1 env
-  ExCast e1 _ _          ->
-    valOf e1 env
-  ExAnti a               ->
-    antifail "dynamics" a
+  ExTAbs _ e'            -> valOf e' env
+  ExTApp e' _            -> valOf e' env
+  ExPack _ _ e1          -> valOf e1 env
+  ExCast e1 _ _          -> valOf e1 env
+  ExAnti a               -> $antifail
 
 makeExn :: Monad m => E -> QUid -> m Value
 makeExn env c = do
@@ -284,24 +275,16 @@ throwPatternMatch v ps env = do
 --- helpful stuff
 ---
 
-force :: Value -> IO Value
-force (VaSus n v) = v >>= force . nameApp n (text "[_]")
-force v           = return v
-
 -- Add the given name to an anonymous function
 nameFun :: Lid -> Value -> Value
 nameFun (Lid x) (VaFun (FNAnonymous _) lam)
   | x /= "it"          = VaFun (FNNamed (text x)) lam
-nameFun (Lid x) (VaSus (FNAnonymous _) lam)
-  | x /= "it"          = VaSus (FNNamed (text x)) lam
 nameFun _       value  = value
 
 -- Get the name of an applied function
 nameApp :: FunName -> Doc -> Value -> Value
 nameApp fn arg (VaFun (FNAnonymous _) lam)
   = VaFun (FNAnonymous (funNameDocs fn ++ [ arg ])) lam
-nameApp fn arg (VaSus (FNAnonymous _) lam)
-  = VaSus (FNAnonymous (funNameDocs fn ++ [ arg ])) lam
 nameApp _ _ value = value
 
 collapse :: E -> Scope

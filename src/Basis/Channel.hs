@@ -21,12 +21,12 @@ instance Valuable Channel where
 entries :: [Entry]
 entries  = [
     dec [$dc| type 'a channel |],
-    pfun 1 "new"  -: [$ty| all 'a. unit -> 'a channel |]
+    fun "new"  -: [$ty| all 'a. unit -> 'a channel |]
         -= \() -> Channel `fmap` C.newChan,
-    pfun 2 "send" -: [$ty| all 'a. 'a channel -> 'a -> unit |]
+    fun "send" -: [$ty| all 'a. 'a channel -> 'a -> unit |]
         -= \c a -> do
              C.writeChan (unChannel c) a
              return (),
-    pfun 1 "recv" -: [$ty| all 'a. 'a channel -> 'a |]
+    fun "recv" -: [$ty| all 'a. 'a channel -> 'a |]
         -= \c -> C.readChan (unChannel c)
   ]
