@@ -8,7 +8,9 @@
       TypeOperators #-}
 module Syntax.Anti (
   -- * Representation of antiquotes
-  Anti(..), GetAnti(..), antifail, antierror,
+  Anti(..),
+  -- ** Raising errors when encountering antiquotes
+  AntiFail(..), AntiError(..),
   -- * Generic anti projection/injection
   Antible(..),
   deriveAntible, deriveAntibleType,
@@ -27,6 +29,7 @@ module Syntax.Anti (
   noAntis, optAntis, listAntis, maybeAntis
 ) where
 
+import Loc (fromTHLoc)
 import Syntax.THQuasi
 import {-# SOURCE #-} Syntax.Type
 
@@ -48,19 +51,35 @@ instance Show Anti where
   show (Anti ""   aid) = '$' : aid
   show (Anti atag aid) = '$' : atag ++ ':' : aid
 
-class GetAnti a where
-  getAnti :: a -> Anti
+class AntiFail a where
+  antifail :: a
 
-instance GetAnti Anti where
-  getAnti = id
+instance Monad m => AntiFail (String -> Anti -> m b) where
+  antifail who what = fail $
+    "BUG! " ++ who ++ ": encountered antiquote " ++ show what
 
-antifail :: (Monad m, GetAnti a) => String -> a -> m b
-antifail who what = fail $ "BUG! " ++ who ++ ": encountered antiquote: "
-                           ++ show (getAnti what)
+instance AntiFail (Name -> TH.ExpQ) where
+  antifail a = do
+    loc <- TH.location
+    [| antifail $(stringE (show (fromTHLoc loc))) $(varE a) |]
 
-antierror :: GetAnti a => String -> a -> b
-antierror who what = error $ "BUG! " ++ who ++ ": encountered antiquote: "
-                           ++ show (getAnti what)
+instance AntiFail (TH.Q TH.Exp) where
+  antifail = antifail (mkName "a")
+
+class AntiError a where
+  antierror :: a
+
+instance AntiError (String -> Anti -> b) where
+  antierror who what = error $
+    "BUG! " ++ who ++ ": encountered antiquote " ++ show what
+
+instance AntiError (Name -> TH.ExpQ) where
+  antierror a = do
+    loc <- TH.location
+    [| antierror $(stringE (show (fromTHLoc loc))) $(varE a) |]
+
+instance AntiError (TH.Q TH.Exp) where
+  antierror = antierror (mkName "a")
 
 class Antible a where
   injAnti     :: Anti -> a
@@ -225,6 +244,7 @@ litAntis, pattAntis,
 litAntis   = "lit"   =: [$th| <_> |]
            & "str"   =: [$th| LtStr <_> |]
            & "int"   =: [$th| LtInt <_> |]
+           & "flo"   =: [$th| LtFloat <_> |]
            & "float" =: [$th| LtFloat <_> |]
            & "antiL" =: [$th| LtAnti <_> |]
 

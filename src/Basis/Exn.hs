@@ -1,42 +1,39 @@
+{-# LANGUAGE
+      QuasiQuotes #-}
 module Basis.Exn ( entries, ioexn2vexn ) where
 
 import BasisUtils
 import Value
-import Syntax (Type, tyNulOp, tyUnOp, tyTuple)
+import Quasi
+import Syntax
 
 import Control.Exception
 
-tyString :: Type ()
-tyString  = tyNulOp "string"
-
-tyList   :: Type () -> Type ()
-tyList    = tyUnOp "string"
-
 eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId
 eiFailure       = ExnId (-21) (Uid "Failure")
-                    (Just tyString)
+                    (Just [$ty| string |])
 eiIOError       = ExnId (-22) (Uid "IOError")
-                    (Just tyString)
+                    (Just [$ty| string |])
 eiBlame         = ExnId (-23) (Uid "Blame")
-                    (Just (tyString `tyTuple` tyString))
+                    (Just [$ty| string * string|])
 eiPatternMatch  = ExnId (-24) (Uid "PatternMatch")
-                    (Just (tyString `tyTuple` tyList tyString))
+                    (Just [$ty| string * string list|])
 
 entries :: [Entry]
 entries = [
-    primexn eiFailure      "string",
-    primexn eiIOError      "string",
-    primexn eiBlame        "string * string",
-    primexn eiPatternMatch "string * string list",
+    primexn eiFailure      $ Just [$ty| string |],
+    primexn eiIOError      $ Just [$ty| string |],
+    primexn eiBlame        $ Just [$ty| string * string |],
+    primexn eiPatternMatch $ Just [$ty| string * string list |],
 
-    pfun 1 "raise" -: "exn -> any"
+    pfun 1 "raise" -: [$ty| exn -> any |]
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
-    pfun 1 "tryfun" -: "all '<a. (unit -o '<a) -> exn + '<a"
+    pfun 1 "tryfun" -: [$ty| all '<a. (unit -o '<a) -> exn + '<a |]
       -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
                          :: IO (Either VExn Value),
 
-    fun "raiseBlame" -: "string -> string -> any"
+    fun "raiseBlame" -: [$ty| string -> string -> any |]
       -= \s1 s2 -> throw VExn {
            exnId    = eiBlame,
            exnParam = Just (vinj (s1 :: String, s2 :: String))

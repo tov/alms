@@ -1,8 +1,8 @@
 -- | Tools for implementing primitive operations -- essentially an
 --   object-language/meta-language FFI.
 {-# LANGUAGE
-  FlexibleInstances
- #-}
+      FlexibleInstances,
+      QuasiQuotes #-}
 module BasisUtils (
   -- | * Initial environment entries
   Entry,
@@ -10,11 +10,14 @@ module BasisUtils (
   -- *** Values
   fun, val, pfun, pval, binArith,
   -- *** Types
-  typ, primtype,
+  dec, typ, primtype,
   -- *** Modules, exceptions, and arbitrary declarations
-  submod, primexn, src,
+  submod, primexn,
   -- ** Sugar operators for entry construction
   (-:), (-=),
+  -- ** Default location for entries
+  _loc,
+  module Loc,
   -- ** Environment construction
   basis2venv, basis2tenv,
 
@@ -27,26 +30,31 @@ module BasisUtils (
 
 import Dynamics (E, addVal, addMod, addExn)
 import Env (GenEmpty(..))
-import Parser (pt, pds)
+import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
+import Quasi
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
+import Loc (Loc(..))
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
               ExnId(..))
 
+-- | Default source location for primitives
+_loc :: Loc
+_loc  = Loc "<primitive>" 1 1
+
 -- | An entry in the initial environment
 data Entry
-  -- | A value entry has a name, separate types for each sublanguage
-  --   (may be blank), and a value
+  -- | A value entry has a name, a types, and a value
   = ValEn {
     enName  :: Lid,
-    enType  :: String,
+    enType  :: Type (),
     enValue :: Value
   }
-  -- | A declaration entry is just source code
+  -- | A declaration entry
   | DecEn {
-    enSrc   :: String
+    enSrc   :: Decl ()
   }
   -- | A type entry associates a tycon name with information about it
   | TypEn {
@@ -61,7 +69,7 @@ data Entry
   -- | An exception entry associates an exception name with its unique id
   | ExnEn {
     enExnId   :: ExnId,
-    enExnType :: String
+    enExnType :: Maybe (Type ())
   }
 
 -- | Type class for embedding Haskell functions as object language
@@ -100,29 +108,29 @@ instance (Valuable a, Valuable b, MkFun a, MkFun b) =>
 baseMkFun :: (Valuable a, Valuable b) => FunName -> (a -> b) -> Value
 baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 
+-- | Make a value entry for a Haskell non-function.
+val :: Valuable v => String -> Type () -> v -> Entry
+val name t v = ValEn (Lid name) t (vinj v)
+
 -- | Make a value entry for a Haskell function, given a names and types
 --   for the sublanguages.  (Leave blank to leave the binding out of
 --   that language.
 fun :: (MkFun r, Valuable v) =>
-       String -> String -> (v -> r) -> Entry
-fun name ty f = ValEn (Lid name) ty (mkFun (FNNamed (ppr (Lid name))) f)
-
--- | Make a value entry for a Haskell non-function.
-val :: Valuable v => String -> String -> v -> Entry
-val name ty v = ValEn (Lid name) ty (vinj v)
+       String -> Type () -> (v -> r) -> Entry
+fun name t f = ValEn (Lid name) t (mkFun (FNNamed (ppr (Lid name))) f)
 
 -- | Make a value entry for a value that is polymorphic in the object
 --   language: appends the specified number of type lambdas
-pval :: Valuable v => Int -> String -> String -> v -> Entry
-pval 0 name ty v = val name ty v
-pval n name ty v = mkTyAbs (pval (n - 1) name ty v)
+pval :: Valuable v => Int -> String -> Type () -> v -> Entry
+pval 0 name t v = val name t v
+pval n name t v = mkTyAbs (pval (n - 1) name t v)
 
 -- | Make a value entry for a function that is polymorphic in the object
 --   language: appends the specified number of type lambdas
 pfun :: (MkFun r, Valuable v) =>
-        Int -> String -> String -> (v -> r) -> Entry
-pfun 0 name ty f = fun name ty f
-pfun n name ty f = mkTyAbs (pfun (n - 1) name ty f)
+        Int -> String -> Type () -> (v -> r) -> Entry
+pfun 0 name t f = fun name t f
+pfun n name t f = mkTyAbs (pfun (n - 1) name t f)
 
 mkTyAbs :: Entry -> Entry
 mkTyAbs entry =
@@ -133,17 +141,16 @@ class TypeBuilder r where
   -- | @String String ... -> Entry@ variadic function for building
   --   source-level type entries
   typ :: String -> r
-  -- | @String String ... -> Entry@ variadic function for building
-  --   source-level declaration entries
-  src   :: String -> r
 
 instance TypeBuilder Entry where
-  typ        = DecEn . ("type " ++)
-  src        = DecEn
+  typ s      = DecEn [$dc|@! type $tydec:td |] where td = ptd s
 
 instance TypeBuilder r => TypeBuilder (String -> r) where
   typ s      = typ . (s ++) . ('\n' :)
-  src s      = src . (s ++) . ('\n' :)
+
+-- | Creates a declaration entry
+dec :: Decl () -> Entry
+dec  = DecEn
 
 -- | Creates a module entry
 submod :: String -> [Entry] -> Entry
@@ -155,7 +162,7 @@ primtype  :: String -> TyTag -> Entry
 primtype   = TypEn . Lid
 
 -- | Creates a primitve exception entry
-primexn :: ExnId -> String -> Entry
+primexn :: ExnId -> Maybe (Type ()) -> Entry
 primexn ei t = ExnEn { enExnId = ei, enExnType = t }
 
 -- | Application
@@ -168,7 +175,7 @@ infixr 0 -=
 
 -- | Instance of 'fun' for making binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry
-binArith name = fun name "int -> int -> int"
+binArith name = fun name [$ty| int -> int -> int |]
 
 -- | Apply an object language function (as a 'Value')
 vapp :: Valuable a => Value -> a -> IO Value
@@ -191,18 +198,14 @@ basis2venv es = foldM add genEmpty es where
 basis2tenv :: Monad m => [Entry] -> m S
 basis2tenv  = foldM each env0 where
   each gg0 (ValEn { enName = n, enType = t }) = do
-    Statics.addVal gg0 n (pt t)
-  each gg0 (DecEn { enSrc = s }) = do
-    (gg1, _, _) <- tcDecls False gg0 (pds s)
+    Statics.addVal gg0 n t
+  each gg0 (DecEn { enSrc = decl }) = do
+    (gg1, _, _) <- tcDecls False gg0 [decl]
     return gg1
   each gg0 (TypEn { enName = n, enTyTag = i }) =
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
-  each gg0 (ExnEn { enExnId = ExnId { eiName = n }, enExnType = s }) =
-    Statics.addExn gg0 n (pt_maybe s)
-
-pt_maybe :: String -> Maybe (Type ())
-pt_maybe "" = Nothing
-pt_maybe s  = Just (pt s)
+  each gg0 (ExnEn { enExnId = ExnId { eiName = n }, enExnType = t }) =
+    Statics.addExn gg0 n t
 

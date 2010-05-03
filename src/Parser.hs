@@ -25,7 +25,6 @@ import Data.Generics (Data)
 import qualified Data.Map as M
 import qualified Language.Haskell.TH as TH
 import Text.ParserCombinators.Parsec hiding (parse)
-import qualified Text.ParserCombinators.Parsec.Pos as Pos
 import System.IO.Unsafe (unsafePerformIO)
 
 data St   = St {
@@ -64,10 +63,7 @@ parseQuasi str p = do
     Left e  -> fail (show e)
     Right a -> return (scrub a)
   where
-  mkSetter loc = setPosition $
-    Pos.newPos (TH.loc_filename loc)
-               (fst (TH.loc_start loc))
-               (snd (TH.loc_start loc))
+  mkSetter = setPosition . toSourcePos . fromTHLoc
 
 class TyTagMode i where
   tytagp     :: P i

@@ -76,35 +76,34 @@ build recs tfrom tto
                foldl (\acc tv0 -> exTApp acc (TyVar tv0))
                      (exBVar (Lid "f")) tvs `exApp`
                exBVar (Lid "x")
-build recs (TyQu Exists tv t) (TyQu Exists tv' t') = do
+build recs [$ty|+ ex '$tv. $t |] [$ty|+ ex '$tv'. $t' |] = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
   body <- build recs' t t' >>! instContract
   let tv''  = freshTyVar tv (ftv (tv, tv'))
   return $
     absContract $
-      [$ex|+@! fun (Pack('$tv'', e) : ex '$tv . $t) ->
-                 Pack[ex '$tv' . $t']('$tv'', $body e) |]
-build recs (TyMu tv t) (TyMu tv' t') = do
+      [$ex|+@! fun (Pack('$tv'', e) : ex '$tv. $t) ->
+                 Pack[ex '$tv'. $t']('$tv'', $body e) |]
+build recs [$ty|+ mu '$tv. $t |] [$ty|+ mu '$tv'. $t' |] = do
   lid  <- freshLid
   let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
   body <- build recs' t t'
   return $
     [$ex|+@!
       let rec $lid:lid
-              (parties : party $tdString * $tdTuple party $tdString)
-                       : (mu '$tv . $t) -> $tdArr mu '$tv' . $t'
+              (parties : string $td:string * $td:tuple string $td:string)
+                       : (mu '$tv. $t) -> $tdArr mu '$tv'. $t'
           = $body parties
        in $lid:lid
     |]
-build recs (TyVar tv) (TyVar tv')
+build recs [$ty|+ '$tv |] [$ty|+ '$tv' |]
   | Just (Just lid) <- M.lookup (tv, tv') recs
-    = return $ exBVar lid
-build recs (TyVar tv) (TyVar tv')
+    = return [$ex|+@! $lid:lid |]
   | Just Nothing <- M.lookup (tv, tv') recs
-    = return $ exTApp (exVar (qlid "INTERNALS.Contract.any")) (TyVar tv')
+    = return [$ex|+@! INTERNALS.Contract.any ['$tv'] |]
 build _ t t' =
   if t <: t'
-    then return $ exTApp (exVar (qlid "INTERNALS.Contract.any")) t'
+    then return [$ex|+@! INTERNALS.Contract.any [$t'] |]
     else fail $ "No coercion from " ++ show t ++ " to " ++ show t'
 
 shadow :: [TyVar] -> [TyVar] ->
@@ -113,20 +112,15 @@ shadow tvs tvs' = M.filterWithKey
                     (\(tv, tv') _ -> tv `notElem` tvs && tv' `notElem` tvs')
 
 absContract :: ExprT -> ExprT
-absContract  =
-  exAbs (PaPair (PaVar (Lid "neg")) (PaVar (Lid "pos")))
-        (tyTupleT tyPartyT tyPartyT)
+absContract body =
+  [$ex|+@! fun (neg: string $td:string, pos: string $td:string) -> $body |]
 
 instContract :: ExprT -> ExprT
-instContract  =
-  (`exApp` exPair (exBVar (Lid "neg")) (exBVar (Lid "pos")))
+instContract con = [$ex|+@! $con (neg, pos) |]
 
 freshLid :: Monad m => CMS.StateT Integer m Lid
 freshLid = do
   n <- CMS.get
   CMS.put (n + 1)
   return (Lid ("c" ++ show n))
-
-tyPartyT :: TypeT
-tyPartyT  = [$ty|+ INTERNALS.Contract.party $td:string |]
 

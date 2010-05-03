@@ -7,6 +7,7 @@
       MultiParamTypeClasses,
       QuasiQuotes,
       ScopedTypeVariables,
+      TemplateHaskell,
       TypeSynonymInstances #-}
 module Statics (
   -- * Static environments
@@ -370,7 +371,7 @@ tcType = tc where
       "Recursive type " ++ show (TyMu tv t) ++ " qualifier " ++
       "does not match its own type variable."
     return (TyMu tv' t')
-  tc [$ty| $anti:a |] = antifail "statics" a
+  tc [$ty| $anti:a |] = $antifail
 
 -- | Remove all instances of t2 from t1, replacing with
 --   a new type variable 
@@ -383,17 +384,16 @@ makeExType t1 t2 = TyQu Exists tv $ everywhere (mkT erase) t1 where
 tcExpr :: Monad m => Expr i -> TC m (TypeT, ExprT)
 tcExpr = tc where
   tc :: Monad m => Expr i -> TC m (TypeT, ExprT)
-  tc e0 = let ?loc = getLoc e0 in case view e0 of
-    ExId x -> do
+  tc e0 = let ?loc = getLoc e0 in case e0 of
+    [$ex| $id:x |] -> do
       tx    <- getVar x
-      let e' = exId x `setExn` findIsExn tx
+      let e' = [$ex|+ $id:x |] `setExn` findIsExn tx
       return (tx, e')
-    ExLit lt -> case lt of
-      LtStr s   -> return ([$ty|+ string $td:string |], exStr s)
-      LtInt z   -> return ([$ty|+ int $td:int |],       exInt z)
-      LtFloat f -> return ([$ty|+ float $td:float |],   exFloat f)
-      LtAnti a  -> antifail "statics" a
-    ExCase e clauses -> do
+    [$ex| $str:s |] -> return ([$ty|+ string $td:string |], [$ex|+ $str:s |])
+    [$ex| $int:z |] -> return ([$ty|+ int $td:int |],       [$ex|+ $int:z |])
+    [$ex| $flo:f |] -> return ([$ty|+ float $td:float |],   [$ex|+ $flo:f |])
+    [$ex| $antiL:a |] -> $antifail
+    [$ex| match $e with $list:clauses |] -> do
       (t0, e') <- tc e
       (t1:ts, clauses') <- liftM unzip . forM clauses $ \ca -> do
         (gi, xi', ti, ei') <- withPatt t0 (capatt ca) $ tc (caexpr ca)
@@ -403,8 +403,8 @@ tcExpr = tc where
                       |! "Mismatch in match/let: " ++ show ti ++
                           " and " ++ show ti')
             t1 ts
-      return (tr, exCase e' clauses')
-    ExLetRec bs e2 -> do
+      return (tr, [$ex|+ match $e' with $list:clauses' |])
+    [$ex| let rec $list:bs in $e2 |] -> do
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
             tassert (bnvar b `notElem` seen) $
@@ -427,52 +427,54 @@ tcExpr = tc where
       (t2, e2') <- withVars g' $ tc e2
       let b's = zipWith3 (\b tf e' -> b { bntype = tf, bnexpr = e' })
                          bs tfs e's
-      return (t2, exLetRec b's e2')
-    ExLetDecl d e2 ->
+      return (t2, [$ex|+ let rec $list:b's in $e2' |])
+    [$ex| let $decl:d in $e2 |] ->
       withDecl d $ \d' -> do
         (t2, e2') <- tc e2
-        return (t2, exLetDecl d' e2')
-    ExPair e1 e2  -> do
+        return (t2, [$ex|+ let $decl:d' in $e2' |])
+    [$ex| ($e1, $e2) |] -> do
       (t1, e1') <- tc e1
       (t2, e2') <- tc e2
-      return ([$ty|+ $t1 * $td:tuple $t2 |], exPair e1' e2')
-    ExAbs x t e     -> do
+      return ([$ty|+ $t1 * $td:tuple $t2 |],
+              [$ex|+ ($e1', $e2') |])
+    [$ex| fun ($x : $t) -> $e |] -> do
       t' <- tcType t
       (gx, x', te, e') <- withPatt t' x $ tc e
       checkSharing "lambda" gx e
       unworthy <- isUnworthy e0
-      if unworthy
-        then return ([$ty|+ $t' -o $td:lol $te |], exAbs x' t' e')
-        else return ([$ty|+ $t' -> $td:arr $te |], exAbs x' t' e')
-    ExApp _  _    -> do
+      return (if unworthy
+                then [$ty|+ $t' -o $td:lol $te |]
+                else [$ty|+ $t' -> $td:arr $te |],
+              [$ex|+ fun ($x' : $t') -> $e' |])
+    [$ex| $_ $_ |] -> do
       tcExApp tc e0
-    ExTAbs tv e   ->
+    [$ex| fun '$tv -> $e |] ->
       withTVs [tv] $ \[tv'] -> do
         tassert (syntacticValue e) $
           "Not a syntactic value under type abstraction: " ++ show e0
         (t, e') <- tc e
-        return (tyAll tv' t, exTAbs tv' e')
-    ExTApp e1 t2  -> do
+        return ([$ty|+ all '$tv'. $t |], [$ex|+ fun '$tv' -> $e' |])
+    [$ex| $e1 [$t2] |] -> do
       (t1, e1') <- tc e1
       t2'       <- tcType t2
       t1'       <- tapply t1 t2'
-      return (t1', exTApp e1' t2')
-    ExPack mt1 t2 e -> do
+      return (t1', [$ex|+ $e1' [$t2'] |])
+    [$ex| Pack[$opt:mt1]($t2, $e) |] -> do
       t2'      <- tcType t2
       (te, e') <- tc e
       t1'      <- case mt1 of
         Just t1 -> tcType t1
         Nothing -> return (makeExType te t2')
       case t1' of
-        TyQu Exists tv t11' -> do
-          te' <- tapply (tyAll tv t11') t2'
+        [$ty| ex '$tv. $t11' |] -> do
+          te' <- tapply [$ty|+ all '$tv. $t11' |] t2'
           tassert (te <: te') $
             "Could not pack type " ++ show te ++
             " (abstracting " ++ show t2 ++
             ") to get " ++ show t1'
-          return (t1', exPack (Just t1') t2' e')
+          return (t1', [$ex| Pack[$t1']($t2', $e') |])
         _ -> tgot "Pack[-]" t1' "ex(istential) type"
-    ExCast e1 mt ta -> do
+    [$ex| ( $e1 : $opt:mt :> $ta ) |] -> do
       (t1, e1') <- tc e1
       t'  <- maybe (return t1) tcType mt
       ta' <- tcType ta
@@ -483,7 +485,7 @@ tcExpr = tc where
       e1'' <- coerceExpression (e1' <<@ e0) t' ta'
       tcExpr e1'' -- re-type check the coerced expression
       return (ta', e1'')
-    ExAnti a -> antifail "statics" a
+    [$ex| $anti:a |] -> $antifail
 
   -- | Assert that type given to a name is allowed by its usage
   checkSharing :: (Monad m, ?loc :: Loc) =>
@@ -554,7 +556,7 @@ tcExApp tc e0 = do
 --   the type of the function and the argument type
 tapply :: (?loc :: Loc, Monad m) =>
           TypeT -> TypeT -> m TypeT
-tapply (TyQu Forall tv t1') t2 = do
+tapply [$ty| all '$tv . $t1' |] t2 = do
   tassert (qualifier t2 <: tvqual tv) $
     "Type application cannot instantiate type variable " ++
     show tv ++ " with type " ++ show t2
@@ -566,8 +568,8 @@ tapply t1 _ = tgot "type application" t1 "(for)all type"
 tcPatt :: (?loc :: Loc, Monad m) =>
           TypeT -> Patt -> TC m (D, V, Patt)
 tcPatt t x0 = case x0 of
-  PaWild     -> return (empty, empty, PaWild)
-  PaVar x    -> return (empty, Var x =:= t, PaVar x)
+  [$pa| _ |]      -> return (empty, empty, x0)
+  [$pa| $lid:x |] -> return (empty, Var x =:= t, x0)
   PaCon u mx _ -> case t of
     TyCon _ ts _ -> do
       tu <- getVar (fmap Con u)
@@ -588,41 +590,39 @@ tcPatt t x0 = case x0 of
           return (dx1, gx1, PaCon u (Just x1') isexn)
         _ -> tgot "Pattern" t "wrong arity"
     _ -> tgot "Pattern" t ("constructor " ++ show u)
-  PaPair x y -> do
+  [$pa| ($x, $y) |] -> do
     case t of
-      TyCon (J [] (Lid "*")) [xt, yt] td | td == tdTuple
-        -> do
+      [$ty|+ $xt * $td:tuple $yt |] -> do
           (dx, gx, x') <- tcPatt xt x
           (dy, gy, y') <- tcPatt yt y
           tassert (isEmpty (gx -|- gy)) $
             "Pattern " ++ show x0 ++ " binds variable twice"
           tassert (isEmpty (dx -|- dy)) $
             "Pattern " ++ show x0 ++ " binds type variable twice"
-          return (dx =+= dy, gx =+= gy, PaPair x' y')
+          return (dx =+= dy, gx =+= gy, [$pa| ($x', $y') |])
       _ -> tgot "Pattern " t "pair type"
-  PaLit lt   -> case lt of
-    LtStr s    -> do
+  [$pa| $str:s |] -> do
       tassgot (tyinfo t == tdString)
         "Pattern" t "string"
       return (empty, empty, PaLit (LtStr s))
-    LtInt z    -> do
+  [$pa| $int:z |] -> do
       tassgot (tyinfo t == tdInt)
         "Pattern" t "int"
       return (empty, empty, PaLit (LtInt z))
-    LtFloat f  -> do
+  [$pa| $flo:f |] -> do
       tassgot (tyinfo t == tdFloat)
         "Pattern" t "float"
       return (empty, empty, PaLit (LtFloat f))
-    LtAnti a   -> antifail "statics" a
-  PaAs x y   -> do
+  [$pa| $antiL:a |] -> $antifail
+  [$pa| $x as $lid:y |] -> do
     (dx, gx, x') <- tcPatt t x
     let gy        = y =:= t
     tassert (isEmpty (gx -|- gy)) $
       "Pattern " ++ show x0 ++ " binds " ++ show y ++ " twice"
-    return (dx, gx =+= gy, PaAs x' y)
-  PaPack tv x -> do
+    return (dx, gx =+= gy, [$pa| $x' as $lid:y |])
+  [$pa| Pack('$tv, $x) |] -> do
     case t of
-      TyQu Exists tve te -> do
+      [$ty|+ ex '$tve. $te |] -> do
         tassert (tvqual tve <: tvqual tv) $
           "Cannot bind existential tyvar " ++ show tv ++
           " to " ++ show tve
@@ -631,9 +631,9 @@ tcPatt t x0 = case x0 of
           (dx, gx, x') <- tcPatt te' x
           tassert (dx =..= tv == Nothing) $
             "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
-          return (dx =+= tv =:+= tv', gx, PaPack tv' x')
+          return (dx =+= tv =:+= tv', gx, [$pa| Pack('$tv', $x') |])
       _ -> tgot "Pattern" t "existential type"
-  PaAnti a -> antifail "tcPatt" a
+  [$pa| $anti:a |] -> $antifail
 
 -- | Run a computation in the context of the bindings from
 --   a pattern.
@@ -678,21 +678,21 @@ findSubst tv = chk [] where
           then []
           else cmp ((tw1, tw2) : seen) t1 t2
 
-  cmp _    (TyVar tv') t'
+  cmp _    [$ty|+ '$tv' |] t'
     | tv == tv'    = [t']
-  cmp seen (TyCon _ [t] td) t'
-    | td == tdDual = chk seen (dualSessionType t) t'
-  cmp seen t' (TyCon _ [t] td)
-    | td == tdDual = chk seen t' (dualSessionType t)
-  cmp seen (TyCon _ ts _) (TyCon _ ts' _)
+  cmp seen [$ty|+ $t $qlid:_ $td:dual |] t'
+                   = chk seen (dualSessionType t) t'
+  cmp seen t' [$ty|+ $t $qlid:_ $td:dual |]
+                   = chk seen t' (dualSessionType t)
+  cmp seen [$ty|@! ($list:ts) $qlid:_ |] [$ty| ($list:ts') $qlid:_ |]
                    = concat (zipWith (chk seen) ts ts')
-  cmp seen (TyQu _ tv0 t) (TyQu _ tv0' t')
+  cmp seen [$ty|@! $quant:_ '$tv0. $t |] [$ty| $quant:_ '$tv0'. $t' |]
     | tv /= tv0    = [ tr | tr <- chk seen t t',
                             not (tv0  `S.member` ftv tr),
                             not (tv0' `S.member` ftv tr) ]
-  cmp seen (TyMu a t) t'
+  cmp seen [$ty| mu '$a. $t |] t'
                    = chk seen (tysubst a (TyMu a t) t) t'
-  cmp seen t' (TyMu a t)
+  cmp seen t' [$ty| mu '$a. $t |]
                    = chk seen t' (tysubst a (TyMu a t) t)
   cmp _ _ _        = []
 
@@ -739,14 +739,14 @@ withTyDecs tds0 k0 = do
     getEdge (TdAbs name _ _ _)  = (name, S.empty)
     getEdge (TdDat name _ alts) = (name, names) where
        names = S.unions [ tyConsOfType True t | (_, Just t) <- alts ]
-    getEdge (TdAnti a)          = antierror "statics" a
+    getEdge (TdAnti a)          = $antierror
     --
     partition td (atds, stds, dtds) =
       case td of
         TdAbs _ _ _ _ -> (td : atds, stds, dtds)
         TdSyn _ _ _   -> (atds, td : stds, dtds)
         TdDat _ _ _   -> (atds, stds, td : dtds)
-        TdAnti a      -> antierror "statics" a
+        TdAnti a      -> $antierror
 
 -- withTyDec types a type declaration, but in addition to
 -- return (in CPS) a declaration, it returns a boolean that indicates
@@ -791,7 +791,7 @@ withTyDec (TdDat name params alts) k = do
   withTypes (name =:= TiDat tag' params' (fromList alts')) $
     withVars (alts2env name params' tag' alts') $
       (k (TdDat name params alts', changed))
-withTyDec (TdAnti a) _ = antifail "statics" a
+withTyDec (TdAnti a) _ = $antifail
 
 -- | Are all elements of the list unique?
 unique :: Ord a => [a] -> Bool
@@ -820,16 +820,16 @@ typeVariances d0 = finish . ftvVs where
 typeQual :: [TyVar] -> TypeT -> QualSet
 typeQual d0 = qsFromList d0 . S.toList . loop where
   loop :: TypeT -> S.Set (Either TyVar Q)
-  loop (TyCon _ ts info)
+  loop [$ty|+ ($list:ts) $qlid:_ $info |]
                      = S.unions
                          [ case qual of
                              Right q -> S.singleton (Right q)
                              Left t  -> loop t
                          | qual <- qsToList ts (ttQual info) ]
-  loop (TyVar tv)    = S.singleton (Left tv)
-  loop (TyQu _ tv t) = S.delete (Left tv) (loop t)
-  loop (TyMu tv t)   = S.delete (Left tv) (loop t)
-  loop (TyAnti a)    = antierror "statics" a
+  loop [$ty|+ '$tv |]              = S.singleton (Left tv)
+  loop [$ty|+ $quant:_ '$tv. $t |] = S.delete (Left tv) (loop t)
+  loop [$ty|+ mu '$tv. $t |]       = S.delete (Left tv) (loop t)
+  loop [$ty|+ $anti:a |]           = $antierror
 
 -- | Generic topological sort
 --
@@ -871,15 +871,15 @@ topSort getEdge edges = do
 
 -- | The tycons that appear in a type
 tyConsOfType :: Bool -> Type i -> S.Set Lid
-tyConsOfType here (TyCon n ts _) =
+tyConsOfType here [$ty| ($list:ts) $qlid:n |] =
   (case (here, n) of
     (True, J [] lid) -> S.singleton lid
     _                -> S.empty)
   `S.union` S.unions (map (tyConsOfType here) ts)
-tyConsOfType _    (TyVar _)        = S.empty
-tyConsOfType here (TyQu _ _ t)     = tyConsOfType here t
-tyConsOfType here (TyMu _ t)       = tyConsOfType here t
-tyConsOfType _    (TyAnti a)       = antierror "statics" a
+tyConsOfType _    [$ty| '$_ |]              = S.empty
+tyConsOfType here [$ty| $quant:_ '$_. $t |] = tyConsOfType here t
+tyConsOfType here [$ty| mu '$_. $t |]       = tyConsOfType here t
+tyConsOfType _    [$ty| $anti:a |]          = $antierror
 
 -- END type decl checking
 
@@ -945,12 +945,9 @@ withExn n mt k = do
 
 -- Is the given type the type of an exception constructor?
 findIsExn :: TypeT -> Bool
-findIsExn (TyCon _ [_, TyCon _ _ tag'] tag)
-  = tag == tdArr && tag' == tdExn
-findIsExn (TyCon _ _ tag)
-  = tag == tdExn
-findIsExn _
-  = False
+findIsExn [$ty|+ $_ -> $td:arr $qlid:_ $td:exn |] = True
+findIsExn [$ty|+ $qlid:_ $td:exn |] = True
+findIsExn _ = False
 
 -- | Run a computation in the context of a module
 withMod :: (?loc :: Loc, Monad m) =>
@@ -1048,11 +1045,13 @@ tcModExp (MeStr ds) =
 tcModExp (MeName n)   = do
   scope <- getModule n
   return (MeName n, scope)
-tcModExp (MeAnti a)   = antifail "statics" a
+tcModExp (MeAnti a)   = $antifail
 
 -- | Run a computation in the context of an abstype block
 withAbsTy :: (?loc :: Loc, Monad m) =>
-             [AbsTy i] -> [Decl i] -> ([AbsTyT] -> [DeclT] -> TC m a) -> TC m a
+             [AbsTy i] -> [Decl i] ->
+             ([AbsTyT] -> [DeclT] -> TC m a) ->
+             TC m a
 withAbsTy atds ds k0 =
   let vars  = map atvariance atds
       quals = map atquals atds
@@ -1098,7 +1097,7 @@ withDecl decl k =
       DcOpn loc b     ->  withOpen b (k . DcOpn loc)
       DcLoc loc d0 d1 ->  withLocal d0 d1 ((.) k . DcLoc loc)
       DcExn loc n mt  ->  withExn n mt (k . DcExn loc n)
-      DcAnti a        ->  antifail "statics" a
+      DcAnti a        ->  $antifail
 
 -- | Run a computation in the context of a declaration sequence
 withDecls :: Monad m =>

@@ -1,5 +1,6 @@
 {-# LANGUAGE
       DeriveDataTypeable,
+      QuasiQuotes,
       StandaloneDeriving
   #-}
 module Basis.Socket ( entries ) where
@@ -10,6 +11,8 @@ import qualified Network.Socket as S
 
 import Basis.IO ()
 import BasisUtils
+import Quasi
+import Syntax
 import Value
 
 instance Valuable S.Socket where
@@ -96,66 +99,68 @@ deriving instance Data S.AddrInfo
 
 entries :: [Entry]
 entries  = [
-    typ "portNumber = PortNum of int",
-    typ "socket",
+    dec [$dc| type portNumber = PortNum of int |],
+    dec [$dc| type socket |],
     typ (enumTypeDecl S.AF_INET),
     typ (enumTypeDecl S.Stream),
-    typ "protocolNumber = int",
-    typ "hostAddress  = int",
-    typ "flowInfo     = int",
-    typ "hostAddress6 = int * int * int * int",
-    typ "scopeID      = int",
-    typ "sockAddr = SockAddrInet of portNumber * hostAddress"
-        "         | SockAddrInet6 of"
-        "             portNumber * flowInfo * hostAddress6 * scopeID"
-        "         | SockAddrUnix of string",
+    dec [$dc| type protocolNumber = int |],
+    dec [$dc| type hostAddress  = int |],
+    dec [$dc| type flowInfo     = int |],
+    dec [$dc| type hostAddress6 = int * int * int * int |],
+    dec [$dc| type scopeID      = int |],
+    dec [$dc| type sockAddr
+                = SockAddrInet of portNumber * hostAddress
+                | SockAddrInet6 of
+                    portNumber * flowInfo * hostAddress6 * scopeID
+                | SockAddrUnix of string |],
     typ (enumTypeDecl S.AI_ALL),
     typ (enumTypeDecl S.ShutdownSend),
-    typ "addrInfo = AddrInfo of"
-        "  addrInfoFlag list * family * socketType *"
-        "  protocolNumber * sockAddr * string option",
-    typ "hostName = string",
-    typ "serviceName = string",
+    dec [$dc| type addrInfo
+                = AddrInfo of
+                    addrInfoFlag list * family * socketType *
+                    protocolNumber * sockAddr * string option |],
+    dec [$dc| type hostName = string |],
+    dec [$dc| type serviceName = string |],
 
-    val "inaddr_any" -: "hostAddress"
+    val "inaddr_any" -: [$ty| hostAddress |]
       -= S.iNADDR_ANY,
-    val "defaultProtocol" -: "protocolNumber"
+    val "defaultProtocol" -: [$ty| protocolNumber |]
       -= S.defaultProtocol,
-    val "defaultHints" -: "addrInfo"
+    val "defaultHints" -: [$ty| addrInfo |]
       -= S.defaultHints {
            S.addrAddress  = S.SockAddrInet S.aNY_PORT S.iNADDR_ANY,
            S.addrCanonName = Nothing
          },
 
     fun "getAddrInfo"
-      -: ("addrInfo option -> hostName option -> " ++
-          "serviceName option -> addrInfo list")
+      -: [$ty| addrInfo option -> hostName option ->
+               serviceName option -> addrInfo list |]
       -= S.getAddrInfo,
-    fun "inet_addr" -: "string -> hostAddress"
+    fun "inet_addr" -: [$ty| string -> hostAddress |]
       -= S.inet_addr,
 
-    fun "socket" -: "family -> socketType -> protocolNumber -> socket"
+    fun "socket" -: [$ty| family -> socketType -> protocolNumber -> socket |]
       -= S.socket,
-    fun "bind"   -: "socket -> sockAddr -> unit"
+    fun "bind"   -: [$ty| socket -> sockAddr -> unit |]
       -= S.bindSocket,
-    fun "connect"   -: "socket -> sockAddr -> unit"
+    fun "connect"   -: [$ty| socket -> sockAddr -> unit |]
       -= S.connect,
-    fun "listen" -: "socket -> int -> unit"
+    fun "listen" -: [$ty| socket -> int -> unit |]
       -= S.listen,
-    fun "accept" -: "socket -> socket * sockAddr"
+    fun "accept" -: [$ty| socket -> socket * sockAddr |]
       -= S.accept,
-    fun "send" -: "socket -> string -> int"
+    fun "send" -: [$ty| socket -> string -> int |]
       -= \sock str -> S.send sock str,
-    fun "recv" -: "socket -> int -> string"
+    fun "recv" -: [$ty| socket -> int -> string |]
       -= \sock len -> S.recv sock len,
-    fun "shutdown" -: "socket -> shutdownCmd -> unit"
+    fun "shutdown" -: [$ty| socket -> shutdownCmd -> unit |]
       -= S.shutdown,
-    fun "close" -: "socket -> unit"
+    fun "close" -: [$ty| socket -> unit |]
       -= S.sClose,
 
-    fun "isReadable" -: "socket -> bool"
+    fun "isReadable" -: [$ty| socket -> bool |]
       -= S.sIsReadable,
-    fun "isWritable" -: "socket -> bool"
+    fun "isWritable" -: [$ty| socket -> bool |]
       -= S.sIsWritable
   ]
 

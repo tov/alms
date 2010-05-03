@@ -14,12 +14,13 @@ module Loc (
   -- * Type class interface
   Locatable(..), Relocatable(..), (<<@),
 
-  -- * Interface to 'Parsec' source positions
-  toSourcePos, fromSourcePos
+  -- * Interface to 'Parsec' and 'TH' source positions
+  toSourcePos, fromSourcePos, fromTHLoc
 ) where
 
 import Data.Generics (Typeable, Data, everywhere, mkT)
 import Text.ParserCombinators.Parsec.Pos
+import qualified Language.Haskell.TH as TH
 
 -- | Source locations
 data Loc = Loc {
@@ -36,6 +37,11 @@ toSourcePos loc = newPos (file loc) (line loc) (col loc)
 -- | Create from a 'Parsec' source position
 fromSourcePos :: SourcePos -> Loc
 fromSourcePos pos = Loc (sourceName pos) (sourceLine pos) (sourceColumn pos)
+
+fromTHLoc :: TH.Loc -> Loc
+fromTHLoc loc = Loc (TH.loc_filename loc)
+                    (fst (TH.loc_start loc))
+                    (snd (TH.loc_start loc))
 
 -- | The initial location for a named source file
 initial :: String -> Loc

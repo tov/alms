@@ -27,11 +27,11 @@ pa = QuasiQuoter qexp qpat where
   qexp s = parseQuasi s (\_ _ -> parsePatt) >>= toExpQ
   qpat s = parseQuasi s (\_ _ -> parsePatt) >>= toPatQ
 
-ex = mkQuasi parseExpr $ \ast loc -> [| $(ast) <<@ $(mkvarE loc) |]
-dc = mkQuasi parseDecl $ \ast loc -> [| $(ast) <<@ $(mkvarE loc) |]
-ty = mkQuasi parseType const
-pr = mkQuasi parseProg const
-me = mkQuasi parseModExp const
+ex  = mkQuasi parseExpr $ \ast loc -> [| $(ast) <<@ $(mkvarE loc) |]
+dc  = mkQuasi parseDecl $ \ast loc -> [| $(ast) <<@ $(mkvarE loc) |]
+ty  = mkQuasi parseType const
+pr  = mkQuasi parseProg const
+me  = mkQuasi parseModExp const
 
 mkQuasi :: forall f. (Data (f ()), Data (f TyTag)) =>
       (forall i. TyTagMode i => P (f i)) ->
@@ -102,19 +102,6 @@ antiGen  = $(expandAntible ''Lit)
 typelist :: (ToSyntax b) => [Type ()] -> Maybe (TH.Q b)
 typelist [TyAnti (Anti "list" n)] = Just (varS n [])
 typelist _ = Nothing
-
-{-
-ext11Q :: (Data d, Typeable1 f, Typeable1 g) =>
-          (d -> q) ->
-          (forall e. Data e => f (g e) -> q) ->
-          d -> q
-ext11Q def ext x = case castA x :: Maybe (f of
-  Nothing -> def x
-
-castA :: (Data d, Typeable1 g, Data e, Typeable1 f) =>
-         d -> Maybe (f (g e))
-castA = cast
--}
 
 antiLocPat :: Loc.Loc -> Maybe TH.PatQ
 antiLocPat _ = Just TH.wildP

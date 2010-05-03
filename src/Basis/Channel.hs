@@ -1,8 +1,12 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE
+      DeriveDataTypeable,
+      QuasiQuotes #-}
 module Basis.Channel (Channel, entries) where
 
 import Data.Typeable (Typeable)
 import BasisUtils
+import Quasi
+import Syntax
 import Value (Value, Valuable(..))
 
 import qualified Basis.Channel.Haskell as C
@@ -16,13 +20,13 @@ instance Valuable Channel where
 
 entries :: [Entry]
 entries  = [
-    typ "'a channel",
-    pfun 1 "new"  -: "all 'a. unit -> 'a channel"
+    dec [$dc| type 'a channel |],
+    pfun 1 "new"  -: [$ty| all 'a. unit -> 'a channel |]
         -= \() -> Channel `fmap` C.newChan,
-    pfun 2 "send" -: "all 'a. 'a channel -> 'a -> unit"
+    pfun 2 "send" -: [$ty| all 'a. 'a channel -> 'a -> unit |]
         -= \c a -> do
              C.writeChan (unChannel c) a
              return (),
-    pfun 1 "recv" -: "all 'a. 'a channel -> 'a"
+    pfun 1 "recv" -: [$ty| all 'a. 'a channel -> 'a |]
         -= \c -> C.readChan (unChannel c)
   ]

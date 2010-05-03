@@ -1,8 +1,12 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE
+      DeriveDataTypeable,
+      QuasiQuotes #-}
 module Basis.Future (entries) where
 
 import Data.Typeable (Typeable)
 import BasisUtils
+import Quasi
+import Syntax
 import Value (Value, Valuable(..))
 
 import qualified Control.Concurrent as CC
@@ -19,22 +23,22 @@ instance Valuable Future where
 entries :: [Entry]
 entries  = [
     -- Futures
-    typ "+'<a future qualifier A",
-    typ "-'<a cofuture qualifier A",
+    dec [$dc| type +'<a future qualifier A |],
+    dec [$dc| type -'<a cofuture qualifier A |],
 
-    pfun 1 "new" -: "all '<a. (unit -o '<a) -> '<a future"
+    pfun 1 "new" -: [$ty| all '<a. (unit -o '<a) -> '<a future |]
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f () >>= MV.putMVar future)
             return (Future future),
-    pfun 1 "get" -: "all '<a. '<a future -> '<a"
+    pfun 1 "get" -: [$ty| all '<a. '<a future -> '<a |]
       -= (MV.takeMVar . unFuture),
-    pfun 1 "coNew" -: "all '<a. ('<a future -o unit) -> '<a cofuture"
+    pfun 1 "coNew" -: [$ty| all '<a. ('<a future -o unit) -> '<a cofuture |]
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f (Future future) >> return ())
             return (Future future),
-    pfun 1 "coPut" -: "all '<a. '<a cofuture -> '<a -o unit"
+    pfun 1 "coPut" -: [$ty| all '<a. '<a cofuture -> '<a -o unit |]
       -= \future value -> MV.putMVar (unFuture future) value
   ]
 

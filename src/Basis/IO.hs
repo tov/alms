@@ -1,5 +1,6 @@
 {-# LANGUAGE
       DeriveDataTypeable,
+      QuasiQuotes,
       StandaloneDeriving
   #-}
 module Basis.IO ( entries ) where
@@ -8,8 +9,10 @@ import qualified IO
 
 import Data.Data (Typeable, Data)
 import BasisUtils
-import Value (Valuable(..), vinjData, vprjDataM)
+import Quasi
+import Syntax
 import Util
+import Value (Valuable(..), vinjData, vprjDataM)
 
 instance Valuable IO.Handle where
   veq = (==)
@@ -25,27 +28,30 @@ deriving instance Data IO.IOMode
 
 entries :: [Entry]
 entries = [
-    typ "handle",
-    typ "ioMode = ReadMode | WriteMode | AppendMode | ReadWriteMode",
+    dec [$dc| type handle |],
+    dec [$dc| type ioMode = ReadMode
+                          | WriteMode
+                          | AppendMode
+                          | ReadWriteMode |],
     -- File operations
-    fun "openFile"        -: "string -> ioMode -> handle"
+    fun "openFile"        -: [$ty| string -> ioMode -> handle |]
       -= IO.openFile,
-    fun "hGetChar"        -: "handle -> char"
+    fun "hGetChar"        -: [$ty| handle -> char |]
       -= fmap char2integer . IO.hGetChar,
-    fun "hGetLine"        -: "handle -> string"
+    fun "hGetLine"        -: [$ty| handle -> string |]
       -= IO.hGetLine,
-    fun "hIsEOF"          -: "handle -> bool"
+    fun "hIsEOF"          -: [$ty| handle -> bool |]
       -= IO.hIsEOF,
-    fun "hPutChar"        -: "handle -> char -> unit"
+    fun "hPutChar"        -: [$ty| handle -> char -> unit |]
       -= \h -> IO.hPutChar h . integer2char,
-    fun "hPutStr"         -: "handle -> string -> unit"
+    fun "hPutStr"         -: [$ty| handle -> string -> unit |]
       -= IO.hPutStr,
-    fun "hClose"          -: "handle -> unit"
+    fun "hClose"          -: [$ty| handle -> unit |]
       -= IO.hClose,
-    fun "hFlush"          -: "handle -> unit"
+    fun "hFlush"          -: [$ty| handle -> unit |]
       -= IO.hFlush,
 
-    val "stdin"  -: "handle" -= IO.stdin,
-    val "stdout" -: "handle" -= IO.stdout,
-    val "stderr" -: "handle" -= IO.stderr
+    val "stdin"  -: [$ty| handle |] -= IO.stdin,
+    val "stdout" -: [$ty| handle |] -= IO.stdout,
+    val "stderr" -: [$ty| handle |] -= IO.stderr
   ]
