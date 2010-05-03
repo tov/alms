@@ -19,6 +19,9 @@ $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 clean:
 	$(RM) Basis/*.hi Basis/*.o *.hi *.o $(EXE) $(EXE)-6.*
 
+wc.%:
+	find .. -name \*."$*" | xargs wc -l
+
 test tests: $(EXE)
 	@for i in $(EXAMPLES)/ex*.alms; do \
 	  $(EXAMPLES)/run-test.sh $(EXE) "$$i"; \

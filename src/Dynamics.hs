@@ -93,7 +93,7 @@ evalDecl (DcOpn _ b)     = evalOpen b
 evalDecl (DcMod _ n b)   = evalMod n b
 evalDecl (DcLoc _ d0 d1) = evalLocal d0 d1
 evalDecl (DcExn _ n mt)  = evalExn n mt
-evalDecl (DcAnti a)      = antifail "dynamics" a
+evalDecl (DcAnti a)      = $antifail
 
 evalLet :: Patt -> Expr i -> DDecl
 evalLet x e env = do
@@ -143,28 +143,27 @@ eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
 valOf :: Expr i -> D
-valOf e env = case view e of
-  ExId ident -> case view ident of
+valOf e env = case e of
+  [$ex| $id:ident |] -> case view ident of
     Left x     -> case env =..= x of
       Just v     -> v
       Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
     Right c    -> case isExn e of
-      True  -> makeExn env c
-      False -> return (VaCon (jname c) Nothing)
-  ExLit lt   -> case lt of
-    LtStr s   -> return (vinj s)
-    LtInt z   -> return (vinj z)
-    LtFloat f -> return (vinj f)
-    LtAnti a  -> antifail "dynamics" a
-  ExCase e1 clauses -> do
+      True       -> makeExn env c
+      False      -> return (VaCon (jname c) Nothing)
+  [$ex| $str:s |]    -> return (vinj s)
+  [$ex| $int:z |]    -> return (vinj z)
+  [$ex| $flo:f |]    -> return (vinj f)
+  [$ex| $antiL:a |]  -> $antifail
+  [$ex| match $e1 with $list:clauses |] -> do
     v1 <- valOf e1 env
     let loop (CaseAlt xi ei:rest) = case bindPatt xi v1 env of
           Just env' -> valOf ei env'
           Nothing   -> loop rest
         loop [] = throwPatternMatch v1 (map (show . capatt) clauses) env
-        loop (CaAnti a:_) = antifail "dynamics" a
+        loop (CaAnti a:_) = $antifail
     loop clauses
-  ExLetRec bs e2         -> do
+  [$ex| let rec $list:bs in $e2 |] -> do
     let extend (envI, rs) b = do
           r <- newIORef (fail "Accessed let rec binding too early")
           return (envI =+= bnvar b =:= join (readIORef r), r : rs)
@@ -176,17 +175,17 @@ valOf e env = case view e of
       (reverse rev_rs)
       bs
     valOf e2 env'
-  ExLetDecl d e2         -> do
+  [$ex| let $decl:d in $e2 |] -> do
     env' <- evalDecl d env
     valOf e2 env'
-  ExPair e1 e2           -> do
+  [$ex| ($e1, $e2) |] -> do
     v1 <- valOf e1 env
     v2 <- valOf e2 env
     return (vinj (v1, v2))
-  ExAbs x _ e'           ->
+  [$ex| fun $x : $_ -> $e' |] ->
     return (VaFun (FNAnonymous [pprPrec (precApp + 1) e])
                   (\v -> bindPatt x v env >>= valOf e'))
-  ExApp e1 e2            -> do
+  [$ex| $e1 $e2 |] -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env
     case v1 of
@@ -194,11 +193,11 @@ valOf e env = case view e of
       VaCon c _ -> return (VaCon c (Just v2))
       _         -> fail $ "BUG! applied non-function " ++ show v1
                            ++ " to argument " ++ show v2
-  ExTAbs _ e'            -> valOf e' env
-  ExTApp e' _            -> valOf e' env
-  ExPack _ _ e1          -> valOf e1 env
-  ExCast e1 _ _          -> valOf e1 env
-  ExAnti a               -> $antifail
+  [$ex| fun '$_ -> $e1 |]         -> valOf e1 env
+  [$ex| $e1 [$_] |]               -> valOf e1 env
+  [$ex| Pack[$opt:_]($_, $e1) |]  -> valOf e1 env
+  [$ex| ( $e1 : $opt:_ :> $_ ) |] -> valOf e1 env
+  [$ex| $anti:a |]                -> $antifail
 
 makeExn :: Monad m => E -> QUid -> m Value
 makeExn env c = do
