@@ -140,6 +140,8 @@ getTdByName name = case name of
   "string" -> Just tdString
   "exn" -> Just tdExn
   "tuple" -> Just tdTuple
+  "un" -> Just tdUn
+  "af" -> Just tdAf
   "dual" -> Just tdDual
   "send" -> Just tdSend
   "recv" -> Just tdRecv

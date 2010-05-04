@@ -29,6 +29,10 @@ tenv0  = ()
 translate :: TEnv -> ProgT -> ProgT
 translate _ = id
 
+-- | Location to use for constructed code
+_loc :: Loc
+_loc  = Loc "<coercion>" 1 1
+
 -- | Translation a sequence of declarations in the context
 --   of a translation environment, returning a new translation
 --   environment
@@ -53,12 +57,10 @@ build recs tfrom tto
     = do
         qd  <- qInterpretM qe
         qd' <- qInterpretM qe'
-        let which = "INTERNALS.Contract." ++
-              if qd <: minBound
-                then "func"
-                else if qd' <: minBound
-                  then "affunc"
-                  else "funcA"
+        let which = case (qConstBound qd, qConstBound qd') of
+              (Qa, Qu) -> [$ex|+ INTERNALS.Contract.affunc |]
+              (Qu, _ ) -> [$ex|+ INTERNALS.Contract.func[U] |]
+              (_ , Qa) -> [$ex|+ INTERNALS.Contract.func[A] |]
             recs' = foldr2
                       M.insert
                       (shadow tvs tvs' recs)
@@ -66,7 +68,7 @@ build recs tfrom tto
                       (repeat Nothing)
         dom <- build recs' t1' t1
         cod <- build recs' t2 t2'
-        let body = exApp (exApp (exVar (qlid which)) dom) cod
+        let body = [$ex|+ $which $dom $cod |]
         return $ if null tvs
           then body
           else absContract $
