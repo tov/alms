@@ -37,7 +37,8 @@ Executable alms
                         filepath >= 1.1,
                         network >= 2.2,
                         directory >= 1.0,
-                        template-haskell >= 2.0
+                        template-haskell >= 2.0,
+                        QuickCheck >= 2
 
   if flag(readline)
     Build-Depends:  readline >= 1.0
