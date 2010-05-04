@@ -19,6 +19,7 @@ import Syntax
 
 import Text.PrettyPrint
 import Data.List (intersperse)
+import Data.Typeable (Typeable, cast)
 
 -- | Class for pretty-printing at different types
 --
@@ -102,9 +103,11 @@ instance Ppr (Type i) where
                                 >+> pprPrec precDot t
   pprPrec p [$ty| $anti:a |] = pprPrec p a
 
-instance Ppr a => Ppr (QExp a) where
+instance (Typeable a, Ppr a) => Ppr (QExp a) where
   pprPrec p (QeLit qu)    = pprPrec p qu
-  pprPrec p (QeVar v)     = pprPrec p v
+  pprPrec p (QeVar v)     = case cast v of
+    Just (TV lid Qa)  -> pprPrec p lid
+    _                 -> pprPrec p v
   pprPrec p (QeDisj [])   = pprPrec p Qu
   pprPrec p (QeDisj [qe]) = pprPrec p qe
   pprPrec p (QeDisj qes)  = parensIf (p > precPlus) $
@@ -211,7 +214,7 @@ pprParamsV vs tvs = delimList parens comma (zipWith pprParam vs tvs)
   where
     pprParam v tv = ppr v <> ppr tv
 
-pprQuals :: Ppr a => QExp a -> Doc
+pprQuals :: (Typeable a, Ppr a) => QExp a -> Doc
 pprQuals (QeLit Qu) = empty
 pprQuals qs         = text "qualifier" <+> pprPrec precApp qs
 
@@ -400,7 +403,8 @@ instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show Patt       where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
-instance Ppr a => Show (QExp a) where showsPrec = showFromPpr
+instance (Typeable a, Ppr a) =>
+         Show (QExp a)   where showsPrec = showFromPpr
 
 instance Ppr QLit      where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow

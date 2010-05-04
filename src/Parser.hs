@@ -511,14 +511,15 @@ qualsp    = option minBound $ reserved "qualifier" *> qExpp
 
 qExpp :: P (QExp TyVar)
 qExpp  = qexp where
-  qexp, qterm, qfact, qatom :: P (QExp TyVar)
   qexp  = qeDisj <$> sepBy1 qterm (reservedOp "\\/")
   qterm = qeConj <$> sepBy1 qfact (reservedOp "/\\")
   qfact = parens qexp <|> qatom
   qatom = QeLit Qu <$  qualU
       <|> QeLit Qa <$  qualA
       <|> QeVar    <$> tyvarp
+      <|> qeLid    <$> lidp
       <|> antiblep
+  qeLid = QeVar . flip TV Qa
 
 altsp :: TyTagMode i => P [(Uid, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
