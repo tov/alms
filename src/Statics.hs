@@ -1,4 +1,3 @@
-{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 -- | The type checker
 {-# LANGUAGE
       DeriveDataTypeable,
@@ -10,7 +9,7 @@
       ScopedTypeVariables,
       TemplateHaskell,
       TypeSynonymInstances #-}
-module Statics {-(
+module Statics (
   -- * Static environments
   S, env0,
   -- ** Environment construction
@@ -19,7 +18,7 @@ module Statics {-(
   tcProg, tcDecls,
   -- ** Type checking results for the REPL
   NewDefs(..), V, T, emptyNewDefs, TyInfo, tyInfoToDec
-)-} where
+) where
 
 import Quasi
 import Util
@@ -690,8 +689,8 @@ findSubst tv = chk [] where
                    = chk seen t' (dualSessionType t)
   cmp seen [$ty|@! ($list:ts) $qlid:_ |] [$ty| ($list:ts') $qlid:_ |]
                    = concat (zipWith (chk seen) ts ts')
-  cmp seen [$ty|@! $t1 -[$_]> $t2 |] [$ty| $t1' -[$_]> $t2' |]
-                   = chk seen t1 t1' ++ chk seen t2 t2'
+  cmp seen [$ty|@! $t1 -[$q]> $t2 |] [$ty| $t1' -[$q']> $t2' |]
+                   = chkQe q q' ++ chk seen t1 t1' ++ chk seen t2 t2'
   cmp seen [$ty|@! $quant:_ '$tv0. $t |] [$ty| $quant:_ '$tv0'. $t' |]
     | tv /= tv0    = [ tr | tr <- chk seen t t',
                             not (tv0  `S.member` ftv tr),
@@ -701,6 +700,15 @@ findSubst tv = chk [] where
   cmp seen t' [$ty| mu '$a. $t |]
                    = chk seen t' (tysubst a (TyMu a t) t)
   cmp _ _ _        = []
+
+  chkQe :: QExp TyVar -> QExp TyVar -> [TypeT]
+  chkQe (QeVar tv1) (QeVar tv2) | tv1 == tv = [TyVar tv2]
+                                | tv2 == tv = [TyVar tv1]
+  chkQe (QeVar tv1) (QeLit Qu)  | tv1 == tv = [tyUnT]
+  chkQe (QeLit Qu)  (QeVar tv2) | tv2 == tv = [tyUnT]
+  chkQe (QeVar tv1) (QeLit Qa)  | tv1 == tv = [tyAfT]
+  chkQe (QeLit Qa)  (QeVar tv2) | tv2 == tv = [tyAfT]
+  chkQe _           _                       = []
 
 -- | Convert qualset representations from a list of all tyvars and
 --   list of qualifier-significant tyvars to a set of type parameter

@@ -15,15 +15,16 @@ module Syntax.Type (
   -- * Built-in types
   -- ** Type information
   tdUnit, tdInt, tdFloat, tdString, tdExn,
-  tdTuple, getTdByName,
+  tdTuple, tdUn, tdAf,
+  getTdByName,
   -- ** Session types
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
   -- ** Convenience type constructors
   tyNulOp, tyUnOp, tyBinOp,
-  tyTuple,
+  tyTuple, tyUn, tyAf,
   tyNulOpT, tyUnOpT, tyBinOpT,
   tyUnitT, tyArrI, tyLolI,
-  tyTupleT, tyExnT,
+  tyTupleT, tyExnT, tyUnT, tyAfT,
   -- ** Type tag queries
   castableType,
 
@@ -111,14 +112,16 @@ instance Show Quant where
 ---
 
 tdUnit, tdInt, tdFloat, tdString,
-  tdExn, tdTuple :: TyTag
+  tdExn, tdTuple, tdUn, tdAf :: TyTag
 
 tdUnit       = TyTag (-1)  []          minBound  []
 tdInt        = TyTag (-2)  []          minBound  []
 tdFloat      = TyTag (-3)  []          minBound  []
 tdString     = TyTag (-4)  []          minBound  []
 tdExn        = TyTag (-5)  []          maxBound  []
-tdTuple      = TyTag (-6)  [1, 1]      qexp      [maxBound, maxBound]
+tdUn         = TyTag (-6)  []          minBound  []
+tdAf         = TyTag (-7)  []          maxBound  []
+tdTuple      = TyTag (-8)  [1, 1]      qexp      [maxBound, maxBound]
   where qexp = qRepresent (0 \/ 1)
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
@@ -158,17 +161,23 @@ tyBinOp s a b  = TyCon (qlid s) [a, b] ()
 tyTuple       :: Type () -> Type () -> Type ()
 tyTuple        = tyBinOp "*"
 
-tyNulOpT       :: i -> String -> Type i
-tyNulOpT i s    = TyCon (qlid s) [] i
+tyUn          :: Type ()
+tyUn           = tyNulOp "U"
 
-tyUnOpT        :: i -> String -> Type i -> Type i
-tyUnOpT i s a   = TyCon (qlid s) [a] i
+tyAf          :: Type ()
+tyAf           = tyNulOp "A"
 
-tyBinOpT       :: i -> String -> Type i -> Type i -> Type i
+tyNulOpT      :: i -> String -> Type i
+tyNulOpT i s   = TyCon (qlid s) [] i
+
+tyUnOpT       :: i -> String -> Type i -> Type i
+tyUnOpT i s a  = TyCon (qlid s) [a] i
+
+tyBinOpT      :: i -> String -> Type i -> Type i -> Type i
 tyBinOpT i s a b = TyCon (qlid s) [a, b] i
 
-tyUnitT        :: TypeT
-tyUnitT         = tyNulOpT tdUnit "unit"
+tyUnitT       :: TypeT
+tyUnitT        = tyNulOpT tdUnit "unit"
 
 tyArrI        :: Type i -> Type i -> Type i
 tyArrI         = TyArr minBound
@@ -176,11 +185,17 @@ tyArrI         = TyArr minBound
 tyLolI        :: Type i -> Type i -> Type i
 tyLolI         = TyArr maxBound
 
-tyTupleT       :: TypeT -> TypeT -> TypeT
-tyTupleT        = tyBinOpT tdTuple "*"
+tyTupleT      :: TypeT -> TypeT -> TypeT
+tyTupleT       = tyBinOpT tdTuple "*"
 
-tyExnT         :: TypeT
-tyExnT          = tyNulOpT tdExn "exn"
+tyUnT         :: TypeT
+tyUnT          = tyNulOpT tdUn "U"
+
+tyAfT         :: TypeT
+tyAfT          = tyNulOpT tdAf "A"
+
+tyExnT        :: TypeT
+tyExnT         = tyNulOpT tdExn "exn"
 
 infixr 8 `tyArrI`, `tyLolI`
 infixl 7 `tyTuple`, `tyTupleT`

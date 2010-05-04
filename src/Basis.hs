@@ -43,6 +43,8 @@ primBasis  = [
     dec [$dc| type char = int |],
     "float"  `primtype` tdFloat,
     "string" `primtype` tdString,
+    "U"      `primtype` tdUn,
+    "A"      `primtype` tdAf,
     "*"      `primtype` tdTuple,
 
     -- Sums

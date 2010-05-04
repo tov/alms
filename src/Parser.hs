@@ -306,6 +306,8 @@ typepP p
   tyatom  = TyVar <$> tyvarp
         <|> TyCon <$> qlidnatp <*> pure [] <*> tytagp
         <|> antiblep
+        <|> tyNulOpT (injTd tdUn) "U" <$ qualU
+        <|> tyNulOpT (injTd tdAf) "A" <$ qualA
 
   tyapp' :: TyTagMode i => [Type i] -> P (Type i)
   tyapp' [t] = option t $ do

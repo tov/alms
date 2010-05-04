@@ -313,16 +313,14 @@ instance PO (Type TyTag) where
     cmp seen b (TyMu a t) t' = chk seen b (tysubst a (TyMu a t) t) t'
     cmp seen b t' (TyMu a t) = chk seen b t' (tysubst a (TyMu a t) t)
     cmp _    _ t t' | t == t' = return t
-    cmp _    _    _ _ = fail "\\/? or /\\?: Does not exist"
-    {- -- code for TOP
-    cmp _    False t [$ty|+ U |] | qualifier t <: Qu = return t
-    cmp _    False [$ty|+ U |] t | qualifier t <: Qu = return t
+    cmp _    False t [$ty|+ U |] | qualConst t <: Qu = return t
+    cmp _    False [$ty|+ U |] t | qualConst t <: Qu = return t
     cmp _    False t [$ty|+ A |] = return t
     cmp _    False [$ty|+ A |] t = return t
     cmp _    True t t'
-      | qualifier t <: Qu && qualifier t' <: Qu = return [$ty|+ U |]
+      | qualConst t <: Qu && qualConst t' <: Qu = return [$ty|+ U |]
       | otherwise                               = return [$ty|+ A |]
-    -}
+    cmp _    _    _ _ = fail "\\/? or /\\?: Does not exist"
 
 -- |
 -- Helper for finding the dual of a session type (since we can't
