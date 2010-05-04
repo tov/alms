@@ -1168,7 +1168,7 @@ askNewDefs  = do
 addVal :: (Ident :>: k, Monad m) =>
           S -> k -> Type i -> m S
 addVal gg x t = runTC gg $ do
-  let ?loc = bogus
+  let ?loc = mkBogus "<addVal>"
   t' <- tcType t
   withAny (x' =:= t') $ saveTC False
     where x' :: Ident = liftKey x
@@ -1185,7 +1185,7 @@ addExn gg n mt =
   runTC gg $ do
     withExn n mt $ \_ ->
       saveTC False
-  where ?loc = bogus
+  where ?loc = mkBogus "<addExn>"
 
 -- | Add a nested submodule
 addMod :: (Monad m) => S -> Uid -> (S -> m S) -> m S

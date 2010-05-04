@@ -92,7 +92,7 @@ module Contract = struct
   let any['<a] : '<a contract =
     fun (_: party, _: party) (a: '<a) -> a
 
-  (* Add domain and codomain contracts to an unlimited function. *)
+  (* Add domain and codomain contracts to a function. *)
   let func['<q]
           ['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
           ['<b1, '<b2] (cod: ('<b1, '<b2) coercion)

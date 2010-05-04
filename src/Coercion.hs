@@ -31,7 +31,7 @@ translate _ = id
 
 -- | Location to use for constructed code
 _loc :: Loc
-_loc  = Loc "<coercion>" 1 1
+_loc  = mkBogus "<coercion>"
 
 -- | Translation a sequence of declarations in the context
 --   of a translation environment, returning a new translation
@@ -85,14 +85,14 @@ build recs [$ty|+ ex '$tv. $t |] [$ty|+ ex '$tv'. $t' |] = do
   let tv''  = freshTyVar tv (ftv (tv, tv'))
   return $
     absContract $
-      [$ex|+@! fun (Pack('$tv'', e) : ex '$tv. $t) ->
-                 Pack[ex '$tv'. $t']('$tv'', $body e) |]
+      [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $t) ->
+               Pack[ex '$tv'. $t']('$tv'', $body e) |]
 build recs [$ty|+ mu '$tv. $t |] [$ty|+ mu '$tv'. $t' |] = do
   lid  <- freshLid
   let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
   body <- build recs' t t'
   return $
-    [$ex|+@!
+    [$ex|+
       let rec $lid:lid
               (parties : string $td:string * $td:tuple string $td:string)
                        : (mu '$tv. $t) -> mu '$tv'. $t'
@@ -101,12 +101,12 @@ build recs [$ty|+ mu '$tv. $t |] [$ty|+ mu '$tv'. $t' |] = do
     |]
 build recs [$ty|+ '$tv |] [$ty|+ '$tv' |]
   | Just (Just lid) <- M.lookup (tv, tv') recs
-    = return [$ex|+@! $lid:lid |]
+    = return [$ex|+ $lid:lid |]
   | Just Nothing <- M.lookup (tv, tv') recs
-    = return [$ex|+@! INTERNALS.Contract.any ['$tv'] |]
+    = return [$ex|+ INTERNALS.Contract.any ['$tv'] |]
 build _ t t' =
   if t <: t'
-    then return [$ex|+@! INTERNALS.Contract.any [$t'] |]
+    then return [$ex|+ INTERNALS.Contract.any [$t'] |]
     else fail $ "No coercion from " ++ show t ++ " to " ++ show t'
 
 shadow :: [TyVar] -> [TyVar] ->
@@ -116,10 +116,10 @@ shadow tvs tvs' = M.filterWithKey
 
 absContract :: ExprT -> ExprT
 absContract body =
-  [$ex|+@! fun (neg: string $td:string, pos: string $td:string) -> $body |]
+  [$ex|+ fun (neg: string $td:string, pos: string $td:string) -> $body |]
 
 instContract :: ExprT -> ExprT
-instContract con = [$ex|+@! $con (neg, pos) |]
+instContract con = [$ex|+ $con (neg, pos) |]
 
 freshLid :: Monad m => CMS.StateT Integer m Lid
 freshLid = do

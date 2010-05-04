@@ -35,14 +35,14 @@ import Ppr (ppr, pprPrec, text, precApp)
 import Quasi
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
-import Loc (Loc(..))
+import Loc (Loc(Loc), mkBogus)
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
               ExnId(..))
 
 -- | Default source location for primitives
 _loc :: Loc
-_loc  = Loc "<primitive>" 1 1
+_loc  = mkBogus "<primitive>"
 
 -- | An entry in the initial environment
 data Entry
@@ -120,7 +120,7 @@ fun :: (MkFun r, Valuable v) =>
 fun name t f = ValEn (Lid name) t (mkFun (FNNamed (ppr (Lid name))) f)
 
 typ :: String -> Entry
-typ s      = DecEn [$dc|@! type $tydec:td |] where td = ptd s
+typ s      = DecEn [$dc| type $tydec:td |] where td = ptd s
 
 -- | Creates a declaration entry
 dec :: Decl () -> Entry

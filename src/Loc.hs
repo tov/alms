@@ -4,7 +4,7 @@
 module Loc (
   -- * Type and constructors
   Loc(..),
-  initial, bogus,
+  initial, mkBogus, bogus,
   -- * Destructors
   isBogus,
 
@@ -50,13 +50,17 @@ initial = fromSourcePos . initialPos
 -- | The bogus location.
 --   (Avoids need for @Maybe Loc@ and lifting)
 bogus   :: Loc
-bogus    = Loc "<bogus>" (-1) (-1)
+bogus    = mkBogus "<bogus>"
+
+-- | A named bogus location; useful to provide default locations
+--   for generated code without losing real locations.
+mkBogus :: String -> Loc
+mkBogus s = Loc s (-1) (-1)
 
 -- | Is the location bogus?
 isBogus :: Loc -> Bool
-isBogus loc = case (file loc, line loc, col loc) of
-  ("<bogus>", -1, -1) -> True
-  _                   -> False
+isBogus (Loc _ (-1) (-1)) = True
+isBogus _                 = False
 
 -- | Class for types that carry source locations
 class Locatable a where
@@ -156,5 +160,7 @@ scrub a = everywhere (mkT bogosify) a where
   bogosify  = const bogus
 
 instance Show Loc where
-  showsPrec p loc = showsPrec p (toSourcePos loc)
+  showsPrec p loc
+    | isBogus loc = showChar '(' . showString (file loc) . showChar ')'
+    | otherwise   = showsPrec p (toSourcePos loc)
 
