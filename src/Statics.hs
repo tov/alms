@@ -366,7 +366,7 @@ tcType = tc where
       checkBound quals ts' =
         tassert (all2 (\qa t -> qualConst t <: qa) quals ts') $
           "Type constructor " ++ show n ++
-          " used at " ++ show (map qualifier ts') ++
+          " used at " ++ show (map (qRepresent . qualifier) ts') ++
           " where at most " ++ show quals ++ " is permitted"
   tc [$ty| $quant:u '$tv . $t |] =
     withTVs [tv] $ \[tv'] -> TyQu u tv' `liftM` tc t
@@ -1233,14 +1233,15 @@ tyInfoToDec n ti = case ti of
   TiSyn ps rhs    -> TdSyn n ps (removeTyTags rhs)
   TiDat _ ps alts -> TdDat n ps [ (uid, fmap removeTyTags mt)
                                       | (uid, mt) <- toList alts ]
-  TiAbs tag       -> TdAbs n (zipWith const tyvars (ttArity tag))
-                           (ttArity tag)
-                           (qRepresent
-                             (denumberQDen
-                               (map (qInterpret . QeVar) tyvars)
-                               (qInterpretCanonical (ttQual tag))))
+  TiAbs tag       ->
+    let tyvars   = zipWith (TV . Lid) alphabet (ttBound tag)
+        alphabet = map return ['a' .. 'z'] ++
+                   [ x ++ [y] | x <- alphabet, y <- ['a' .. 'z'] ]
+     in TdAbs n (zipWith const tyvars (ttArity tag))
+              (ttArity tag)
+              (qRepresent
+                (denumberQDen
+                  (map (qInterpret . QeVar) tyvars)
+                  (qInterpretCanonical (ttQual tag))))
   TiExn           -> TdAbs (Lid "exn") [] [] maxBound
-  where
-    tyvars   = map (flip TV Qu . Lid) alphabet
-    alphabet = map return ['a' .. 'z'] ++
-               [ x ++ [y] | x <- alphabet, y <- ['a' .. 'z'] ]
+
