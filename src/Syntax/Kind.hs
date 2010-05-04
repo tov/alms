@@ -143,10 +143,10 @@ instance Show QLit where
   showsPrec _ Qu = ('U':)
 
 instance Show Variance where
-  showsPrec _ Invariant     = ('1':)
+  showsPrec _ Invariant     = ('=':)
   showsPrec _ Covariant     = ('+':)
   showsPrec _ Contravariant = ('-':)
-  showsPrec _ Omnivariant   = ('0':)
+  showsPrec _ Omnivariant   = ('*':)
 
 instance Bounded QLit where
   minBound = Qu
@@ -171,9 +171,9 @@ instance (Ord a, Num a) => Num (QDen a) where
 --
 -- @
 --       (In)
---         T
+--         =
 --  (Co) +   - (Contra)
---         0
+--         *
 --      (Omni)
 -- @
 instance PO Variance where

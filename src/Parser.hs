@@ -502,8 +502,8 @@ variancep =
   choice
     [ char '+' >> return Covariant,
       char '-' >> return Contravariant,
-      char '0' >> return Omnivariant,
-      char '1' >> return Invariant,
+      char '*' >> return Omnivariant,
+      char '=' >> return Invariant,
       return Invariant ]
 
 qualsp   :: P (QExp TyVar)

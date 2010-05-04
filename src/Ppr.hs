@@ -205,14 +205,15 @@ pprProtoV n [v1, v2] [tv1, tv2]
 pprProtoV n vs tvs = pprParamsV vs tvs <?> ppr n
 
 -- | Print a list of type variables as printed as the parameters
---   to a type.  (Why is this exported?)
+--   to a type.
 pprParams    :: [TyVar] -> Doc
 pprParams tvs = delimList parens comma (map ppr tvs)
 
 pprParamsV       :: [Variance] -> [TyVar] -> Doc
 pprParamsV vs tvs = delimList parens comma (zipWith pprParam vs tvs)
   where
-    pprParam v tv = ppr v <> ppr tv
+    pprParam Invariant tv = ppr tv
+    pprParam v         tv = ppr v <> ppr tv
 
 pprQuals :: (Typeable a, Ppr a) => QExp a -> Doc
 pprQuals (QeLit Qu) = empty
