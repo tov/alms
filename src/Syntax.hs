@@ -49,6 +49,7 @@ deriveAntible 'CaAnti    'caseAltAntis
 deriveAntible 'TyAnti    'typeAntis
 deriveAntible 'QuantAnti 'quantAntis
 deriveAntible 'TyTagAnti 'tyTagAntis
+deriveAntible 'QeAnti    'qExpAntis
 deriveAntible 'DcAnti    'declAntis
 deriveAntible 'TdAnti    'tyDecAntis
 deriveAntible 'AbsTyAnti 'absTyAntis
@@ -93,9 +94,8 @@ unfoldExApp  = unscanl each where
 -- | Get the list of argument types and result type of a function type
 unfoldTyFun :: TypeT -> ([TypeT], TypeT)
 unfoldTyFun  = unscanr each where
-  each (TyCon _ [_, ta, tr] td)
-    | td == tdFun = Just (ta, tr)
-  each _          = Nothing
+  each (TyArr _ ta tr) = Just (ta, tr)
+  each _               = Nothing
 
 unfoldTupleExpr :: Expr i -> ([Expr i], Expr i)
 unfoldTupleExpr  = unscanl each where

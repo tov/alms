@@ -1,6 +1,7 @@
 {-# LANGUAGE
       FlexibleInstances,
       RelaxedPolyRec,
+      PatternGuards,
       QuasiQuotes,
       RankNTypes,
       ScopedTypeVariables,
@@ -87,6 +88,8 @@ antiGen  = $(expandAntible ''Lit)
          . $(expandAntible ''Type)
          . $(expandAntible ''Quant)
          . $(expandAntible ''TyTag)
+         . $(expandAntibleType [t| QExp Int |])
+         . $(expandAntibleType [t| QExp TyVar |])
          . $(expandAntible ''TyVar)
          . $(expandAntible ''Decl)
          . $(expandAntible ''TyDec)
@@ -98,10 +101,6 @@ antiGen  = $(expandAntible ''Lit)
          . $(expandAntible ''QUid)
          . $(expandAntible ''Ident)
          $ const Nothing
-
-typelist :: (ToSyntax b) => [Type ()] -> Maybe (TH.Q b)
-typelist [TyAnti (Anti "list" n)] = Just (varS n [])
-typelist _ = Nothing
 
 antiLocPat :: Loc.Loc -> Maybe TH.PatQ
 antiLocPat _ = Just TH.wildP

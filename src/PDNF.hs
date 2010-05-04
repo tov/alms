@@ -1,15 +1,16 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 -- | Positive Disjunctive Normal Form
 module PDNF (
   -- * Abstract representation
   PDNF,
   -- * Construction
-  variable, clause, disjoinClause, conjoinClause,
+  variable, conjunct, disjunct, disjoinClause, conjoinClause,
   -- * Queries
   isUnsat, isValid, support,
   -- ** Assignments
   Assignment, satisfies, findUnsat,
-  -- * Resolution
-  assume,
+  -- * Resolution and substitution
+  assume, replace, mapVars, mapVarsM, mapReplace, mapReplaceM,
   -- * To and from lists
   fromLists, fromListsUnsafe, toLists,
   -- * Tests
@@ -19,12 +20,14 @@ module PDNF (
 import Syntax.POClass
 import Util
 
+import Data.Generics (Typeable, Data)
+import Data.List (intersperse, nub, sort)
 import qualified Data.Set as S
-import Data.List (intersperse)
 import qualified Test.QuickCheck as QC
 
 -- | The type of a Positive DNF over some type 'a'
 newtype PDNF a = PDNF { unPDNF :: [S.Set a] }
+  deriving (Typeable, Data)
 
 -- | Is the formula unsatisfiable?
 -- O(1)
@@ -43,6 +46,38 @@ assume True  v formula = PDNF . normalize' $
 assume False v formula = PDNF $
   filter (S.notMember v) (unPDNF formula)
 
+-- | To substitute a PDNF formula for a given variable in another
+--   formula.
+replace :: Ord a => a -> PDNF a -> PDNF a -> PDNF a
+replace v (PDNF f1) (PDNF f2) = PDNF $
+  normalize' $ concatMap eachClause f2
+  where
+  eachClause clause
+    | v `S.member` clause = conjoinClause' (S.delete v clause) f1
+    | otherwise           = [clause]
+
+-- | To map every variable in a formula
+mapVars :: (Ord a, Ord b) => (a -> b) -> PDNF a -> PDNF b
+mapVars f  = PDNF . normalize' . map (S.map f) . unPDNF
+
+-- | To map every variable in a formula, in an arbitrary monad
+mapVarsM :: (Ord a, Ord b, Monad m) =>
+            (a -> m b) -> PDNF a -> m (PDNF b)
+mapVarsM f = liftM fromLists . mapM (mapM f) . toLists'
+
+-- | To map every variable in a formula to a formula, possibly over
+--   a different type
+mapReplace :: (Ord a, Ord b) =>
+              PDNF a -> (a -> PDNF b) -> PDNF b
+mapReplace m k = bigVee [ bigWedge [ k var | var <- clause ]
+                        | clause <- toLists' m ]
+
+-- | To map every variable in a formula to a formula, possibly over
+--   a different type, in an arbitrary monad
+mapReplaceM :: (Ord a, Ord b, Monad m) =>
+               PDNF a -> (a -> m (PDNF b)) -> m (PDNF b)
+mapReplaceM m k = liftM bigVee (mapM (liftM bigWedge . mapM k) (toLists' m))
+
 -- | To construct a formula of a single variable
 variable :: a -> PDNF a
 variable  = PDNF . return . S.singleton
@@ -52,8 +87,11 @@ support  :: Ord a => PDNF a -> S.Set a
 support   = foldr S.union S.empty . unPDNF
 
 -- | To construct a formula of one conjuction
-clause   :: Ord a => [a] -> PDNF a
-clause    = PDNF . return . S.fromList
+conjunct :: Ord a => [a] -> PDNF a
+conjunct  = PDNF . return . S.fromList
+
+disjunct :: Ord a => [a] -> PDNF a
+disjunct  = PDNF . map S.singleton . nub
 
 instance Ord a => PO (PDNF a) where
   f1 \/ f2 = PDNF $ foldr disjoinClause' (unPDNF f1) (unPDNF f2)
@@ -96,15 +134,19 @@ normalize'  = foldr disjoinClause' []
 
 -- | To construct a PDNF.
 fromLists :: Ord a => [[a]] -> PDNF a
-fromLists  = foldr (\/) minBound . map clause
+fromLists  = foldr (\/) minBound . map conjunct
 
 -- | To construct a PDNF quickly, assuming that no list is a superset
 --   of an other list.
 fromListsUnsafe :: Ord a => [[a]] -> PDNF a
 fromListsUnsafe  = PDNF . map S.fromList
 
-toLists :: PDNF a -> [[a]]
-toLists  = map S.toList . unPDNF
+-- | To construct a canonical list of lists of variables.
+toLists :: Ord a => PDNF a -> [[a]]
+toLists  = sort . map S.toAscList . unPDNF
+
+toLists' :: PDNF a -> [[a]]
+toLists'  = map S.toList . unPDNF
 
 instance (Eq a, Show a) => Show (PDNF a) where
   showsPrec _ pdnf
@@ -184,8 +226,14 @@ prop_Disj f1 f2 = f1 <: f1 \/ f2
 prop_Conj :: PDNF Int -> PDNF Int -> Bool
 prop_Conj f1 f2 = f1 /\ f2 <: f1
 
+prop_Replace :: PDNF Int -> Bool -> QC.Property
+prop_Replace pdnf b =
+  QC.forAll (QC.elements (S.toList (support pdnf))) $ \v ->
+    replace v (if b then maxBound else minBound) pdnf == assume b v pdnf
+
 tests :: IO ()
 tests  = do
+  QC.quickCheck prop_Replace
   QC.quickCheck prop_Impl
   QC.quickCheck prop_Disj
   QC.quickCheck prop_Conj

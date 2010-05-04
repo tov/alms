@@ -1,39 +1,63 @@
 {-# LANGUAGE
-      DeriveDataTypeable #-}
+      DeriveDataTypeable,
+      GeneralizedNewtypeDeriving #-}
 module Syntax.Kind (
   -- * Qualifiers, qualifiers sets, and variance
-  Q(..), QualSet(..), Variance(..),
+  QLit(..), QExp(..), qeDisj, qeConj, QDen,
+  Variance(..),
   -- ** Qualifier operations
-  qsConst, qsVar, qsVars, qsFromListM, qsFromList, qsToList,
+  qConstBound,
+  qDenToLit, qInterpretM, qInterpret, qInterpretCanonical, qRepresent,
+  qSubst, numberQDenM, numberQDen, denumberQDen
 ) where
 
+import PDNF (PDNF)
+import qualified PDNF
 import Syntax.POClass
+import Syntax.Anti
 import Util
 
 import Control.Monad.Identity (runIdentity)
-import Data.List (elemIndex, union, intersect)
-import Data.Generics (Typeable(..), Data(..))
+import Data.List (elemIndex)
+import Data.Generics (Typeable, Data)
 
 -- QUALIFIERS, VARIANCES
 
--- | Usage qualifiers
-data Q
+-- | Usage qualifier literals
+data QLit
   -- | affine
   = Qa
   -- | unlimited
   | Qu
   deriving (Eq, Typeable, Data)
 
--- |
--- Determines how the parameters to a tycon contribute to
--- the qualifier of the type:
---   if @qualset c = QualSet q set@ then
---
--- @
---    |(t1, ..., tk) c| = q \\sqcup \\bigsqcup { qi | i <- set }
--- @
-data QualSet = QualSet Q [Int]
+-- | The syntactic version of qualifier expressions, which are
+--   positive logical formulae over literals and type variables
+data QExp a
+  = QeLit QLit
+  | QeVar a
+  | QeDisj [QExp a]
+  | QeConj [QExp a]
+  | QeAnti Anti
   deriving (Typeable, Data)
+
+-- | Synthetic constructor to avoid constructing nullary or unary
+--   disjunctions
+qeDisj :: [QExp a] -> QExp a
+qeDisj []   = QeLit Qu
+qeDisj [qe] = qe
+qeDisj qes  = QeDisj qes
+
+-- | Synthetic constructor to avoid constructing nullary or unary
+--   conjunctions
+qeConj :: [QExp a] -> QExp a
+qeConj []   = QeLit Qa
+qeConj [qe] = qe
+qeConj qes  = QeConj qes
+
+-- | The meaning of qualifier expressions
+newtype QDen a = QDen { unQDen :: PDNF a }
+  deriving (Eq, PO, Bounded, Typeable, Data, Show)
 
 -- | Tycon parameter variance (like sign analysis)
 data Variance
@@ -47,39 +71,76 @@ data Variance
   | Omnivariant
   deriving (Eq, Ord, Typeable, Data)
 
-qsConst :: Q -> QualSet
-qsConst  = flip QualSet []
+---
+--- Operations
+---
 
-qsVar   :: Int -> QualSet
-qsVar    = qsVars . return
+qConstBound :: Ord a => QDen a -> QLit
+qConstBound (QDen qden) =
+  if PDNF.isUnsat qden then Qu else Qa
 
-qsVars  :: [Int] -> QualSet
-qsVars   = QualSet minBound
+-- | Find the meaning of a qualifier expression
+qInterpretM :: (Monad m, Ord a) => QExp a -> m (QDen a)
+qInterpretM (QeLit Qu)  = return minBound
+qInterpretM (QeLit Qa)  = return maxBound
+qInterpretM (QeVar v)   = return (QDen (PDNF.variable v))
+qInterpretM (QeDisj es) = bigVee `liftM` mapM qInterpretM es
+qInterpretM (QeConj es) = bigWedge `liftM` mapM qInterpretM es
+qInterpretM (QeAnti a)  = antifail "Syntax.Kind.qInterpret" a
 
-qsFromListM :: (Eq tv, Monad m) => (tv -> m QualSet) ->
-               [tv] -> [Either tv Q] -> m QualSet
-qsFromListM unbound tvs qs = bigVee `liftM` mapM each qs where
-  each (Left tv) = case tv `elemIndex` tvs of
-    Nothing -> unbound tv
-    Just n  -> return (qsVar n)
-  each (Right q) = return (qsConst q)
+-- | Find the meaning of a qualifier expression
+qInterpret :: Ord a => QExp a -> QDen a
+qInterpret  = runIdentity . qInterpretM
 
-qsFromList :: Eq tv => [tv] -> [Either tv Q] -> QualSet
-qsFromList tvs qs = runIdentity (qsFromListM (\_ -> return minBound) tvs qs)
+-- | Convert a canonical representation back to a denotation.
+--   (Unsafe if the representation is not actually canonical)
+qInterpretCanonical :: Ord a => QExp a -> QDen a
+qInterpretCanonical (QeDisj clauses) = QDen $
+  PDNF.fromListsUnsafe $
+    [ [ v ] | QeVar v <- clauses ] ++
+    [ [ v | QeVar v <- clause  ] | QeConj clause <- clauses ]
+qInterpretCanonical e = qInterpret e
 
-qsToList   :: Eq tv => [tv] -> QualSet -> [Either tv Q]
-qsToList _ qs | qs == minBound
-  = []
-qsToList tvs (QualSet q ixs) 
-  = Right q : [ Left (tvs !! ix) | ix <- ixs ]
+-- | Return the canonical representation of the meaning of a
+--   qualifier expression
+qRepresent :: Ord a => QDen a -> QExp a
+qRepresent (QDen pdnf)
+  | PDNF.isUnsat pdnf = QeLit Qu
+  | PDNF.isValid pdnf = QeLit Qa
+  | otherwise         =
+      qeDisj (map (qeConj . map QeVar) (PDNF.toLists pdnf))
 
-instance Show Q where
+qDenToLit :: Ord a => QDen a -> Maybe QLit
+qDenToLit (QDen pdnf)
+  | PDNF.isUnsat pdnf = Just Qu
+  | PDNF.isValid pdnf = Just Qa
+  | otherwise         = Nothing
+
+qSubst :: Ord tv => tv -> QDen tv -> QDen tv -> QDen tv
+qSubst v (QDen pdnf1) (QDen pdnf2) = QDen (PDNF.replace v pdnf1 pdnf2)
+
+numberQDenM  :: (Ord tv, Monad m) =>
+                (tv -> m (QDen Int)) ->
+                [tv] -> QDen tv -> m (QDen Int)
+numberQDenM unbound tvs (QDen pdnf) =
+  liftM QDen $ PDNF.mapReplaceM pdnf $ \tv ->
+    case tv `elemIndex` tvs of
+      Nothing -> liftM unQDen $ unbound tv
+      Just n  -> return (PDNF.variable n)
+
+numberQDen  :: Ord tv => [tv] -> QDen tv -> QDen Int
+numberQDen = runIdentity <$$> numberQDenM (const (return minBound))
+
+-- | Given a qualifier set of indices into a list of qualifier
+--   expressions, build the qualifier set over the qexps.
+--   Assumes that the list is long enough for all indices.
+denumberQDen :: Ord tv => [QDen tv] -> QDen Int -> QDen tv
+denumberQDen qds (QDen pdnf) = QDen $
+  PDNF.mapReplace pdnf $ \ix -> unQDen (qds !! ix)
+
+instance Show QLit where
   showsPrec _ Qa = ('A':)
   showsPrec _ Qu = ('U':)
-
-instance Show QualSet where
-  show (QualSet q ixs) =
-    show q ++ " \\/ bigVee " ++ show ixs
 
 instance Show Variance where
   showsPrec _ Invariant     = ('1':)
@@ -87,22 +148,24 @@ instance Show Variance where
   showsPrec _ Contravariant = ('-':)
   showsPrec _ Omnivariant   = ('0':)
 
-instance Eq QualSet where
-  QualSet q ixs == QualSet q' ixs'
-    | q == maxBound && q' == maxBound = True
-    | otherwise                       = q == q' && ixs == ixs'
-
-instance Bounded Q where
+instance Bounded QLit where
   minBound = Qu
   maxBound = Qa
 
-instance Bounded QualSet where
-  minBound = QualSet minBound []
-  maxBound = QualSet maxBound []
+instance Bounded (QExp a) where
+  minBound = QeLit minBound
+  maxBound = QeLit maxBound
 
 instance Bounded Variance where
   minBound = Omnivariant
   maxBound = Invariant
+
+instance (Ord a, Num a) => Num (QDen a) where
+  fromInteger = QDen . PDNF.variable . fromInteger
+  (+)    = error "QDen.signum: not implemented"
+  (*)    = error "QDen.signum: not implemented"
+  abs    = error "QDen.signum: not implemented"
+  signum = error "QDen.signum: not implemented"
 
 -- | The variance lattice:
 --
@@ -132,26 +195,14 @@ instance PO Variance where
 --  |
 --  Qu
 -- @
-instance PO Q where
+instance PO QLit where
   Qu \/ Qu = Qu
   _  \/ _  = Qa
   Qa /\ Qa = Qa
   _  /\ _  = Qu
 
-instance Ord Q where
+instance Ord QLit where
   (<=) = (<:)
-
--- | The 'QualSet' partial order
--- (relation only defined for same-length qualsets)
-instance PO QualSet where
-  QualSet q ixs /\? QualSet q' ixs'
-    | q == q' = return (QualSet q (ixs `intersect` ixs'))
-  qs /\? qs'  = fail $
-      "GLB " ++ show qs ++ " /\\ " ++ show qs' ++ " does not exist"
-  QualSet q ixs \/ QualSet q' ixs'
-    | q == maxBound  = QualSet maxBound []
-    | q' == maxBound = QualSet maxBound []
-    | otherwise      = QualSet (q \/ q') (ixs `union` ixs')
 
 -- | Variance has a bit more structure still -- it does sign analysis:
 instance Num Variance where

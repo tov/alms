@@ -57,12 +57,13 @@ instance Ppr (Type i) where
                   = parensIf (p > precSemi) $
                       sep [ pprPrec (precSemi + 1) t1 <> text ";",
                             pprPrec precSemi t2 ]
+  -- pprPrec p (TyArr q t1 t2)
   pprPrec p [$ty| $t1 -[$q]> $t2 |]
                   = parensIf (p > precArr) $
                     sep [ pprPrec (precArr + 1) t1,
                           pprArr q <+> pprPrec precArr t2 ]
-    where pprArr [$ty| U |] = text "->"
-          pprArr [$ty| A |] = text "-o"
+    where pprArr (QeLit Qu) = text "->"
+          pprArr (QeLit Qa) = text "-o"
           pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
   pprPrec p [$ty| ($t1, $t2) $name:n |]
     | isOperator (Lid n)
@@ -100,6 +101,26 @@ instance Ppr (Type i) where
                               char '.'
                                 >+> pprPrec precDot t
   pprPrec p [$ty| $anti:a |] = pprPrec p a
+
+instance Ppr a => Ppr (QExp a) where
+  pprPrec p (QeLit qu)    = pprPrec p qu
+  pprPrec p (QeVar v)     = pprPrec p v
+  pprPrec p (QeDisj [])   = pprPrec p Qu
+  pprPrec p (QeDisj [qe]) = pprPrec p qe
+  pprPrec p (QeDisj qes)  = parensIf (p > precPlus) $
+                              fsep $
+                                intersperse (text "\\/") $
+                                  map (pprPrec (precPlus + 1)) qes
+  pprPrec p (QeConj [])   = pprPrec p Qa
+  pprPrec p (QeConj [qe]) = pprPrec p qe
+  pprPrec p (QeConj qes)  = parensIf (p > precPlus) $
+                              fsep $
+                                intersperse (text "/\\") $
+                                  map (pprPrec (precStar + 1)) qes
+  pprPrec p (QeAnti a)    = pprPrec p a
+
+instance Ppr Int where
+  ppr = int
 
 instance Ppr (Prog i) where
   ppr [$pr| $list:ms |]       = vcat (map ppr ms)
@@ -190,10 +211,9 @@ pprParamsV vs tvs = delimList parens comma (zipWith pprParam vs tvs)
   where
     pprParam v tv = ppr v <> ppr tv
 
-pprQuals :: (Ppr a, Ppr b) => [Either a b] -> Doc
-pprQuals [] = empty
-pprQuals qs = text "qualifier" <+>
-              delimList parens (text " \\/") (map (either ppr ppr) qs)
+pprQuals :: Ppr a => QExp a -> Doc
+pprQuals (QeLit Qu) = empty
+pprQuals qs         = text "qualifier" <+> pprPrec precApp qs
 
 pprAlternatives :: [(Uid, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals
@@ -380,8 +400,9 @@ instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show Patt       where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
+instance Ppr a => Show (QExp a) where showsPrec = showFromPpr
 
-instance Ppr Q         where pprPrec = pprFromShow
+instance Ppr QLit      where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Quant     where pprPrec = pprFromShow
 instance Ppr Lid       where pprPrec = pprFromShow

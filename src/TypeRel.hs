@@ -1,7 +1,9 @@
 {-# LANGUAGE
       FlexibleInstances,
       QuasiQuotes,
-      ParallelListComp #-}
+      ParallelListComp,
+      ScopedTypeVariables,
+      TemplateHaskell #-}
 module TypeRel (
   -- * Type operations
   -- ** Equality
@@ -11,7 +13,7 @@ module TypeRel (
   -- ** Substitutions
   tysubst, tysubsts,
   -- ** Queries and conversions
-  qualifier, replaceTyTags, removeTyTags,
+  qualifier, qualConst, replaceTyTags, removeTyTags,
   dualSessionType,
 ) where
 
@@ -20,7 +22,7 @@ import Syntax
 import Util
 
 import Data.Char (isDigit)
-import Data.Generics (Data, everywhere, mkT)
+import Data.Generics (Data, everywhere, mkT, everything, mkQ)
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Control.Monad.State (State, evalState, get, put)
@@ -31,11 +33,15 @@ class Ftv a where
   ftv :: a -> S.Set TyVar
 
 instance Ftv (Type i) where
-  ftv (TyCon _ ts _) = S.unions (map ftv ts)
-  ftv (TyVar tv)     = S.singleton tv
-  ftv (TyQu _ tv t)  = S.delete tv (ftv t)
-  ftv (TyMu tv t)    = S.delete tv (ftv t)
-  ftv (TyAnti a)     = antierror "ftv" a
+  ftv (TyCon _ ts _)  = S.unions (map ftv ts)
+  ftv (TyVar tv)      = S.singleton tv
+  ftv (TyArr q t1 t2) = S.unions [ftv t1, ftv t2, ftv q]
+  ftv (TyQu _ tv t)   = S.delete tv (ftv t)
+  ftv (TyMu tv t)     = S.delete tv (ftv t)
+  ftv (TyAnti a)      = $antierror
+
+instance (Data a, Ftv a) => Ftv (QExp a) where
+  ftv = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVar))
 
 instance Ftv a => Ftv [a] where
   ftv = S.unions . map ftv
@@ -54,10 +60,18 @@ instance FtvVs (Type TyTag) where
                          [ M.map (* var) m
                          | var <- ttArity td
                          | m   <- map ftvVs ts ]
+  ftvVs (TyArr q t1 t2)= M.unionsWith (+)
+                         [ ftvVs q
+                         , M.map negate (ftvVs t1)
+                         , ftvVs t2 ]
   ftvVs (TyVar tv)     = M.singleton tv 1
   ftvVs (TyQu _ tv t)  = M.delete tv (ftvVs t)
   ftvVs (TyMu tv t)    = M.delete tv (ftvVs t)
   ftvVs (TyAnti a)     = antierror "ftvVs" a
+
+instance (Data a, FtvVs a) => FtvVs (QExp a) where
+  ftvVs = everything M.union
+            (mkQ M.empty (ftvVs :: a -> M.Map TyVar Variance))
 
 instance FtvVs a => FtvVs [a] where
   ftvVs = M.unionsWith (+) . map ftvVs
@@ -102,9 +116,8 @@ tysubsts ps ts t =
     substs ps (map TyVar ps') $
       t
 
--- | Type substitution (NB: the languages need not match, since
--- types embed in one another)
-tysubst :: TyVar -> Type i -> Type i -> Type i
+-- | Type substitution
+tysubst :: TyVar -> TypeT -> TypeT -> TypeT
 tysubst a t = ts where
   ts (TyVar a')
                 = if a' == a
@@ -124,7 +137,10 @@ tysubst a t = ts where
                       in TyMu a'' (ts (tysubst a' (TyVar a'') t'))
   ts (TyCon c tys td)
                 = TyCon c (map ts tys) td
-  ts (TyAnti an) = antierror "tysubst" an
+  ts (TyArr q t1 t2)
+                = TyArr q' (ts t1) (ts t2) where
+    q' = qRepresent (qSubst a (qualifier t) (qInterpret q))
+  ts (TyAnti an)= $(antierror 'an)
 
 -- | Remove tycon information from a type
 removeTyTags :: Type i -> Type ()
@@ -132,9 +148,10 @@ removeTyTags  = untype where
   untype :: Type i -> Type ()
   untype (TyCon con args _) = TyCon con (map untype args) ()
   untype (TyVar tv)         = TyVar tv
+  untype (TyArr q t1 t2)    = TyArr q (untype t1) (untype t2)
   untype (TyQu quant tv t)  = TyQu quant tv (untype t)
   untype (TyMu tv t)        = TyMu tv (untype t)
-  untype (TyAnti a)         = antierror "removeTyTags" a
+  untype (TyAnti a)         = $antierror
 
 -- | Given a type tag and something traversable, find all type tags
 --   with the same identity as the given type tag, and replace them.
@@ -146,17 +163,27 @@ replaceTyTags tag' = everywhere (mkT each) where
   each tag | ttId tag == ttId tag' = tag'
            | otherwise             = tag
 
+-- | The constant bound on the qualifier of a type
+qualConst :: TypeT -> QLit
+qualConst  = qConstBound . qualifier
+
 -- | Find the qualifier of a type (which must be decorated with
 --   tycon info)
-qualifier     :: TypeT -> Q
-qualifier [$ty|+ ($list:ps) $qlid:_ $td |] = bigVee qs' where
-  qs  = map qualifier ps
-  qs' = q : map (qs !!) ixs
-  QualSet q ixs = ttQual td
-qualifier [$ty|+ '$tv |]              = tvqual tv
+qualifier     :: TypeT -> QDen TyVar
+qualifier [$ty|+ ($list:ps) $qlid:_ $td |]
+  = denumberQDen (map qualifier ps) (qInterpretCanonical (ttQual td))
+qualifier [$ty|+ $_ -[$q]> $_ |]      = qInterpret (squashUnTyVars q)
+qualifier [$ty|+ '$tv |]
+  | tvqual tv <: Qu                   = minBound
+  | otherwise                         = qInterpret (QeVar tv)
 qualifier [$ty|+ $quant:_ '$_ . $t |] = qualifier t
 qualifier [$ty|+ mu '$_ . $t |]       = qualifier t
-qualifier [$ty|+ $anti:a |]           = antierror "qualifier" a
+qualifier [$ty|+ $anti:a |]           = $antierror
+
+squashUnTyVars :: QExp TyVar -> QExp TyVar
+squashUnTyVars = everywhere (mkT each) where
+  each (QeVar tv) | tvqual tv <: Qu = QeLit Qu
+  each qe = qe
 
 -- | A fresh type for defining alpha equality up to mu.
 newtype TypeTEq = TypeTEq { unTypeTEq :: TypeT }
@@ -172,6 +199,9 @@ instance Eq TypeTEq where
         === [$ty|+@! ($list:ps') $qlid:_ $td' |]
                                  = td == td' && all2 (===) ps ps'
       TyVar x       === TyVar x' = x == x'
+      TyArr q t1 t2 === TyArr q' t1' t2'
+                                 = qInterpret q == qInterpret q'
+                                   && t1 === t1' && t2 === t2'
       TyQu u x t    === TyQu u' x' t'
         | u == u' && tvqual x == tvqual x' =
           tysubst x a t === tysubst x' a t'
@@ -194,19 +224,22 @@ instance Eq (Type TyTag) where
           put ((te1, te2) : (te2, te1) : seen)
           cmp t1 t2
 
-    [$ty|+ $p $qlid:_ $td:dual |] `cmp` t  = dualSessionType p `chk` t
-    t `cmp` [$ty|+ $p $qlid:_ $td:dual |]  = t `chk` dualSessionType p
-    TyMu a t       `cmp` t'              = tysubst a (TyMu a t) t `chk` t'
-    t'             `cmp` TyMu a t        = t' `chk` tysubst a (TyMu a t) t
+    [$ty|+ $p $qlid:_ $td:dual |] `cmp` t = dualSessionType p `chk` t
+    t `cmp` [$ty|+ $p $qlid:_ $td:dual |] = t `chk` dualSessionType p
+    TyMu a t       `cmp` t'               = tysubst a (TyMu a t) t `chk` t'
+    t'             `cmp` TyMu a t         = t' `chk` tysubst a (TyMu a t) t
     [$ty|+ ($list:ps) $qlid:_ $td |]
       `cmp` [$ty|+@! ($list:ps') $qlid:_ $td' |]
-      | td == td'   = allM2 chk ps ps'
-    TyVar x        `cmp` TyVar x'        = return (x == x')
+      | td == td'                         = allM2 chk ps ps'
+    TyVar x        `cmp` TyVar x'         = return (x == x')
+    TyArr q t1 t2  `cmp` TyArr q' t1' t2'
+      | qInterpret q == qInterpret q'     = allM2 chk [t1,t2] [t1',t2']
     TyQu u x t     `cmp` TyQu u' x' t' 
-      | u == u' && tvqual x == tvqual x' = 
+      | u == u' && tvqual x == tvqual x'  =
         tysubst x a t `chk` tysubst x' a t'
           where a = TyVar (freshTyVar x (ftv [t, t']))
-    _            `cmp` _               = return False
+    _            `cmp` _                  = return False
+
 
 -- | The Type partial order
 instance PO (Type TyTag) where
@@ -214,6 +247,7 @@ instance PO (Type TyTag) where
     clean :: TypeT -> TypeT
     clean (TyCon c ps td)  = TyCon c (map clean ps) td
     clean (TyVar a)        = TyVar a
+    clean (TyArr q t1 t2)  = TyArr q (clean t1) (clean t2)
     clean (TyQu u a t)     = TyQu u a (clean t)
     clean (TyMu a t)
       | a `S.member` ftv t = TyMu a (clean t)
@@ -230,20 +264,32 @@ instance PO (Type TyTag) where
         Just tv -> return (TyVar tv)
         Nothing -> TyMu tv `liftM` cmp seen' b t1 t2 where
           used  = S.fromList (map snd seen)
-          tv    = freshTyVar (TV (Lid "r") (qualifier t1 \/ qualifier t2))
-                             (ftv [t1, t2] `S.union` used)
+          tv    = freshTyVar
+                    (TV (Lid "r") (qualConst t1 \/ qualConst t2))
+                    (ftv [t1, t2] `S.union` used)
           seen' = (((b, te1, te2), tv) : ((b, te2, te1), tv) : seen)
 
     -- Special cases to treat "all 'a. 'a" as bottom:
     cmp _ b t'@(TyQu Forall tv (TyVar tv')) t
-      | tv == tv' && qualifier t <: tvqual tv = return (if b then t else t')
+      | tv == tv' && qualConst t <: tvqual tv
+      = return (if b then t else t')
     cmp _ b t t'@(TyQu Forall tv (TyVar tv'))
-      | tv == tv' && qualifier t <: tvqual tv = return (if b then t else t')
+      | tv == tv' && qualConst t <: tvqual tv
+      = return (if b then t else t')
     -- Special cases for session types duality:
     cmp seen b [$ty|+ $p $qlid:_ $td:dual |] t
                                     = chk seen b (dualSessionType p) t
     cmp seen b t [$ty|+ $p $qlid:_ $td:dual |]
                                     = chk seen b t (dualSessionType p)
+    -- Arrows
+    cmp seen b [$ty|+ $t11 -[$q1]> $t12 |]
+               [$ty|+ $t21 -[$q2]> $t22 |] = do
+        t1  <- chk seen (not b) t11 t21
+        t2  <- chk seen b t12 t22
+        q1' <- qInterpretM q1
+        q2' <- qInterpretM q2
+        q   <- qRepresent `liftM` ifMJ b q1' q2'
+        return [$ty|+ $t1 -[$q]> $t2 |]
     -- Otherwise:
     cmp seen b [$ty|+ ($list:ps)  $qlid:tc $td  |]
                [$ty|+ ($list:ps') $qlid:_  $td' |] | td == td' = do
@@ -267,6 +313,8 @@ instance PO (Type TyTag) where
     cmp seen b (TyMu a t) t' = chk seen b (tysubst a (TyMu a t) t) t'
     cmp seen b t' (TyMu a t) = chk seen b t' (tysubst a (TyMu a t) t)
     cmp _    _ t t' | t == t' = return t
+    cmp _    _    _ _ = fail "\\/? or /\\?: Does not exist"
+    {- -- code for TOP
     cmp _    False t [$ty|+ U |] | qualifier t <: Qu = return t
     cmp _    False [$ty|+ U |] t | qualifier t <: Qu = return t
     cmp _    False t [$ty|+ A |] = return t
@@ -274,7 +322,7 @@ instance PO (Type TyTag) where
     cmp _    True t t'
       | qualifier t <: Qu && qualifier t' <: Qu = return [$ty|+ U |]
       | otherwise                               = return [$ty|+ A |]
-    cmp _    _    _ _ = fail "\\/? or /\\?: Does not exist"
+    -}
 
 -- |
 -- Helper for finding the dual of a session type (since we can't

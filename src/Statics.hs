@@ -1,3 +1,4 @@
+{-# OPTIONS_GHC -fno-warn-unused-imports #-}
 -- | The type checker
 {-# LANGUAGE
       DeriveDataTypeable,
@@ -9,7 +10,7 @@
       ScopedTypeVariables,
       TemplateHaskell,
       TypeSynonymInstances #-}
-module Statics (
+module Statics {-(
   -- * Static environments
   S, env0,
   -- ** Environment construction
@@ -18,7 +19,7 @@ module Statics (
   tcProg, tcDecls,
   -- ** Type checking results for the REPL
   NewDefs(..), V, T, emptyNewDefs, TyInfo, tyInfoToDec
-) where
+)-} where
 
 import Quasi
 import Util
@@ -44,7 +45,7 @@ import qualified Control.Monad.RWS    as RWS
 -- p = const
 
 -- Get the usage (sharing) of a variable in an expression:
-usage :: QLid -> Expr i -> Q
+usage :: QLid -> Expr i -> QLit
 usage x e = case M.lookup x (fv e) of
   Just u | u > 1 -> Qu
   _              -> Qa
@@ -54,7 +55,7 @@ data TyInfo = TiAbs TyTag
             | TiSyn [TyVar] TypeT
             | TiDat TyTag [TyVar] (Env Uid (Maybe TypeT))
             | TiExn
-  deriving (Data, Typeable, Show)
+  deriving (Data, Typeable)
 
 -- Type environments
 type D = Env TyVar TyVar       -- tyvars in scope, with idempot. renaming
@@ -336,6 +337,11 @@ tcType = tc where
   tc [$ty| '$tv |] = do
     tv' <- getTV tv
     return (TyVar tv')
+  tc [$ty| $t1 -[$q]> $t2 |] = do
+    t1' <- tcType t1
+    t2' <- tcType t2
+    q'  <- qRepresent `liftM` qInterpretM q
+    return [$ty|+ $t1' -[$q']> $t2' |]
   tc [$ty| ($list:ts) $qlid:n |] = do
     ts'  <- mapM tc ts
     tcon <- getType n
@@ -359,7 +365,7 @@ tcType = tc where
           show (length ts) ++ " arguments where " ++
           show len ++ " expected"
       checkBound quals ts' =
-        tassert (all2 (\qa t -> qualifier t <: qa) quals ts') $
+        tassert (all2 (\qa t -> qualConst t <: qa) quals ts') $
           "Type constructor " ++ show n ++
           " used at " ++ show (map qualifier ts') ++
           " where at most " ++ show quals ++ " is permitted"
@@ -367,7 +373,7 @@ tcType = tc where
     withTVs [tv] $ \[tv'] -> TyQu u tv' `liftM` tc t
   tc [$ty| mu '$tv . $t |] = withTVs [tv] $ \[tv'] -> do
     t' <- tc t
-    tassert (qualifier t' == tvqual tv) $
+    tassert (qualConst t' == tvqual tv) $
       "Recursive type " ++ show (TyMu tv t) ++ " qualifier " ++
       "does not match its own type variable."
     return (TyMu tv' t')
@@ -377,7 +383,7 @@ tcType = tc where
 --   a new type variable 
 makeExType :: TypeT -> TypeT -> TypeT
 makeExType t1 t2 = TyQu Exists tv $ everywhere (mkT erase) t1 where
-  tv       = freshTyVar (TV (Lid "a") (qualifier t2)) (ftv [t1, t2])
+  tv       = freshTyVar (TV (Lid "a") (qualConst t2)) (ftv [t1, t2])
   erase t' = if t' == t2 then TyVar tv else t'
 
 -- | Type check an A expression
@@ -411,7 +417,7 @@ tcExpr = tc where
               "Duplicate binding in let rec: " ++ show (bnvar b)
             tassert (syntacticValue (bnexpr b)) $
               "Not a syntactic value in let rec: " ++ show (bnexpr b)
-            tassert (qualifier t <: Qu) $
+            tassert (qualConst t <: Qu) $
               "Affine type in let rec binding: " ++ show t
             g' <- makeG (bnvar b : seen) bs' ts'
             return (g' =+= bnvar b =:= t)
@@ -441,10 +447,8 @@ tcExpr = tc where
       t' <- tcType t
       (gx, x', te, e') <- withPatt t' x $ tc e
       checkSharing "lambda" gx e
-      unworthy <- isUnworthy e0
-      return (if unworthy
-                then [$ty|+ $t' -o $te |]
-                else [$ty|+ $t' -> $te |],
+      q <- qRepresent `liftM` getWorthiness e0
+      return ([$ty|+ $t' -[$q]> $te |],
               [$ex|+ fun ($x' : $t') -> $e' |])
     [$ex| $_ $_ |] -> do
       tcExApp tc e0
@@ -494,19 +498,19 @@ tcExpr = tc where
     forM_ (toList g) $ \(x, tx) ->
       case x of
         Var x' ->
-          tassert (qualifier tx <: usage (J [] x') e) $
+          tassert (qualConst tx <: usage (J [] x') e) $
             "Affine variable " ++ show x' ++ " : " ++
             show tx ++ " duplicated in " ++ name ++ " body"
         _ -> return ()
 
-  -- | Does the given expression mention non-duplicable things?
-  isUnworthy e =
-    anyM (\x -> do
-           mtx <- tryGetVar (fmap Var x)
-           return $ case mtx of
-             Just tx -> qualifier tx == Qa
-             _       -> False)
-         (M.keys (fv e))
+  -- | What is the join of the qualifiers of all free variables
+  --   of the given expression?
+  getWorthiness e =
+    liftM bigVee . forM (M.keys (fv e)) $ \x -> do
+      mtx <- tryGetVar (fmap Var x)
+      return $ case mtx of
+        Just tx -> qualifier tx
+        _       -> minBound
 
 -- | Type check an application, given the type subsumption
 --   relation, the appropriate type checking function, and the
@@ -557,7 +561,7 @@ tcExApp tc e0 = do
 tapply :: (?loc :: Loc, Monad m) =>
           TypeT -> TypeT -> m TypeT
 tapply [$ty| all '$tv . $t1' |] t2 = do
-  tassert (qualifier t2 <: tvqual tv) $
+  tassert (qualConst t2 <: tvqual tv) $
     "Type application cannot instantiate type variable " ++
     show tv ++ " with type " ++ show t2
   return (tysubst tv t2 t1')
@@ -686,6 +690,8 @@ findSubst tv = chk [] where
                    = chk seen t' (dualSessionType t)
   cmp seen [$ty|@! ($list:ts) $qlid:_ |] [$ty| ($list:ts') $qlid:_ |]
                    = concat (zipWith (chk seen) ts ts')
+  cmp seen [$ty|@! $t1 -[$_]> $t2 |] [$ty| $t1' -[$_]> $t2' |]
+                   = chk seen t1 t1' ++ chk seen t2 t2'
   cmp seen [$ty|@! $quant:_ '$tv0. $t |] [$ty| $quant:_ '$tv0'. $t' |]
     | tv /= tv0    = [ tr | tr <- chk seen t t',
                             not (tv0  `S.member` ftv tr),
@@ -700,8 +706,10 @@ findSubst tv = chk [] where
 --   list of qualifier-significant tyvars to a set of type parameter
 --   indices
 indexQuals :: (?loc :: Loc, Monad m) =>
-              Lid -> [TyVar] -> [Either TyVar Q] -> TC m QualSet
-indexQuals name = qsFromListM unbound where
+              Lid -> [TyVar] -> QExp TyVar -> TC m (QExp Int)
+indexQuals name tvs qexp = do
+  qden <- qInterpretM qexp
+  qRepresent `liftM` numberQDenM unbound tvs qden where
   unbound tv = terr $ "unbound tyvar " ++ show tv ++
                       " in qualifier list for type " ++ show name
 
@@ -735,10 +743,10 @@ withTyDecs tds0 k0 = do
       withTypes (name =:= TiDat tag params empty) k
     withStub _           k = k
     --
-    getEdge (TdSyn name _ t)    = (name, tyConsOfType True t)
+    getEdge (TdSyn name _ t)    = (name, tyConsOfType t)
     getEdge (TdAbs name _ _ _)  = (name, S.empty)
     getEdge (TdDat name _ alts) = (name, names) where
-       names = S.unions [ tyConsOfType True t | (_, Just t) <- alts ]
+       names = S.unions [ tyConsOfType t | (_, Just t) <- alts ]
     getEdge (TdAnti a)          = $antierror
     --
     partition td (atds, stds, dtds) =
@@ -786,8 +794,9 @@ withTyDec (TdDat name params alts) k = do
   let t'      = foldl tyTupleT tyUnitT [ t | (_, Just t) <- alts' ]
       arity   = typeVariances params' t'
       qual    = typeQual params' t'
-      changed = arity /= ttArity tag || qual /= ttQual tag
-      tag'    = tag { ttArity = arity, ttQual = qual }
+      changed = arity /= ttArity tag
+             || qual /= qInterpretCanonical (ttQual tag)
+      tag'    = tag { ttArity = arity, ttQual = qRepresent qual }
   withTypes (name =:= TiDat tag' params' (fromList alts')) $
     withVars (alts2env name params' tag' alts') $
       (k (TdDat name params alts', changed))
@@ -804,7 +813,7 @@ unique  = loop S.empty where
 alts2env :: Lid -> [TyVar] -> TyTag -> [(Uid, Maybe TypeT)] -> V
 alts2env name params tag = fromList . map each where
   each (uid, Nothing) = (Con uid, alls result)
-  each (uid, Just t)  = (Con uid, alls (t `tyArrT` result))
+  each (uid, Just t)  = (Con uid, alls (t `tyArrI` result))
   alls t              = foldr tyAll t params
   result              = TyCon (J [] name) (map TyVar params) tag
 
@@ -817,18 +826,15 @@ typeVariances d0 = finish . ftvVs where
 
 -- | Compute the qualifier-significance of tyvars in an
 --   open type expression
-typeQual :: [TyVar] -> TypeT -> QualSet
-typeQual d0 = qsFromList d0 . S.toList . loop where
-  loop :: TypeT -> S.Set (Either TyVar Q)
+typeQual :: [TyVar] -> TypeT -> QDen Int
+typeQual d0 = numberQDen d0 . loop where
+  loop :: TypeT -> QDen TyVar
   loop [$ty|+ ($list:ts) $qlid:_ $info |]
-                     = S.unions
-                         [ case qual of
-                             Right q -> S.singleton (Right q)
-                             Left t  -> loop t
-                         | qual <- qsToList ts (ttQual info) ]
-  loop [$ty|+ '$tv |]              = S.singleton (Left tv)
-  loop [$ty|+ $quant:_ '$tv. $t |] = S.delete (Left tv) (loop t)
-  loop [$ty|+ mu '$tv. $t |]       = S.delete (Left tv) (loop t)
+    = denumberQDen (map loop ts) (qInterpret (ttQual info))
+  loop [$ty|+ $_ -[$q]> $_ |]      = qInterpret q
+  loop [$ty|+ '$tv |]              = qInterpret (QeVar tv)
+  loop [$ty|+ $quant:_ '$tv. $t |] = qSubst tv minBound (loop t)
+  loop [$ty|+ mu '$tv. $t |]       = qSubst tv minBound (loop t)
   loop [$ty|+ $anti:a |]           = $antierror
 
 -- | Generic topological sort
@@ -870,16 +876,18 @@ topSort getEdge edges = do
                        | info <- edges ]
 
 -- | The tycons that appear in a type
-tyConsOfType :: Bool -> Type i -> S.Set Lid
-tyConsOfType here [$ty| ($list:ts) $qlid:n |] =
-  (case (here, n) of
-    (True, J [] lid) -> S.singleton lid
-    _                -> S.empty)
-  `S.union` S.unions (map (tyConsOfType here) ts)
-tyConsOfType _    [$ty| '$_ |]              = S.empty
-tyConsOfType here [$ty| $quant:_ '$_. $t |] = tyConsOfType here t
-tyConsOfType here [$ty| mu '$_. $t |]       = tyConsOfType here t
-tyConsOfType _    [$ty| $anti:a |]          = $antierror
+tyConsOfType :: Type i -> S.Set Lid
+tyConsOfType [$ty| ($list:ts) $qlid:n |] =
+  case n of
+    J [] lid -> S.singleton lid
+    _        -> S.empty
+  `S.union` S.unions (map tyConsOfType ts)
+tyConsOfType [$ty| '$_ |]              = S.empty
+tyConsOfType [$ty| $t1 -[$_]> $t2 |]   =
+  tyConsOfType t1 `S.union` tyConsOfType t2
+tyConsOfType [$ty| $quant:_ '$_. $t |] = tyConsOfType t
+tyConsOfType [$ty| mu '$_. $t |]       = tyConsOfType t
+tyConsOfType [$ty| $anti:a |]          = $antierror
 
 -- END type decl checking
 
@@ -892,14 +900,14 @@ withLet x mt e k = do
   t' <- case mt of
     Just t  -> do
       t' <- tcType t
-      tassert (qualifier t' == Qu) $
+      tassert (qualConst t' == Qu) $
         "Declared type of top-level binding " ++ show x ++ " is not unlimited"
       tassert (te <: t') $
         "Declared type for top-level binding " ++ show x ++ " : " ++ show t' ++
         " is not subsumed by actual type " ++ show te
       return t'
     Nothing -> do
-      tassert (qualifier te == Qu) $
+      tassert (qualConst te == Qu) $
         "Type of top-level binding " ++ show x ++ " is not unlimited"
       return te
   (d, g, x') <- tcPatt t' x
@@ -940,7 +948,7 @@ withExn :: (?loc :: Loc, Monad m) =>
            (Maybe TypeT -> TC m a) -> TC m a
 withExn n mt k = do
   mt'   <- gmapM tcType mt
-  withVars (Con n =:= maybe tyExnT (`tyArrT` tyExnT) mt') $
+  withVars (Con n =:= maybe tyExnT (`tyArrI` tyExnT) mt') $
     k mt'
 
 -- Is the given type the type of an exception constructor?
@@ -1073,7 +1081,8 @@ withAbsTy atds ds k0 =
         "abstract-with-end: declared arity for type " ++ show name ++
         ", " ++ show arity ++
         ", is more general than actual arity " ++ show (ttArity tag)
-      tassert (ttQual tag <: qualSet) $ 
+      tassert (qInterpretCanonical (ttQual tag) <:
+               qInterpretCanonical qualSet) $ 
         "abstract-with-end: declared qualifier for type " ++ show name ++
         ", " ++ show qualSet ++
         ", is more general than actual qualifier " ++ show (ttQual tag)
@@ -1130,7 +1139,6 @@ data NewDefs
     -- | New declared module names
     newModules :: [Uid]
   }
-  deriving Show
 
 -- | No new definitions
 emptyNewDefs :: NewDefs
@@ -1219,8 +1227,11 @@ tyInfoToDec n ti = case ti of
                                       | (uid, mt) <- toList alts ]
   TiAbs tag       -> TdAbs n (zipWith const tyvars (ttArity tag))
                            (ttArity tag)
-                           (qsToList tyvars (ttQual tag))
-  TiExn           -> TdAbs (Lid "exn") [] [] [Right Qa]
+                           (qRepresent
+                             (denumberQDen
+                               (map (qInterpret . QeVar) tyvars)
+                               (qInterpretCanonical (ttQual tag))))
+  TiExn           -> TdAbs (Lid "exn") [] [] maxBound
   where
     tyvars   = map (flip TV Qu . Lid) alphabet
     alphabet = map return ['a' .. 'z'] ++

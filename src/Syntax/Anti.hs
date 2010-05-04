@@ -23,7 +23,7 @@ module Syntax.Anti (
   -- ** Antiquote dictionaries for various non-terminals
   litAntis, pattAntis,
   exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, tyTagAntis, tyVarAntis,
+  typeAntis, quantAntis, tyTagAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   lidAntis, uidAntis, qlidAntis, quidAntis, idAntis,
   noAntis, optAntis, listAntis, maybeAntis
@@ -235,7 +235,7 @@ infixl 1 &
 
 litAntis, pattAntis,
   exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, tyTagAntis, tyVarAntis,
+  typeAntis, quantAntis, tyTagAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   lidAntis, uidAntis, qlidAntis, quidAntis, idAntis,
   noAntis, optAntis, listAntis, maybeAntis
@@ -282,6 +282,14 @@ tyTagAntis = ""      =: [$th| <_> |]
                              "Unrecognized type name: " ++ v
                            Just td -> dataS td)
            & "anti"  =: [$th| TyTagAnti <_> |]
+
+qExpAntis  = ""      =: [$th| <_> |]
+           & "qexp"  =: [$th| <_> |]
+           & "qlit"  =: [$th| QeLit <_> |]
+           & "qvar"  =: [$th| QeVar <_> |]
+           & "qdisj" =: [$th| qeDisj <_> | QeDisj <_> |]
+           & "qconj" =: [$th| qeConj <_> | QeConj <_> |]
+           & "anti"  =: [$th| QeAnti <_> |]
 
 tyVarAntis = ""      =: [$th| <_> |]
            & "tyvar" =: [$th| <_> |]

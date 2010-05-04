@@ -90,7 +90,7 @@ data TyDec i
     -- | The variance of each parameter
     tdaVariances :: [Variance],
     -- | Whether each parameter contributes to the qualifier
-    tdaQual      :: [Either TyVar Q]
+    tdaQual      :: QExp TyVar
   }
   -- | A type synonym
   | TdSyn {
@@ -111,7 +111,7 @@ data TyDec i
 -- and the qualifier
 data AbsTy i = AbsTy {
                  atvariance :: [Variance],
-                 atquals    :: [Either TyVar Q],
+                 atquals    :: QExp TyVar,
                  atdecl     :: TyDec i
                }
              | AbsTyAnti Anti

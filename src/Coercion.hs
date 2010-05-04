@@ -47,17 +47,19 @@ build :: Monad m =>
          M.Map (TyVar, TyVar) (Maybe Lid) -> TypeT -> TypeT ->
          CMS.StateT Integer m ExprT
 build recs tfrom tto
-  | (tvs,  [$ty|+ $t1  -[$q ]> $t2  |]) <- unfoldTyQu Forall tfrom,
-    (tvs', [$ty|+ $t1' -[$q']> $t2' |]) <- unfoldTyQu Forall tto,
-    length tvs == length tvs',
-    which <- "INTERNALS.Contract." ++
-               if qualifier q <: Qu
-                 then "func"
-                 else if qualifier q' <: Qu
-                   then "affunc"
-                   else "funcA"
+  | (tvs,  [$ty|+ $t1  -[$qe ]> $t2  |]) <- unfoldTyQu Forall tfrom,
+    (tvs', [$ty|+ $t1' -[$qe']> $t2' |]) <- unfoldTyQu Forall tto,
+    length tvs == length tvs'
     = do
-        let recs' = foldr2
+        qd  <- qInterpretM qe
+        qd' <- qInterpretM qe'
+        let which = "INTERNALS.Contract." ++
+              if qd <: minBound
+                then "func"
+                else if qd' <: minBound
+                  then "affunc"
+                  else "funcA"
+            recs' = foldr2
                       M.insert
                       (shadow tvs tvs' recs)
                       (zip tvs tvs')

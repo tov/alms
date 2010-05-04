@@ -17,7 +17,7 @@ import Env (Path(..), (:>:)(..))
 import Util
 import Viewable
 import Syntax.Anti
-import Syntax.Kind
+import Syntax.Kind (QLit(..))
 
 import Data.Char (isAlpha, isDigit)
 import Data.Generics (Typeable(..), Data(..))
@@ -45,7 +45,7 @@ type QLid  = Path Uid Lid
 type Ident = Path Uid BIdent
 
 -- | Type variables include qualifiers
-data TyVar = TV { tvname :: Lid, tvqual :: Q }
+data TyVar = TV { tvname :: Lid, tvqual :: QLit }
   deriving (Eq, Ord, Typeable, Data)
 
 -- | Is the lowercase identifier an infix operator?
@@ -83,8 +83,8 @@ instance Show BIdent where
   show (Con k) = show k
 
 instance Show TyVar where
-  show (TV x Qu) = "'" ++ show x
-  show (TV x Qa) = "'<" ++ show x
+  showsPrec _ (TV x Qu) = showString "'" . shows x
+  showsPrec _ (TV x Qa) = showString "'<" . shows x
 
 instance Viewable (Path Uid BIdent) where
   type View Ident = Either QLid QUid

@@ -20,8 +20,9 @@ module Util (
   splitBy,
   -- ** Monomorphic @ord@ and @chr@
   char2integer, integer2char,
-  -- ** @flip fmap@
+  -- ** Versions of fmap
   (>>!),
+  (<$$>), (<$$$>), (<$$$$>), (<$$$$$>),
 
   -- * Re-exports
   module Control.Arrow,
@@ -112,6 +113,27 @@ unscanl f = loop [] where
   loop acc b = case f b of
     Just (a, b') -> loop (a : acc) b'
     Nothing      -> (acc, b)
+
+-- | 2nd order fmap
+(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
+(<$$>)  = (<$>) . (<$>)
+
+-- | 3rd order fmap
+(<$$$>) :: (Functor f, Functor g, Functor h) =>
+           (a -> b) -> f (g (h a)) -> f (g (h b))
+(<$$$>)  = (<$$>) . (<$>)
+
+-- | 4th order fmap
+(<$$$$>) :: (Functor f, Functor g, Functor h, Functor j) =>
+            (a -> b) -> f (g (h (j a))) -> f (g (h (j b)))
+(<$$$$>)  = (<$$$>) . (<$>)
+
+-- | 5th order fmap
+(<$$$$$>) :: (Functor f, Functor g, Functor h, Functor j, Functor k) =>
+             (a -> b) -> f (g (h (j (k a)))) -> f (g (h (j (k b))))
+(<$$$$$>)  = (<$$$$>) . (<$>)
+
+infixl 4 <$$>, <$$$>, <$$$$>, <$$$$$>
 
 -- | @flip fmap@
 (>>!) :: Functor f => f a -> (a -> b) -> f b

@@ -8,9 +8,9 @@ module Parser (
   parseQuasi, TyTagMode(..),
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
-    parseTyDec, parseType, parseExpr, parsePatt,
+    parseTyDec, parseType, parseQExp, parseExpr, parsePatt,
   -- * Convenience parsers (quick and dirty)
-  pp, pds, pd, pme, ptd, pt, pe, px
+  pp, pds, pd, pme, ptd, pt, pqe, pe, px
 ) where
 
 import Util
@@ -70,27 +70,18 @@ class TyTagMode i where
   injTd      :: TyTag -> i
   liftUnit   :: f () -> f i
   dropUnit   :: f i -> f ()
-  tyArrI     :: Type i -> Type i -> Type i
-  tyLolI     :: Type i -> Type i -> Type i
-  tyFunI     :: Type i -> Type i -> Type i -> Type i
 
 instance TyTagMode () where
   tytagp     = punit
   injTd      = const ()
   liftUnit   = id
   dropUnit   = id
-  tyArrI     = tyArr
-  tyLolI     = tyLol
-  tyFunI     = tyFun
 
 instance TyTagMode TyTag where
   tytagp     = antiblep
   injTd      = id
   liftUnit   = error "BUG! Cannot use exSigma in quasi mode"
   dropUnit   = error "BUG! Cannot use exSigma in quasi mode"
-  tyArrI     = tyArrT
-  tyLolI     = tyLolT
-  tyFunI     = tyFunT
 
 withSigma :: Bool -> P a -> P a
 withSigma = mapSigma . const
@@ -288,7 +279,7 @@ typepP p
              (choice
               [ tyArrI <$ arrow,
                 tyLolI <$ lolli,
-                funbraces (tyFunI <$> typepP precStart) ])
+                funbraces (TyArr <$> qExpp) ])
              (typepP precStart)
   | p == precPlus
          = chainl1last (typepP (p + 1))
@@ -315,8 +306,6 @@ typepP p
   tyatom  = TyVar <$> tyvarp
         <|> TyCon <$> qlidnatp <*> pure [] <*> tytagp
         <|> antiblep
-        <|> tyNulOpT (injTd tdUn) "U" <$ qualU
-        <|> tyNulOpT (injTd tdAf) "A" <$ qualA
 
   tyapp' :: TyTagMode i => [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
@@ -500,9 +489,6 @@ abstysp = antilist1p (reserved "and") $ do
 paramsVp :: P ([Variance], [TyVar])
 paramsVp  = delimList punit parens comma paramVp >>! unzip
 
-qualsp   :: P [Either TyVar Q]
-qualsp    = delimList (reserved "qualifier") parens (symbol "\\/") qualp
-
 paramVp :: P (Variance, TyVar)
 paramVp = do
   v  <- variancep
@@ -518,15 +504,19 @@ variancep =
       char '1' >> return Invariant,
       return Invariant ]
 
-qualp :: P (Either TyVar Q)
-qualp = choice
-  [ litqualp >>! Right,
-    tyvarp   >>! Left ]
+qualsp   :: P (QExp TyVar)
+qualsp    = option minBound $ reserved "qualifier" *> qExpp
 
-litqualp :: P Q
-litqualp = choice
-  [ qualU    >> return Qu,
-    qualA    >> return Qa ]
+qExpp :: P (QExp TyVar)
+qExpp  = qexp where
+  qexp, qterm, qfact, qatom :: P (QExp TyVar)
+  qexp  = qeDisj <$> sepBy1 qterm (reservedOp "\\/")
+  qterm = qeConj <$> sepBy1 qfact (reservedOp "/\\")
+  qfact = parens qexp <|> qatom
+  qatom = QeLit Qu <$  qualU
+      <|> QeLit Qa <$  qualA
+      <|> QeVar    <$> tyvarp
+      <|> antiblep
 
 altsp :: TyTagMode i => P [(Uid, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
@@ -929,6 +919,8 @@ parseModExp   :: TyTagMode i => P (ModExp i)
 parseTyDec    :: TyTagMode i => P (TyDec i)
 -- | Parse a type
 parseType     :: TyTagMode i => P (Type i)
+-- | Parse a qualifier expression
+parseQExp     :: P (QExp TyVar)
 -- | Parse an expression
 parseExpr     :: TyTagMode i => P (Expr i)
 -- | Parse a pattern
@@ -940,6 +932,7 @@ parseDecl      = finish declp
 parseModExp    = finish modexpp
 parseTyDec     = finish tyDecp
 parseType      = finish typep
+parseQExp      = finish qExpp
 parseExpr      = finish exprp
 parsePatt      = finish pattp
 
@@ -967,6 +960,10 @@ ptd  = makeQaD parseTyDec
 -- | Parse a type
 pt  :: String -> Type ()
 pt   = makeQaD parseType
+
+-- | Parse a qualifier expression
+pqe :: String -> QExp TyVar
+pqe  = makeQaD parseQExp
 
 -- | Parse an expression
 pe  :: String -> Expr ()

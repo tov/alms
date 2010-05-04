@@ -15,15 +15,14 @@ module Syntax.Type (
   -- * Built-in types
   -- ** Type information
   tdUnit, tdInt, tdFloat, tdString, tdExn,
-  tdUn, tdAf, tdFun, tdTuple,
-  getTdByName,
+  tdTuple, getTdByName,
   -- ** Session types
   tdDual, tdSend, tdRecv, tdSelect, tdFollow,
   -- ** Convenience type constructors
   tyNulOp, tyUnOp, tyBinOp,
-  tyUn, tyAf, tyFun, tyArr, tyLol, tyTuple,
+  tyTuple,
   tyNulOpT, tyUnOpT, tyBinOpT,
-  tyUnitT, tyUnT, tyAfT, tyFunT, tyArrT, tyLolT,
+  tyUnitT, tyArrI, tyLolI,
   tyTupleT, tyExnT,
   -- ** Type tag queries
   castableType,
@@ -35,6 +34,7 @@ module Syntax.Type (
 import Syntax.Anti
 import Syntax.Kind
 import Syntax.Ident
+import Syntax.POClass
 
 import Data.Generics (Typeable, Data)
 
@@ -45,17 +45,17 @@ data TyTag =
     ttId    :: Integer,
     -- The variance of each of its parameters
     ttArity :: [Variance],
-    -- Determines qualifier as above
-    ttQual  :: QualSet,
+    -- Determines qualifier as above (always in canonical form)
+    ttQual  :: QExp Int,
     -- upper qualifier bounds for parameters
-    ttBound :: [Q]
+    ttBound :: [QLit]
   }
   |
   TyTagAnti {
     -- Type tag antiquote
     ttAnti :: Anti
   }
-  deriving (Show, Typeable, Data)
+  deriving (Typeable, Data)
 
 -- | Type quantifers
 data Quant = Forall | Exists | QuantAnti Anti
@@ -65,6 +65,7 @@ data Quant = Forall | Exists | QuantAnti Anti
 --   associated with each tycon
 data Type i = TyCon  QLid [Type i] i
             | TyVar  TyVar
+            | TyArr  (QExp TyVar) (Type i) (Type i)
             | TyQu   Quant TyVar (Type i)
             | TyMu   TyVar (Type i)
             | TyAnti Anti
@@ -110,19 +111,15 @@ instance Show Quant where
 ---
 
 tdUnit, tdInt, tdFloat, tdString,
-  tdUn, tdAf, tdFun, tdExn, tdTuple :: TyTag
+  tdExn, tdTuple :: TyTag
 
 tdUnit       = TyTag (-1)  []          minBound  []
 tdInt        = TyTag (-2)  []          minBound  []
 tdFloat      = TyTag (-3)  []          minBound  []
 tdString     = TyTag (-4)  []          minBound  []
-tdUn         = TyTag (-5)  []          minBound  []
-tdAf         = TyTag (-6)  []          maxBound  []
-tdFun        = TyTag (-7)  [1, -1, 1]  qualSet   (replicate 3 maxBound)
-  where qualSet = QualSet minBound [0]
-tdExn        = TyTag (-8)  []          maxBound  []
-tdTuple      = TyTag (-9)  [1, 1]      qualSet   [maxBound, maxBound]
-  where qualSet = QualSet minBound [0, 1]
+tdExn        = TyTag (-5)  []          maxBound  []
+tdTuple      = TyTag (-6)  [1, 1]      qexp      [maxBound, maxBound]
+  where qexp = qRepresent (0 \/ 1)
 
 tdDual, tdSend, tdRecv, tdSelect, tdFollow :: TyTag
 -- For session types:
@@ -138,9 +135,6 @@ getTdByName name = case name of
   "int" -> Just tdInt
   "float" -> Just tdFloat
   "string" -> Just tdString
-  "u" -> Just tdUn
-  "a" -> Just tdAf
-  "fun" -> Just tdFun
   "exn" -> Just tdExn
   "tuple" -> Just tdTuple
   "dual" -> Just tdDual
@@ -161,21 +155,6 @@ tyUnOp s a     = TyCon (qlid s) [a] ()
 tyBinOp       :: String -> Type () -> Type () -> Type ()
 tyBinOp s a b  = TyCon (qlid s) [a, b] ()
 
-tyAf          :: Type ()
-tyAf           = tyNulOp "A"
-
-tyUn          :: Type ()
-tyUn           = tyNulOp "U"
-
-tyFun         :: Type () -> Type () -> Type () -> Type ()
-tyFun q a b    = TyCon (qlid "-[]>") [q, a, b] ()
-
-tyArr         :: Type () -> Type () -> Type ()
-tyArr          = tyFun tyUn
-
-tyLol         :: Type () -> Type () -> Type ()
-tyLol          = tyFun tyAf
-
 tyTuple       :: Type () -> Type () -> Type ()
 tyTuple        = tyBinOp "*"
 
@@ -191,20 +170,11 @@ tyBinOpT i s a b = TyCon (qlid s) [a, b] i
 tyUnitT        :: TypeT
 tyUnitT         = tyNulOpT tdUnit "unit"
 
-tyAfT         :: TypeT
-tyAfT          = tyNulOpT tdAf "A"
+tyArrI        :: Type i -> Type i -> Type i
+tyArrI         = TyArr minBound
 
-tyUnT         :: TypeT
-tyUnT          = tyNulOpT tdUn "U"
-
-tyFunT        :: TypeT -> TypeT -> TypeT -> TypeT
-tyFunT q a b   = TyCon (qlid "-[]>") [q, a, b] tdFun
-
-tyArrT        :: TypeT -> TypeT -> TypeT
-tyArrT         = tyFunT tyUnT
-
-tyLolT        :: TypeT -> TypeT -> TypeT
-tyLolT         = tyFunT tyAfT
+tyLolI        :: Type i -> Type i -> Type i
+tyLolI         = TyArr maxBound
 
 tyTupleT       :: TypeT -> TypeT -> TypeT
 tyTupleT        = tyBinOpT tdTuple "*"
@@ -212,13 +182,14 @@ tyTupleT        = tyBinOpT tdTuple "*"
 tyExnT         :: TypeT
 tyExnT          = tyNulOpT tdExn "exn"
 
-infixr 8 `tyArr`, `tyLol`, `tyArrT`, `tyLolT`
+infixr 8 `tyArrI`, `tyLolI`
 infixl 7 `tyTuple`, `tyTupleT`
 
 -- | Is the type promotable to a lower-qualifier type?
 castableType :: TypeT -> Bool
 castableType (TyVar _)         = False
-castableType (TyCon _ _ td)    = td == tdFun
+castableType (TyCon _ _ _)     = False
+castableType (TyArr _ _ _)     = True
 castableType (TyQu _ _ t)      = castableType t
 castableType (TyMu _ t)        = castableType t
 castableType (TyAnti a)        = antierror "castableType" a
@@ -230,8 +201,13 @@ dumpType i t0 = do
   putStr (replicate i ' ')
   case t0 of
     TyCon n ps td -> do
-      putStrLn $ show n ++ " [" ++ show td ++ "] {"
+      putStrLn $ show n ++ " [" ++ dumpTyTag td ++ "] {"
       mapM_ (dumpType (i + 2)) ps
+      putStrLn (replicate i ' ' ++ "}")
+    TyArr q dom cod -> do
+      putStrLn $ "-[" ++ maybe "ANTI" show (qInterpretM q) ++ "]> {"
+      dumpType (i + 2) dom
+      dumpType (i + 2) cod
       putStrLn (replicate i ' ' ++ "}")
     TyVar tv -> print tv
     TyQu u a t -> do
@@ -244,3 +220,10 @@ dumpType i t0 = do
       putStrLn (replicate i ' ' ++ "}")
     TyAnti a -> do
       print a
+
+dumpTyTag :: TyTag -> String
+dumpTyTag (TyTag i a q b) =
+  show i ++ " " ++ show a ++ " " ++
+  show (qInterpretCanonical q) ++ " " ++ show b
+dumpTyTag (TyTagAnti a) = show a
+
