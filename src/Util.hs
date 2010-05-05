@@ -6,6 +6,8 @@ module Util (
   foldl2, foldr2, all2, any2,
   -- ** Monadic version
   foldrM, anyM, allM, anyM2, allM2,
+  -- ** Applicative versions
+  mapA,
   -- ** Unfold with an accumulator
   unscanr, unscanl,
   -- ** Map in CPS
@@ -61,6 +63,10 @@ anyM2 p as bs = anyM (uncurry p) (zip as bs)
 -- | Two-list, monadic 'all'
 allM2 :: Monad m => (a -> b -> m Bool) -> [a] -> [b] -> m Bool
 allM2 p as bs = allM (uncurry p) (zip as bs)
+
+-- | Map an applicative over a list
+mapA _ []     = pure []
+mapA f (x:xs) = (:) <$> f x <*> mapA f xs
 
 -- | Left-associative fold over two lists
 foldl2 :: (c -> a -> b -> c) -> c -> [a] -> [b] -> c
