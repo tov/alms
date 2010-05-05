@@ -516,10 +516,12 @@ qExpp  = qexp where
   qfact = parens qexp <|> qatom
   qatom = QeLit Qu <$  qualU
       <|> QeLit Qa <$  qualA
-      <|> QeVar    <$> tyvarp
+      <|> clean    <$> tyvarp
       <|> qeLid    <$> lidp
       <|> antiblep
   qeLid = QeVar . flip TV Qa
+  clean (TV _ Qu) = minBound
+  clean tv        = QeVar tv
 
 altsp :: TyTagMode i => P [(Uid, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")

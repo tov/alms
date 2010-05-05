@@ -116,8 +116,8 @@ instance (Typeable a, Ppr a) => Ppr (QExp a) where
                                   map (pprPrec (precPlus + 1)) qes
   pprPrec p (QeConj [])   = pprPrec p Qa
   pprPrec p (QeConj [qe]) = pprPrec p qe
-  pprPrec p (QeConj qes)  = parensIf (p > precPlus) $
-                              fsep $
+  pprPrec p (QeConj qes)  = parensIf (p > precStar) $
+                              hcat $
                                 intersperse (text "/\\") $
                                   map (pprPrec (precStar + 1)) qes
   pprPrec p (QeAnti a)    = pprPrec p a
