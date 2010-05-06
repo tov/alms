@@ -5,7 +5,30 @@
       DeriveFunctor,
       FlexibleInstances,
       TypeFamilies #-}
-module Type where
+module Type (
+  -- * Representation of types
+  Type(..), TyCon(..), tyApp,
+  -- * Type reduction
+  -- ** Head reduction
+  isHeadNormalType, headReduceType, headNormalizeTypeK, headNormalizeType,
+  -- ** Deep reduction
+  isNormalType, reduceType, normalizeTypeK, normalizeType,
+  -- * Miscellaneous type operations
+  castableType, typeToStx,
+  -- * Built-in types
+  -- ** Type constructors
+  mkTC,
+  tcUnit, tcInt, tcFloat, tcString,
+  tcExn, tcTuple, tcUn, tcAf,
+  tcSend, tcRecv, tcSelect, tcFollow, tcDual,
+  -- ** Types
+  tyNulOp, tyUnOp, tyBinOp, tyUnit, tyTuple, tyArr, tyLol,
+  -- * Re-exports
+  module Syntax.Ident,
+  module Syntax.Kind,
+  module Syntax.POClass,
+  Stx.Quant(..),
+) where
 
 import qualified Env
 import Ppr (Ppr(..))
@@ -81,17 +104,17 @@ isHeadNormalType t = case headReduceType t of
   Nothing -> True
   Just _  -> False
 
--- | Reduces a type until it is head-normal, given some amount of fuel
+-- | Head reduces a type until it is head-normal, given some amount of fuel
 headNormalizeTypeF :: Type -> Fuel Type
 headNormalizeTypeF t = case headReduceType t of
   Nothing -> pure t
   Just mt -> burnFuel *> headNormalizeTypeF mt
 
--- | Reduces a type until it is head-normal or we run out of steps
+-- | Head reduces a type until it is head-normal or we run out of steps
 headNormalizeTypeK :: Int -> Type -> Maybe Type
 headNormalizeTypeK fuel t = evalFuel (headNormalizeTypeF t) fuel
 
--- | Reduces a type until it is head-normal
+-- | Head reduces a type until it is head-normal
 headNormalizeType :: Type -> Type
 headNormalizeType = fromJust . headNormalizeTypeK (-1)
 
@@ -104,26 +127,48 @@ isNormalType t = case t of
   TyQu _ _ t1   -> isNormalType t1
   TyMu _ t1     -> isNormalType t1
 
--- | Normalizes a type, or returns nothing on error.
+-- | Reduces a type until it is normal, given some amount of fuel
 normalizeTypeF :: Type -> Fuel Type
-normalizeTypeF t = case t of
-  TyVar _       -> pure t
-  TyArr q t1 t2 -> TyArr q <$> normalizeTypeF t1 <*> normalizeTypeF t2
-  TyApp _ _ _   -> do
-    TyApp tc ts _ <- headNormalizeTypeF t
-    t'            <- tyApp tc <$> mapA normalizeTypeF ts
-    if isHeadNormalType t'
-      then return t'
-      else normalizeTypeF t'
-  TyQu qu tv t1 -> TyQu qu tv <$> normalizeTypeF t1
-  TyMu tv t1    -> TyMu tv <$> normalizeTypeF t1
+normalizeTypeF t0 = do
+  t <- headNormalizeTypeF t0
+  case t of
+    TyVar _       -> pure t
+    TyArr q t1 t2 -> TyArr q <$> normalizeTypeF t1 <*> normalizeTypeF t2
+    TyApp tc ts _ -> do
+      t' <- tyApp tc <$> mapA normalizeTypeF ts
+      if isHeadNormalType t'
+        then return t'
+        else normalizeTypeF t'
+    TyQu qu tv t1 -> TyQu qu tv <$> normalizeTypeF t1
+    TyMu tv t1    -> TyMu tv <$> normalizeTypeF t1
 
+-- | Reduces a type until it is normal or we run out of steps
 normalizeTypeK :: Int -> Type -> Maybe Type
 normalizeTypeK fuel t = evalFuel (normalizeTypeF t) fuel
 
+-- | Reduces a type until it is normal
 normalizeType :: Type -> Type
 normalizeType = fromJust . normalizeTypeK (-1)
 
+-- | Performs one reduction step.  The order of evaluation is
+--   different than used by 'normalizeType', but note that type
+--   reduction is not guaranteed to be confluent
+reduceType :: Type -> Maybe Type
+reduceType t = case t of
+  TyVar _       -> Nothing
+  TyArr q t1 t2 -> TyArr q <$> reduceType t1 <*> pure t2
+               <|> TyArr q <$> pure t1 <*> reduceType t2
+  TyApp tc ts _ -> headReduceType t
+               <|> tyApp tc <$> reduceTypeList ts
+  TyQu qu tv t1 -> TyQu qu tv <$> reduceType t1
+  TyMu tv t1    -> TyMu tv <$> reduceType t1
+
+-- | Takes the first reduction step found in a list of types, or
+--   returns 'Nothing' if they're all normal
+reduceTypeList :: [Type] -> Maybe [Type]
+reduceTypeList []     = Nothing
+reduceTypeList (t:ts) = (:) <$> reduceType t <*> pure ts
+                    <|> (:) <$> pure t <*> reduceTypeList ts
 ---
 --- The Fuel monad
 ---
@@ -233,7 +278,6 @@ tcDual       = mkTC (-15) "dual"   [(Qu, -1)] $ \t ->
       | tc == tcUnit   -> Just (tyApp tcUnit ts)
       | tcName tc == qlid ";"
                        -> Just (tyApp tc (map dual ts))
-    [TyQu quant tv t'] -> return (TyQu quant tv (dual t'))
     [TyMu tv t']       -> return (TyMu tv (dual t'))
     _ -> Nothing
   where dual t = tyApp tcDual [t]
@@ -283,13 +327,11 @@ typeToStx t0 = case t0 of
   TyQu qu tv t1 -> Stx.TyQu qu tv (typeToStx t1)
   TyMu tv t1    -> Stx.TyMu tv (typeToStx t1)
 
--- XXX TEMPORARY:
+castableType :: Type -> Bool
+castableType t = case headNormalizeType t of
+  TyVar _     -> False
+  TyArr _ _ _ -> True
+  TyApp _ _ _ -> False
+  TyQu _ _ t1 -> castableType t1
+  TyMu _ t1   -> castableType t1
 
-instance Ppr a => Ppr (Maybe a) where -- XXX TEMPORARY
-  pprPrec p (Just a) = pprPrec p a
-  pprPrec _ Nothing = error "Maybe.ppr: Nothing"
-
-semi = tyBinOp (mkTC 1 ";" [(Qu,-1),(Qu,1)])
-
-a = tyUnOp tcDual (semi (tyUnOp tcSend tyUnit) (semi (tyUnOp tcRecv
-           (tyNulOp tcInt)) tyUnit))
