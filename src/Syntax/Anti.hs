@@ -45,7 +45,7 @@ data Anti = Anti {
               anType :: String,
               anName :: String
             }
-  deriving (Eq, Typeable, Data)
+  deriving (Eq, Ord, Typeable, Data)
 
 instance Show Anti where
   show (Anti ""   aid) = '$' : aid

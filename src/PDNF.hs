@@ -107,7 +107,10 @@ instance Bounded (PDNF a) where
   maxBound = PDNF [S.empty]
 
 instance Ord a => Eq (PDNF a) where
-  f1 == f2 = f1 <: f2 && f2 <: f1
+  f1 == f2 = compare f1 f2 == EQ
+
+instance Ord a => Ord (PDNF a) where
+  f1 `compare` f2 = toLists f1 `compare` toLists f2
 
 -- | To add a clause to a formula
 disjoinClause :: Ord a => [a] -> PDNF a -> PDNF a

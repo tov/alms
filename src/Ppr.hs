@@ -8,6 +8,8 @@ module Ppr (
   Ppr(..),
   -- * Pretty-printing combinators
   parensIf,
+  -- * Instance helpers
+  showFromPpr, pprFromShow,
   -- * Re-exports
   module Text.PrettyPrint,
   module Prec

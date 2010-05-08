@@ -57,7 +57,7 @@ qeConj qes  = QeConj qes
 
 -- | The meaning of qualifier expressions
 newtype QDen a = QDen { unQDen :: PDNF a }
-  deriving (Eq, PO, Bounded, Typeable, Data, Show)
+  deriving (Eq, Ord, PO, Bounded, Typeable, Data, Show)
 
 -- | Tycon parameter variance (like sign analysis)
 data Variance

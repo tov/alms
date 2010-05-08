@@ -60,7 +60,7 @@ data TyTag =
 
 -- | Type quantifers
 data Quant = Forall | Exists | QuantAnti Anti
-  deriving (Typeable, Data, Eq)
+  deriving (Typeable, Data, Eq, Ord)
 
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon

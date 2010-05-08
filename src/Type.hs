@@ -4,15 +4,23 @@
       DeriveDataTypeable,
       DeriveFunctor,
       FlexibleInstances,
+      ParallelListComp,
+      PatternGuards,
+      ScopedTypeVariables,
       TypeFamilies #-}
 module Type (
   -- * Representation of types
-  Type(..), TyCon(..), tyApp,
+  Type(..), TyCon(..), TyPat(..), tyApp,
   -- * Type reduction
+  ReductionState(..),
   -- ** Head reduction
   isHeadNormalType, headReduceType, headNormalizeTypeK, headNormalizeType,
   -- ** Deep reduction
-  isNormalType, reduceType, normalizeTypeK, normalizeType,
+  isNormalType, normalizeTypeK, normalizeType,
+  -- ** Freshness
+  Ftv(..), freshTyVar, freshTyVars,
+  -- ** Substitutions
+  tysubst, tysubsts,
   -- * Miscellaneous type operations
   castableType, typeToStx,
   -- * Built-in types
@@ -20,7 +28,7 @@ module Type (
   mkTC,
   tcUnit, tcInt, tcFloat, tcString,
   tcExn, tcTuple, tcUn, tcAf,
-  tcSend, tcRecv, tcSelect, tcFollow, tcDual,
+  tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual,
   -- ** Types
   tyNulOp, tyUnOp, tyBinOp, tyUnit, tyTuple, tyArr, tyLol,
   -- * Re-exports
@@ -31,16 +39,17 @@ module Type (
 ) where
 
 import qualified Env
-import Ppr (Ppr(..))
+import Ppr (Ppr(..), showFromPpr)
 import Syntax.Ident
 import Syntax.Kind
 import Syntax.POClass
 import qualified Syntax as Stx
 import Util
 
-import Data.Generics (Typeable, Data)
-import Text.Show.Functions ()
-import Control.Applicative
+import Data.Generics (Typeable, Data, everything, mkQ)
+import Data.Char (isDigit)
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- | The internal representation of a type
 data Type
@@ -51,14 +60,14 @@ data Type
   --   is not head-normal -- note that substitution invalidates this
   --   cache.  Use 'tyApp' to construct a type application that
   --   (re)initializes the cache.
-  | TyApp TyCon [Type] (Maybe Type)
+  | TyApp TyCon [Type] (ReductionState Type)
   -- | An arrow type, including qualifier expression
   | TyArr (QDen TyVar) Type Type
   -- | A quantified (all or ex) type
   | TyQu  Stx.Quant TyVar Type
   -- | A recursive (mu) type
   | TyMu  TyVar Type
-  deriving (Typeable, Data, Show)
+  deriving (Typeable, Data)
 
 -- | Information about a type constructor
 data TyCon
@@ -73,10 +82,19 @@ data TyCon
       tcQual      :: QDen Int,
       -- | For pattern-matchable types, the data constructors
       tcCons      :: Env.Env Uid (Maybe Type),
-      -- | For type synonyms, the next head reduction
-      tcNext      :: Maybe ([Type] -> Maybe Type)
+      -- | For type operators, the next head reduction
+      tcNext      :: Maybe [([TyPat], Type)]
     }
   deriving (Typeable, Data, Show)
+
+-- | A type pattern, for defining type operators
+data TyPat
+  -- | A type variable, matching any type and binding
+  = TpVar TyVar
+  -- | A type application node, matching the given constructor
+  --   and its parameters
+  | TpApp TyCon [TyPat]
+  deriving (Typeable, Data)
 
 instance Eq TyCon where
   tc == tc'  =  tcId tc == tcId tc'
@@ -84,72 +102,258 @@ instance Eq TyCon where
 instance Ord TyCon where
   compare tc tc'  = compare (tcId tc) (tcId tc')
 
-instance Ppr Type where
-  pprPrec p = pprPrec p . typeToStx
+instance Ppr Type   where pprPrec p = pprPrec p . typeToStx
+instance Show Type  where showsPrec = showFromPpr
+instance Ppr TyPat  where pprPrec p = pprPrec p . tyPatToStx
+instance Show TyPat where showsPrec = showFromPpr
+
+-- | Find the qualifier of a type
+qualifier     :: Type -> QDen TyVar
+qualifier (TyApp tc ts _) = denumberQDen (map qualifier ts) (tcQual tc)
+qualifier (TyArr q _ _)   = q
+qualifier (TyVar tv)
+  | tvqual tv <: Qu       = minBound
+  | otherwise             = qInterpret (QeVar tv)
+qualifier (TyQu _ _ t)    = qualifier t
+qualifier (TyMu _ t)      = qualifier t
+
+---
+--- Free type variables, freshness, and substitution
+---
+
+-- | Class for getting free type variables (from types, expressions,
+-- lists thereof, pairs thereof, etc.)
+class Ftv a where
+  ftvVs :: a -> M.Map TyVar Variance
+  ftv   :: a -> S.Set TyVar
+  ftv    = M.keysSet . ftvVs
+
+instance Ftv Type where
+  ftv (TyApp _ ts _)  = S.unions (map ftv ts)
+  ftv (TyVar tv)      = S.singleton tv
+  ftv (TyArr q t1 t2) = S.unions [ftv t1, ftv t2, ftv q]
+  ftv (TyQu _ tv t)   = S.delete tv (ftv t)
+  ftv (TyMu tv t)     = S.delete tv (ftv t)
+  ftvVs (TyApp tc ts _) = M.unionsWith (+)
+                          [ M.map (* var) m
+                          | (_, var) <- tcArity tc
+                          | m        <- map ftvVs ts ]
+  ftvVs (TyArr q t1 t2) = M.unionsWith (+)
+                          [ ftvVs q
+                          , M.map negate (ftvVs t1)
+                          , ftvVs t2 ]
+  ftvVs (TyVar tv)      = M.singleton tv 1
+  ftvVs (TyQu _ tv t)   = M.delete tv (ftvVs t)
+  ftvVs (TyMu tv t)     = M.delete tv (ftvVs t)
+
+instance (Data a, Ord a, Ftv a) => Ftv (QDen a) where
+  ftv   = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVar))
+  ftvVs = everything M.union
+            (mkQ M.empty (ftvVs :: a -> M.Map TyVar Variance))
+
+instance Ftv a => Ftv [a] where
+  ftv   = S.unions . map ftv
+  ftvVs = M.unionsWith (+) . map ftvVs
+
+instance Ftv TyVar where
+  ftv      = S.singleton
+  ftvVs tv = M.singleton tv 1
+
+instance (Ftv a, Ftv b) => Ftv (a, b) where
+  ftv (a, b)   = ftv a `S.union` ftv b
+  ftvVs (a, b) = M.unionWith (+) (ftvVs a) (ftvVs b)
+
+-- | Given a type variable, rename it (if necessary) to make it
+--   fresh for a set of type variables.
+freshTyVar :: TyVar -> S.Set TyVar -> TyVar
+freshTyVar (TV lid q) set = TV lid' q where
+  lid'     = if lid `S.member` names
+               then loop count
+               else lid
+  names    = S.map tvname set
+  loop n   =
+    let tv' = attach n
+    in if tv' `S.member` names
+         then loop (n + 1)
+         else tv'
+  suffix   = reverse . takeWhile isDigit . reverse . unLid $ lid
+  prefix   = reverse . dropWhile isDigit . reverse . unLid $ lid
+  count    = case reads suffix of
+               ((n, ""):_) -> n
+               _           -> 1
+  attach n = Lid (prefix ++ show n)
+
+-- | Given a list of type variables, rename them (if necessary) to make
+--   each of them fresh for both the set of type variables and each
+--   other.
+freshTyVars :: [TyVar] -> S.Set TyVar -> [TyVar]
+freshTyVars []       _   = []
+freshTyVars (tv:tvs) set = tv' : freshTyVars tvs (S.insert tv' set)
+  where tv' = freshTyVar tv (set `S.union` S.fromList tvs)
+
+-- | Type substitution
+tysubst :: TyVar -> Type -> Type -> Type
+tysubst a t = loop where
+  loop (TyVar a')
+    | a' == a   = t
+    | otherwise = TyVar a'
+  loop (TyArr q t1 t2)
+                = TyArr (qSubst a (qualifier t) q) (loop t1) (loop t2)
+  loop (TyApp tc ts _)
+                = tyApp tc (map loop ts)
+  loop (TyQu u a' t')
+    | a' == a   = TyQu u a' t'
+    | a' `S.member` set,
+      a'' <- freshTyVar a' set
+                = TyQu u a'' (loop (tysubst a' (TyVar a'') t'))
+    | otherwise = TyQu u a' (loop t')
+  loop (TyMu a' t')
+    | a' == a   = TyMu a' t'
+    | a' `S.member` set,
+      a'' <- freshTyVar a' set
+                = TyMu a'' (loop (tysubst a' (TyVar a'') t'))
+    | otherwise = TyMu a' (loop t')
+  set = a `S.insert` ftv t
+
+-- | Given a list of type variables and types, perform all the
+--   substitutions, avoiding capture between them.
+tysubsts :: [TyVar] -> [Type] -> Type -> Type
+tysubsts ps ts t =
+  let ps' = freshTyVars ps (ftv (t:ts))
+      substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
+  substs ps' ts .
+    substs ps (map TyVar ps') $
+      t
+
+---
+--- Type reduction
+---
+
+-- | As we head-reduce a type, it can be in one of four states:
+data ReductionState t
+  -- | The type is head-normal -- that is, its head constructor is
+  --   not a type synonym/operator
+  = Done
+  -- | The type has a next head-reduction step
+  | Next t
+  -- | The type may reduce further in the future, but right now it
+  --   has a pattern match that depends on the value of a type variable
+  | Blocked
+  -- | The type's head constructor is a synonym/operator, but it
+  --   can never take a step, due to a failed pattern match
+  | Stuck
+  deriving (Eq, Ord, Show, Functor, Typeable, Data)
+
+-- | Helper type for 'tyApp'
+type MatchResult t = Either (ReductionState t) ([TyVar], [Type])
 
 -- | Creates a type application, initializing the head-reduction cache
 tyApp :: TyCon -> [Type] -> Type
-tyApp tc ts = TyApp tc ts (tcNext tc >>= ($ ts))
+tyApp tc ts = TyApp tc ts $ maybe Done clauses (tcNext tc) where
+  clauses []                = Stuck
+  clauses ((tps, rhs):rest) = case patts tps ts of
+    Right (xs, us)  -> Next (tysubsts xs us rhs)
+    Left Stuck      -> clauses rest
+    Left rs         -> fmap (tyApp tc) rs
+
+  patts :: [TyPat] -> [Type] -> MatchResult [Type]
+  patts []       []     = Right ([], [])
+  patts (tp:tps) (t:ts) = case patt tp t of
+    Right (xs, us) -> case patts tps ts of
+      Right (xs', us') -> Right (xs ++ xs', us ++ us')
+      Left rs          -> Left (fmap (t:) rs)
+    Left Blocked       -> Left (either (fmap (t:))
+                                       (const Blocked)
+                                       (patts tps ts))
+    Left rs            -> Left (fmap (:ts) rs)
+  patts _        _      = Left Stuck
+
+  patt :: TyPat -> Type -> MatchResult Type
+  patt (TpVar tv)     t = Right ([tv], [t])
+  patt (TpApp tc tps) t = case t of
+    TyApp tc' ts next
+      | tc == tc'       -> (fmap (tyApp tc') +++ id) (patts tps ts)
+      | Done <- next    -> Left Stuck
+      | otherwise       -> Left next
+    TyMu tv t1          -> Left (Next (tysubst tv (TyMu tv t1) t1))
+    TyVar _             -> Left Blocked
+    _                   -> Left Stuck
 
 -- | Takes one head reduction step.  Returns 'Nothing' if the type is
 --   already head-normal.
-headReduceType :: Type -> Maybe Type
+headReduceType :: Type -> ReductionState Type
 headReduceType (TyApp _ _ next) = next
-headReduceType _                = Nothing
+headReduceType _                = Done
 
 -- | Is the type head-normal?  A type is head-normal unless its
---   top-level constructor is a type operator, which can take a step.
+--   top-level constructor is a type operator which can currently
+--   take a step.
 isHeadNormalType :: Type -> Bool
 isHeadNormalType t = case headReduceType t of
-  Nothing -> True
-  Just _  -> False
+  Next _ -> False
+  _      -> True
 
 -- | Head reduces a type until it is head-normal, given some amount of fuel
-headNormalizeTypeF :: Type -> Fuel Type
+headNormalizeTypeF :: Type -> Fuel (ReductionState (), Type) Type
 headNormalizeTypeF t = case headReduceType t of
-  Nothing -> pure t
-  Just mt -> burnFuel *> headNormalizeTypeF mt
+    Done    -> pure t
+    Next t' -> burnFuel (Next (), t') *> headNormalizeTypeF t'
+    Blocked -> bailOut (Blocked, t)
+    Stuck   -> bailOut (Stuck, t)
 
 -- | Head reduces a type until it is head-normal or we run out of steps
-headNormalizeTypeK :: Int -> Type -> Maybe Type
-headNormalizeTypeK fuel t = evalFuel (headNormalizeTypeF t) fuel
+headNormalizeTypeK :: Int -> Type -> (ReductionState (), Type)
+headNormalizeTypeK fuel t = case evalFuel (headNormalizeTypeF t) fuel of
+  Right t'      -> (Done, t')
+  Left (rs, t') -> (rs, t')
 
 -- | Head reduces a type until it is head-normal
-headNormalizeType :: Type -> Type
-headNormalizeType = fromJust . headNormalizeTypeK (-1)
+headNormalizeType :: Type -> (ReductionState (), Type)
+headNormalizeType = headNormalizeTypeK (-1)
 
 -- | Is the type in normal form?
 isNormalType :: Type -> Bool
 isNormalType t = case t of
   TyVar _       -> True
   TyArr _ t1 t2 -> isNormalType t1 && isNormalType t2
-  TyApp _ ts _  -> isNormalType t && all isNormalType ts
+  TyApp _ ts _  -> isHeadNormalType t && all isNormalType ts
   TyQu _ _ t1   -> isNormalType t1
   TyMu _ t1     -> isNormalType t1
 
 -- | Reduces a type until it is normal, given some amount of fuel
-normalizeTypeF :: Type -> Fuel Type
+normalizeTypeF :: Type -> Fuel (ReductionState (), Type) Type
 normalizeTypeF t0 = do
   t <- headNormalizeTypeF t0
   case t of
     TyVar _       -> pure t
-    TyArr q t1 t2 -> TyArr q <$> normalizeTypeF t1 <*> normalizeTypeF t2
-    TyApp tc ts _ -> do
-      t' <- tyApp tc <$> mapA normalizeTypeF ts
-      if isHeadNormalType t'
-        then return t'
-        else normalizeTypeF t'
-    TyQu qu tv t1 -> TyQu qu tv <$> normalizeTypeF t1
-    TyMu tv t1    -> TyMu tv <$> normalizeTypeF t1
+    TyArr q t1 t2 -> do
+      t1' <- normalizeTypeF t1 `mapError` fmap (flip (TyArr q) t2)
+      t2' <- normalizeTypeF t2 `mapError` fmap (TyArr q t1')
+      return (TyArr q t1' t2')
+    TyApp tc ts0 _ -> do
+      let loop []      = return []
+          loop (t:ts) = do
+            t'  <- normalizeTypeF t `mapError` fmap (:ts)
+            ts' <- loop ts `mapError` fmap (t':)
+            return (t':ts')
+      tyApp tc <$> (loop ts0 `mapError` fmap (tyApp tc))
+    TyQu qu tv t1 -> do
+      t1' <- normalizeTypeF t1 `mapError` fmap (TyQu qu tv)
+      return (TyQu qu tv t1')
+    TyMu tv t1 -> do
+      t1' <- normalizeTypeF t1 `mapError` fmap (TyMu tv)
+      return (TyMu tv t1')
 
--- | Reduces a type until it is normal or we run out of steps
-normalizeTypeK :: Int -> Type -> Maybe Type
-normalizeTypeK fuel t = evalFuel (normalizeTypeF t) fuel
+normalizeTypeK :: Int -> Type -> (ReductionState (), Type)
+normalizeTypeK fuel t = case evalFuel (normalizeTypeF t) fuel of
+  Right t'      -> (Done, t')
+  Left (rs, t') -> (rs, t')
 
 -- | Reduces a type until it is normal
-normalizeType :: Type -> Type
-normalizeType = fromJust . normalizeTypeK (-1)
+normalizeType :: Type -> (ReductionState (), Type)
+normalizeType = normalizeTypeK (-1)
 
+{-
 -- | Performs one reduction step.  The order of evaluation is
 --   different than used by 'normalizeType', but note that type
 --   reduction is not guaranteed to be confluent
@@ -169,47 +373,65 @@ reduceTypeList :: [Type] -> Maybe [Type]
 reduceTypeList []     = Nothing
 reduceTypeList (t:ts) = (:) <$> reduceType t <*> pure ts
                     <|> (:) <$> pure t <*> reduceTypeList ts
+-}
+
 ---
 --- The Fuel monad
 ---
 
 -- | The Fuel monad enables counting computation steps, and
 --   fails if it runs out of fuel
-newtype Fuel a
+newtype Fuel r a
   = Fuel {
       -- | Run a 'Fuel' computation, getting back the
       --   answer and remaining fuel
-      runFuel :: Int -> Maybe (a, Int)
+      runFuel :: Int -> Either r (a, Int)
     }
   deriving Functor
 
 -- | Run a 'Fuel' computation, getting back the answer only
-evalFuel :: Fuel a -> Int -> Maybe a
+evalFuel :: Fuel r a -> Int -> Either r a
 evalFuel  = fmap fst <$$> runFuel
 
 -- | Use up one unit of fuel
-burnFuel :: Fuel ()
-burnFuel  = Fuel $ \fuel ->
+burnFuel :: r -> Fuel r ()
+burnFuel r = Fuel $ \fuel ->
   if fuel == 0
-    then Nothing
-    else Just ((), fuel - 1)
+    then Left r
+    else Right ((), fuel - 1)
 
-instance Applicative Fuel where
-  pure a  = Fuel $ \fuel -> return (a, fuel)
-  f <*> g = Fuel $ \fuel -> do
-    (f', fuel')  <- runFuel f fuel
-    (g', fuel'') <- runFuel g fuel'
-    return (f' g', fuel'')
+-- | Give up on a fuel computation
+bailOut :: r -> Fuel r a
+bailOut = Fuel . const . Left
 
-instance Alternative Fuel where
-  empty   = Fuel (const Nothing)
-  f <|> g = Fuel (\fuel -> runFuel f fuel <|> runFuel g fuel)
+{-
+-- | Catch a failed fuel computation, and potentially add more fuel
+reFuel :: Fuel r a -> (r -> (Int, Fuel r a)) -> Fuel r a
+reFuel f k = Fuel $ \fuel -> case runFuel f fuel of
+  Left r           -> let (fuel', f') = k r in runFuel f' fuel'
+  Right (fuel', a) -> Right (fuel', a)
+-}
 
-instance Monad Fuel where
-  return a = Fuel $ \fuel -> return (a, fuel)
-  m >>= k  = Fuel $ \fuel -> do
-    (m', fuel')  <- runFuel m fuel
-    runFuel (k m') fuel'
+-- | Given a fuel computation with a given failure result, map
+--   the failure result
+mapError :: Fuel r a -> (r -> s) -> Fuel s a
+mapError f h = Fuel $ \fuel -> case runFuel f fuel of
+  Left r   -> Left (h r)
+  Right a  -> Right a
+
+instance Applicative (Fuel r) where
+  pure a  = Fuel $ \fuel -> Right (a, fuel)
+  f <*> g = Fuel $ \fuel -> case runFuel f fuel of
+    Right (f', fuel') -> case runFuel g fuel' of
+      Right (g', fuel'') -> Right (f' g', fuel'')
+      Left r             -> Left r
+    Left r            -> Left r
+
+instance Monad (Fuel r) where
+  return a = Fuel $ \fuel -> Right (a, fuel)
+  m >>= k  = Fuel $ \fuel -> case runFuel m fuel of
+    Right (m', fuel') -> runFuel (k m') fuel'
+    Left r            -> Left r
 
 ---
 --- Built-in type constructors
@@ -232,9 +454,9 @@ instance ExtTC r => ExtTC (QDen Int -> r) where
   extTC tc x = extTC (tc { tcQual = x })
 instance ExtTC r => ExtTC (Env.Env Uid (Maybe Type) -> r) where
   extTC tc x = extTC (tc { tcCons = x })
-instance ExtTC r => ExtTC (([Type] -> Maybe Type) -> r) where
+instance ExtTC r => ExtTC ([([TyPat], Type)] -> r) where
   extTC tc x = extTC (tc { tcNext = Just x })
-instance ExtTC r => ExtTC (Maybe ([Type] -> Maybe Type) -> r) where
+instance ExtTC r => ExtTC (Maybe [([TyPat], Type)] -> r) where
   extTC tc x = extTC (tc { tcNext = x })
 
 mkTC :: ExtTC r => Integer -> String -> r
@@ -258,29 +480,33 @@ tcExn        = mkTC (-5) "exn" (maxBound :: QDen Int)
 tcUn         = mkTC (-6) "U"
 tcAf         = mkTC (-7) "A"   (maxBound :: QDen Int)
 tcTuple      = mkTC (-8) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
+  [ ([TpVar (TV (Lid "a") Qa)], TyVar (TV (Lid "a") Qa)) ]
 
 -- For session types:
 
-tcSend, tcRecv, tcSelect, tcFollow, tcDual :: TyCon
+tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual :: TyCon
 
 tcSend       = mkTC (-11) "send"   [(Qa, 1)]
 tcRecv       = mkTC (-12) "recv"   [(Qa, -1)]
 tcSelect     = mkTC (-13) "select" [(Qu, 1)]
 tcFollow     = mkTC (-14) "follow" [(Qu, 1)]
-tcDual       = mkTC (-15) "dual"   [(Qu, -1)] $ \t ->
-  case t of
-    [TyVar tv]         -> Just (TyVar tv)
-    [TyApp tc ts _]
-      | tc == tcSend   -> Just (tyApp tcRecv ts)
-      | tc == tcRecv   -> Just (tyApp tcSend ts)
-      | tc == tcSelect -> Just (tyApp tcFollow (map dual ts))
-      | tc == tcFollow -> Just (tyApp tcSelect (map dual ts))
-      | tc == tcUnit   -> Just (tyApp tcUnit ts)
-      | tcName tc == qlid ";"
-                       -> Just (tyApp tc (map dual ts))
-    [TyMu tv t']       -> return (TyMu tv (dual t'))
-    _ -> Nothing
-  where dual t = tyApp tcDual [t]
+tcSemi       = mkTC (-15) ";"      [(Qu, -1), (Qu, 1)]
+tcDual       = mkTC (-16) "dual"   [(Qu, -1)]
+  [ ([TpApp tcSemi   [TpApp tcSend [pa], pb]],
+              (tyApp tcSemi [tyApp tcRecv [ta], dual tb]))
+  , ([TpApp tcSemi   [TpApp tcRecv [pa], pb]],
+              (tyApp tcSemi [tyApp tcSend [ta], dual tb]))
+  , ([TpApp tcSelect [pa, pb]], (tyApp tcFollow [dual ta, dual tb]))
+  , ([TpApp tcFollow [pa, pb]], (tyApp tcSelect [dual ta, dual tb]))
+  , ([TpApp tcUnit   []],       (tyApp tcUnit []))
+  ]
+  where a = TV (Lid "a") Qa
+        b = TV (Lid "b") Qa
+        pa = TpVar a
+        pb = TpVar b
+        ta = TyVar a
+        tb = TyVar b
+        dual t = tyApp tcDual [t]
 
 ---
 --- Convenience type constructors
@@ -327,11 +553,79 @@ typeToStx t0 = case t0 of
   TyQu qu tv t1 -> Stx.TyQu qu tv (typeToStx t1)
   TyMu tv t1    -> Stx.TyMu tv (typeToStx t1)
 
+-- | Represent a type pattern as a syntactic type, for printing
+tyPatToStx :: TyPat -> Stx.Type ()
+tyPatToStx tp0 = case tp0 of
+  TpVar tv      -> Stx.TyVar tv
+  TpApp tc tps  -> Stx.TyCon (tcName tc) (map tyPatToStx tps) ()
+
 castableType :: Type -> Bool
-castableType t = case headNormalizeType t of
+castableType t = case snd (headNormalizeType t) of
   TyVar _     -> False
   TyArr _ _ _ -> True
   TyApp _ _ _ -> False
   TyQu _ _ t1 -> castableType t1
   TyMu _ t1   -> castableType t1
 
+{-
+-- Example types and reduction
+
+hgo t = loop 0 where
+  loop 100 = putStrLn "gave up after 100 steps"
+  loop i    = case headNormalizeTypeK i t of
+    (Next (), t) -> do print t; loop (i + 1)
+    (rs, _)      -> print rs
+
+go t = loop 0 where
+  loop 100 = putStrLn "gave up after 100 steps"
+  loop i    = case normalizeTypeK i t of
+    (Next (), t) -> do print t; loop (i + 1)
+    (rs, _)      -> print rs
+
+a = tyApp tcDual
+       [tyApp tcSemi
+         [tyApp tcRecv [tyApp tcInt []],
+          tyApp tcSemi
+           [tyApp tcSend [tyApp tcString []],
+            tyUnit]]]
+
+b = tyApp tcIdent
+     [tyApp tcSemi
+       [tyApp tcIdent [tyApp tcRecv [tyApp tcInt []]],
+        tyApp tcIdent
+         [tyApp tcSemi
+           [tyApp tcSend [tyApp tcString []],
+            tyUnit]]]]
+
+c = tyApp tcIdent [tyApp tcDual [b]]
+
+d = tyApp tcDual [c]
+
+e = tyApp tcDual
+     [tyApp tcIdent
+       [tyApp tcSemi
+         [tyApp tcIdent [tyUnit],
+          tyApp tcIdent
+           [tyApp tcSemi
+             [tyApp tcSend [tyApp tcString []],
+              tyUnit]]]]]
+
+f = tyApp tcDual
+     [tyApp tcIdent
+       [tyApp tcSemi
+         [tyApp tcIdent [TyVar (TV (Lid "c") Qu)],
+          tyApp tcIdent
+           [tyApp tcSemi
+             [tyApp tcSend [tyApp tcString []],
+              tyUnit]]]]]
+
+g = tyApp tcInfiniteLoop [tyUnit] where
+
+tcIdent, tcInfiniteLoop :: TyCon
+
+tcIdent        = mkTC (-9) "id"  (0 :: QDen Int) [(Qa, 1)]
+
+tcInfiniteLoop = mkTC (-100) "loop"
+  [([TpVar (TV (Lid "a") Qu)],
+       tyApp tcInfiniteLoop [TyVar (TV (Lid "a") Qu)])]
+-}

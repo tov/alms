@@ -9,7 +9,7 @@ module Syntax.Ident (
   Path(..),
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
-  TyVar(..),
+  TyVar(..), tvalphabet,
   isOperator, qlid, quid,
 ) where
 
@@ -47,6 +47,12 @@ type Ident = Path Uid BIdent
 -- | Type variables include qualifiers
 data TyVar = TV { tvname :: Lid, tvqual :: QLit }
   deriving (Eq, Ord, Typeable, Data)
+
+tvalphabet :: [QLit -> TyVar]
+tvalphabet  = map (TV . Lid) alphabet
+  where
+    alphabet = map return ['a' .. 'z'] ++
+               [ x ++ [y] | x <- alphabet, y <- ['a' .. 'z'] ]
 
 -- | Is the lowercase identifier an infix operator?
 isOperator :: Lid -> Bool

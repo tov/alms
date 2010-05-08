@@ -43,6 +43,10 @@ class Eq a => PO a where
   x <: y = Just x == (x /\? y)
         || Just y == (x \/? y)
 
+  -- | The complement of the order relation (derived)
+  (/<:) :: a -> a -> Bool
+  (/<:) = not <$$> (<:)
+
 infixl 7 /\, /\?
 infixl 6 \/, \/?
 infix 4 <:

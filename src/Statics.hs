@@ -1234,9 +1234,7 @@ tyInfoToDec n ti = case ti of
   TiDat _ ps alts -> TdDat n ps [ (uid, fmap removeTyTags mt)
                                       | (uid, mt) <- toList alts ]
   TiAbs tag       ->
-    let tyvars   = zipWith (TV . Lid) alphabet (ttBound tag)
-        alphabet = map return ['a' .. 'z'] ++
-                   [ x ++ [y] | x <- alphabet, y <- ['a' .. 'z'] ]
+    let tyvars   = zipWith ($) tvalphabet (ttBound tag)
      in TdAbs n (zipWith const tyvars (ttArity tag))
               (ttArity tag)
               (qRepresent

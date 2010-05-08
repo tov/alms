@@ -22,6 +22,8 @@ module Util (
   splitBy,
   -- ** Monomorphic @ord@ and @chr@
   char2integer, integer2char,
+  -- ** For defining 'Ord'
+  thenCmp,
   -- ** Versions of fmap
   (>>!),
   (<$$>), (<$$$>), (<$$$$>), (<$$$$$>),
@@ -119,6 +121,12 @@ unscanl f = loop [] where
   loop acc b = case f b of
     Just (a, b') -> loop (a : acc) b'
     Nothing      -> (acc, b)
+
+-- | To combine two 'Ordering's in lexigraphic order
+thenCmp :: Ordering -> Ordering -> Ordering
+thenCmp EQ k2 = k2
+thenCmp k1 _  = k1
+infixr 4 `thenCmp`
 
 -- | 2nd order fmap
 (<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)

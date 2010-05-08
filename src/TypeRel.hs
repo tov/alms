@@ -2,342 +2,770 @@
       FlexibleInstances,
       QuasiQuotes,
       ParallelListComp,
+      PatternGuards,
       ScopedTypeVariables,
       TemplateHaskell #-}
 module TypeRel (
   -- * Type operations
-  -- ** Equality
-  TypeTEq(..),
-  -- ** Freshness
-  Ftv(..), FtvVs(..), freshTyVar, freshTyVars,
-  -- ** Substitutions
-  tysubst, tysubsts,
+  -- ** Equality and subtyping
+  AType(..), subtype, jointype,
   -- ** Queries and conversions
-  qualifier, qualConst, replaceTyTags, removeTyTags,
-  dualSessionType,
+  qualifier, qualConst, abstractTyCon, replaceTyCon,
+  -- * Tests
+  tests,
 ) where
 
-import Quasi
-import Syntax
+import Env
+import Type
 import Util
 
-import Data.Char (isDigit)
-import Data.Generics (Data, everywhere, mkT, everything, mkQ)
+import Control.Monad.Error (MonadError(..))
+import qualified Control.Monad.State as CMS
+import Data.Generics (Data, everywhere, mkT, extT)
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Control.Monad.State (State, evalState, get, put)
+import qualified Test.HUnit as T
 
--- | Class for getting free type variables (from types, expressions,
--- lists thereof, pairs thereof, etc.)
-class Ftv a where
-  ftv :: a -> S.Set TyVar
+-- | Remove the concrete portions of a type constructor.
+abstractTyCon :: TyCon -> TyCon
+abstractTyCon tc = tc { tcCons = empty, tcNext = Nothing }
 
-instance Ftv (Type i) where
-  ftv (TyCon _ ts _)  = S.unions (map ftv ts)
-  ftv (TyVar tv)      = S.singleton tv
-  ftv (TyArr q t1 t2) = S.unions [ftv t1, ftv t2, ftv q]
-  ftv (TyQu _ tv t)   = S.delete tv (ftv t)
-  ftv (TyMu tv t)     = S.delete tv (ftv t)
-  ftv (TyAnti a)      = $antierror
-
-instance (Data a, Ftv a) => Ftv (QExp a) where
-  ftv = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVar))
-
-instance Ftv a => Ftv [a] where
-  ftv = S.unions . map ftv
-
-instance Ftv TyVar where
-  ftv = S.singleton
-
-instance (Ftv a, Ftv b) => Ftv (a, b) where
-  ftv (a, b) = ftv a `S.union` ftv b
-
-class FtvVs a where
-  ftvVs :: a -> M.Map TyVar Variance
-
-instance FtvVs (Type TyTag) where
-  ftvVs (TyCon _ ts td)= M.unionsWith (+)
-                         [ M.map (* var) m
-                         | var <- ttArity td
-                         | m   <- map ftvVs ts ]
-  ftvVs (TyArr q t1 t2)= M.unionsWith (+)
-                         [ ftvVs q
-                         , M.map negate (ftvVs t1)
-                         , ftvVs t2 ]
-  ftvVs (TyVar tv)     = M.singleton tv 1
-  ftvVs (TyQu _ tv t)  = M.delete tv (ftvVs t)
-  ftvVs (TyMu tv t)    = M.delete tv (ftvVs t)
-  ftvVs (TyAnti a)     = antierror "ftvVs" a
-
-instance (Data a, FtvVs a) => FtvVs (QExp a) where
-  ftvVs = everything M.union
-            (mkQ M.empty (ftvVs :: a -> M.Map TyVar Variance))
-
-instance FtvVs a => FtvVs [a] where
-  ftvVs = M.unionsWith (+) . map ftvVs
-
-instance FtvVs TyVar where
-  ftvVs tv = M.singleton tv 1
-
-instance (FtvVs a, FtvVs b) => FtvVs (a, b) where
-  ftvVs (a, b) = M.unionWith (+) (ftvVs a) (ftvVs b)
-
-freshTyVars :: [TyVar] -> S.Set TyVar -> [TyVar]
-freshTyVars tvs0 s0 = loop tvs0 (s0 `S.union` S.fromList tvs0) where
-  loop (tv:tvs) s' = let tv' = freshTyVar tv s'
-                      in tv' : loop tvs (S.insert tv' s')
-  loop _        _ = []
-
-freshTyVar :: TyVar -> S.Set TyVar -> TyVar
-freshTyVar tv s = if tv `S.member` s
-                    then loop count
-                    else tv
-  where
-    suffix   = reverse . takeWhile isDigit . reverse . unLid $ tvname tv
-    prefix   = reverse . dropWhile isDigit . reverse . unLid $ tvname tv
-    count    = case reads suffix of
-                 ((n, ""):_) -> n
-                 _           -> 0
-    attach n = tv { tvname = Lid (prefix ++ show n) }
-    loop    :: Int -> TyVar
-    loop n   =
-      let tv' = attach n
-      in if tv' `S.member` s
-           then loop (n + 1)
-           else tv'
-
--- | Given a list of type variables and types, perform all the
---   substitutions, avoiding capture between them.
-tysubsts :: [TyVar] -> [TypeT] -> TypeT -> TypeT
-tysubsts ps ts t =
-  let ps'     = freshTyVars ps (ftv (t:ts))
-      substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
-  substs ps' ts .
-    substs ps (map TyVar ps') $
-      t
-
--- | Type substitution
-tysubst :: TyVar -> TypeT -> TypeT -> TypeT
-tysubst a t = ts where
-  ts (TyVar a')
-                = if a' == a
-                    then t
-                    else TyVar a'
-  ts (TyQu u a' t')
-                = if a' == a
-                    then TyQu u a' t'
-                    else
-                     let a'' = freshTyVar a' (ftv (a, [t, t']))
-                      in TyQu u a'' (ts (tysubst a' (TyVar a'') t'))
-  ts (TyMu a' t')
-                = if a' == a
-                    then TyMu a' t'
-                    else
-                     let a'' = freshTyVar a' (ftv (a, [t, t']))
-                      in TyMu a'' (ts (tysubst a' (TyVar a'') t'))
-  ts (TyCon c tys td)
-                = TyCon c (map ts tys) td
-  ts (TyArr q t1 t2)
-                = TyArr q' (ts t1) (ts t2) where
-    q' = qRepresent (qSubst a (qualifier t) (qInterpret q))
-  ts (TyAnti an)= $(antierror 'an)
-
--- | Remove tycon information from a type
-removeTyTags :: Type i -> Type ()
-removeTyTags  = untype where
-  untype :: Type i -> Type ()
-  untype (TyCon con args _) = TyCon con (map untype args) ()
-  untype (TyVar tv)         = TyVar tv
-  untype (TyArr q t1 t2)    = TyArr q (untype t1) (untype t2)
-  untype (TyQu quant tv t)  = TyQu quant tv (untype t)
-  untype (TyMu tv t)        = TyMu tv (untype t)
-  untype (TyAnti a)         = $antierror
-
--- | Given a type tag and something traversable, find all type tags
---   with the same identity as the given type tag, and replace them.
---   (We use this to do type abstraction, since we can replace datatype
---   type tags with abstract type tags that have the datacons redacted.)
-replaceTyTags :: Data a => TyTag -> a -> a
-replaceTyTags tag' = everywhere (mkT each) where
-  each :: TyTag -> TyTag
-  each tag | ttId tag == ttId tag' = tag'
-           | otherwise             = tag
+-- | Given a type constructor and something traversable, find all
+--   constructors with the same identity as the given type one, and
+--   replace them.  We can use this for type abstraction by redacting
+--   data constructor or synonym expansions.
+replaceTyCon :: Data a => TyCon -> a -> a
+replaceTyCon tc' = everywhere (mkT tycon `extT` tyapp) where
+  tycon :: TyCon -> TyCon
+  tycon tc | tc == tc' = tc'
+           | otherwise = tc
+  tyapp :: Type -> Type
+  tyapp (TyApp tc ts _)
+    | tc == tc' = tyApp tc' ts
+  tyapp t       = t
 
 -- | The constant bound on the qualifier of a type
-qualConst :: TypeT -> QLit
+qualConst :: Type -> QLit
 qualConst  = qConstBound . qualifier
 
 -- | Find the qualifier of a type (which must be decorated with
 --   tycon info)
-qualifier     :: TypeT -> QDen TyVar
-qualifier [$ty|+ ($list:ps) $qlid:_ $td |]
-  = denumberQDen (map qualifier ps) (qInterpretCanonical (ttQual td))
-qualifier [$ty|+ $_ -[$q]> $_ |]      = qInterpret (squashUnTyVars q)
-qualifier [$ty|+ '$tv |]
-  | tvqual tv <: Qu                   = minBound
-  | otherwise                         = qInterpret (QeVar tv)
-qualifier [$ty|+ $quant:_ '$_ . $t |] = qualifier t
-qualifier [$ty|+ mu '$_ . $t |]       = qualifier t
-qualifier [$ty|+ $anti:a |]           = $antierror
+qualifier     :: Type -> QDen TyVar
+qualifier (TyApp tc ts _) = denumberQDen (map qualifier ts) (tcQual tc)
+qualifier (TyArr q _ _)   = q
+qualifier (TyVar tv)
+  | tvqual tv <: Qu       = minBound
+  | otherwise             = qInterpret (QeVar tv)
+qualifier (TyQu _ _ t)    = qualifier t
+qualifier (TyMu _ t)      = qualifier t
 
+{- -- deprecated?
 squashUnTyVars :: QExp TyVar -> QExp TyVar
 squashUnTyVars = everywhere (mkT each) where
   each (QeVar tv) | tvqual tv <: Qu = QeLit Qu
   each qe = qe
+-}
 
 -- | A fresh type for defining alpha equality up to mu.
-newtype TypeTEq = TypeTEq { unTypeTEq :: TypeT }
+newtype AType = AType { unAType :: Type }
 
--- | On TypeTEq, we define simple alpha equality, which we then use
--- to keep track of where we've been when we define type equality
--- that understands mu.
-instance Eq TypeTEq where
-  te1 == te2 = unTypeTEq te1 === unTypeTEq te2
+-- | On AType, we define simple alpha equality, up to mu and operator
+--   reduction, which we then use
+--   to keep track of where we've been when we define type equality
+--   that understands mu and reduction.
+instance Eq AType where
+  te1 == te2 = compare te1 te2 == EQ
+
+instance Ord AType where
+  te1 `compare` te2 = unAType te1 =?= unAType te2
     where
-      (===) :: TypeT -> TypeT -> Bool
-      [$ty|+ ($list:ps) $qlid:_ $td |]
-        === [$ty|+@! ($list:ps') $qlid:_ $td' |]
-                                 = td == td' && all2 (===) ps ps'
-      TyVar x       === TyVar x' = x == x'
-      TyArr q t1 t2 === TyArr q' t1' t2'
-                                 = qInterpret q == qInterpret q'
-                                   && t1 === t1' && t2 === t2'
-      TyQu u x t    === TyQu u' x' t'
-        | u == u' && tvqual x == tvqual x' =
-          tysubst x a t === tysubst x' a t'
-            where a = TyVar (freshTyVar x (ftv [t, t']))
-      TyMu x t      === TyMu x' t'
-        | tvqual x == tvqual x' =
-          tysubst x a t === tysubst x' a t'
-            where a = TyVar (freshTyVar x (ftv [t, t']))
-      _             === _        = False
+      (=?=) :: Type -> Type -> Ordering
+      TyApp tc ts _ =?= TyApp tc' ts' _
+        = tc `compare` tc'
+           `thenCmp` map AType ts `compare` map AType ts'
+      TyVar x       =?= TyVar x'
+        = x `compare` x'
+      TyArr q t1 t2 =?= TyArr q' t1' t2'
+        = q `compare` q'
+           `thenCmp` t1 =?= t1'
+           `thenCmp` t2 =?= t2'
+      TyQu u x t    =?= TyQu u' x' t'
+        = u `compare` u'
+           `thenCmp` tvqual x `compare` tvqual x'
+           `thenCmp` tysubst x a t =?= tysubst x' a t'
+              where a = TyVar (freshTyVar x (ftv (t, t')))
+      TyMu x t    =?= TyMu x' t'
+        = tvqual x `compare` tvqual x'
+           `thenCmp` tysubst x a t =?= tysubst x' a t'
+              where a = TyVar (freshTyVar x (ftv (t, t')))
+      TyApp _ _ _   =?= _           = LT
+      _             =?= TyApp _ _ _ = GT
+      TyVar _       =?= _           = LT
+      _             =?= TyVar _     = GT
+      TyArr _ _ _   =?= _           = LT
+      _             =?= TyArr _ _ _ = GT
+      TyQu _ _ _    =?= _           = LT
+      _             =?= TyQu _ _ _  = GT
 
-instance Eq (Type TyTag) where
-  (==) t1i t2i = evalState (t1i `chk` t2i) [] where
-    chk, cmp :: TypeT -> TypeT -> State [(TypeTEq, TypeTEq)] Bool
-    t1 `chk` t2 = do
-      seen <- get
-      let te1 = TypeTEq t1; te2 = TypeTEq t2
-      if (te1, te2) `elem` seen
-        then return True
-        else do
-          put ((te1, te2) : (te2, te1) : seen)
-          cmp t1 t2
+instance Eq Type where
+  t1 == t2 = t1 <: t2 && t2 <: t1
 
-    [$ty|+ $p $qlid:_ $td:dual |] `cmp` t = dualSessionType p `chk` t
-    t `cmp` [$ty|+ $p $qlid:_ $td:dual |] = t `chk` dualSessionType p
-    TyMu a t       `cmp` t'               = tysubst a (TyMu a t) t `chk` t'
-    t'             `cmp` TyMu a t         = t' `chk` tysubst a (TyMu a t) t
-    [$ty|+ ($list:ps) $qlid:_ $td |]
-      `cmp` [$ty|+@! ($list:ps') $qlid:_ $td' |]
-      | td == td'                         = allM2 chk ps ps'
-    TyVar x        `cmp` TyVar x'         = return (x == x')
-    TyArr q t1 t2  `cmp` TyArr q' t1' t2'
-      | qInterpret q == qInterpret q'     = allM2 chk [t1,t2] [t1',t2']
-    TyQu u x t     `cmp` TyQu u' x' t' 
-      | u == u' && tvqual x == tvqual x'  =
-        tysubst x a t `chk` tysubst x' a t'
-          where a = TyVar (freshTyVar x (ftv [t, t']))
-    _            `cmp` _                  = return False
+type UT s m a = CMS.StateT (TCS s) m a
 
+data TCS s = TCS {
+  tcsSeen    :: M.Map (AType, AType) s,
+  tcsSubst1  :: M.Map TyVar Type,
+  tcsSubst2  :: M.Map TyVar Type,
+  tcsSupply  :: [QLit -> TyVar]
+}
+
+runUT  :: Monad m => UT s m a -> S.Set TyVar -> m a
+runUT m set = CMS.evalStateT m TCS {
+  tcsSeen   = M.empty,
+  tcsSubst1 = M.empty,
+  tcsSubst2 = M.empty,
+  tcsSupply = [ f | f <- tvalphabet
+                  , f Qu `S.notMember` set
+                  , f Qa `S.notMember` set ]
+}
+
+chkU :: Monad m => Type -> Type -> s -> UT s m s -> UT s m s
+chkU t1 t2 s body = do
+  let key = (AType t1, AType t2)
+  st0 <- CMS.get
+  case M.lookup key (tcsSeen st0) of
+    Just s' -> return s'
+    Nothing -> do
+      CMS.put st0 { tcsSeen = M.insert key s (tcsSeen st0) }
+      res <- body
+      st1 <- CMS.get
+      CMS.put st1 { tcsSeen = M.insert key res (tcsSeen st1) }
+      return res
+
+get1U :: Monad m => TyVar -> UT s m Type
+get1U tv = do
+  st <- CMS.get
+  maybe (fail $ "unbound type variable: " ++ show tv) return $
+    M.lookup tv (tcsSubst1 st)
+
+get2U :: Monad m => TyVar -> UT s m Type
+get2U tv = do
+  st <- CMS.get
+  maybe (fail $ "unbound type variable: " ++ show tv) return $
+    M.lookup tv (tcsSubst2 st)
+
+add1U :: Monad m => TyVar -> Type -> UT s m a -> UT s m a
+add1U tv t body = do
+  st0 <- CMS.get
+  CMS.put st0 { tcsSubst1 = M.insert tv t (tcsSubst1 st0) }
+  res <- body
+  st1 <- CMS.get
+  CMS.put st1 { tcsSubst1 = tcsSubst1 st0 }
+  return res
+
+add2U :: Monad m => TyVar -> Type -> UT s m a -> UT s m a
+add2U tv t body = do
+  st0 <- CMS.get
+  CMS.put st0 { tcsSubst2 = M.insert tv t (tcsSubst2 st0) }
+  res <- body
+  st1 <- CMS.get
+  CMS.put st1 { tcsSubst2 = tcsSubst2 st0 }
+  return res
+
+flipU :: Monad m => UT s m a -> UT s m a
+flipU body = do
+  CMS.modify flipSt
+  res <- body
+  CMS.modify flipSt
+  return res
+    where
+      flipSt (TCS seen s1 s2 supply) =
+        TCS (M.mapKeys (\(x,y) -> (y,x)) seen) s2 s1 supply
+
+freshU :: Monad m => QLit -> UT s m TyVar
+freshU qlit = do
+  st <- CMS.get
+  let f:supply = tcsSupply st
+  CMS.put st { tcsSupply = supply }
+  return (f qlit)
+
+hideU :: Monad m => UT s m a -> UT s m a
+hideU body = do
+  st0 <- CMS.get
+  CMS.put st0 { tcsSubst1 = M.empty, tcsSubst2 = M.empty }
+  res <- body
+  st1 <- CMS.get
+  CMS.put st1 { tcsSubst1 = tcsSubst1 st0, tcsSubst2 = tcsSubst2 st0 }
+  return res
+
+  -- CMS.put st { tcsSeen = tcsSeen 
+
+subtype :: MonadError e m => Int -> Type -> Type -> m ()
+subtype limit t1i t2i = runUT (cmp t1i t2i) (ftv (t1i, t2i))
+  where
+    cmp :: MonadError e m => Type -> Type -> UT () m ()
+    cmp t u = chkU t u () $ case (t, u) of
+      -- Handle top
+      (_ , TyApp tcu _ _)
+        | tcu == tcUn && qualConst t <: Qu
+        -> return ()
+      (_ , TyApp tcu _ _)
+        | tcu == tcAf
+        -> return ()
+      -- Handle bottom
+      (TyQu Forall tvt (TyVar tvt'), _)
+        | tvt == tvt'
+        -> return ()
+      -- Variables
+      (TyVar vt, TyVar ut)
+        | vt == ut ->
+        return ()
+      (TyVar vt, _) -> do
+        t' <- get1U vt
+        cmp t' u
+      (_, TyVar ut) -> do
+        u' <- get2U ut
+        cmp t u'
+      -- Type applications
+      (TyApp tct ts _, TyApp tcu us _)
+        | tct == tcu,
+          isHeadNormalType t, isHeadNormalType u ->
+        cmpList (tcArity tct) ts us
+      (TyApp tct ts _, TyApp tcu us _)
+        | tct == tcu ->
+        cmpList (tcArity tct) ts us `catchError` \_ -> do
+          t' <- hn t
+          u' <- hn u
+          cmp t' u'
+      (TyApp _ _ _, _)
+        | not (isHeadNormalType t)
+        -> (`cmp` u) =<< hn t
+      (_, TyApp _ _ _)
+        | not (isHeadNormalType u)
+        -> (t `cmp`) =<< hn u
+      -- Arrows
+      (TyArr qt t1 t2, TyArr qu u1 u2) 
+        | qt <: qu -> do
+        revCmp t1 u1
+        cmp t2 u2
+      -- Quantifiers
+      (TyQu qt tvt t1, TyQu qu tvu u1)
+        | qt == qu,
+          tvqual tvu <: tvqual tvt -> do
+        tv' <- freshU (tvqual tvu)
+        hideU $
+          cmp (tysubst tvt (TyVar tv') t1)
+              (tysubst tvu (TyVar tv') u1)
+      -- Recursion
+      (TyMu tvt t1, _) ->
+        add1U tvt t $ cmp t1 u
+      (_, TyMu tvu u1) ->
+        add2U tvu u $ cmp t u1
+      -- Failure
+      (_, _) -> do
+        fail $
+          "Got type `" ++ show t ++ "' where type `" ++
+          show u ++ "' expected"
+    --
+    revCmp u t = flipU (cmp t u)
+    --
+    hn t = case headNormalizeTypeK limit t of
+      (Next (), t') -> fail $
+        "Gave up reducing type `" ++ show t' ++
+        "' after " ++ show limit ++ " steps"
+      (_, t') -> return t'
+    --
+    cmpList arity ts us =
+      sequence_
+        [ case var of
+            1  -> cmp tj uj
+            -1 -> revCmp tj uj
+            _  -> do cmp tj uj; revCmp tj uj
+        | (_, var) <- arity
+        | tj       <- ts
+        | uj       <- us ]
+
+jointype :: MonadError e m => Int -> Bool -> Type -> Type -> m Type
+jointype limit b t1i t2i = 
+  liftM clean $ runUT (cmp (b, True) t1i t2i) (ftv (t1i, t2i))
+  where
+  cmp, revCmp :: MonadError e m =>
+                 (Bool, Bool) -> Type -> Type -> UT Type m Type
+  cmp m t u = do
+    let (direction, _) = m
+    tv   <- freshU (qualConst t \/ qualConst u)
+    catch m t u $
+      chkU t u (TyVar tv) $
+        TyMu tv `liftM`
+          case (t, u) of
+      -- Handle top and bottom
+      _ | Just t' <- points direction t u -> return t'
+        | Just t' <- points direction u t -> return t'
+      -- Variables
+      (TyVar vt, TyVar ut)
+        | vt == ut ->
+        return t
+      (TyVar vt, _) -> do
+        t' <- get1U vt
+        cmp m t' u
+      (_, TyVar ut) -> do
+        u' <- get2U ut
+        cmp m t u'
+      -- Type applications
+      (TyApp tct ts _, TyApp tcu us _)
+        | tct == tcu,
+          isHeadNormalType t, isHeadNormalType u ->
+        tyApp tct `liftM`
+          cmpList (tcArity tct) (direction, True) ts us
+      (TyApp tct ts _, TyApp tcu us _)
+        | tct == tcu
+        -> liftM (tyApp tct)
+                 (cmpList (tcArity tct) (direction, False) ts us)
+             `catchError` \_ -> do
+               t' <- hn t
+               u' <- hn u
+               cmp m t' u'
+      (TyApp _ _ _, _)
+        | not (isHeadNormalType t) -> do
+        t' <- hn t
+        cmp m t' u
+      (_, TyApp _ _ _)
+        | not (isHeadNormalType u) -> do
+        u' <- hn u
+        cmp m t u'
+      -- Arrows
+      (TyArr qt t1 t2, TyArr qu u1 u2) -> do
+        q'  <- ifMJ direction qt qu
+        t1' <- revCmp m t1 u1
+        t2' <- cmp m t2 u2
+        return (TyArr q' t1' t2')
+      -- Quantifiers
+      (TyQu qt tvt t1, TyQu qu tvu u1)
+        | qt == qu -> do
+        q'  <- ifMJ direction (tvqual tvt) (tvqual tvu)
+        tv' <- freshU q'
+        liftM (TyQu qt tv') $
+          hideU $
+            cmp m (tysubst tvt (TyVar tv') t1)
+                  (tysubst tvu (TyVar tv') u1)
+      -- Recursion
+      (TyMu tvt t1, _) ->
+        add1U tvt t $ cmp m t1 u
+      (_, TyMu tvu u1) ->
+        add2U tvu u $ cmp m t u1
+      -- Failure
+      _ ->
+        fail $
+          "Could not unify types `" ++ show t ++
+          "' and `" ++ show u ++ "'"
+  --
+  hn t = case headNormalizeTypeK limit t of
+    (Next (), t') -> fail $
+      "Gave up reducing type `" ++ show t' ++
+      "' after " ++ show limit ++ " steps"
+    (_, t') -> return t'
+  --
+  cmpList arity m ts us =
+    sequence
+      [ case var of
+          1  -> cmp m tj uj
+          -1 -> revCmp m tj uj
+          _  -> if tj == uj
+                  then return tj
+                  else fail $
+                    "Could not unify types `" ++ show tj ++
+                    "' and `" ++ show uj ++ "'"
+      | (_, var) <- arity
+      | tj       <- ts
+      | uj       <- us ]
+  --
+  points True  t u@(TyApp tc _ _)
+    | tc == tcAf                    = Just u
+    | tc == tcUn, qualConst t <: Qu = Just u
+  points True  t   (TyQu Forall tv (TyVar tv'))
+    | tv == tv'                     = Just t
+  points False t   (TyApp tc _ _)
+    | tc == tcAf                    = Just t
+    | tc == tcUn, qualConst t <: Qu = Just t
+  points False _ u@(TyQu Forall tv (TyVar tv'))
+    | tv == tv'                     = Just u
+  points _     _   _                = Nothing
+  --
+  revCmp (direction, lossy) t u = cmp (not direction, lossy) t u
+  --
+  catch (True, True) t u body = body
+    `catchError` \_ -> return $
+      case (qualConst t \/ qualConst u) of
+        Qu -> tyNulOp tcUn
+        Qa -> tyNulOp tcAf
+  catch _            _ _ body = body
+  --
+  clean :: Type -> Type
+  clean (TyApp tc ts _)  = tyApp tc (map clean ts)
+  clean (TyVar a)        = TyVar a
+  clean (TyArr q t1 t2)  = TyArr q (clean t1) (clean t2)
+  clean (TyQu u a t)     = TyQu u a (clean t)
+  clean (TyMu a t)
+    | a `S.member` ftv t = TyMu a (clean t)
+    | otherwise          = clean t
 
 -- | The Type partial order
-instance PO (Type TyTag) where
-  ifMJ bi t1i t2i = clean `liftM` chk [] bi t1i t2i where
-    clean :: TypeT -> TypeT
-    clean (TyCon c ps td)  = TyCon c (map clean ps) td
-    clean (TyVar a)        = TyVar a
-    clean (TyArr q t1 t2)  = TyArr q (clean t1) (clean t2)
-    clean (TyQu u a t)     = TyQu u a (clean t)
-    clean (TyMu a t)
-      | a `S.member` ftv t = TyMu a (clean t)
-      | otherwise          = clean t
-    clean (TyAnti a)       = antierror "ifMJ" a
+instance PO Type where
+  t1 <: t2     = either (const False) (const True)
+                        (subtype 100 t1 t2 :: Either String ())
+  ifMJ b t1 t2 = either fail return (jointype 100 b t1 t2)
 
-    chk, cmp :: Monad m =>
-                [((Bool, TypeTEq, TypeTEq), TyVar)] ->
-                Bool -> TypeT -> TypeT ->
-                m TypeT
-    chk seen b t1 t2 = do
-      let te1 = TypeTEq t1; te2 = TypeTEq t2
-      case lookup (b, te1, te2) seen of
-        Just tv -> return (TyVar tv)
-        Nothing -> TyMu tv `liftM` cmp seen' b t1 t2 where
-          used  = S.fromList (map snd seen)
-          tv    = freshTyVar
-                    (TV (Lid "r") (qualConst t1 \/ qualConst t2))
-                    (ftv [t1, t2] `S.union` used)
-          seen' = (((b, te1, te2), tv) : ((b, te2, te1), tv) : seen)
+subtypeTests, joinTests :: T.Test
 
-    -- Special cases to treat "all 'a. 'a" as bottom:
-    cmp _ b t'@(TyQu Forall tv (TyVar tv')) t
-      | tv == tv' && qualConst t <: tvqual tv
-      = return (if b then t else t')
-    cmp _ b t t'@(TyQu Forall tv (TyVar tv'))
-      | tv == tv' && qualConst t <: tvqual tv
-      = return (if b then t else t')
-    -- Special cases for session types duality:
-    cmp seen b [$ty|+ $p $qlid:_ $td:dual |] t
-                                    = chk seen b (dualSessionType p) t
-    cmp seen b t [$ty|+ $p $qlid:_ $td:dual |]
-                                    = chk seen b t (dualSessionType p)
-    -- Arrows
-    cmp seen b [$ty|+ $t11 -[$q1]> $t12 |]
-               [$ty|+ $t21 -[$q2]> $t22 |] = do
-        t1  <- chk seen (not b) t11 t21
-        t2  <- chk seen b t12 t22
-        q1' <- qInterpretM q1
-        q2' <- qInterpretM q2
-        q   <- qRepresent `liftM` ifMJ b q1' q2'
-        return [$ty|+ $t1 -[$q]> $t2 |]
-    -- Otherwise:
-    cmp seen b [$ty|+ ($list:ps)  $qlid:tc $td  |]
-               [$ty|+ ($list:ps') $qlid:_  $td' |] | td == td' = do
-        params <- sequence
-          [ case var of
-              Covariant     -> chk seen b p p'
-              Contravariant -> chk seen (not b) p p'
-              _             -> if p == p'
-                               then return p
-                               else fail "\\/? or /\\?: Does not exist"
-             | var <- ttArity td
-             | p   <- ps
-             | p'  <- ps' ]
-        return [$ty|+ ($list:params) $qlid:tc $td |]
-    cmp seen b (TyQu u a t) (TyQu u' a' t') | u == u' = do
-      qual <- ifMJ (not b) (tvqual a) (tvqual a')
-      let a1  = a { tvqual = qual } `freshTyVar` (ftv [t, t'])
-          t1  = tysubst a (TyVar a1) t
-          t'1 = tysubst a' (TyVar a1) t'
-      TyQu u a1 `liftM` chk seen b t1 t'1
-    cmp seen b (TyMu a t) t' = chk seen b (tysubst a (TyMu a t) t) t'
-    cmp seen b t' (TyMu a t) = chk seen b t' (tysubst a (TyMu a t) t)
-    cmp _    _ t t' | t == t' = return t
-    cmp _    False t [$ty|+ U |] | qualConst t <: Qu = return t
-    cmp _    False [$ty|+ U |] t | qualConst t <: Qu = return t
-    cmp _    False t [$ty|+ A |] = return t
-    cmp _    False [$ty|+ A |] t = return t
-    cmp _    True t t'
-      | qualConst t <: Qu && qualConst t' <: Qu = return [$ty|+ U |]
-      | otherwise                               = return [$ty|+ A |]
-    cmp _    _    _ _ = fail "\\/? or /\\?: Does not exist"
+subtypeTests = T.test
+  [ tyUnit  <:! tyUnit
+  , tyUnit /<:! tyInt
+  , tyInt   <:! tyInt
+  , tyArr tyInt tyInt   <:! tyArr tyInt tyInt
+  , tyArr tyInt tyInt   <:! tyLol tyInt tyInt
+  , tyLol tyInt tyInt   <:! tyLol tyInt tyInt
+  , tyLol tyInt tyInt  /<:! tyArr tyInt tyInt
+  , tyArr tyUnit tyInt /<:! tyArr tyInt tyInt
+  , tyArr (tyLol tyInt tyInt) (tyArr tyInt tyInt) <:!
+      tyArr (tyArr tyInt tyInt) (tyLol tyInt tyInt)
+  , tyArr tyInt tyInt  <:! tyNulOp tcUn
+  , tyArr tyInt tyInt  <:! tyNulOp tcAf
+  , tyLol tyInt tyInt /<:! tyNulOp tcUn
+  , tyLol tyInt tyInt  <:! tyNulOp tcAf
+  , tyNulOp tcUn  <:! tyNulOp tcAf
+  , tyNulOp tcAf /<:! tyNulOp tcUn
+  , tyRecv tyInt  <:! tyRecv tyInt
+  , tyRecv tyInt /<:! tyRecv tyUnit
+  , tyRecv tyInt /<:! tySend tyInt
+  , tyRecv (tyLol tyInt tyInt)  <:! tyRecv (tyArr tyInt tyInt)
+  , tyRecv (tyArr tyInt tyInt) /<:! tyRecv (tyLol tyInt tyInt)
+  , tySend (tyLol tyInt tyInt) /<:! tySend (tyArr tyInt tyInt)
+  , tySend (tyArr tyInt tyInt)  <:! tySend (tyLol tyInt tyInt)
+  , tyIdent tyInt  <:! tyIdent tyInt
+  , tyIdent tyInt /<:! tyIdent tyUnit
+  , tyInt          <:! tyIdent tyInt
+  , tyIdent tyInt  <:! tyInt
+  , tyInt         /<:! tyIdent tyUnit
+  , tyIdent tyInt /<:! tyUnit
+  , tyConst tyInt  <:! tyConst tyInt
+  , tyConst tyInt  <:! tyConst tyUnit
+  , tyConst tyInt  <:! tyUnit
+  , tyUnit         <:! tyConst tyInt
+  , tyArr tyUnit tyInt <:! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+  , tyArr tyInt tyInt /<:! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
+      tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
+      tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
+      tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
+  , tyAll a (TyVar a)  <:! tyArr tyInt tyInt
+  , tyArr tyInt tyInt /<:! tyAll a (TyVar a)
+  , TyVar a  <:! TyVar a
+  , TyVar a /<:! TyVar b
+  , tyAll a (tyArr tyInt (TyVar a))  <:!  tyAll b (tyArr tyInt (TyVar b))
+  , tyAll a (tyArr tyInt (TyVar a)) /<:! tyAll b (tyArr tyInt (TyVar a))
+  , tyAll c (tyArr (TyVar c) tyInt)  <:! tyAll a (tyLol (TyVar a) tyInt)
+  , tyAll a (tyArr (TyVar a) tyInt) /<:! tyAll c (tyLol (TyVar c) tyInt)
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  <:!
+      tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b))) /<:!
+      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
+  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b))) /<:!
+      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
+  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  <:!
+      tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
+  , TyMu a (tyArr tyInt (TyVar a))  <:! TyMu b (tyArr tyInt (TyVar b))
+  , TyMu a (tyArr tyInt (TyVar a))  <:!
+      TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
+  , TyMu a (tyArr tyInt (TyVar a))  <:!
+      TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
+  , TyMu a (tyArr tyInt (TyVar a)) /<:!
+      TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
+  , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) <:!
+      tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
+  , TyMu a (tyTuple tyUnit (tyTuple tyInt (TyVar a))) <:!
+      tyTuple tyUnit (TyMu a (tyTuple tyInt (tyTuple tyUnit (TyVar a))))
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  <:!
+      tyAll d (tyTuple
+                 (TyVar d)
+                 (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a)))) /<:!
+      tyAll d (tyTuple
+                 (TyVar d)
+                 (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a)) /<:!
+      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  <:!
+      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
+  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) /<:!
+      TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  <:!
+      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a) /<:!
+      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
+  ]
+  where
+  tyInt   = tyNulOp tcInt
+  tySend  = tyUnOp tcSend
+  tyRecv  = tyUnOp tcRecv
+  tyDual  = tyUnOp tcDual
+  tySemi  = tyBinOp tcSemi
+  tyIdent = tyUnOp $ mkTC (-9) "id"  (0 :: QDen Int) [(Qa, 1)]
+    [([TpVar a], TyVar a)]
+  tyConst = tyUnOp $ mkTC (-9) "const"  (0 :: QDen Int) [(Qa, 1)]
+    [([TpVar a], tyUnit)]
+  tyAll   = TyQu Forall
+  t1 <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)
+  t1 /<:! t2 = T.assertBool (show t1 ++ " /<: " ++ show t2) (t1 /<: t2)
+  a      = TV (Lid "a") Qu
+  b      = TV (Lid "b") Qu
+  c      = TV (Lid "c") Qa
+  d      = TV (Lid "d") Qa
 
--- |
--- Helper for finding the dual of a session type (since we can't
--- express this directly in the type system at this point)
-dualSessionType :: TypeT -> TypeT
-dualSessionType  = d where
-  d [$ty|+ $ta send $td:send ; $semi $tr |]
-    = [$ty|+ $ta recv $td:recv ; $semi $tr' |] where tr' = d tr
-  d [$ty|+ $ta recv $td:recv ; $semi $tr |]
-    = [$ty|+ $ta send $td:send ; $semi $tr' |] where tr' = d tr
-  d [$ty|+ ($t1 + $plus $t2) select $td:select |]
-    = [$ty|+ ($t1' + $plus $t2') follow $td:follow |]
-      where t1' = d t1; t2' = d t2
-  d [$ty|+ ($t1 + $plus $t2) follow $td:follow |]
-    = [$ty|+ ($t1' + $plus $t2') select $td:select |]
-      where t1' = d t1; t2' = d t2
-  d [$ty|+ mu '$tv . $t |]
-    = [$ty|+ mu '$tv . $t' |] where t' = d t
-  d t = t
+joinTests = T.test
+  [ tyUnit  \/! tyUnit ==! tyUnit
+  , tyUnit  /\! tyUnit ==! tyUnit
+  , tyInt   /\! tyInt  ==! tyInt
+  , tyUnit  \/! tyInt  ==! tyUn
+  , tyUnit !/\  tyInt
+  , tyArr tyInt tyInt  \/! tyArr tyInt tyInt  ==! tyArr tyInt tyInt
+  , tyArr tyInt tyInt  \/! tyLol tyInt tyInt  ==! tyLol tyInt tyInt
+  , tyLol tyInt tyInt  \/! tyLol tyInt tyInt  ==! tyLol tyInt tyInt
+  , tyLol tyInt tyInt  \/! tyArr tyInt tyInt  ==! tyLol tyInt tyInt
+  , tyArr tyInt tyInt  /\! tyArr tyInt tyInt  ==! tyArr tyInt tyInt
+  , tyArr tyInt tyInt  /\! tyLol tyInt tyInt  ==! tyArr tyInt tyInt
+  , tyLol tyInt tyInt  /\! tyLol tyInt tyInt  ==! tyLol tyInt tyInt
+  , tyLol tyInt tyInt  /\! tyArr tyInt tyInt  ==! tyArr tyInt tyInt
+  , tyArr tyInt tyInt  \/! tyArr tyInt tyUnit ==! tyArr tyInt tyUn
+  , tyArr tyInt tyInt  \/! tyArr tyUnit tyInt ==! tyUn
+  , tyLol tyInt tyInt  \/! tyArr tyUnit tyInt ==! tyAf
+  , tyArr tyInt tyInt !/\  tyArr tyInt tyUnit
+  , tyArr tyInt tyInt  /\! tyArr tyUnit tyInt ==! tyArr tyUn tyInt
+  , tyLol tyInt tyInt  /\! tyArr tyUnit tyInt ==! tyArr tyUn tyInt
+  , tyLol (tyLol tyInt tyInt) tyInt /\! tyArr tyUnit tyInt
+      ==! tyArr tyAf tyInt
+  , tyArr tyInt tyInt  \/! tyUn ==! tyUn
+  , tyArr tyInt tyInt  \/! tyAf ==! tyAf
+  , tyLol tyInt tyInt  \/! tyUn ==! tyAf
+  , tyLol tyInt tyInt  \/! tyAf ==! tyAf
+  , tyArr tyInt tyInt  /\! tyUn ==! tyArr tyInt tyInt
+  , tyArr tyInt tyInt  /\! tyAf ==! tyArr tyInt tyInt
+  , tyLol tyInt tyInt !/\  tyUn -- could do better
+  , tyLol tyInt tyInt  /\! tyAf ==! tyLol tyInt tyInt
+  , tyRecv tyInt \/! tyRecv tyInt  ==! tyRecv tyInt
+  , tySend tyInt \/! tySend tyUnit ==! tySend tyUn
+  , tyRecv tyInt \/! tySend tyInt  ==! tyUn
+  , tyRecv (tyLol tyInt tyInt) \/! tyRecv (tyArr tyInt tyInt)
+      ==! tyRecv (tyArr tyInt tyInt)
+  , tyRecv (tyArr tyInt tyInt) \/! tyRecv (tyLol tyInt tyInt)
+      ==! tyRecv (tyArr tyInt tyInt)
+  , tySend (tyLol tyInt tyInt) \/! tySend (tyArr tyInt tyInt)
+      ==! tySend (tyLol tyInt tyInt)
+  , tySend (tyArr tyInt tyInt) \/! tySend (tyLol tyInt tyInt)
+      ==! tySend (tyLol tyInt tyInt)
+  , tyRecv (tyLol tyInt tyInt) /\! tyRecv (tyArr tyInt tyInt)
+      ==! tyRecv (tyLol tyInt tyInt)
+  , tyRecv (tyArr tyInt tyInt) /\! tyRecv (tyLol tyInt tyInt)
+      ==! tyRecv (tyLol tyInt tyInt)
+  , tySend (tyLol tyInt tyInt) /\! tySend (tyArr tyInt tyInt)
+      ==! tySend (tyArr tyInt tyInt)
+  , tySend (tyArr tyInt tyInt) /\! tySend (tyLol tyInt tyInt)
+      ==! tySend (tyArr tyInt tyInt)
+  , tyIdent tyInt  \/! tyIdent tyInt  ==! tyIdent tyInt
+  , tyIdent tyInt  \/! tyIdent tyUnit ==! tyUn
+  , tyInt          \/! tyIdent tyInt  ==! tyInt
+  , tyInt          \/! tyIdent tyUnit ==! tyUn
+  , tyIdent tyInt  /\! tyIdent tyInt  ==! tyIdent tyInt
+  , tyIdent tyInt !/\  tyIdent tyUnit
+  , tyInt          /\! tyIdent tyInt  ==! tyInt
+  , tyInt         !/\  tyIdent tyUnit
+  , tyIdent (tyIdent tyInt) \/! tyIdent tyInt            ==! tyIdent tyInt
+  , tyIdent (tyConst tyInt) \/! tyIdent (tyConst tyUnit) ==! tyIdent tyUnit
+  , tyConst tyInt  \/! tyConst tyInt   ==! tyConst tyInt
+  , tyConst tyInt  \/! tyConst tyUnit  ==! tyUnit
+  , tyConst tyInt  /\! tyConst tyInt   ==! tyConst tyInt
+  , tyConst tyInt  /\! tyConst tyUnit  ==! tyUnit
+  , tyArr tyUnit tyInt  \/! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+      ==! tyLol tyUnit tyInt
+  , tyArr tyInt tyInt   \/! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+      ==! tyAf
+  , tyArr tyUnit tyInt  /\! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+      ==! tyArr tyUnit tyInt
+  , tyArr tyInt tyInt   /\! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+      ==! tyArr tyUn tyInt
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) \/!
+      tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
+      ==! tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) \/!
+      tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
+      ==! tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) \/!
+      tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
+      ==! tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) /\!
+      tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
+      ==! tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) /\!
+      tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
+      ==! tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
+  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) /\!
+      tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
+      ==! tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
+  , tyAll a (TyVar a)  \/! tyArr tyInt tyInt ==! tyArr tyInt tyInt
+  , tyArr tyInt tyInt  /\! tyAll a (TyVar a) ==! tyAll b (TyVar b)
+  , TyVar a  \/! TyVar a ==! TyVar a
+  , TyVar a  \/! TyVar b ==! tyUn
+  , TyVar a  \/! TyVar c ==! tyAf
+  , TyVar a  /\! TyVar a ==! TyVar a
+  , TyVar a !/\  TyVar b
+  , TyVar a !/\  TyVar c
+  , tyAll a (tyArr tyInt (TyVar a))  \/!  tyAll b (tyArr tyInt (TyVar b))
+      ==! tyAll a (tyArr tyInt (TyVar a))
+  , tyAll a (tyArr tyInt (TyVar a))  \/!  tyAll b (tyArr tyInt (TyVar a))
+      ==! tyAll a (tyArr tyInt tyUn)
+  , tyAll c (tyArr (TyVar c) tyInt)  \/! tyAll a (tyLol (TyVar a) tyInt)
+      ==! tyAll d (tyLol (TyVar d) tyInt)
+  , tyAll a (tyArr tyInt (TyVar a))  /\!  tyAll b (tyArr tyInt (TyVar b))
+      ==! tyAll a (tyArr tyInt (TyVar a))
+  , tyAll a (tyArr tyInt (TyVar a)) !/\   tyAll b (tyArr tyInt (TyVar a))
+  , tyAll c (tyArr (TyVar c) tyInt)  /\! tyAll a (tyLol (TyVar a) tyInt)
+      ==! tyAll b (tyArr (TyVar b) tyInt)
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  \/!
+      tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
+      ==! tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  \/!
+      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
+      ==! tyAll b (tyAll a (tyTuple tyUn tyUn))
+  , tyAll c (tyAll c (tyTuple (TyVar c) (TyVar d)))  \/!
+      tyAll d (tyAll c (tyTuple (TyVar c) (TyVar d)))
+      ==! tyAll d (tyAll d (tyTuple (TyVar d) tyAf))
+  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  \/!
+      tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
+      ==! tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  /\!
+      tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
+      ==! tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b))) !/\
+      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
+  , tyAll c (tyAll c (tyTuple (TyVar c) (TyVar d))) !/\
+      tyAll d (tyAll c (tyTuple (TyVar c) (TyVar d)))
+  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  /\!
+      tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
+      ==! tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
+  , TyMu a (tyArr tyInt (TyVar a))  \/! TyMu b (tyArr tyInt (TyVar b))
+      ==! TyMu b (tyArr tyInt (TyVar b))
+  , TyMu a (tyArr tyInt (TyVar a))  /\! TyMu b (tyArr tyInt (TyVar b))
+      ==! TyMu b (tyArr tyInt (TyVar b))
+  , TyMu a (tyArr tyInt (TyVar a))  \/!
+      TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
+      ==! TyMu a (tyArr tyInt (TyVar a))
+  , TyMu a (tyArr tyInt (TyVar a))  /\!
+      TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
+      ==! TyMu a (tyArr tyInt (TyVar a))
+  , TyMu a (tyArr tyInt (TyVar a))  \/!
+      TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
+      ==! TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
+  , TyMu a (tyArr tyInt (TyVar a))  /\!
+      TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
+      ==! TyMu b (tyArr tyInt (TyVar b))
+  , TyMu a (tyArr tyInt (TyVar a))  \/!
+      TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
+      ==! tyArr tyInt tyAf
+  , TyMu a (tyArr tyInt (TyVar a))  /\!
+      TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
+      ==! TyMu a (tyArr tyInt (tyArr tyUn (TyVar a)))
+  , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) \/!
+      tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
+      ==! TyMu a (tyTuple tyInt (TyVar a))
+  , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) /\!
+      tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
+      ==! TyMu a (tyTuple tyInt (TyVar a))
+  , TyMu a (tyTuple tyUnit (tyTuple tyInt (TyVar a))) \/!
+      tyTuple tyUnit (TyMu a (tyTuple tyInt (tyTuple tyUnit (TyVar a))))
+      ==! TyMu b (tyTuple tyUnit (tyTuple tyInt (TyVar b)))
+  , TyMu a (tyTuple tyUnit (tyTuple tyInt (TyVar a))) /\!
+      tyTuple tyUnit (TyMu a (tyTuple tyInt (tyTuple tyUnit (TyVar a))))
+      ==! TyMu b (tyTuple tyUnit (tyTuple tyInt (TyVar b)))
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  \/!
+      tyAll d (tyTuple
+                 (TyVar d)
+                 (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
+      ==! tyAll c (TyMu b (tyTuple (TyVar c) (tyTuple tyInt (TyVar b))))
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  /\!
+      tyAll d (tyTuple
+                 (TyVar d)
+                 (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
+      ==! tyAll c (TyMu b (tyTuple (TyVar c) (tyTuple tyInt (TyVar b))))
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  \/!
+      tyAll d (tyTuple
+                 (TyVar d)
+                 (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
+      ==! tyAll c (tyTuple (TyVar c) (tyTuple tyInt (tyTuple tyAf tyAf)))
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a)))) !/\
+      tyAll d (tyTuple
+                 (TyVar d)
+                 (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  \/!
+      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
+      ==! tyArr (tyAll d (tyArr tyInt (TyVar d))) tyAf
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a)) !/\
+      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  \/!
+      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
+      ==! TyMu b (tyArr (tyAll c (tyArr tyInt (TyVar c))) (TyVar b))
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  /\!
+      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
+      ==! TyMu b (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar b))
+  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) \/!
+      TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
+      ==! TyMu b (tyArr (tyAll d (tyArr tyUn (TyVar d))) (TyVar b))
+  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) /\!
+      TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
+      ==! TyMu b (tyArr (tyAll d tyAf) (TyVar b))
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  \/!
+      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
+      ==! tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  /\!
+      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
+      ==! tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  \/!
+      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
+      ==! tyArr (tyAll b (tyTuple (TyVar b) tyInt)) tyUn
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a) !/\
+      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
+  ]
+  where
+  tyUn    = tyNulOp tcUn
+  tyAf    = tyNulOp tcAf
+  tyInt   = tyNulOp tcInt
+  tySend  = tyUnOp tcSend
+  tyRecv  = tyUnOp tcRecv
+  tyDual  = tyUnOp tcDual
+  tySemi  = tyBinOp tcSemi
+  tyIdent = tyUnOp $ mkTC (-9) "id"  (0 :: QDen Int) [(Qa, 1)]
+    [([TpVar a], TyVar a)]
+  tyConst = tyUnOp $ mkTC (-9) "const"  (0 :: QDen Int) [(Qa, 1)]
+    [([TpVar a], tyUnit)]
+  tyAll   = TyQu Forall
+  t1 \/! t2 = Left (t1, t2)
+  t1 /\! t2 = Right (t1, t2)
+  Left  (t1, t2) ==! t =
+    T.assertEqual (show t1 ++ " \\/ " ++ show t2 ++ " = " ++ show t)
+                  (Just t) (t1 \/? t2)
+  Right (t1, t2) ==! t =
+    T.assertEqual (show t1 ++ " /\\ " ++ show t2 ++ " = " ++ show t)
+                  (Just t) (t1 /\? t2)
+  t1 !/\ t2 =
+    T.assertEqual (show t1 ++ " /\\ " ++ show t2 ++ " DNE")
+                  Nothing (t1 /\? t2)
+  a      = TV (Lid "a") Qu
+  b      = TV (Lid "b") Qu
+  c      = TV (Lid "c") Qa
+  d      = TV (Lid "d") Qa
 
+tests :: IO ()
+tests = do
+  T.runTestTT subtypeTests
+  T.runTestTT joinTests
+  return ()
