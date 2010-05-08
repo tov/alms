@@ -198,7 +198,7 @@ hideU body = do
   CMS.put st1 { tcsSubst1 = tcsSubst1 st0, tcsSubst2 = tcsSubst2 st0 }
   return res
 
-  -- CMS.put st { tcsSeen = tcsSeen 
+  -- CMS.put st { tcsSeen = tcsSeen
 
 subtype :: MonadError e m => Int -> Type -> Type -> m ()
 subtype limit t1i t2i = runUT (cmp t1i t2i) (ftv (t1i, t2i))
@@ -244,7 +244,7 @@ subtype limit t1i t2i = runUT (cmp t1i t2i) (ftv (t1i, t2i))
         | not (isHeadNormalType u)
         -> (t `cmp`) =<< hn u
       -- Arrows
-      (TyArr qt t1 t2, TyArr qu u1 u2) 
+      (TyArr qt t1 t2, TyArr qu u1 u2)
         | qt <: qu -> do
         revCmp t1 u1
         cmp t2 u2
@@ -286,7 +286,7 @@ subtype limit t1i t2i = runUT (cmp t1i t2i) (ftv (t1i, t2i))
         | uj       <- us ]
 
 jointype :: MonadError e m => Int -> Bool -> Type -> Type -> m Type
-jointype limit b t1i t2i = 
+jointype limit b t1i t2i =
   liftM clean $ runUT (cmp (b, True) t1i t2i) (ftv (t1i, t2i))
   where
   cmp, revCmp :: MonadError e m =>
@@ -419,40 +419,40 @@ subtypeTests, joinTests :: T.Test
 
 subtypeTests = T.test
   [ tyUnit  <:! tyUnit
-  , tyUnit /<:! tyInt
+  , tyUnit !<:  tyInt
   , tyInt   <:! tyInt
   , tyArr tyInt tyInt   <:! tyArr tyInt tyInt
   , tyArr tyInt tyInt   <:! tyLol tyInt tyInt
   , tyLol tyInt tyInt   <:! tyLol tyInt tyInt
-  , tyLol tyInt tyInt  /<:! tyArr tyInt tyInt
-  , tyArr tyUnit tyInt /<:! tyArr tyInt tyInt
+  , tyLol tyInt tyInt  !<:  tyArr tyInt tyInt
+  , tyArr tyUnit tyInt !<:  tyArr tyInt tyInt
   , tyArr (tyLol tyInt tyInt) (tyArr tyInt tyInt) <:!
       tyArr (tyArr tyInt tyInt) (tyLol tyInt tyInt)
   , tyArr tyInt tyInt  <:! tyNulOp tcUn
   , tyArr tyInt tyInt  <:! tyNulOp tcAf
-  , tyLol tyInt tyInt /<:! tyNulOp tcUn
+  , tyLol tyInt tyInt !<:  tyNulOp tcUn
   , tyLol tyInt tyInt  <:! tyNulOp tcAf
   , tyNulOp tcUn  <:! tyNulOp tcAf
-  , tyNulOp tcAf /<:! tyNulOp tcUn
+  , tyNulOp tcAf !<:  tyNulOp tcUn
   , tyRecv tyInt  <:! tyRecv tyInt
-  , tyRecv tyInt /<:! tyRecv tyUnit
-  , tyRecv tyInt /<:! tySend tyInt
+  , tyRecv tyInt !<:  tyRecv tyUnit
+  , tyRecv tyInt !<:  tySend tyInt
   , tyRecv (tyLol tyInt tyInt)  <:! tyRecv (tyArr tyInt tyInt)
-  , tyRecv (tyArr tyInt tyInt) /<:! tyRecv (tyLol tyInt tyInt)
-  , tySend (tyLol tyInt tyInt) /<:! tySend (tyArr tyInt tyInt)
+  , tyRecv (tyArr tyInt tyInt) !<:  tyRecv (tyLol tyInt tyInt)
+  , tySend (tyLol tyInt tyInt) !<:  tySend (tyArr tyInt tyInt)
   , tySend (tyArr tyInt tyInt)  <:! tySend (tyLol tyInt tyInt)
   , tyIdent tyInt  <:! tyIdent tyInt
-  , tyIdent tyInt /<:! tyIdent tyUnit
+  , tyIdent tyInt !<:  tyIdent tyUnit
   , tyInt          <:! tyIdent tyInt
   , tyIdent tyInt  <:! tyInt
-  , tyInt         /<:! tyIdent tyUnit
-  , tyIdent tyInt /<:! tyUnit
+  , tyInt         !<:  tyIdent tyUnit
+  , tyIdent tyInt !<:  tyUnit
   , tyConst tyInt  <:! tyConst tyInt
   , tyConst tyInt  <:! tyConst tyUnit
   , tyConst tyInt  <:! tyUnit
   , tyUnit         <:! tyConst tyInt
   , tyArr tyUnit tyInt <:! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
-  , tyArr tyInt tyInt /<:! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+  , tyArr tyInt tyInt !<:  tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
   , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
       tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
   , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
@@ -460,18 +460,18 @@ subtypeTests = T.test
   , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
       tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
   , tyAll a (TyVar a)  <:! tyArr tyInt tyInt
-  , tyArr tyInt tyInt /<:! tyAll a (TyVar a)
+  , tyArr tyInt tyInt !<:  tyAll a (TyVar a)
   , TyVar a  <:! TyVar a
-  , TyVar a /<:! TyVar b
+  , TyVar a !<:  TyVar b
   , tyAll a (tyArr tyInt (TyVar a))  <:!  tyAll b (tyArr tyInt (TyVar b))
-  , tyAll a (tyArr tyInt (TyVar a)) /<:! tyAll b (tyArr tyInt (TyVar a))
+  , tyAll a (tyArr tyInt (TyVar a)) !<:  tyAll b (tyArr tyInt (TyVar a))
   , tyAll c (tyArr (TyVar c) tyInt)  <:! tyAll a (tyLol (TyVar a) tyInt)
-  , tyAll a (tyArr (TyVar a) tyInt) /<:! tyAll c (tyLol (TyVar c) tyInt)
+  , tyAll a (tyArr (TyVar a) tyInt) !<:  tyAll c (tyLol (TyVar c) tyInt)
   , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  <:!
       tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b))) /<:!
+  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b))) !<:
       tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b))) /<:!
+  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b))) !<:
       tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
   , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  <:!
       tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
@@ -480,7 +480,7 @@ subtypeTests = T.test
       TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
   , TyMu a (tyArr tyInt (TyVar a))  <:!
       TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
-  , TyMu a (tyArr tyInt (TyVar a)) /<:!
+  , TyMu a (tyArr tyInt (TyVar a)) !<:
       TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
   , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) <:!
       tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
@@ -490,19 +490,19 @@ subtypeTests = T.test
       tyAll d (tyTuple
                  (TyVar d)
                  (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a)))) /<:!
+  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a)))) !<:
       tyAll d (tyTuple
                  (TyVar d)
                  (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a)) /<:!
+  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a)) !<:
       TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
   , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  <:!
       TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
-  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) /<:!
+  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) !<:
       TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
   , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  <:!
       tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a) /<:!
+  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a) !<:
       tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
   ]
   where
@@ -511,13 +511,13 @@ subtypeTests = T.test
   tyRecv  = tyUnOp tcRecv
   tyDual  = tyUnOp tcDual
   tySemi  = tyBinOp tcSemi
-  tyIdent = tyUnOp $ mkTC (-9) "id"  (0 :: QDen Int) [(Qa, 1)]
+  tyIdent = tyUnOp $ mkTC 10 "id"  (0 :: QDen Int) [(Qa, 1)]
     [([TpVar a], TyVar a)]
-  tyConst = tyUnOp $ mkTC (-9) "const"  (0 :: QDen Int) [(Qa, 1)]
+  tyConst = tyUnOp $ mkTC 11 "const"  (0 :: QDen Int) [(Qa, 1)]
     [([TpVar a], tyUnit)]
   tyAll   = TyQu Forall
-  t1 <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)
-  t1 /<:! t2 = T.assertBool (show t1 ++ " /<: " ++ show t2) (t1 /<: t2)
+  t1  <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)
+  t1 !<:  t2 = T.assertBool (show t1 ++ " /<: " ++ show t2) (t1 /<: t2)
   a      = TV (Lid "a") Qu
   b      = TV (Lid "b") Qu
   c      = TV (Lid "c") Qa
@@ -743,9 +743,9 @@ joinTests = T.test
   tyRecv  = tyUnOp tcRecv
   tyDual  = tyUnOp tcDual
   tySemi  = tyBinOp tcSemi
-  tyIdent = tyUnOp $ mkTC (-9) "id"  (0 :: QDen Int) [(Qa, 1)]
+  tyIdent = tyUnOp $ mkTC 10 "id"  (0 :: QDen Int) [(Qa, 1)]
     [([TpVar a], TyVar a)]
-  tyConst = tyUnOp $ mkTC (-9) "const"  (0 :: QDen Int) [(Qa, 1)]
+  tyConst = tyUnOp $ mkTC 11 "const"  (0 :: QDen Int) [(Qa, 1)]
     [([TpVar a], tyUnit)]
   tyAll   = TyQu Forall
   t1 \/! t2 = Left (t1, t2)
