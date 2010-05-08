@@ -26,11 +26,17 @@ module Type (
   -- * Built-in types
   -- ** Type constructors
   mkTC,
-  tcUnit, tcInt, tcFloat, tcString,
-  tcExn, tcTuple, tcUn, tcAf,
+  tcUnit, tcInt, tcFloat, tcString, tcExn, tcTuple, tcUn, tcAf,
   tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual,
   -- ** Types
-  tyNulOp, tyUnOp, tyBinOp, tyUnit, tyTuple, tyArr, tyLol,
+  tyNulOp, tyUnOp, tyBinOp,
+  tyArr, tyLol,
+  tyAll, tyEx,
+  -- *** Convenience
+  tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf,
+  tyIdent, tyConst, tySend, tyRecv, tyDual,
+  tyTuple, tySelect, tyFollow, tySemi,
+  (.*.), (.->.), (.-*.), (.:.),
   -- * Re-exports
   module Syntax.Ident,
   module Syntax.Kind,
@@ -470,7 +476,7 @@ mkTC i s = extTC TyCon {
 }
 
 tcUnit, tcInt, tcFloat, tcString,
-  tcExn, tcTuple, tcUn, tcAf :: TyCon
+  tcExn, tcUn, tcAf, tcTuple, tcIdent, tcConst :: TyCon
 
 tcUnit       = mkTC (-1) "unit"
 tcInt        = mkTC (-2) "int"
@@ -480,18 +486,22 @@ tcExn        = mkTC (-5) "exn" (maxBound :: QDen Int)
 tcUn         = mkTC (-6) "U"
 tcAf         = mkTC (-7) "A"   (maxBound :: QDen Int)
 tcTuple      = mkTC (-8) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
-  [ ([TpVar (TV (Lid "a") Qa)], TyVar (TV (Lid "a") Qa)) ]
+  [ ([TpVar (tvAf "a")], TyVar (tvAf "a")) ]
+tcIdent      = mkTC (-9)  "id"    (0 :: QDen Int) [(Qa, 1)]
+    [([TpVar (tvAf "a")], TyVar (tvAf "a"))]
+tcConst      = mkTC (-10) "const" (0 :: QDen Int) [(Qa, 1)]
+    [([TpVar (tvAf "a")], tyUnit)]
 
 -- For session types:
 
 tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual :: TyCon
 
-tcSend       = mkTC (-11) "send"   [(Qa, 1)]
-tcRecv       = mkTC (-12) "recv"   [(Qa, -1)]
-tcSelect     = mkTC (-13) "select" [(Qu, 1)]
-tcFollow     = mkTC (-14) "follow" [(Qu, 1)]
-tcSemi       = mkTC (-15) ";"      [(Qu, -1), (Qu, 1)]
-tcDual       = mkTC (-16) "dual"   [(Qu, -1)]
+tcSend       = mkTC (-31) "send"   [(Qa, 1)]
+tcRecv       = mkTC (-32) "recv"   [(Qa, -1)]
+tcSelect     = mkTC (-33) "select" [(Qu, 1), (Qu, 1)]
+tcFollow     = mkTC (-34) "follow" [(Qu, 1), (Qu, 1)]
+tcSemi       = mkTC (-35) ";"      [(Qu, -1), (Qu, 1)]
+tcDual       = mkTC (-36) "dual"   [(Qu, -1)]
   [ ([TpApp tcSemi   [TpApp tcSend [pa], pb]],
               (tyApp tcSemi [tyApp tcRecv [ta], dual tb]))
   , ([TpApp tcSemi   [TpApp tcRecv [pa], pb]],
@@ -500,8 +510,8 @@ tcDual       = mkTC (-16) "dual"   [(Qu, -1)]
   , ([TpApp tcFollow [pa, pb]], (tyApp tcSelect [dual ta, dual tb]))
   , ([TpApp tcUnit   []],       (tyApp tcUnit []))
   ]
-  where a = TV (Lid "a") Qa
-        b = TV (Lid "b") Qa
+  where a = tvAf "a"
+        b = tvAf "b"
         pa = TpVar a
         pb = TpVar b
         ta = TyVar a
@@ -524,14 +534,6 @@ tyUnOp tc t1 = tyApp tc [t1]
 tyBinOp :: TyCon -> Type -> Type -> Type
 tyBinOp tc t1 t2 = tyApp tc [t1, t2]
 
--- | The unit type
-tyUnit :: Type
-tyUnit  = tyNulOp tcUnit
-
--- | Constructor for tuple types
-tyTuple :: Type -> Type -> Type
-tyTuple = tyBinOp tcTuple
-
 -- | Constructor for unlimited arrow types
 tyArr :: Type -> Type -> Type
 tyArr   = TyArr minBound
@@ -539,6 +541,47 @@ tyArr   = TyArr minBound
 -- | Constructor for affine arrow types
 tyLol :: Type -> Type -> Type
 tyLol   = TyArr maxBound
+
+-- | Construct a universal type
+tyAll :: TyVar -> Type -> Type
+tyAll  = TyQu Stx.Forall
+
+-- | Construct a existential type
+tyEx  :: TyVar -> Type -> Type
+tyEx   = TyQu Stx.Exists
+
+-- | Preconstructed types
+tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf :: Type
+tyIdent, tyConst, tySend, tyRecv, tyDual :: Type -> Type
+tyTuple, tySelect, tyFollow, tySemi :: Type -> Type -> Type
+
+tyUnit   = tyNulOp tcUnit
+tyInt    = tyNulOp tcInt
+tyFloat  = tyNulOp tcFloat
+tyString = tyNulOp tcString
+tyExn    = tyNulOp tcExn
+tyUn     = tyNulOp tcUn
+tyAf     = tyNulOp tcAf
+tyTuple  = tyBinOp tcTuple
+tyIdent  = tyUnOp tcIdent
+tyConst  = tyUnOp tcConst
+
+tySend   = tyUnOp tcSend
+tyRecv   = tyUnOp tcRecv
+tySelect = tyBinOp tcSelect
+tyFollow = tyBinOp tcFollow
+tySemi   = tyBinOp tcSemi
+tyDual   = tyUnOp tcDual
+
+(.*.), (.->.), (.-*.), (.:.) :: Type -> Type -> Type
+(.*.)    = tyTuple
+(.->.)   = tyArr
+(.-*.)   = tyLol
+(.:.)    = tySemi
+
+infixr 6 .->., .-*., `tyArr`, `tyLol`
+infixl 7 .*., `tyTuple`
+infixr 8 .:., `tySemi`
 
 ---
 --- Miscellany

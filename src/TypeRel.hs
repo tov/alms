@@ -1,10 +1,6 @@
 {-# LANGUAGE
-      FlexibleInstances,
-      QuasiQuotes,
       ParallelListComp,
-      PatternGuards,
-      ScopedTypeVariables,
-      TemplateHaskell #-}
+      PatternGuards #-}
 module TypeRel (
   -- * Type operations
   -- ** Equality and subtyping
@@ -197,8 +193,6 @@ hideU body = do
   st1 <- CMS.get
   CMS.put st1 { tcsSubst1 = tcsSubst1 st0, tcsSubst2 = tcsSubst2 st0 }
   return res
-
-  -- CMS.put st { tcsSeen = tcsSeen
 
 subtype :: MonadError e m => Int -> Type -> Type -> m ()
 subtype limit t1i t2i = runUT (cmp t1i t2i) (ftv (t1i, t2i))
@@ -396,8 +390,8 @@ jointype limit b t1i t2i =
   catch (True, True) t u body = body
     `catchError` \_ -> return $
       case (qualConst t \/ qualConst u) of
-        Qu -> tyNulOp tcUn
-        Qa -> tyNulOp tcAf
+        Qu -> tyUn
+        Qa -> tyAf
   catch _            _ _ body = body
   --
   clean :: Type -> Type
@@ -421,26 +415,26 @@ subtypeTests = T.test
   [ tyUnit  <:! tyUnit
   , tyUnit !<:  tyInt
   , tyInt   <:! tyInt
-  , tyArr tyInt tyInt   <:! tyArr tyInt tyInt
-  , tyArr tyInt tyInt   <:! tyLol tyInt tyInt
-  , tyLol tyInt tyInt   <:! tyLol tyInt tyInt
-  , tyLol tyInt tyInt  !<:  tyArr tyInt tyInt
-  , tyArr tyUnit tyInt !<:  tyArr tyInt tyInt
-  , tyArr (tyLol tyInt tyInt) (tyArr tyInt tyInt) <:!
-      tyArr (tyArr tyInt tyInt) (tyLol tyInt tyInt)
-  , tyArr tyInt tyInt  <:! tyNulOp tcUn
-  , tyArr tyInt tyInt  <:! tyNulOp tcAf
-  , tyLol tyInt tyInt !<:  tyNulOp tcUn
-  , tyLol tyInt tyInt  <:! tyNulOp tcAf
-  , tyNulOp tcUn  <:! tyNulOp tcAf
-  , tyNulOp tcAf !<:  tyNulOp tcUn
+  , tyInt  .->. tyInt   <:! tyInt .->. tyInt
+  , tyInt  .->. tyInt   <:! tyInt .-*. tyInt
+  , tyInt  .-*. tyInt   <:! tyInt .-*. tyInt
+  , tyInt  .-*. tyInt  !<:  tyInt .->. tyInt
+  , tyUnit .->. tyInt  !<:  tyInt .->. tyInt
+  , (tyInt .-*. tyInt) .->. tyInt .->. tyInt <:!
+    (tyInt .->. tyInt) .->. tyInt .-*. tyInt 
+  , tyInt .->. tyInt  <:! tyUn
+  , tyInt .->. tyInt  <:! tyAf
+  , tyInt .-*. tyInt !<:  tyUn
+  , tyInt .-*. tyInt  <:! tyAf
+  , tyUn  <:! tyAf
+  , tyAf !<:  tyUn
   , tyRecv tyInt  <:! tyRecv tyInt
   , tyRecv tyInt !<:  tyRecv tyUnit
   , tyRecv tyInt !<:  tySend tyInt
-  , tyRecv (tyLol tyInt tyInt)  <:! tyRecv (tyArr tyInt tyInt)
-  , tyRecv (tyArr tyInt tyInt) !<:  tyRecv (tyLol tyInt tyInt)
-  , tySend (tyLol tyInt tyInt) !<:  tySend (tyArr tyInt tyInt)
-  , tySend (tyArr tyInt tyInt)  <:! tySend (tyLol tyInt tyInt)
+  , tyRecv (tyInt .-*. tyInt)  <:! tyRecv (tyInt .->. tyInt)
+  , tyRecv (tyInt .->. tyInt) !<:  tyRecv (tyInt .-*. tyInt)
+  , tySend (tyInt .-*. tyInt) !<:  tySend (tyInt .->. tyInt)
+  , tySend (tyInt .->. tyInt)  <:! tySend (tyInt .-*. tyInt)
   , tyIdent tyInt  <:! tyIdent tyInt
   , tyIdent tyInt !<:  tyIdent tyUnit
   , tyInt          <:! tyIdent tyInt
@@ -451,77 +445,62 @@ subtypeTests = T.test
   , tyConst tyInt  <:! tyConst tyUnit
   , tyConst tyInt  <:! tyUnit
   , tyUnit         <:! tyConst tyInt
-  , tyArr tyUnit tyInt <:! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
-  , tyArr tyInt tyInt !<:  tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
-      tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
-      tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) <:!
-      tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
-  , tyAll a (TyVar a)  <:! tyArr tyInt tyInt
-  , tyArr tyInt tyInt !<:  tyAll a (TyVar a)
+  , tyUnit .->. tyInt <:! tyIdent (tyConst (tySend tyInt) .-*. tyInt)
+  , tyInt .->. tyInt !<:  tyIdent (tyConst (tySend tyInt) .-*. tyInt)
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) <:!
+    tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit)
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) <:!
+    tySend tyInt .:. tyDual (tySend tyUnit .:. tyUnit) 
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) <:!
+    tySend tyInt .:. tyRecv tyUnit .:. tyUnit 
+  , tyAll a (TyVar a)  <:! tyInt .->. tyInt
+  , tyInt .->. tyInt !<:  tyAll a (TyVar a)
   , TyVar a  <:! TyVar a
   , TyVar a !<:  TyVar b
-  , tyAll a (tyArr tyInt (TyVar a))  <:!  tyAll b (tyArr tyInt (TyVar b))
-  , tyAll a (tyArr tyInt (TyVar a)) !<:  tyAll b (tyArr tyInt (TyVar a))
-  , tyAll c (tyArr (TyVar c) tyInt)  <:! tyAll a (tyLol (TyVar a) tyInt)
-  , tyAll a (tyArr (TyVar a) tyInt) !<:  tyAll c (tyLol (TyVar c) tyInt)
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  <:!
-      tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b))) !<:
-      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b))) !<:
-      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  <:!
-      tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , TyMu a (tyArr tyInt (TyVar a))  <:! TyMu b (tyArr tyInt (TyVar b))
-  , TyMu a (tyArr tyInt (TyVar a))  <:!
-      TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
-  , TyMu a (tyArr tyInt (TyVar a))  <:!
-      TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
-  , TyMu a (tyArr tyInt (TyVar a)) !<:
-      TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
-  , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) <:!
-      tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
-  , TyMu a (tyTuple tyUnit (tyTuple tyInt (TyVar a))) <:!
-      tyTuple tyUnit (TyMu a (tyTuple tyInt (tyTuple tyUnit (TyVar a))))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  <:!
-      tyAll d (tyTuple
-                 (TyVar d)
-                 (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a)))) !<:
-      tyAll d (tyTuple
-                 (TyVar d)
-                 (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a)) !<:
-      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  <:!
-      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
-  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) !<:
-      TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  <:!
-      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a) !<:
-      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
+  , tyAll a (tyInt .->. TyVar a)  <:! tyAll b (tyInt .->. TyVar b)
+  , tyAll a (tyInt .->. TyVar a) !<:  tyAll b (tyInt .->. TyVar a)
+  , tyAll c (TyVar c .->. tyInt)  <:! tyAll a (TyVar a .-*. tyInt)
+  , tyAll a (TyVar a .->. tyInt) !<:  tyAll c (TyVar c .-*. tyInt)
+  , tyAll a (tyAll b (TyVar a .*. TyVar b))  <:!
+    tyAll b (tyAll a (TyVar b .*. TyVar a))
+  , tyAll a (tyAll b (TyVar a .*. TyVar b)) !<:
+    tyAll b (tyAll a (TyVar a .*. TyVar b))
+  , tyAll a (tyAll a (TyVar a .*. TyVar b)) !<:
+    tyAll b (tyAll a (TyVar a .*. TyVar b))
+  , tyAll a (tyAll a (TyVar a .*. TyVar b))  <:!
+    tyAll a (tyAll a (TyVar a .*. TyVar b))
+  , TyMu a (tyInt .->. TyVar a)  <:!
+    TyMu b (tyInt .->. TyVar b)
+  , TyMu a (tyInt .->. TyVar a)  <:!
+    TyMu b (tyInt .->. tyInt .->. TyVar b)
+  , TyMu a (tyInt .->. TyVar a)  <:!
+    TyMu b (tyInt .->. tyInt .-*. TyVar b)
+  , TyMu a (tyInt .->. TyVar a) !<:
+    TyMu b (tyInt .->. tyUnit .-*. TyVar b)
+  , TyMu a (TyVar a .*. tyInt .*. tyInt) <:!
+    TyMu a (TyVar a .*. tyInt .*. tyInt) .*. tyInt 
+  , TyMu a (TyVar a .*. tyInt .*. tyUnit) <:!
+    TyMu a (TyVar a .*. tyUnit .*. tyInt) .*. tyUnit 
+  , tyAll c (TyMu a (TyVar a .*. tyInt .*. TyVar c))  <:!
+    tyAll d (TyMu a (TyVar a .*. TyVar d .*. tyInt) .*. TyVar d)
+  , tyAll c (TyMu a (TyVar a .*. tyInt .*. TyVar c)) !<:
+    tyAll d (TyMu a (TyVar d .*. TyVar a .*. tyInt) .*. TyVar d)
+  , TyMu a (tyAll c ((tyInt .-*. TyVar c) .->. TyVar a)) !<:
+    TyMu b (tyAll d ((tyInt .->. TyVar d) .->. TyVar c))
+  , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)  <:!
+    TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)
+  , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a) !<:
+    TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)
+  , tyAll a (TyVar a .*. tyInt) .->. TyVar a  <:!
+    tyAll b (TyVar b .*. tyInt) .->. TyVar a 
+  , tyAll a (TyVar a .*. tyInt) .->. TyVar a !<:
+    tyAll b (TyVar b .*. tyInt) .->. TyVar b 
   ]
   where
-  tyInt   = tyNulOp tcInt
-  tySend  = tyUnOp tcSend
-  tyRecv  = tyUnOp tcRecv
-  tyDual  = tyUnOp tcDual
-  tySemi  = tyBinOp tcSemi
-  tyIdent = tyUnOp $ mkTC 10 "id"  (0 :: QDen Int) [(Qa, 1)]
-    [([TpVar a], TyVar a)]
-  tyConst = tyUnOp $ mkTC 11 "const"  (0 :: QDen Int) [(Qa, 1)]
-    [([TpVar a], tyUnit)]
-  tyAll   = TyQu Forall
   t1  <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)
   t1 !<:  t2 = T.assertBool (show t1 ++ " /<: " ++ show t2) (t1 /<: t2)
-  a      = TV (Lid "a") Qu
-  b      = TV (Lid "b") Qu
-  c      = TV (Lid "c") Qa
-  d      = TV (Lid "d") Qa
+  infix 4 <:!, !<:
+  a = tvUn "a"; b = tvUn "b"; c = tvAf "c"; d = tvAf "d"
 
 joinTests = T.test
   [ tyUnit  \/! tyUnit ==! tyUnit
@@ -529,49 +508,57 @@ joinTests = T.test
   , tyInt   /\! tyInt  ==! tyInt
   , tyUnit  \/! tyInt  ==! tyUn
   , tyUnit !/\  tyInt
-  , tyArr tyInt tyInt  \/! tyArr tyInt tyInt  ==! tyArr tyInt tyInt
-  , tyArr tyInt tyInt  \/! tyLol tyInt tyInt  ==! tyLol tyInt tyInt
-  , tyLol tyInt tyInt  \/! tyLol tyInt tyInt  ==! tyLol tyInt tyInt
-  , tyLol tyInt tyInt  \/! tyArr tyInt tyInt  ==! tyLol tyInt tyInt
-  , tyArr tyInt tyInt  /\! tyArr tyInt tyInt  ==! tyArr tyInt tyInt
-  , tyArr tyInt tyInt  /\! tyLol tyInt tyInt  ==! tyArr tyInt tyInt
-  , tyLol tyInt tyInt  /\! tyLol tyInt tyInt  ==! tyLol tyInt tyInt
-  , tyLol tyInt tyInt  /\! tyArr tyInt tyInt  ==! tyArr tyInt tyInt
-  , tyArr tyInt tyInt  \/! tyArr tyInt tyUnit ==! tyArr tyInt tyUn
-  , tyArr tyInt tyInt  \/! tyArr tyUnit tyInt ==! tyUn
-  , tyLol tyInt tyInt  \/! tyArr tyUnit tyInt ==! tyAf
-  , tyArr tyInt tyInt !/\  tyArr tyInt tyUnit
-  , tyArr tyInt tyInt  /\! tyArr tyUnit tyInt ==! tyArr tyUn tyInt
-  , tyLol tyInt tyInt  /\! tyArr tyUnit tyInt ==! tyArr tyUn tyInt
-  , tyLol (tyLol tyInt tyInt) tyInt /\! tyArr tyUnit tyInt
-      ==! tyArr tyAf tyInt
-  , tyArr tyInt tyInt  \/! tyUn ==! tyUn
-  , tyArr tyInt tyInt  \/! tyAf ==! tyAf
-  , tyLol tyInt tyInt  \/! tyUn ==! tyAf
-  , tyLol tyInt tyInt  \/! tyAf ==! tyAf
-  , tyArr tyInt tyInt  /\! tyUn ==! tyArr tyInt tyInt
-  , tyArr tyInt tyInt  /\! tyAf ==! tyArr tyInt tyInt
-  , tyLol tyInt tyInt !/\  tyUn -- could do better
-  , tyLol tyInt tyInt  /\! tyAf ==! tyLol tyInt tyInt
+  , tyInt .->. tyInt  \/! tyInt .->. tyInt  ==! tyInt .->. tyInt
+  , tyInt .->. tyInt  \/! tyInt .-*. tyInt  ==! tyInt .-*. tyInt
+  , tyInt .-*. tyInt  \/! tyInt .-*. tyInt  ==! tyInt .-*. tyInt
+  , tyInt .-*. tyInt  \/! tyInt .->. tyInt  ==! tyInt .-*. tyInt
+  , tyInt .->. tyInt  /\! tyInt .->. tyInt  ==! tyInt .->. tyInt
+  , tyInt .->. tyInt  /\! tyInt .-*. tyInt  ==! tyInt .->. tyInt
+  , tyInt .-*. tyInt  /\! tyInt .-*. tyInt  ==! tyInt .-*. tyInt
+  , tyInt .-*. tyInt  /\! tyInt .->. tyInt  ==! tyInt .->. tyInt
+  , tyInt .->. tyInt  \/! tyInt .->. tyUnit ==! tyInt .->. tyUn
+  , tyInt .->. tyInt  \/! tyUnit .->. tyInt ==! tyUn
+  , tyInt .-*. tyInt  \/! tyUnit .->. tyInt ==! tyAf
+  , tyInt .->. tyInt !/\  tyInt .->. tyUnit
+  , tyInt .->. tyInt  /\! tyUnit .->. tyInt ==! tyUn .->. tyInt
+  , tyInt .-*. tyInt  /\! tyUnit .->. tyInt ==! tyUn .->. tyInt
+  , (tyInt .-*. tyInt) .-*. tyInt /\! tyUnit .->. tyInt
+      ==! tyAf .->. tyInt
+  , tyInt .->. tyInt  \/! tyUn ==! tyUn
+  , tyInt .->. tyInt  \/! tyAf ==! tyAf
+  , tyInt .-*. tyInt  \/! tyUn ==! tyAf
+  , tyInt .-*. tyInt  \/! tyAf ==! tyAf
+  , tyInt .->. tyInt  /\! tyUn ==! tyInt .->. tyInt
+  , tyInt .->. tyInt  /\! tyAf ==! tyInt .->. tyInt
+  , tyInt .-*. tyInt !/\  tyUn -- could do better
+  , tyInt .-*. tyInt  /\! tyAf ==! tyInt .-*. tyInt
   , tyRecv tyInt \/! tyRecv tyInt  ==! tyRecv tyInt
   , tySend tyInt \/! tySend tyUnit ==! tySend tyUn
   , tyRecv tyInt \/! tySend tyInt  ==! tyUn
-  , tyRecv (tyLol tyInt tyInt) \/! tyRecv (tyArr tyInt tyInt)
-      ==! tyRecv (tyArr tyInt tyInt)
-  , tyRecv (tyArr tyInt tyInt) \/! tyRecv (tyLol tyInt tyInt)
-      ==! tyRecv (tyArr tyInt tyInt)
-  , tySend (tyLol tyInt tyInt) \/! tySend (tyArr tyInt tyInt)
-      ==! tySend (tyLol tyInt tyInt)
-  , tySend (tyArr tyInt tyInt) \/! tySend (tyLol tyInt tyInt)
-      ==! tySend (tyLol tyInt tyInt)
-  , tyRecv (tyLol tyInt tyInt) /\! tyRecv (tyArr tyInt tyInt)
-      ==! tyRecv (tyLol tyInt tyInt)
-  , tyRecv (tyArr tyInt tyInt) /\! tyRecv (tyLol tyInt tyInt)
-      ==! tyRecv (tyLol tyInt tyInt)
-  , tySend (tyLol tyInt tyInt) /\! tySend (tyArr tyInt tyInt)
-      ==! tySend (tyArr tyInt tyInt)
-  , tySend (tyArr tyInt tyInt) /\! tySend (tyLol tyInt tyInt)
-      ==! tySend (tyArr tyInt tyInt)
+  , tyRecv (tyInt .-*. tyInt) \/!
+    tyRecv (tyInt .->. tyInt) ==!
+    tyRecv (tyInt .->. tyInt)
+  , tyRecv (tyInt .->. tyInt) \/!
+    tyRecv (tyInt .-*. tyInt) ==!
+    tyRecv (tyInt .->. tyInt)
+  , tySend (tyInt .-*. tyInt) \/!
+    tySend (tyInt .->. tyInt) ==!
+    tySend (tyInt .-*. tyInt)
+  , tySend (tyInt .->. tyInt) \/!
+    tySend (tyInt .-*. tyInt) ==!
+    tySend (tyInt .-*. tyInt)
+  , tyRecv (tyInt .-*. tyInt) /\!
+    tyRecv (tyInt .->. tyInt) ==!
+    tyRecv (tyInt .-*. tyInt)
+  , tyRecv (tyInt .->. tyInt) /\!
+    tyRecv (tyInt .-*. tyInt) ==!
+    tyRecv (tyInt .-*. tyInt)
+  , tySend (tyInt .-*. tyInt) /\!
+    tySend (tyInt .->. tyInt) ==!
+    tySend (tyInt .->. tyInt)
+  , tySend (tyInt .->. tyInt) /\!
+    tySend (tyInt .-*. tyInt) ==!
+    tySend (tyInt .->. tyInt)
   , tyIdent tyInt  \/! tyIdent tyInt  ==! tyIdent tyInt
   , tyIdent tyInt  \/! tyIdent tyUnit ==! tyUn
   , tyInt          \/! tyIdent tyInt  ==! tyInt
@@ -586,168 +573,151 @@ joinTests = T.test
   , tyConst tyInt  \/! tyConst tyUnit  ==! tyUnit
   , tyConst tyInt  /\! tyConst tyInt   ==! tyConst tyInt
   , tyConst tyInt  /\! tyConst tyUnit  ==! tyUnit
-  , tyArr tyUnit tyInt  \/! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
-      ==! tyLol tyUnit tyInt
-  , tyArr tyInt tyInt   \/! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
+  , tyUnit .->. tyInt  \/! tyIdent (tyConst (tySend tyInt) .-*. tyInt)
+      ==! tyUnit .-*. tyInt
+  , tyInt .->. tyInt   \/! tyIdent (tyConst (tySend tyInt) .-*. tyInt)
       ==! tyAf
-  , tyArr tyUnit tyInt  /\! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
-      ==! tyArr tyUnit tyInt
-  , tyArr tyInt tyInt   /\! tyIdent (tyLol (tyConst (tySend tyInt)) tyInt)
-      ==! tyArr tyUn tyInt
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) \/!
-      tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
-      ==! tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) \/!
-      tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
-      ==! tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) \/!
-      tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
-      ==! tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) /\!
-      tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
-      ==! tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit))
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) /\!
-      tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
-      ==! tySemi (tySend tyInt) (tyDual (tySemi (tySend tyUnit) tyUnit))
-  , tyDual (tySemi (tyRecv tyInt) (tySemi (tySend tyUnit) tyUnit)) /\!
-      tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
-      ==! tySemi (tySend tyInt) (tySemi (tyRecv tyUnit) tyUnit)
-  , tyAll a (TyVar a)  \/! tyArr tyInt tyInt ==! tyArr tyInt tyInt
-  , tyArr tyInt tyInt  /\! tyAll a (TyVar a) ==! tyAll b (TyVar b)
+  , tyUnit .->. tyInt  /\! tyIdent (tyConst (tySend tyInt) .-*. tyInt)
+      ==! tyUnit .->. tyInt
+  , tyInt .->. tyInt   /\! tyIdent (tyConst (tySend tyInt) .-*. tyInt)
+      ==! tyUn .->. tyInt
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) \/!
+    tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) ==!
+    tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit)
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) \/!
+    tySend tyInt .:. tyDual (tySend tyUnit .:. tyUnit)  ==!
+    tySend tyInt .:. tyDual (tySend tyUnit .:. tyUnit) 
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) \/!
+    tySend tyInt .:. tyRecv tyUnit .:. tyUnit  ==!
+    tySend tyInt .:. tyRecv tyUnit .:. tyUnit 
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) /\!
+    tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) ==!
+    tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit)
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) /\!
+    tySend tyInt .:. tyDual (tySend tyUnit .:. tyUnit)  ==!
+    tySend tyInt .:. tyDual (tySend tyUnit .:. tyUnit) 
+  , tyDual (tyRecv tyInt .:. tySend tyUnit .:. tyUnit) /\!
+    tySend tyInt .:. tyRecv tyUnit .:. tyUnit  ==!
+    tySend tyInt .:. tyRecv tyUnit .:. tyUnit 
+  , tyAll a (TyVar a)  \/! tyInt .->. tyInt ==! tyInt .->. tyInt
+  , tyInt .->. tyInt  /\! tyAll a (TyVar a) ==! tyAll b (TyVar b)
   , TyVar a  \/! TyVar a ==! TyVar a
   , TyVar a  \/! TyVar b ==! tyUn
   , TyVar a  \/! TyVar c ==! tyAf
   , TyVar a  /\! TyVar a ==! TyVar a
   , TyVar a !/\  TyVar b
   , TyVar a !/\  TyVar c
-  , tyAll a (tyArr tyInt (TyVar a))  \/!  tyAll b (tyArr tyInt (TyVar b))
-      ==! tyAll a (tyArr tyInt (TyVar a))
-  , tyAll a (tyArr tyInt (TyVar a))  \/!  tyAll b (tyArr tyInt (TyVar a))
-      ==! tyAll a (tyArr tyInt tyUn)
-  , tyAll c (tyArr (TyVar c) tyInt)  \/! tyAll a (tyLol (TyVar a) tyInt)
-      ==! tyAll d (tyLol (TyVar d) tyInt)
-  , tyAll a (tyArr tyInt (TyVar a))  /\!  tyAll b (tyArr tyInt (TyVar b))
-      ==! tyAll a (tyArr tyInt (TyVar a))
-  , tyAll a (tyArr tyInt (TyVar a)) !/\   tyAll b (tyArr tyInt (TyVar a))
-  , tyAll c (tyArr (TyVar c) tyInt)  /\! tyAll a (tyLol (TyVar a) tyInt)
-      ==! tyAll b (tyArr (TyVar b) tyInt)
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  \/!
-      tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
-      ==! tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  \/!
-      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
-      ==! tyAll b (tyAll a (tyTuple tyUn tyUn))
-  , tyAll c (tyAll c (tyTuple (TyVar c) (TyVar d)))  \/!
-      tyAll d (tyAll c (tyTuple (TyVar c) (TyVar d)))
-      ==! tyAll d (tyAll d (tyTuple (TyVar d) tyAf))
-  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  \/!
-      tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
-      ==! tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b)))  /\!
-      tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
-      ==! tyAll b (tyAll a (tyTuple (TyVar b) (TyVar a)))
-  , tyAll a (tyAll b (tyTuple (TyVar a) (TyVar b))) !/\
-      tyAll b (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , tyAll c (tyAll c (tyTuple (TyVar c) (TyVar d))) !/\
-      tyAll d (tyAll c (tyTuple (TyVar c) (TyVar d)))
-  , tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))  /\!
-      tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
-      ==! tyAll a (tyAll a (tyTuple (TyVar a) (TyVar b)))
-  , TyMu a (tyArr tyInt (TyVar a))  \/! TyMu b (tyArr tyInt (TyVar b))
-      ==! TyMu b (tyArr tyInt (TyVar b))
-  , TyMu a (tyArr tyInt (TyVar a))  /\! TyMu b (tyArr tyInt (TyVar b))
-      ==! TyMu b (tyArr tyInt (TyVar b))
-  , TyMu a (tyArr tyInt (TyVar a))  \/!
-      TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
-      ==! TyMu a (tyArr tyInt (TyVar a))
-  , TyMu a (tyArr tyInt (TyVar a))  /\!
-      TyMu b (tyArr tyInt (tyArr tyInt (TyVar b)))
-      ==! TyMu a (tyArr tyInt (TyVar a))
-  , TyMu a (tyArr tyInt (TyVar a))  \/!
-      TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
-      ==! TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
-  , TyMu a (tyArr tyInt (TyVar a))  /\!
-      TyMu b (tyArr tyInt (tyLol tyInt (TyVar b)))
-      ==! TyMu b (tyArr tyInt (TyVar b))
-  , TyMu a (tyArr tyInt (TyVar a))  \/!
-      TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
-      ==! tyArr tyInt tyAf
-  , TyMu a (tyArr tyInt (TyVar a))  /\!
-      TyMu b (tyArr tyInt (tyLol tyUnit (TyVar b)))
-      ==! TyMu a (tyArr tyInt (tyArr tyUn (TyVar a)))
-  , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) \/!
-      tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
-      ==! TyMu a (tyTuple tyInt (TyVar a))
-  , TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))) /\!
-      tyTuple tyInt (TyMu a (tyTuple tyInt (tyTuple tyInt (TyVar a))))
-      ==! TyMu a (tyTuple tyInt (TyVar a))
-  , TyMu a (tyTuple tyUnit (tyTuple tyInt (TyVar a))) \/!
-      tyTuple tyUnit (TyMu a (tyTuple tyInt (tyTuple tyUnit (TyVar a))))
-      ==! TyMu b (tyTuple tyUnit (tyTuple tyInt (TyVar b)))
-  , TyMu a (tyTuple tyUnit (tyTuple tyInt (TyVar a))) /\!
-      tyTuple tyUnit (TyMu a (tyTuple tyInt (tyTuple tyUnit (TyVar a))))
-      ==! TyMu b (tyTuple tyUnit (tyTuple tyInt (TyVar b)))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  \/!
-      tyAll d (tyTuple
-                 (TyVar d)
-                 (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
-      ==! tyAll c (TyMu b (tyTuple (TyVar c) (tyTuple tyInt (TyVar b))))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  /\!
-      tyAll d (tyTuple
-                 (TyVar d)
-                 (TyMu a (tyTuple tyInt (tyTuple (TyVar d) (TyVar a)))))
-      ==! tyAll c (TyMu b (tyTuple (TyVar c) (tyTuple tyInt (TyVar b))))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a))))  \/!
-      tyAll d (tyTuple
-                 (TyVar d)
-                 (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
-      ==! tyAll c (tyTuple (TyVar c) (tyTuple tyInt (tyTuple tyAf tyAf)))
-  , tyAll c (TyMu a (tyTuple (TyVar c) (tyTuple tyInt (TyVar a)))) !/\
-      tyAll d (tyTuple
-                 (TyVar d)
-                 (TyMu a (tyTuple tyInt (tyTuple (TyVar a) (TyVar d)))))
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  \/!
-      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
-      ==! tyArr (tyAll d (tyArr tyInt (TyVar d))) tyAf
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a)) !/\
-      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar c))
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  \/!
-      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
-      ==! TyMu b (tyArr (tyAll c (tyArr tyInt (TyVar c))) (TyVar b))
-  , TyMu a (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar a))  /\!
-      TyMu b (tyArr (tyAll d (tyArr tyInt (TyVar d))) (TyVar b))
-      ==! TyMu b (tyArr (tyAll c (tyLol tyInt (TyVar c))) (TyVar b))
-  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) \/!
-      TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
-      ==! TyMu b (tyArr (tyAll d (tyArr tyUn (TyVar d))) (TyVar b))
-  , TyMu a (tyArr (tyAll c (tyLol (TyVar a) (TyVar c))) (TyVar a)) /\!
-      TyMu b (tyArr (tyAll d (tyArr (TyVar b) (TyVar d))) (TyVar b))
-      ==! TyMu b (tyArr (tyAll d tyAf) (TyVar b))
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  \/!
-      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
-      ==! tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  /\!
-      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
-      ==! tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar a)
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a)  \/!
-      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
-      ==! tyArr (tyAll b (tyTuple (TyVar b) tyInt)) tyUn
-  , tyArr (tyAll a (tyTuple (TyVar a) tyInt)) (TyVar a) !/\
-      tyArr (tyAll b (tyTuple (TyVar b) tyInt)) (TyVar b)
+  , tyAll a (tyInt .->. TyVar a)  \/!  tyAll b (tyInt .->. TyVar b)
+      ==! tyAll a (tyInt .->. TyVar a)
+  , tyAll a (tyInt .->. TyVar a)  \/!  tyAll b (tyInt .->. TyVar a)
+      ==! tyAll a (tyInt .->. tyUn)
+  , tyAll c (TyVar c .->. tyInt)  \/! tyAll a (TyVar a .-*. tyInt)
+      ==! tyAll d (TyVar d .-*. tyInt)
+  , tyAll a (tyInt .->. TyVar a)  /\!  tyAll b (tyInt .->. TyVar b)
+      ==! tyAll a (tyInt .->. TyVar a)
+  , tyAll a (tyInt .->. TyVar a) !/\   tyAll b (tyInt .->. TyVar a)
+  , tyAll c (TyVar c .->. tyInt)  /\!
+    tyAll a (TyVar a .-*. tyInt)  ==!
+    tyAll b (TyVar b .->. tyInt)
+  , tyAll a (tyAll b (TyVar a .*. TyVar b))  \/!
+    tyAll b (tyAll a (TyVar b .*. TyVar a))  ==!
+    tyAll b (tyAll a (TyVar b .*. TyVar a))
+  , tyAll a (tyAll b (TyVar a .*. TyVar b))  \/!
+    tyAll b (tyAll a (TyVar a .*. TyVar b))  ==!
+    tyAll b (tyAll a (tyUn .*. tyUn))
+  , tyAll c (tyAll c (TyVar c .*. TyVar d))  \/!
+    tyAll d (tyAll c (TyVar c .*. TyVar d))  ==!
+    tyAll d (tyAll d (TyVar d .*. tyAf))
+  , tyAll a (tyAll a (TyVar a .*. TyVar b))  \/!
+    tyAll a (tyAll a (TyVar a .*. TyVar b))  ==!
+    tyAll a (tyAll a (TyVar a .*. TyVar b))
+  , tyAll a (tyAll b (TyVar a .*. TyVar b))  /\!
+    tyAll b (tyAll a (TyVar b .*. TyVar a))  ==!
+    tyAll b (tyAll a (TyVar b .*. TyVar a))
+  , tyAll a (tyAll b (TyVar a .*. TyVar b)) !/\
+    tyAll b (tyAll a (TyVar a .*. TyVar b))
+  , tyAll c (tyAll c (TyVar c .*. TyVar d)) !/\
+    tyAll d (tyAll c (TyVar c .*. TyVar d))
+  , tyAll a (tyAll a (TyVar a .*. TyVar b))  /\!
+    tyAll a (tyAll a (TyVar a .*. TyVar b))  ==!
+    tyAll a (tyAll a (TyVar a .*. TyVar b))
+  , TyMu a (tyInt .->. TyVar a)  \/!
+    TyMu b (tyInt .->. TyVar b)  ==!
+    TyMu b (tyInt .->. TyVar b)
+  , TyMu a (tyInt .->. TyVar a)  /\!
+    TyMu b (tyInt .->. TyVar b)  ==!
+    TyMu b (tyInt .->. TyVar b)
+  , TyMu a (tyInt .->. TyVar a)            \/!
+    TyMu b (tyInt .->. tyInt .->. TyVar b) ==!
+    TyMu a (tyInt .->. TyVar a)
+  , TyMu a (tyInt .->. TyVar a)            /\!
+    TyMu b (tyInt .->. tyInt .->. TyVar b) ==!
+    TyMu a (tyInt .->. TyVar a)
+  , TyMu a (tyInt .->. TyVar a)            \/!
+    TyMu b (tyInt .->. tyInt .-*. TyVar b) ==!
+    TyMu b (tyInt .->. tyInt .-*. TyVar b)
+  , TyMu a (tyInt .->. TyVar a)            /\!
+    TyMu b (tyInt .->. tyInt .-*. TyVar b) ==!
+    TyMu b (tyInt .->. TyVar b)
+  , TyMu a (tyInt .->. TyVar a)             \/!
+    TyMu b (tyInt .->. tyUnit .-*. TyVar b) ==!
+    tyInt .->. tyAf
+  , TyMu a (tyInt .->. TyVar a)             /\!
+    TyMu b (tyInt .->. tyUnit .-*. TyVar b) ==!
+    TyMu a (tyInt .->. tyUn .->. TyVar a)
+  , TyMu a (TyVar a .*. tyInt .*. tyInt)           \/!
+    TyMu a (TyVar a .*. tyInt .*. tyInt) .*. tyInt ==!
+    TyMu a (TyVar a .*. tyInt)
+  , TyMu a (TyVar a .*. tyInt .*. tyInt)           /\!
+    TyMu a (TyVar a .*. tyInt .*. tyInt) .*. tyInt ==!
+    TyMu a (TyVar a .*. tyInt)
+  , TyMu a (TyVar a .*. tyInt .*. tyUnit)            \/!
+    TyMu a (TyVar a .*. tyUnit .*. tyInt) .*. tyUnit ==!
+    TyMu b (TyVar b .*. tyInt .*. tyUnit)
+  , TyMu a (TyVar a .*. tyInt .*. tyUnit)            /\!
+    TyMu a (TyVar a .*. tyUnit .*. tyInt) .*. tyUnit ==!
+    TyMu b (TyVar b .*. tyInt .*. tyUnit)
+  , tyAll c (TyMu a (TyVar a .*. tyInt .*. TyVar c))             \/!
+    tyAll d (TyMu a (TyVar a .*. TyVar d .*. tyInt) .*. TyVar d) ==!
+    tyAll c (TyMu b (TyVar b .*. tyInt .*. TyVar c))
+  , tyAll c (TyMu a (TyVar a .*. tyInt .*. TyVar c))             /\!
+    tyAll d (TyMu a (TyVar a .*. TyVar d .*. tyInt) .*. TyVar d) ==!
+    tyAll c (TyMu b (TyVar b .*. tyInt .*. TyVar c))
+  , tyAll c (TyMu a (TyVar a .*. tyInt .*. TyVar c))             \/!
+    tyAll d (TyMu a (TyVar d .*. TyVar a .*. tyInt) .*. TyVar d) ==!
+    tyAll c (tyAf .*. tyAf .*. tyInt .*. TyVar c)
+  , tyAll c (TyMu a (TyVar a .*. tyInt .*. TyVar c))            !/\
+    tyAll d (TyMu a (TyVar d .*. TyVar a .*. tyInt) .*. TyVar d)
+  , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)           \/!
+    TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar c)           ==!
+    tyAll d (tyInt .->. TyVar d) .->. tyAf
+  , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)          !/\
+    TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar c)
+  , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)           \/!
+    TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)           ==!
+    TyMu b (tyAll c (tyInt .->. TyVar c) .->. TyVar b)
+  , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)           /\!
+    TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)           ==!
+    TyMu b (tyAll c (tyInt .-*. TyVar c) .->. TyVar b)
+  , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a)         \/!
+    TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)         ==!
+    TyMu b (tyAll d (tyUn .->. TyVar d) .->. TyVar b)
+  , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a)         /\!
+    TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)         ==!
+    TyMu b (tyAll d tyAf .->. TyVar b)
+  , tyAll a (TyVar a .*. tyInt) .->. TyVar a  \/!
+    tyAll b (TyVar b .*. tyInt) .->. TyVar a  ==!
+    tyAll b (TyVar b .*. tyInt) .->. TyVar a 
+  , tyAll a (TyVar a .*. tyInt) .->. TyVar a  /\!
+    tyAll b (TyVar b .*. tyInt) .->. TyVar a  ==!
+    tyAll b (TyVar b .*. tyInt) .->. TyVar a 
+  , tyAll a (TyVar a .*. tyInt) .->. TyVar a  \/!
+    tyAll b (TyVar b .*. tyInt) .->. TyVar b  ==!
+    tyAll b (TyVar b .*. tyInt) .->. tyUn
+  , tyAll a (TyVar a .*. tyInt) .->. TyVar a !/\
+    tyAll b (TyVar b .*. tyInt) .->. TyVar b 
   ]
   where
-  tyUn    = tyNulOp tcUn
-  tyAf    = tyNulOp tcAf
-  tyInt   = tyNulOp tcInt
-  tySend  = tyUnOp tcSend
-  tyRecv  = tyUnOp tcRecv
-  tyDual  = tyUnOp tcDual
-  tySemi  = tyBinOp tcSemi
-  tyIdent = tyUnOp $ mkTC 10 "id"  (0 :: QDen Int) [(Qa, 1)]
-    [([TpVar a], TyVar a)]
-  tyConst = tyUnOp $ mkTC 11 "const"  (0 :: QDen Int) [(Qa, 1)]
-    [([TpVar a], tyUnit)]
-  tyAll   = TyQu Forall
   t1 \/! t2 = Left (t1, t2)
   t1 /\! t2 = Right (t1, t2)
   Left  (t1, t2) ==! t =
@@ -759,10 +729,9 @@ joinTests = T.test
   t1 !/\ t2 =
     T.assertEqual (show t1 ++ " /\\ " ++ show t2 ++ " DNE")
                   Nothing (t1 /\? t2)
-  a      = TV (Lid "a") Qu
-  b      = TV (Lid "b") Qu
-  c      = TV (Lid "c") Qa
-  d      = TV (Lid "d") Qa
+  infix 2 ==!
+  infix 4 \/!, /\!, !/\
+  a = tvUn "a"; b = tvUn "b"; c = tvAf "c"; d = tvAf "d"
 
 tests :: IO ()
 tests = do

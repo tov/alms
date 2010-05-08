@@ -9,7 +9,7 @@ module Syntax.Ident (
   Path(..),
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
-  TyVar(..), tvalphabet,
+  TyVar(..), tvUn, tvAf, tvalphabet,
   isOperator, qlid, quid,
 ) where
 
@@ -47,6 +47,10 @@ type Ident = Path Uid BIdent
 -- | Type variables include qualifiers
 data TyVar = TV { tvname :: Lid, tvqual :: QLit }
   deriving (Eq, Ord, Typeable, Data)
+
+tvUn, tvAf :: String -> TyVar
+tvUn s = TV (Lid s) Qu
+tvAf s = TV (Lid s) Qa
 
 tvalphabet :: [QLit -> TyVar]
 tvalphabet  = map (TV . Lid) alphabet
