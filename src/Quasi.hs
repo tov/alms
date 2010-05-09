@@ -15,47 +15,41 @@ import Loc as Loc
 import Parser
 import Util
 
+import QuoteData
 import Syntax
 import Syntax.THQuasi
 
 import Data.Generics
 import qualified Language.Haskell.TH as TH
-import Language.Haskell.TH.Quote
+import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
 pa, ty, ex, dc, pr, me :: QuasiQuoter
-
-pa = QuasiQuoter qexp qpat where
-  qexp s = parseQuasi s (\_ _ -> parsePatt) >>= toExpQ
-  qpat s = parseQuasi s (\_ _ -> parsePatt) >>= toPatQ
 
 ex  = mkQuasi parseExpr $ \ast loc -> [| $(ast) <<@ $(mkvarE loc) |]
 dc  = mkQuasi parseDecl $ \ast loc -> [| $(ast) <<@ $(mkvarE loc) |]
 ty  = mkQuasi parseType const
 pr  = mkQuasi parseProg const
 me  = mkQuasi parseModExp const
+pa  = mkQuasi parsePatt const
 
-mkQuasi :: forall f. (Data (f ()), Data (f TyTag)) =>
-      (forall i. TyTagMode i => P (f i)) ->
+mkQuasi :: forall f. (Data (f ())) =>
+      (forall i. Id i => P (f i)) ->
       (TH.ExpQ -> String -> TH.ExpQ) ->
       QuasiQuoter
 mkQuasi parser reloc = QuasiQuoter qexp qpat where
   qexp s = do
-    (stx, lflag) <- parseQuasi s $ \iflag lflag -> do
-      stx <- if iflag
-               then (parser :: P (f TyTag)) >>! Left
-               else (parser :: P (f ()))    >>! Right
+    (stx, lflag) <- parseQuasi s $ \_ lflag -> do
+      stx <- parser :: P (f ())
       return (stx, lflag)
-    ast <- either toExpQ toExpQ stx
+    ast <- toExpQ stx
     case lflag of
       Just loc -> reloc (return ast) loc
       Nothing  -> return ast
   qpat s = do
-    (stx, lflag) <- parseQuasi s $ \iflag lflag -> do
-      stx <- if iflag
-               then (parser :: P (f TyTag))     >>! Left
-               else (parser :: P (f ())) >>! Right
+    (stx, lflag) <- parseQuasi s $ \_ lflag -> do
+      stx <- parser :: P (f ())
       return (stx, lflag)
-    ast <- either toPatQ toPatQ stx
+    ast <- toPatQ stx
     case (lflag, ast) of
       (Just loc, TH.RecP n fs)
              -> TH.recP n (TH.fieldPat 'eloc_
@@ -65,10 +59,13 @@ mkQuasi parser reloc = QuasiQuoter qexp qpat where
       (_, _) -> return ast
 
 toExpQ :: Data a => a -> TH.ExpQ
-toExpQ  = dataToExpQ antiExp
+toExpQ  = dataToExpQ antiExp moduleQuals
 
 toPatQ :: Data a => a -> TH.PatQ
-toPatQ  = dataToPatQ antiPat
+toPatQ  = dataToPatQ antiPat moduleQuals
+
+moduleQuals :: [(String, String)]
+moduleQuals  = [ ("Syntax.Type", "Syntax") ]
 
 antiExp :: Data a => a -> Maybe TH.ExpQ
 antiExp  = antiGen
@@ -87,7 +84,6 @@ antiGen  = $(expandAntible ''Lit)
          . $(expandAntible ''CaseAlt)
          . $(expandAntible ''Type)
          . $(expandAntible ''Quant)
-         . $(expandAntible ''TyTag)
          . $(expandAntibleType [t| QExp Int |])
          . $(expandAntibleType [t| QExp TyVar |])
          . $(expandAntible ''TyVar)
@@ -141,4 +137,3 @@ mkvarE  = TH.varE . TH.mkName
 mkvarP :: String -> TH.PatQ
 mkvarP "_" = TH.wildP
 mkvarP n   = TH.varP (TH.mkName n)
-

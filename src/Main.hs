@@ -11,14 +11,13 @@ import qualified Ppr
 import Parser (parse, parseRepl, parseProg)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Statics (tcProg, tcDecls, S,
-                NewDefs(..), emptyNewDefs, tyInfoToDec)
+                NewDefs(..), emptyNewDefs, tyConToDec)
 import Coercion (translate, translateDecls, TEnv, tenv0)
 import Value (VExn(..), vppr, ExnId(..))
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Prog, ProgT, Decl, DeclT,
-               BIdent(..), prog2decls)
+import Syntax (Id, Prog, Decl, TyDec, BIdent(..), prog2decls)
 import Env (empty, unionProduct, toList)
 
 import System.Exit (exitFailure)
@@ -83,10 +82,10 @@ batch filename msrc opt st0 = do
       src <- msrc
       case parse parseProg filename src of
         Left e    -> fail $ "syntax error: " ++ show e
-        Right ast -> check ast where
-          check   :: Prog () -> IO ()
-          coerce  :: ProgT   -> IO ()
-          execute :: Prog i  -> IO ()
+        Right ast -> check (ast :: Prog ()) where
+          check   :: Id i => Prog i -> IO ()
+          coerce  :: Id i => Prog i -> IO ()
+          execute :: Id i => Prog i -> IO ()
 
           check ast0 =
             if opt Don'tType
@@ -118,10 +117,13 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
-statics     :: Bool -> (ReplState, [Decl i]) ->
-               IO (ReplState, NewDefs, [DeclT])
-translation :: (ReplState, [DeclT])   -> IO (ReplState, [DeclT])
-dynamics    :: (ReplState, [Decl i])  -> IO (ReplState, NewValues)
+statics     :: Id i =>
+               Bool -> (ReplState, [Decl i]) ->
+               IO (ReplState, NewDefs, [Decl i])
+translation :: Id i =>
+               (ReplState, [Decl i])   -> IO (ReplState, [Decl i])
+dynamics    :: Id i =>
+               (ReplState, [Decl i])  -> IO (ReplState, NewValues)
 
 statics slow (rs, ast) = do
   (g', new, ast') <- tcDecls slow (rsStatics rs) ast
@@ -167,12 +169,13 @@ interactive opt rs0 = do
       case mast of
         Nothing  -> return ()
         Just ast -> do
-          st' <- doLine st ast `handleExns` return st
+          st' <- doLine st (ast :: [Decl ()])
+                   `handleExns` return st
           repl st'
     doLine st ast = let
-      check   :: (ReplState, [Decl ()]) -> IO ReplState
-      coerce  :: NewDefs -> (ReplState, [DeclT]) -> IO ReplState
-      execute :: NewDefs -> (ReplState, [Decl i]) -> IO ReplState
+      check   :: Id i => (ReplState, [Decl i]) -> IO ReplState
+      coerce  :: Id i => NewDefs -> (ReplState, [Decl i]) -> IO ReplState
+      execute :: Id i => NewDefs -> (ReplState, [Decl i]) -> IO ReplState
       display :: NewDefs -> NewValues -> ReplState -> IO ReplState
 
       check stast0   = if opt Don'tType
@@ -237,9 +240,9 @@ interactive opt rs0 = do
         map pprValue (toList vals)
 
       where
-      pprMod uid    = text "module" <+> ppr uid
+      pprMod uid      = text "module" <+> ppr uid
 
-      pprType (lid, ti) = text "type" <+> ppr (tyInfoToDec lid ti)
+      pprType (_, tc) = text "type" <+> ppr (tyConToDec tc :: TyDec ())
 
       pprExn (ExnId { eiName = uid, eiParam = Just t })
         = text "exception" <+> ppr uid <+> text "of" <+> ppr t

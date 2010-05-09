@@ -12,6 +12,7 @@ import BasisUtils
 import Value (Valuable(..), Value(..))
 import Quasi
 import Syntax
+import Type
 
 import qualified Basis.IO
 import qualified Basis.Socket
@@ -39,13 +40,13 @@ primBasis  = [
     -- "unit" built in
     dec [$dc| type any  = all '<a. '<a |],
     dec [$dc| type bool = false | true |],
-    "int"    `primtype` tdInt,
+    "int"    `primtype` tcInt,
     dec [$dc| type char = int |],
-    "float"  `primtype` tdFloat,
-    "string" `primtype` tdString,
-    "U"      `primtype` tdUn,
-    "A"      `primtype` tdAf,
-    "*"      `primtype` tdTuple,
+    "float"  `primtype` tcFloat,
+    "string" `primtype` tcString,
+    "U"      `primtype` tcUn,
+    "A"      `primtype` tcAf,
+    "*"      `primtype` tcTuple,
 
     -- Sums
     dec [$dc| type '<a option = None | Some of '<a |],
@@ -185,11 +186,11 @@ primBasis  = [
       submod "Socket" Basis.Socket.entries,
       submod "Exn"    Basis.Exn.entries,
       submod "SessionType" [
-        "dual"   `primtype` tdDual,
-        "send"   `primtype` tdSend,
-        "recv"   `primtype` tdRecv,
-        "select" `primtype` tdSelect,
-        "follow" `primtype` tdFollow
+        "dual"   `primtype` tcDual,
+        "send"   `primtype` tcSend,
+        "recv"   `primtype` tcRecv,
+        "select" `primtype` tcSelect,
+        "follow" `primtype` tcFollow
       ]
     ]
   ]

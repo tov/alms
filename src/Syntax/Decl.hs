@@ -3,18 +3,17 @@
       TemplateHaskell #-}
 module Syntax.Decl (
   -- * Declarations
-  Decl(..), DeclT,
+  Decl(..),
   -- ** Type declarations
   TyDec(..), AbsTy(..),
-  TyDecT, AbsTyT,
   -- ** Modules
-  ModExp(..), ModExpT,
+  ModExp(..),
   -- ** Synthetic consructors
   -- | These fill in the source location fields with a bogus location
   dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn,
 
   -- * Programs
-  Prog(..), ProgT,
+  Prog(..),
   prog2decls
 ) where
 
@@ -36,7 +35,7 @@ data Prog i = Prog [Decl i] (Maybe (Expr i))
 -- | Declarations
 data Decl i
   -- | Constant declaration
-  = DcLet Loc Patt (Maybe (Type i)) (Expr i)
+  = DcLet Loc (Patt i) (Maybe (Type i)) (Expr i)
   -- | Type declaration
   | DcTyp Loc [TyDec i]
   -- | Abstype block declaration
@@ -54,7 +53,7 @@ data Decl i
   deriving (Typeable, Data)
 
 -- | Build a constant declaration with bogus source location
-dcLet :: Patt -> Maybe (Type i) -> Expr i -> Decl i
+dcLet :: Patt i -> Maybe (Type i) -> Expr i -> Decl i
 dcLet  = DcLet bogus
 
 -- | Build a type declaration with bogus source location
@@ -126,17 +125,6 @@ data ModExp i
   -- | An antiquote
   | MeAnti Anti
   deriving (Typeable, Data)
-
--- | A type-checked abstype declaration (has tycon info)
-type AbsTyT   = AbsTy TyTag
--- | A type-checked type declaration (has tycon info)
-type TyDecT   = TyDec TyTag
--- | A type-checked declaration (has tycon info)
-type DeclT    = Decl TyTag
--- | A type-checked module expression (has tycon info)
-type ModExpT  = ModExp TyTag
--- | A type-checked program (has tycon info)
-type ProgT    = Prog TyTag
 
 -----
 ----- Some classes and instances

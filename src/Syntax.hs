@@ -48,7 +48,6 @@ deriveAntible 'BnAnti    'bindingAntis
 deriveAntible 'CaAnti    'caseAltAntis
 deriveAntible 'TyAnti    'typeAntis
 deriveAntible 'QuantAnti 'quantAntis
-deriveAntible 'TyTagAnti 'tyTagAntis
 deriveAntible 'QeAnti    'qExpAntis
 deriveAntible 'DcAnti    'declAntis
 deriveAntible 'TdAnti    'tyDecAntis
@@ -64,7 +63,7 @@ instance Antible (Expr i) where
 
 -- | Get the list of formal parameters and body of a
 --   lambda/typelambda expression
-unfoldExAbs :: Expr i -> ([Either (Patt, Type i) TyVar], Expr i)
+unfoldExAbs :: Expr i -> ([Either (Patt i, Type i) TyVar], Expr i)
 unfoldExAbs  = unscanr each where
   each e = case view e of
     ExAbs x t e' -> Just (Left (x, t), e')
@@ -92,9 +91,9 @@ unfoldExApp  = unscanl each where
     _           -> Nothing
 
 -- | Get the list of argument types and result type of a function type
-unfoldTyFun :: TypeT -> ([TypeT], TypeT)
+unfoldTyFun :: Type i -> ([Type i], Type i)
 unfoldTyFun  = unscanr each where
-  each (TyArr _ ta tr) = Just (ta, tr)
+  each (TyFun _ ta tr) = Just (ta, tr)
   each _               = Nothing
 
 unfoldTupleExpr :: Expr i -> ([Expr i], Expr i)
@@ -103,7 +102,7 @@ unfoldTupleExpr  = unscanl each where
     ExPair e1 e2 -> Just (e2, e1)
     _            -> Nothing
 
-unfoldTuplePatt :: Patt -> ([Patt], Patt)
+unfoldTuplePatt :: Patt i -> ([Patt i], Patt i)
 unfoldTuplePatt  = unscanl each where
   each p = case p of
     PaPair p1 p2 -> Just (p2, p1)

@@ -6,7 +6,7 @@ module Syntax.Kind (
   QLit(..), QExp(..), qeDisj, qeConj, QDen,
   Variance(..),
   -- ** Qualifier operations
-  qConstBound,
+  qConstBound, elimQLit,
   qDenToLit, qInterpretM, qInterpret, qInterpretCanonical, qRepresent,
   qSubst, numberQDenM, numberQDen, denumberQDen
 ) where
@@ -78,6 +78,10 @@ data Variance
 qConstBound :: Ord a => QDen a -> QLit
 qConstBound (QDen qden) =
   if PDNF.isUnsat qden then Qu else Qa
+
+elimQLit :: a -> a -> QLit -> a
+elimQLit u _ Qu = u
+elimQLit _ a Qa = a
 
 -- | Find the meaning of a qualifier expression
 qInterpretM :: (Monad m, Ord a) => QExp a -> m (QDen a)

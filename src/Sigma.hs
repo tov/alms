@@ -19,9 +19,10 @@ import Data.Foldable (Foldable, toList)
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.  (Boolean specifies whether the result
 --   should include the effect variables.)
-exSigma :: Bool ->
-           (Patt -> Expr () -> a) ->
-           Patt -> Expr () -> a
+exSigma :: Id i =>
+           Bool ->
+           (Patt i -> Expr i -> a) ->
+           Patt i -> Expr i -> a
 exSigma ret binder patt body =
   let (b_vars, b_code) = transform (pv patt) body in
   binder (ren patt) $
@@ -32,9 +33,10 @@ exSigma ret binder patt body =
 
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.
-exAddSigma :: Bool ->
-              ([Lid] -> Patt -> Expr () -> a) ->
-              S.Set Lid -> Patt -> Expr () -> a
+exAddSigma :: Id i =>
+              Bool ->
+              ([Lid] -> Patt i -> Expr i -> a) ->
+              S.Set Lid -> Patt i -> Expr i -> a
 exAddSigma ret binder env patt body =
   let env'             = pv patt
       (b_vars, b_code) = transform (env' `S.union` env) body
@@ -194,7 +196,7 @@ exAddSigma ret binder env patt body =
     [assuming no shadowing]
 -}
 
-transform :: S.Set Lid -> Expr () -> ([Lid], Expr ())
+transform :: Id i => S.Set Lid -> Expr i -> ([Lid], Expr i)
 transform env = loop where
   capture e1
     | vars <- [ v | J [] v <- M.keys (fv e1),
@@ -349,16 +351,16 @@ transform env = loop where
       | vars <- []
         -> (vars, e +:: vars)
 
-(+:+)   :: Expr () -> [Expr ()] -> Expr ()
+(+:+)   :: Expr i -> [Expr i] -> Expr i
 (+:+)    = foldl exPair
 
-(+::)   :: Expr () -> [Lid] -> Expr ()
+(+::)   :: Expr i -> [Lid] -> Expr i
 e +:: vs = e +:+ map exBVar vs
 
-(-:-)   :: Patt -> [Patt] -> Patt
+(-:-)   :: Patt i -> [Patt i] -> Patt i
 (-:-)    = foldl PaPair
 
-(-::)   :: Patt -> [Lid] -> Patt
+(-::)   :: Patt i -> [Lid] -> Patt i
 p -:: vs = p -:- map PaVar vs
 
 r1, r2 :: Lid
@@ -376,10 +378,10 @@ expr2vs e = case view e of
   _ -> mzero
 -}
 
-makeBangPatt :: Patt -> Patt
+makeBangPatt :: Patt i -> Patt i
 makeBangPatt p = PaCon (J [] (Uid "!")) (Just p) False
 
-parseBangPatt :: Patt -> Maybe Patt
+parseBangPatt :: Patt i -> Maybe (Patt i)
 parseBangPatt (PaCon (J [] (Uid "!")) mp False) = mp
 parseBangPatt _                                 = Nothing
 
@@ -393,7 +395,7 @@ disjoint s1 s2 = S.null (s1 `S.intersection` s2)
 
 -- | Transform an expression into a pattern, if possible, using only
 --   the specified variables and type variables
-expr2patt :: S.Set Lid -> S.Set TyVar -> Expr i -> Maybe Patt
+expr2patt :: S.Set Lid -> S.Set TyVar -> Expr i -> Maybe (Patt i)
 expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
   loop e = case view e of
     ExId ident -> case view ident of
@@ -433,7 +435,7 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
       else mzero
 
 -- | Transform a pattern to an expression.
-patt2expr :: Patt -> Expr i
+patt2expr :: Patt i -> Expr i
 patt2expr PaWild         = exUnit
 patt2expr (PaVar l)      = exBVar l
 patt2expr (PaCon u Nothing exn)
@@ -451,7 +453,7 @@ patt2expr (PaPack a p)   = exPack Nothing (TyVar a) (patt2expr p)
 patt2expr (PaAnti a)     = antierror "exSigma" a
 
 -- | Transform a pattern to a flattened pattern.
-flatpatt :: Patt -> Patt
+flatpatt :: Patt i -> Patt i
 flatpatt p0 = case loop p0 of
                 []   -> paUnit
                 p:ps -> foldl PaPair p ps
@@ -489,12 +491,12 @@ remove set = everywhere (mkT expr `extT` patt) where
   expr e               = e
   -}
 
-kill :: Foldable f => f Lid -> Expr () -> Expr ()
+kill :: Foldable f => f Lid -> Expr i -> Expr i
 kill  = translate PaVar (const exUnit)
 
 translate :: Foldable f =>
-             (Lid -> Patt) -> (Lid -> Expr ()) ->
-             f Lid -> Expr () -> Expr ()
+             (Lid -> Patt i) -> (Lid -> Expr i) ->
+             f Lid -> Expr i -> Expr i
 translate mkpatt mkexpr set =
   case toList set of
     []   -> id
@@ -504,6 +506,6 @@ translate mkpatt mkexpr set =
 exUnit :: Expr i
 exUnit  = exCon (quid "()")
 
-paUnit :: Patt
+paUnit :: Patt i
 paUnit  = PaCon (quid "()") Nothing False
 

@@ -64,9 +64,9 @@ hsToExpQ hs0 = do
     (HsAnti v "con", args)
                         -> [| conS $(varE (n v))
                                    $(listE (map (loop n) args)) |]
-    (HsVar str, args)   -> [| varS $(litE (stringL str))
+    (HsVar str, args)   -> [| varS $(litE (qstringL str))
                                    $(listE (map (loop n) args)) |]
-    (HsCon str, args)   -> [| conS $(litE (stringL str))
+    (HsCon str, args)   -> [| conS $(litE (qstringL str))
                                    $(listE (map (loop n) args)) |]
     (HsWild, [])        -> [| wildS |]
     (HsList hss, [])    -> [| listS $(listE (map (loop n) hss)) |]
@@ -80,6 +80,10 @@ hsToExpQ hs0 = do
     (op, _:_)           -> fail $ "hs: cannot apply " ++ show op ++ 
                                   " to arguments"
     (HsApp _ _, [])     -> fail $ "hs: impossible!"
+
+-- | Qualify a string literal with 
+qstringL :: String -> Lit
+qstringL s = stringL ("Syntax." ++ s)
 
 -- | Does the given AST contain an antiquote named '_'?  If so, we
 --   create an implicit parameter and fill it in there.

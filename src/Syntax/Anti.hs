@@ -23,7 +23,7 @@ module Syntax.Anti (
   -- ** Antiquote dictionaries for various non-terminals
   litAntis, pattAntis,
   exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, tyTagAntis, qExpAntis, tyVarAntis,
+  typeAntis, quantAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   lidAntis, uidAntis, qlidAntis, quidAntis, idAntis,
   noAntis, optAntis, listAntis, maybeAntis
@@ -31,7 +31,6 @@ module Syntax.Anti (
 
 import Loc (fromTHLoc)
 import Syntax.THQuasi
-import {-# SOURCE #-} Syntax.Type
 
 import Data.Generics (Typeable, Data, extQ)
 import qualified Data.Map as M
@@ -206,8 +205,7 @@ expandAntible0 name =
 
 expandAntible1 :: Name -> ExpQ
 expandAntible1 name = 
-  [| $(expandAntibleType [t| $_t () |])
-   . $(expandAntibleType [t| $_t TyTag |]) |]
+  [| $(expandAntibleType [t| $_t () |]) |]
   where _t = conT name
 
 expandAntibleType :: TypeQ -> ExpQ
@@ -235,7 +233,7 @@ infixl 1 &
 
 litAntis, pattAntis,
   exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, tyTagAntis, qExpAntis, tyVarAntis,
+  typeAntis, quantAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   lidAntis, uidAntis, qlidAntis, quidAntis, idAntis,
   noAntis, optAntis, listAntis, maybeAntis
@@ -270,18 +268,11 @@ caseAltAntis
 
 typeAntis  = ""      =: [$th| <_> |]
            & "type"  =: [$th| <_> |]
+           & "stx"   =: (let tts = "typeToStx" in [$th| <tts> <_> |])
            & "anti"  =: [$th| TyAnti <_> |]
 
 quantAntis = "quant" =: [$th| <_> |]
            & "antiQ" =: [$th| QuAnti <_> |]
-
-tyTagAntis = ""      =: [$th| <_> |]
-           & "tytag" =: [$th| <_> |]
-           & "td"    =: (\v -> case getTdByName v of
-                           Nothing -> fail $
-                             "Unrecognized type name: " ++ v
-                           Just td -> dataS td)
-           & "anti"  =: [$th| TyTagAnti <_> |]
 
 qExpAntis  = ""      =: [$th| <_> |]
            & "qexp"  =: [$th| <_> |]

@@ -39,7 +39,7 @@ class Ppr p where
   ppr       = pprPrec precDot
   pprPrec _ = ppr
 
--- | Conditionaly add parens around the given 'Doc'
+-- | Conditionally add parens around the given 'Doc'
 parensIf :: Bool -> Doc -> Doc
 parensIf True  doc = parens doc
 parensIf False doc = doc
@@ -60,7 +60,7 @@ instance Ppr (Type i) where
                   = parensIf (p > precSemi) $
                       sep [ pprPrec (precSemi + 1) t1 <> text ";",
                             pprPrec precSemi t2 ]
-  -- pprPrec p (TyArr q t1 t2)
+  -- pprPrec p (TyFun q t1 t2)
   pprPrec p [$ty| $t1 -[$q]> $t2 |]
                   = parensIf (p > precArr) $
                     sep [ pprPrec (precArr + 1) t1,
@@ -349,7 +349,7 @@ pprAbs p e = parensIf (p > precDot) $
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
-pprArgList :: [Either (Patt, Type i) TyVar] -> Doc
+pprArgList :: [Either (Patt i, Type i) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
   eachArg (Left ([$pa| _ |], [$ty| unit |]))
                           = parens empty
@@ -367,7 +367,7 @@ pprArgList = fsep . map eachArg . combine where
     each (Right b) es              = Right [b] : es
     each (Left a)  es              = Left a : es
 
-instance Ppr Patt where
+instance Ppr (Patt i) where
   pprPrec _ [$pa| _ |]             = text "_"
   pprPrec _ [$pa| $lid:lid |]      = ppr lid
   pprPrec _ [$pa| $quid:qu |]      = ppr qu
@@ -403,7 +403,7 @@ instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
 instance Show (TyDec i)  where showsPrec = showFromPpr
 instance Show (Expr i)   where showsPrec = showFromPpr
-instance Show Patt       where showsPrec = showFromPpr
+instance Show (Patt i)   where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
 instance (Typeable a, Ppr a) =>

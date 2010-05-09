@@ -35,6 +35,7 @@ import Ppr (ppr, pprPrec, text, precApp)
 import Quasi
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
+import Type (TyCon)
 import Loc (Loc(Loc), mkBogus)
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
@@ -59,7 +60,7 @@ data Entry
   -- | A type entry associates a tycon name with information about it
   | TypEn {
     enName  :: Lid,
-    enTyTag :: TyTag
+    enTyCon :: TyCon
   }
   -- | A module entry associates a module name with a list of entries
   | ModEn {
@@ -132,7 +133,7 @@ submod  = ModEn . Uid
 
 -- | Creates a primitve type entry, binding a name to a type tag
 --   (which is usually defined in Syntax.hs)
-primtype  :: String -> TyTag -> Entry
+primtype  :: String -> TyCon -> Entry
 primtype   = TypEn . Lid
 
 -- | Creates a primitve exception entry
@@ -176,7 +177,7 @@ basis2tenv  = foldM each env0 where
   each gg0 (DecEn { enSrc = decl }) = do
     (gg1, _, _) <- tcDecls False gg0 [decl]
     return gg1
-  each gg0 (TypEn { enName = n, enTyTag = i }) =
+  each gg0 (TypEn { enName = n, enTyCon = i }) =
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es

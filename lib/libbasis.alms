@@ -39,14 +39,14 @@ let foldr =
                         (z : '<b) |(xs : '<a list) : '<b =
         match xs with
         | Nil -> z
-        | Cons(x,xs) -> f x (foldr f z xs)
+        | Cons(x,xs) -> f x (foldr['<a,'<b] f z xs)
    in foldr
 let foldl =
   let rec foldl '<a '<b (f : '<a -> '<b -o '<b)
                         (z : '<b) |(xs : '<a list) : '<b =
         match xs with
         | Nil -> z
-        | Cons(x,xs) -> foldl f (f x z) xs
+        | Cons(x,xs) -> foldl['<a] f (f x z) xs
    in foldl
 let revApp['<a] (xs : '<a list) (ys : '<a list) =
   let cons (x : '<a) (acc : '<a list) = Cons (x, acc) in
@@ -130,4 +130,5 @@ module INTERNALS = struct
   module Exn = Exn
   module Contract = Contract
 end
-
+(*
+*)

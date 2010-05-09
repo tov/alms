@@ -6,6 +6,7 @@
       TypeSynonymInstances #-}
 module Syntax.Ident (
   -- * Identifiers
+  Id(..),
   Path(..),
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
@@ -21,6 +22,11 @@ import Syntax.Kind (QLit(..))
 
 import Data.Char (isAlpha, isDigit)
 import Data.Generics (Typeable(..), Data(..))
+
+class Data i => Id i where
+  stupidIdMethod :: i
+instance Id () where
+  stupidIdMethod = ()
 
 -- IDENTIFIERS
 

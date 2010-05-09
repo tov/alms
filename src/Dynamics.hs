@@ -95,7 +95,7 @@ evalDecl (DcLoc _ d0 d1) = evalLocal d0 d1
 evalDecl (DcExn _ n mt)  = evalExn n mt
 evalDecl (DcAnti a)      = $antifail
 
-evalLet :: Patt -> Expr i -> DDecl
+evalLet :: Patt i -> Expr i -> DDecl
 evalLet x e env = do
   v <- valOf e env
   case bindPatt x v env of
@@ -213,7 +213,7 @@ getExnId env c = case env =..= ExnName `fmap` c of
   Nothing -> fail $ "BUG! could not lookup exception: " ++ show c
   Just ei -> return ei
 
-bindPatt :: Monad m => Patt -> Value -> E -> m E
+bindPatt :: Monad m => Patt i -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   [$pa| _ |] 
     -> return env

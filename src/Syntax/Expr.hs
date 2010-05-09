@@ -3,10 +3,9 @@
       TypeFamilies #-}
 module Syntax.Expr (
   -- * Expressions
-  Expr(..), ExprT, Expr'(..),
-  -- ** Letrec bindings
-  Binding(..), BindingT,
-  CaseAlt(..), CaseAltT,
+  Expr(..), Expr'(..),
+  -- ** Letrec and case
+  Binding(..), CaseAlt(..),
 
   -- * Two-level expression constructors
   -- | These fill in the source location field based on the
@@ -74,7 +73,7 @@ data Expr' i
   -- | pair construction
   | ExPair (Expr i) (Expr i)
   -- | lambda
-  | ExAbs Patt (Type i) (Expr i)
+  | ExAbs (Patt i) (Type i) (Expr i)
   -- | application
   | ExApp (Expr i) (Expr i)
   -- | type abstraction
@@ -99,18 +98,11 @@ data Binding i = Binding {
   deriving (Typeable, Data)
 
 data CaseAlt i = CaseAlt {
-                   capatt :: Patt,
+                   capatt :: Patt i,
                    caexpr :: Expr i
                }
                | CaAnti Anti
   deriving (Typeable, Data)
-
--- | A type-checked expression (has tycon info)
-type ExprT    = Expr TyTag
--- | A type-checked let-rec binding (has tycon info)
-type BindingT = Binding TyTag
--- | A type-checked case clause (has tycon info)
-type CaseAltT = CaseAlt TyTag
 
 -- | Accessor for the free variables field of expressions
 fv :: Expr i -> FV
@@ -184,7 +176,7 @@ exPair e1 e2 = expr0 {
   expr_  = ExPair e1 e2
 }
 
-exAbs :: Patt -> Type i -> Expr i -> Expr i
+exAbs :: Patt i -> Type i -> Expr i -> Expr i
 exAbs x t e = expr0 {
   eloc_  = getLoc e,
   fv_    = fv e |--| pv x,
@@ -253,7 +245,7 @@ exInt  = exLit . LtInt
 exFloat :: Double -> Expr i
 exFloat  = exLit . LtFloat
 
-exLet :: Patt -> Expr i -> Expr i -> Expr i
+exLet :: Patt i -> Expr i -> Expr i -> Expr i
 exLet x e1 e2 = exCase e1 [CaseAlt x e2]
 
 exSeq :: Expr i -> Expr i -> Expr i
@@ -265,7 +257,7 @@ exSeq e1 e2 = exCase e1 [CaseAlt PaWild e2]
 --   @let (x, y) = e in (x, y)   ==   e@
 --
 -- This is always safe to do.
-exLet' :: Patt -> Expr i -> Expr i -> Expr i
+exLet' :: Patt i -> Expr i -> Expr i -> Expr i
 exLet' x e1 e2 = if (x -==+ e2) then e1 else exLet x e1 e2
 
 -- | Constructs a let expression whose pattern is a variable.
@@ -277,7 +269,7 @@ exLetVar'  = exLet' . PaVar
 --    @exAbs' x t (exApp (exVar f) (exVar x))  ==  exVar f@
 --
 -- This eta-contraction is always safe, because f has no effect
-exAbs' :: Patt -> Type i -> Expr i -> Expr i
+exAbs' :: Patt i -> Type i -> Expr i -> Expr i
 exAbs' x t e = case view e of
   ExApp e1 e2 -> case (x, view e1, view e2) of
     (PaVar y, ExId (J p (Var f)), ExId (J [] (Var y'))) |
@@ -306,7 +298,7 @@ exTAbs' tv e = case view e of
 -- | Does a pattern exactly match an expression?  That is, is
 --   @let p = e1 in e@ equivalent to @e1@?  Note that we cannot
 --   safely handle data constructors, because they may fail to match.
-(-==+) :: Patt -> Expr i -> Bool
+(-==+) :: Patt i -> Expr i -> Bool
 p -==+ e = case (p, view e) of
   (PaVar l,      ExId (J [] (Var l')))
     -> l == l'

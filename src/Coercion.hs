@@ -1,7 +1,8 @@
 -- | Converts coercion expressions to dynamic checks.
 {-# LANGUAGE
       PatternGuards,
-      QuasiQuotes #-}
+      QuasiQuotes,
+      ViewPatterns #-}
 module Coercion  (
   coerceExpression,
   translate, translateDecls, TEnv, tenv0
@@ -10,8 +11,10 @@ module Coercion  (
 import Loc
 import Ppr ()
 import Quasi
-import Syntax
-import TypeRel
+import qualified Syntax
+import Syntax hiding (Type(..))
+import Type
+import TypeRel ()
 import Util
 
 import qualified Data.Map as M
@@ -26,7 +29,7 @@ tenv0 :: TEnv
 tenv0  = ()
 
 -- | Translate a whole program
-translate :: TEnv -> ProgT -> ProgT
+translate :: TEnv -> Prog i -> Prog i
 translate _ = id
 
 -- | Location to use for constructed code
@@ -36,10 +39,10 @@ _loc  = mkBogus "<coercion>"
 -- | Translation a sequence of declarations in the context
 --   of a translation environment, returning a new translation
 --   environment
-translateDecls :: TEnv -> [DeclT] -> (TEnv, [DeclT])
+translateDecls :: TEnv -> [Decl i] -> (TEnv, [Decl i])
 translateDecls tenv decls = (tenv, decls)
 
-coerceExpression :: Monad m => ExprT -> TypeT -> TypeT -> m ExprT
+coerceExpression :: Monad m => Expr i -> Type -> Type -> m (Expr i)
 coerceExpression e tfrom tto = do
   prj <- CMS.evalStateT (build M.empty tfrom tto) 0
   return $ exApp (exApp prj (exPair (exStr neg) (exStr pos))) e
@@ -48,15 +51,13 @@ coerceExpression e tfrom tto = do
   pos = "value at " ++ show (getLoc e)
 
 build :: Monad m =>
-         M.Map (TyVar, TyVar) (Maybe Lid) -> TypeT -> TypeT ->
-         CMS.StateT Integer m ExprT
+         M.Map (TyVar, TyVar) (Maybe Lid) -> Type -> Type ->
+         CMS.StateT Integer m (Expr i)
 build recs tfrom tto
-  | (tvs,  [$ty|+ $t1  -[$qe ]> $t2  |]) <- unfoldTyQu Forall tfrom,
-    (tvs', [$ty|+ $t1' -[$qe']> $t2' |]) <- unfoldTyQu Forall tto,
+  | (tvs,  TyFun qd  t1  t2)  <- vtQus Forall tfrom,
+    (tvs', TyFun qd' t1' t2') <- vtQus Forall tto,
     length tvs == length tvs'
     = do
-        qd  <- qInterpretM qe
-        qd' <- qInterpretM qe'
         let which = case (qConstBound qd, qConstBound qd') of
               (Qa, Qu) -> [$ex|+ INTERNALS.Contract.affunc |]
               (Qu, _ ) -> [$ex|+ INTERNALS.Contract.func[U] |]
@@ -72,41 +73,41 @@ build recs tfrom tto
         return $ if null tvs
           then body
           else absContract $
-               exAbsVar' (Lid "f") tfrom $
+               exAbsVar' (Lid "f") (typeToStx tfrom) $
                foldr (\tv0 acc -> exTAbs tv0 . acc) id tvs $
-               exAbsVar' (Lid "x") t1' $
+               exAbsVar' (Lid "x") (typeToStx t1') $
                instContract body `exApp`
-               foldl (\acc tv0 -> exTApp acc (TyVar tv0))
+               foldl (\acc tv0 -> exTApp acc (Syntax.TyVar tv0))
                      (exBVar (Lid "f")) tvs `exApp`
                exBVar (Lid "x")
-build recs [$ty|+ ex '$tv. $t |] [$ty|+ ex '$tv'. $t' |] = do
+build recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
   body <- build recs' t t' >>! instContract
   let tv''  = freshTyVar tv (ftv (tv, tv'))
   return $
     absContract $
-      [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $t) ->
-               Pack[ex '$tv'. $t']('$tv'', $body e) |]
-build recs [$ty|+ mu '$tv. $t |] [$ty|+ mu '$tv'. $t' |] = do
+      [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $stx:t) ->
+               Pack[ex '$tv'. $stx:t']('$tv'', $body e) |]
+build recs (view -> TyMu tv t) (view -> TyMu tv' t') = do
   lid  <- freshLid
   let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
   body <- build recs' t t'
   return $
     [$ex|+
       let rec $lid:lid
-              (parties : string $td:string * $td:tuple string $td:string)
-                       : (mu '$tv. $t) -> mu '$tv'. $t'
+              (parties : string * string)
+                       : (mu '$tv. $stx:t) -> mu '$tv'. $stx:t'
           = $body parties
        in $lid:lid
     |]
-build recs [$ty|+ '$tv |] [$ty|+ '$tv' |]
+build recs (view -> TyVar tv) (view -> TyVar tv')
   | Just (Just lid) <- M.lookup (tv, tv') recs
     = return [$ex|+ $lid:lid |]
   | Just Nothing <- M.lookup (tv, tv') recs
     = return [$ex|+ INTERNALS.Contract.any ['$tv'] |]
 build _ t t' =
   if t <: t'
-    then return [$ex|+ INTERNALS.Contract.any [$t'] |]
+    then return [$ex|+ INTERNALS.Contract.any [$stx:t'] |]
     else fail $ "No coercion from " ++ show t ++ " to " ++ show t'
 
 shadow :: [TyVar] -> [TyVar] ->
@@ -114,11 +115,11 @@ shadow :: [TyVar] -> [TyVar] ->
 shadow tvs tvs' = M.filterWithKey
                     (\(tv, tv') _ -> tv `notElem` tvs && tv' `notElem` tvs')
 
-absContract :: ExprT -> ExprT
+absContract :: Expr i -> Expr i
 absContract body =
-  [$ex|+ fun (neg: string $td:string, pos: string $td:string) -> $body |]
+  [$ex|+ fun (neg: string, pos: string) -> $body |]
 
-instContract :: ExprT -> ExprT
+instContract :: Expr i -> Expr i
 instContract con = [$ex|+ $con (neg, pos) |]
 
 freshLid :: Monad m => CMS.StateT Integer m Lid

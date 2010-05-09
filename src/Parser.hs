@@ -5,7 +5,7 @@ module Parser (
   -- * The parsing monad
   P, parse,
   -- ** Quasiquote parsing
-  parseQuasi, TyTagMode(..),
+  parseQuasi,
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
     parseTyDec, parseType, parseQExp, parseExpr, parsePatt,
@@ -46,12 +46,13 @@ parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p state0
 
 -- | Run a parser on the given string in quasiquote mode
-parseQuasi :: Data a => String -> (Bool -> Maybe String -> P a) -> TH.Q a
+parseQuasi :: Data a =>
+              String -> (Maybe Char -> Maybe String -> P a) -> TH.Q a
 parseQuasi str p = do
   setter <- TH.location >>! mkSetter
   let parser = do
         setter
-        iflag <- option False (do char '+'; return True)
+        iflag <- optionMaybe (char '+')
         lflag <- choice [
                    do char '@'
                       choice [ char '=' >> identp_no_ws >>! Just,
@@ -64,24 +65,6 @@ parseQuasi str p = do
     Right a -> return (scrub a)
   where
   mkSetter = setPosition . toSourcePos . fromTHLoc
-
-class TyTagMode i where
-  tytagp     :: P i
-  injTd      :: TyTag -> i
-  liftUnit   :: f () -> f i
-  dropUnit   :: f i -> f ()
-
-instance TyTagMode () where
-  tytagp     = punit
-  injTd      = const ()
-  liftUnit   = id
-  dropUnit   = id
-
-instance TyTagMode TyTag where
-  tytagp     = antiblep
-  injTd      = id
-  liftUnit   = error "BUG! Cannot use exSigma in quasi mode"
-  dropUnit   = error "BUG! Cannot use exSigma in quasi mode"
 
 withSigma :: Bool -> P a -> P a
 withSigma = mapSigma . const
@@ -260,10 +243,10 @@ quantp  = Forall <$ reserved "all"
       <|> Exists <$ reserved "ex"
       <|> antiblep
 
-typep  :: TyTagMode i => P (Type i)
+typep  :: P (Type i)
 typep   = typepP precStart
 
-typepP :: TyTagMode i => Int -> P (Type i)
+typepP :: Int -> P (Type i)
 typepP p
   | p == precStart
          = do
@@ -277,9 +260,9 @@ typepP p
   | p == precArr
          = chainr1last (typepP (p + 1))
              (choice
-              [ tyArrI <$ arrow,
-                tyLolI <$ lolli,
-                funbraces (TyArr <$> qExpp) ])
+              [ tyArr <$ arrow,
+                tyLol <$ lolli,
+                funbraces (TyFun <$> qExpp) ])
              (typepP precStart)
   | p == precPlus
          = chainl1last (typepP (p + 1))
@@ -297,35 +280,32 @@ typepP p
   | otherwise
          = typepP precStart
   where
-  tyarg :: TyTagMode i => P [Type i]
+  tyarg :: P [Type i]
   tyarg  = choice
            [ parens $ antiblep <|> commaSep1 (typepP precStart),
              (:[]) <$> tyatom ]
 
-  tyatom :: TyTagMode i => P (Type i)
+  tyatom :: P (Type i)
   tyatom  = TyVar <$> tyvarp
-        <|> TyCon <$> qlidnatp <*> pure [] <*> tytagp
+        <|> TyApp <$> qlidnatp <*> pure []
         <|> antiblep
-        <|> tyNulOpT (injTd tdUn) "U" <$ qualU
-        <|> tyNulOpT (injTd tdAf) "A" <$ qualA
+        <|> tyUn <$ qualU
+        <|> tyAf <$ qualA
 
-  tyapp' :: TyTagMode i => [Type i] -> P (Type i)
+  tyapp' :: [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
     tc <- qlidnatp
-    i  <- tytagp
-    tyapp' [TyCon tc [t] i]
+    tyapp' [TyApp tc [t]]
   tyapp' ts  = do
                  tc <- qlidnatp
-                 i  <- tytagp
-                 tyapp' [TyCon tc ts i]
+                 tyapp' [TyApp tc ts]
 
-tybinopp :: TyTagMode i => [P String] -> P (Type i -> Type i -> Type i)
+tybinopp :: [P String] -> P (Type i -> Type i -> Type i)
 tybinopp ops = do
   op <- choice ops
-  i  <- tytagp
-  return (tyBinOpT i op)
+  return (tyBinOp op)
 
-progp :: TyTagMode i => P (Prog i)
+progp :: Id i => P (Prog i)
 progp  = choice [
            do ds <- declsp
               when (null ds) pzero
@@ -334,7 +314,7 @@ progp  = choice [
            antioptp exprp >>! Prog []
          ]
 
-replp :: TyTagMode i => P [Decl i]
+replp :: Id i => P [Decl i]
 replp  = choice [
            try $ do
              ds <- declsp
@@ -344,7 +324,7 @@ replp  = choice [
            exprp >>! (prog2decls . Prog [] . Just)
          ]
 
-declsp :: TyTagMode i => P [Decl i]
+declsp :: Id i => P [Decl i]
 declsp  = antiblep <|> loop
   where loop =
           choice [
@@ -370,7 +350,7 @@ declsp  = antiblep <|> loop
             return []
           ]
 
-declp :: TyTagMode i => P (Decl i)
+declp :: Id i => P (Decl i)
 declp  = addLoc $ choice [
            do
              reserved "type"
@@ -407,14 +387,14 @@ declp  = addLoc $ choice [
            antiblep
          ]
 
-modexpp :: TyTagMode i => P (ModExp i)
+modexpp :: Id i => P (ModExp i)
 modexpp  = choice [
              MeStr  <$> between (reserved "struct") (reserved "end") declsp,
              MeName <$> quidp,
              antiblep
            ]
 
-tyDecp :: TyTagMode i => P (TyDec i)
+tyDecp :: P (TyDec i)
 tyDecp = do
   (arity, tvs, name) <- tyProtp
   choice [
@@ -442,7 +422,7 @@ tyProtp  = choice [
     return (arity, tvs, name)
   ]
 
-letp :: TyTagMode i => P (Decl i)
+letp :: Id i => P (Decl i)
 letp  = do
   reserved "let"
   choice [
@@ -480,7 +460,7 @@ letp  = do
           <*> exprp
     ]
 
-abstysp :: TyTagMode i => P [AbsTy i]
+abstysp :: P [AbsTy i]
 abstysp = antilist1p (reserved "and") $ do
   (arity, tvs, name) <- tyProtp
   quals        <- qualsp
@@ -523,10 +503,10 @@ qExpp  = qexp where
   clean (TV _ Qu) = minBound
   clean tv        = QeVar tv
 
-altsp :: TyTagMode i => P [(Uid, Maybe (Type i))]
+altsp :: P [(Uid, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
 
-altp  :: TyTagMode i => P (Uid, Maybe (Type i))
+altp  :: P (Uid, Maybe (Type i))
 altp   = do
   k <- uidp
   t <- optionMaybe $ do
@@ -534,7 +514,7 @@ altp   = do
     typep
   return (k, t)
 
-exprp :: TyTagMode i => P (Expr i)
+exprp :: Id i => P (Expr i)
 exprp = expr0 where
   onlyOne [x] = [x True]
   onlyOne xs  = map ($ False) xs
@@ -619,7 +599,7 @@ exprp = expr0 where
                       "INTERNALS.Exn.tryfun"
          return $
            exCase (exApp (exVar tryQ)
-                         (exAbs PaWild (tyNulOpT (injTd tdUnit) "unit")
+                         (exAbs PaWild tyUnit
                             e1)) $
              CaseAlt {
                capatt = PaCon (quid "Right")
@@ -697,7 +677,7 @@ exprp = expr0 where
         return e1 ]
 
 -- Parse an infix operator at given precedence
-opappp :: TyTagMode i => Prec -> P (Expr i -> Expr i -> Expr i)
+opappp :: Prec -> P (Expr i -> Expr i -> Expr i)
 opappp p = do
   loc <- curLoc
   op  <- oplevelp p
@@ -705,12 +685,12 @@ opappp p = do
 
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
-afargsp :: TyTagMode i => P (Bool, Type i -> Type i, Expr i -> Expr i)
-afargsp = loop tyArrI where
+afargsp :: Id i => P (Bool, Type i -> Type i, Expr i -> Expr i)
+afargsp = loop tyArr where
   loop arrcon0 = do
     arrcon <- option arrcon0 $ do
       reservedOp "|"
-      return tyLolI
+      return tyLol
     choice
       [ do (tvt, tve) <- tyargp
            (b, ft, fe) <- loop arrcon
@@ -724,7 +704,7 @@ afargsp = loop tyArrI where
         return (False, id, id) ]
 
 -- One or more of (pat:typ, ...), (), tyvar
-argsp1 :: TyTagMode i => P (Bool, Expr i -> Expr i)
+argsp1 :: Id i => P (Bool, Expr i -> Expr i)
 argsp1  = do
            (b, fe) <- argp
            if b
@@ -732,7 +712,7 @@ argsp1  = do
              else second (fe .) `fmap` option (False, id) argsp1
 
 -- Zero or more of (pat:typ, ...), (), tyvar
-argsp :: TyTagMode i => P (Bool, Expr i -> Expr i)
+argsp :: Id i => P (Bool, Expr i -> Expr i)
 argsp  = option (False, id) $ do
            (b, fe) <- argp
            if b
@@ -740,7 +720,7 @@ argsp  = option (False, id) $ do
              else second (fe .) `fmap` argsp
 
 -- Parse a (pat:typ, ...), (), or tyvar
-argp :: TyTagMode i => P (Bool, Expr i -> Expr i)
+argp :: Id i => P (Bool, Expr i -> Expr i)
 argp  = choice [
           do
             (_, fe)    <- tyargp
@@ -751,7 +731,7 @@ argp  = choice [
         ]
 
 -- Parse a (pat:typ, ...) or () argument
-vargp :: TyTagMode i =>
+vargp :: Id i =>
          (Type i -> Type i -> Type i) ->
          P (Bool, Type i -> Type i, Expr i -> Expr i)
 vargp arrcon = do
@@ -761,17 +741,17 @@ vargp arrcon = do
   return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
-paty :: TyTagMode i => P (Patt, Type i)
+paty :: P (Patt i, Type i)
 paty  = do
   (p, mt) <- pamty
   case (p, mt) of
     (_, Just t) -> return (p, t)
     (PaCon (J [] (Uid "()")) Nothing False, Nothing)
-                -> return (p, tyNulOpT (injTd tdUnit) "unit")
+                -> return (p, tyUnit)
     _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
-pamty :: TyTagMode i => P (Patt, Maybe (Type i))
+pamty :: P (Patt i, Maybe (Type i))
 pamty  = parens $ choice
            [
              do
@@ -808,15 +788,14 @@ pamty  = parens $ choice
               p <- pattp
               colonType p
           ]
-      return (foldl PaPair p0 ps, Just (foldl tyTupleI t0 ts))
+      return (foldl PaPair p0 ps, Just (foldl tyTuple t0 ts))
     colonType p = do
       colon
       t <- typep
       return (p, t)
-    tyTupleI = tyBinOpT (injTd tdTuple) "*"
 
 -- Parse a sequence of one or more tyvar arguments
-tyargp :: TyTagMode i => P (Type i -> Type i, Expr i -> Expr i)
+tyargp :: P (Type i -> Type i, Expr i -> Expr i)
 tyargp  = do
   tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
   return (\t -> foldr (\(_,   tv) -> tyAll tv) t tvs,
@@ -824,9 +803,9 @@ tyargp  = do
     where
   loctv = liftM2 (,) curLoc tyvarp
 
-pattbangp :: TyTagMode i =>
-             P (Patt, Bool,
-                Bool -> (Patt -> Expr i -> b) -> Patt -> Expr i -> b)
+pattbangp :: Id i =>
+             P (Patt i, Bool,
+                Bool -> (Patt i -> Expr i -> b) -> Patt i -> Expr i -> b)
 pattbangp = do
   inSigma <- getSigma
   inBang  <- bangp
@@ -835,22 +814,21 @@ pattbangp = do
       wrap  = inBang && inSigma
   return (condMakeBang wrap x, inBang, condSigma trans)
 
-condSigma :: TyTagMode i =>
+condSigma :: Id i =>
              Bool -> Bool ->
-             (Patt -> Expr i -> a) ->
-             Patt -> Expr i -> a
-condSigma True  =
-  \b f p e -> exSigma b (\p' e' -> f p' (liftUnit e')) p (dropUnit e)
+             (Patt i -> Expr i -> a) ->
+             Patt i -> Expr i -> a
+condSigma True  = exSigma
 condSigma False = const id
 
-condMakeBang :: Bool -> Patt -> Patt
+condMakeBang :: Bool -> Patt i -> Patt i
 condMakeBang True  = makeBangPatt
 condMakeBang False = id
 
 bangp :: P Bool
 bangp  = (bang >> return True) <|> return False
 
-pattp :: P Patt
+pattp :: P (Patt i)
 pattp  = patt0 where
   patt0 = do
     x <- patt9
@@ -911,25 +889,25 @@ finish p = do
   return r
 
 -- | Parse a program
-parseProg     :: TyTagMode i => P (Prog i)
+parseProg     :: Id i => P (Prog i)
 -- | Parse a REPL line
-parseRepl     :: TyTagMode i => P [Decl i]
+parseRepl     :: Id i => P [Decl i]
 -- | Parse a sequence of declarations
-parseDecls    :: TyTagMode i => P [Decl i]
+parseDecls    :: Id i => P [Decl i]
 -- | Parse a declaration
-parseDecl     :: TyTagMode i => P (Decl i)
+parseDecl     :: Id i => P (Decl i)
 -- | Parse a module expression
-parseModExp   :: TyTagMode i => P (ModExp i)
+parseModExp   :: Id i => P (ModExp i)
 -- | Parse a type declaration
-parseTyDec    :: TyTagMode i => P (TyDec i)
+parseTyDec    :: Id i => P (TyDec i)
 -- | Parse a type
-parseType     :: TyTagMode i => P (Type i)
+parseType     :: Id i => P (Type i)
 -- | Parse a qualifier expression
 parseQExp     :: P (QExp TyVar)
 -- | Parse an expression
-parseExpr     :: TyTagMode i => P (Expr i)
+parseExpr     :: Id i => P (Expr i)
 -- | Parse a pattern
-parsePatt     :: P Patt
+parsePatt     :: Id i => P (Patt i)
 parseProg      = finish progp
 parseRepl      = finish replp
 parseDecls     = finish declsp
@@ -975,7 +953,7 @@ pe  :: String -> Expr ()
 pe   = makeQaD parseExpr
 
 -- | Parse a pattern
-px  :: String -> Patt
+px  :: String -> Patt ()
 px   = makeQaD parsePatt
 
 makeQaD :: P a -> String -> a
