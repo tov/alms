@@ -1,7 +1,7 @@
 {-# LANGUAGE
       ParallelListComp,
       PatternGuards #-}
-module TypeRel (
+module TypeRel {-(
   -- * Type operations
   -- ** Equality and subtyping
   AType(..), subtype, jointype,
@@ -9,7 +9,7 @@ module TypeRel (
   qualConst, abstractTyCon, replaceTyCon,
   -- * Tests
   tests,
-) where
+)-} where
 
 import Env
 import Type
@@ -97,91 +97,126 @@ instance Eq Type where
 
 type UT s m a = CMS.StateT (TCS s) m a
 
+-- | An environment mapping mu-bound type variables to their
+--   definition for unrolling ('Left') or forall-bound variables
+--   to a pair of lower and upper bounds, for instantiation ('Right')
+type UEnv = M.Map TyVar (Either Type (Type, Type))
+
 data TCS s = TCS {
+  -- | Pairs of types previously seen, and thus considered related
+  --   if seen again.
   tcsSeen    :: M.Map (AType, AType) s,
-  tcsSubst1  :: M.Map TyVar Type,
-  tcsSubst2  :: M.Map TyVar Type,
-  tcsSupply  :: [QLit -> TyVar],
-  tcsUvars1  :: M.Map TyVar (Type, Type),
-  tcsUvars2  :: M.Map TyVar (Type, Type)
+  -- | The type variable environment on the left side of a relation
+  tcsEnv1    :: UEnv,
+  -- | The type variable environment on the right side of a relation
+  tcsEnv2    :: UEnv,
+  -- | A supply of fresh type variables
+  tcsSupply  :: [QLit -> TyVar]
 }
+
+data Field a b = Field {
+  get    :: a -> b,
+  update :: a -> b -> a
+}
+
+env1, env2 :: Field (TCS s) UEnv
+env1 = Field tcsEnv1 (\tcs e -> tcs { tcsEnv1 = e })
+env2 = Field tcsEnv2 (\tcs e -> tcs { tcsEnv2 = e })
 
 runUT  :: Monad m => UT s m a -> S.Set TyVar -> m a
 runUT m set = CMS.evalStateT m TCS {
   tcsSeen   = M.empty,
-  tcsSubst1 = M.empty,
-  tcsSubst2 = M.empty,
+  tcsEnv1   = M.empty,
+  tcsEnv2   = M.empty,
   tcsSupply = [ f | f <- tvalphabet
                   , f Qu `S.notMember` set
-                  , f Qa `S.notMember` set ],
-  tcsUvars1 = M.empty,
-  tcsUvars2 = M.empty
+                  , f Qa `S.notMember` set ]
 }
 
-addUVars :: Monad m =>
-            S.Set TyVar -> S.Set TyVar -> UT s m a ->
-            UT s m (a, M.Map TyVar Type, M.Map TyVar Type)
-addUVars set1 set2 body = do
+getVar :: Monad m => TyVar -> Field (TCS s) UEnv ->
+                     UT s m (Maybe (Either Type (Type, Type)))
+getVar tv field = CMS.get >>! M.lookup tv . get field
+
+-- | To add some unification variables to the scope, run the body,
+--   and return a map containing their lower and upper bounds.
+--   Unification variables are assumed to be fresh with respect to
+--   existing variables.  In particular, the initial set of unification
+--   variables precedes any other bindings, and all subsequent foralls
+--   are renamed using fresh type variables.
+withUVars :: Monad m =>
+             S.Set TyVar -> Field (TCS s) UEnv -> UT s m a ->
+             UT s m (a, M.Map TyVar Type)
+withUVars set field body = do
+  let tvs = M.fromList
+              [ (tv, Right (tyBot (tvqual tv), tyTop (tvqual tv)))
+              | tv <- S.toList set ]
+  CMS.modify $ \st0 -> update field st0 (tvs `M.union` get field st0)
+  res  <- body
+  st1  <- CMS.get
+  let (new, old) = M.partitionWithKey (\tv _ -> S.member tv set)
+                                      (get field st1)
+  CMS.put (update field st1 old)
+  new' <-
+    M.fromList `liftM` sequence
+      [ if lower <: upper
+          then return (tv, if isTyBot lower then upper else lower)
+          else fail $
+            "Unification cannot solve: " ++
+            show lower ++ " <: " ++ show upper
+      | (tv, Right (lower, upper)) <- M.toList new ]
+  return (res, new')
+
+-- | Lexically bind a mu-bound variable, restoring its old value (if
+--   it has one) upon leaving the block.
+withMuVar :: Monad m =>
+             TyVar -> Type -> Field (TCS s) UEnv -> UT s m a -> UT s m a
+withMuVar tv t field body = do
   st0 <- CMS.get
-  CMS.put st0 {
-    tcsUvars1 = addSet set1 (tcsUvars1 st0),
-    tcsUvars2 = addSet set2 (tcsUvars2 st0)
-    }
+  CMS.put (update field st0 (M.insert tv (Left t) (get field st0)))
   res <- body
-  st1 <- CMS.get
-  (new1, old1) <- partition set1 (tcsUvars1 st1)
-  (new2, old2) <- partition set2 (tcsUvars2 st1)
-  CMS.put st1 {
-    tcsUvars1 = old1,
-    tcsUvars2 = old2
-    }
-  return (res, new1, new2)
-  where
-    addSet set m =
-      foldr (\tv -> M.insert tv (tyBot (tvqual tv), tyTop (tvqual tv)))
-            m (S.toList set)
-    partition set m = do
-      let (new, old) = M.partitionWithKey (\tv _ -> S.member tv set) m
-      new' <-
-        M.fromList `liftM` sequence
-          [ if lower <: upper
-              then return (tv, if isTyBot lower then upper else lower)
-              else fail $
-                "Unification cannot solve: " ++
-                show lower ++ " <: " ++ show upper
-          | (tv, (lower, upper)) <- M.toList new ]
-      return (new', old)
+  CMS.modify $ \st1 -> update field st1 $
+    case M.lookup tv (get field st0) of
+      Just old -> M.insert tv old (get field st1)
+      Nothing  -> M.delete tv (get field st1)
+  return res
 
--- | Try to assert an upper bound on a unification variable, which
---   must be found on the left.
-upperBoundUVar :: Monad m => TyVar -> Type -> UT s m ()
-upperBoundUVar tv t = do
+-- | Try to assert an upper bound on a unification variable.
+upperBoundUVar :: Monad m =>
+                  TyVar -> Type -> Field (TCS s) UEnv -> UT s m ()
+upperBoundUVar tv t field = do
   st <- CMS.get
-  let bounds = tcsUvars1 st
-  case M.lookup tv bounds of
-    Nothing -> fail $ "Free type variable: " ++ show tv
-    Just (lower, upper) -> do
+  let env = get field st
+  case M.lookup tv env of
+    Just (Right (lower, upper)) -> do
       upper' <- t /\? upper
-      CMS.put st { tcsUvars1 = M.insert tv (lower, upper') bounds }
+      CMS.put (update field st (M.insert tv (Right (lower, upper')) env))
+    _ -> fail $ "BUG! cannot upper-bound tyvar: " ++ show tv
 
--- | Try to assert a lower bound on a unification variable, which
---   must be found on the right.
-lowerBoundUVar :: Monad m => TyVar -> Type -> UT s m ()
-lowerBoundUVar tv t = do
+
+-- | Try to assert a lower bound on a unification variable.
+lowerBoundUVar :: Monad m =>
+                  TyVar -> Type -> Field (TCS s) UEnv -> UT s m ()
+lowerBoundUVar tv t field = do
   st <- CMS.get
-  let bounds = tcsUvars2 st
-  case M.lookup tv bounds of
-    Nothing -> fail $ "Free type variable: " ++ show tv
-    Just (lower, upper) -> do
+  let env = get field st
+  case M.lookup tv env of
+    Just (Right (lower, upper)) -> do
       lower' <- t \/? lower
-      CMS.put st { tcsUvars2 = M.insert tv (lower', upper) bounds }
+      CMS.put (update field st (M.insert tv (Right (lower', upper)) env))
+    _ -> fail $ "BUG! cannot lower-bound tyvar: " ++ show tv
 
-getUVars :: Monad m => UT s m (M.Map TyVar (Type, Type),
-                               M.Map TyVar (Type, Type))
-getUVars = do
+-- | Get sets (represented as characteristic functions) of the left
+--   and right uvars
+getUVarSets :: Monad m => UT s m (TyVar -> Bool, TyVar -> Bool)
+getUVarSets = do
   st <- CMS.get
-  return (tcsUvars1 st, tcsUvars2 st)
+  let pred env tv = maybe False isRight (M.lookup tv env)
+  return (pred (tcsEnv1 st), pred (tcsEnv2 st))
 
+-- | Check if two types have been seen before.  If so, return the
+--   previously stored answer.  If not, temporarily store the given
+--   answer, then run a block, and finally replace the stored answer
+--   with the result of the block.
 chkU :: Monad m => Type -> Type -> s -> UT s m s -> UT s m s
 chkU t1 t2 s body = do
   let key = (AType t1, AType t2)
@@ -191,34 +226,10 @@ chkU t1 t2 s body = do
     Nothing -> do
       CMS.put st0 { tcsSeen = M.insert key s (tcsSeen st0) }
       res <- body
-      st1 <- CMS.get
-      CMS.put st1 { tcsSeen = M.insert key res (tcsSeen st1) }
+      CMS.modify $ \st1 -> st1 { tcsSeen = M.insert key res (tcsSeen st1) }
       return res
 
-get1U :: Monad m => TyVar -> UT s m (Maybe Type)
-get1U tv = (M.lookup tv . tcsSubst1) `liftM` CMS.get
-
-get2U :: Monad m => TyVar -> UT s m (Maybe Type)
-get2U tv = (M.lookup tv . tcsSubst2) `liftM` CMS.get
-
-add1U :: Monad m => TyVar -> Type -> UT s m a -> UT s m a
-add1U tv t body = do
-  st0 <- CMS.get
-  CMS.put st0 { tcsSubst1 = M.insert tv t (tcsSubst1 st0) }
-  res <- body
-  st1 <- CMS.get
-  CMS.put st1 { tcsSubst1 = tcsSubst1 st0 }
-  return res
-
-add2U :: Monad m => TyVar -> Type -> UT s m a -> UT s m a
-add2U tv t body = do
-  st0 <- CMS.get
-  CMS.put st0 { tcsSubst2 = M.insert tv t (tcsSubst2 st0) }
-  res <- body
-  st1 <- CMS.get
-  CMS.put st1 { tcsSubst2 = tcsSubst2 st0 }
-  return res
-
+-- | Flip the left and right sides of the relation in the given block.
 flipU :: Monad m => UT s m a -> UT s m a
 flipU body = do
   CMS.modify flipSt
@@ -226,9 +237,10 @@ flipU body = do
   CMS.modify flipSt
   return res
     where
-      flipSt (TCS seen s1 s2 supply u1 u2) =
-        TCS (M.mapKeys (\(x,y) -> (y,x)) seen) s2 s1 supply u2 u1
+      flipSt (TCS seen e1 e2 supply) =
+        TCS (M.mapKeys (\(x,y) -> (y,x)) seen) e2 e1 supply
 
+-- | Get a fresh type variable from the supply.
 freshU :: Monad m => QLit -> UT s m TyVar
 freshU qlit = do
   st <- CMS.get
@@ -236,15 +248,20 @@ freshU qlit = do
   CMS.put st { tcsSupply = supply }
   return (f qlit)
 
+-- | Hide all mu bindings in the given scope
 hideU :: Monad m => UT s m a -> UT s m a
 hideU body = do
   st0 <- CMS.get
-  CMS.put st0 { tcsSubst1 = M.empty, tcsSubst2 = M.empty }
+  let (mus1, uvars1) = M.partition isLeft (tcsEnv1 st0)
+      (mus2, uvars2) = M.partition isLeft (tcsEnv2 st0)
+  CMS.put st0 { tcsEnv1 = uvars1, tcsEnv2 = uvars2 }
   res <- body
-  st1 <- CMS.get
-  CMS.put st1 { tcsSubst1 = tcsSubst1 st0, tcsSubst2 = tcsSubst2 st0 }
+  CMS.modify $ \st1 ->
+    st1 { tcsEnv1 = mus1 `M.union` tcsEnv1 st1,
+          tcsEnv2 = mus2 `M.union` tcsEnv2 st1 }
   return res
 
+{-
 subtype :: MonadError e m =>
            Int ->
            S.Set TyVar -> Type ->
@@ -253,8 +270,8 @@ subtype :: MonadError e m =>
 subtype limit uvars1 t1i uvars2 t2i =
   liftM (\(_, m1, m2) -> (m1, m2)) $
     runUT
-      (addUVars uvars1 uvars2 $ cmp t1i t2i)
-      (uvars1 `S.union` uvars2 `S.union` ftv (t1i, t2i))
+      (withUVars uvars1 uvars2 $ cmp t1i t2i)
+      (uvars1 `S.union` uvars2 `S.union` alltv (t1i, t2i))
   where
     cmp :: MonadError e m => Type -> Type -> UT () m ()
     cmp t u = chkU t u () $ case (t, u) of
@@ -324,7 +341,7 @@ subtype limit uvars1 t1i uvars2 t2i =
               (tysubst tvu (TyVar tv') u1)
       (TyQu Forall tvt t1, _) -> do
         tv' <- freshU (tvqual tvt)
-        addUVars (S.singleton tv') S.empty $
+        withUVars (S.singleton tv') S.empty $
           hideU $
             cmp (tysubst tvt (TyVar tv') t1) u
         return ()
@@ -496,7 +513,9 @@ runEither :: (String -> r) -> (a -> r) -> Either String a -> r
 runEither  = either
 
 -- | The Type partial order
+-}
 instance PO Type where
+{-
   t1 <: t2     = runEither (const False) (const True)
                            (subtype 100 S.empty t1 S.empty t2)
   ifMJ b t1 t2 = runEither fail return (jointype 100 b t1 t2)
@@ -945,3 +964,4 @@ tests = do
   T.runTestTT joinTests
   T.runTestTT uvarsTests
   return ()
+  -}
