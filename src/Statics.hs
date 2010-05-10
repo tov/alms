@@ -542,7 +542,7 @@ tcExApp tc e0 = do
 --   the type of the function and the argument type
 tapply :: (?loc :: Loc, Monad m) =>
           Type -> Type -> m Type
-tapply (TyQu Forall tv t1') t2 = do
+tapply (view -> TyQu Forall tv t1') t2 = do
   tassert (qualConst t2 <: tvqual tv) $
     "Type application cannot instantiate type variable " ++
     show tv ++ " with type " ++ show t2

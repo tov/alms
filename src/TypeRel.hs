@@ -278,7 +278,10 @@ subtype limit uvars1 t1i uvars2 t2i =
           (Just t', Just u') -> cmp t' u'
           (Nothing, Just u') -> upperBoundUVar vt u'
           (Just t', Nothing) -> lowerBoundUVar vu t'
-          (Nothing, Nothing) -> unless (vt == vu) $ giveUp t u
+          (Nothing, Nothing) ->
+            upperBoundUVar vt u `catchError` \_ ->
+            lowerBoundUVar vu t `catchError` \_ ->
+            unless (vt == vu) $ giveUp t u
       (TyVar vt, _) -> do
         mt' <- get1U vt
         case mt' of
@@ -327,7 +330,7 @@ subtype limit uvars1 t1i uvars2 t2i =
         return ()
       -- Recursion
       (TyMu tvt t1, _) ->
-        -- Need to rename to dodge unification variables
+        -- Need to rename to dodge unification variables?
         add1U tvt t $ cmp t1 u
       (_, TyMu tvu u1) ->
         add2U tvu u $ cmp t u1
@@ -386,16 +389,6 @@ jointype limit b t1i t2i =
       -- Handle top and bottom
       _ | Just t' <- points direction t u -> return t'
         | Just t' <- points direction u t -> return t'
-      -- Variables
-      (TyVar vt, TyVar ut)
-        | vt == ut ->
-        return t
-      (TyVar vt, _) -> do
-        Just t' <- get1U vt
-        cmp m t' u
-      (_, TyVar ut) -> do
-        Just u' <- get2U ut
-        cmp m t u'
       -- Type applications
       (TyApp tct ts _, TyApp tcu us _)
         | tct == tcu,
@@ -417,6 +410,16 @@ jointype limit b t1i t2i =
       (_, TyApp _ _ _)
         | not (isHeadNormalType u) -> do
         u' <- hn u
+        cmp m t u'
+      -- Variables
+      (TyVar vt, TyVar ut)
+        | vt == ut ->
+        return t
+      (TyVar vt, _) -> do
+        Just t' <- get1U vt
+        cmp m t' u
+      (_, TyVar ut) -> do
+        Just u' <- get2U ut
         cmp m t u'
       -- Arrows
       (TyFun qt t1 t2, TyFun qu u1 u2) -> do
@@ -834,6 +837,9 @@ joinTests = T.test
     tyAll b (TyVar b .*. tyInt) .->. tyUn
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a !/\
     tyAll b (TyVar b .*. tyInt) .->. TyVar b 
+  , tyAll c (TyVar c) \/! TyVar b ==! TyVar b
+  , tyNulOp (mkTC 10 "any" [([]:: [TyPat], tyAll c (TyVar c))])
+                      \/! TyVar b ==! TyVar b
   ]
   where
   t1 \/! t2 = Left (t1, t2)
@@ -903,6 +909,11 @@ uvarsTests = T.test
       ==!  (tyUn, tyUn, tyAf, tyAf)
   , TyFun (qInterpret (QeVar c)) tyInt tyInt <:! tyInt .->. tyInt
       ==!  (tyUn, tyUn, tyUn, tyAf)
+  , (TyVar c .->. TyVar d .-*. TyVar d) .*. TyVar d .*. tyRecv (TyVar c)
+    <:!
+    (TyVar e .->. TyVar f .-*. TyVar f) .*. TyVar f .*. tyRecv (TyVar e)
+    ==!
+    (tyUn, tyUn, TyVar e, TyVar f)
   ]
   where
   t1 <:! t2 = Left (t1, t2)
@@ -926,6 +937,7 @@ uvarsTests = T.test
   infix 4 <:!, !<:, >:!, !>:
   set = S.fromList [a, b, c, d]
   a   = tvUn "a"; b = tvUn "b"; c = tvAf "c"; d = tvAf "d"
+  e   = tvAf "e"; f = tvAf "f"
 
 tests :: IO ()
 tests = do
