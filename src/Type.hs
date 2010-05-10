@@ -21,7 +21,7 @@ module Type (
   -- ** Deep reduction
   isNormalType, normalizeTypeK, normalizeType,
   -- ** Freshness
-  Ftv(..), freshTyVar, freshTyVars,
+  alltv, Ftv(..), freshTyVar, freshTyVars,
   -- ** Substitutions
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
@@ -137,6 +137,10 @@ qualifier (TyMu tv t)     = qSubst tv minBound (qualifier t)
 ---
 --- Free type variables, freshness, and substitution
 ---
+
+-- All mentioned type variables, including bound and free.
+alltv :: Data a => a -> S.Set TyVar
+alltv  = everything S.union (mkQ S.empty S.singleton)
 
 -- | Class for getting free type variables (from types, expressions,
 -- lists thereof, pairs thereof, etc.)

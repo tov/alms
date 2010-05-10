@@ -18,6 +18,8 @@ module Util (
   -- * More convenience
   -- ** Maybe functions
   fromJust, (?:),
+  -- ** Either funtions
+  isLeft, isRight,
   -- ** List functions
   splitBy,
   -- ** Monomorphic @ord@ and @chr@
@@ -108,6 +110,12 @@ Nothing ?: xs = xs
 Just x  ?: xs = x : xs
 
 infixr 5 ?:
+
+isLeft, isRight :: Either a b -> Bool
+isLeft (Left _)   = True
+isLeft _          = False
+isRight (Right _) = True
+isRight _         = False
 
 -- | Unfold a list, left-to-right, returning the final state
 unscanr :: (b -> Maybe (a, b)) -> b -> ([a], b)
