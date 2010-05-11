@@ -48,10 +48,10 @@ let foldl =
         | Nil -> z
         | Cons(x,xs) -> foldl f (f x z) xs
    in foldl
-let revApp['<a] (xs : '<a list) (ys : '<a list) =
-  let cons (x : '<a) (acc : '<a list) = Cons (x, acc) in
+let revApp['<c] (xs : '<c list) (ys : '<c list) =
+  let cons (x : '<c) (acc : '<c list) = Cons (x, acc) in
     foldl cons ys xs
-let rev['<a] (xs : '<a list) = revApp xs Nil
+let rev['<b] (xs : '<b list) = revApp xs Nil
 let append['<a] (xs : '<a list) = revApp (rev xs)
 let length['<a] (xs : '<a list) =
   foldr (fun (x : '<a) -> (+) 1) 0 xs

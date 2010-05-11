@@ -7,7 +7,7 @@ module Array = struct
   abstype 'a array = Array of int * (int -> 'a) ref with
     let newArray['a] (size : int): 'a array =
       Array (size, ref (fun ix: int ->
-                          (raise (ArrayIndex "uninitialized"))['a]))
+                          (raise (ArrayIndex "uninitialized"))))
 
     let checkIndex (size: int) (ix: int): unit =
       if ix < 0

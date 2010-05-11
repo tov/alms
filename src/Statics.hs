@@ -35,7 +35,7 @@ import TypeRel
 import Coercion (coerceExpression)
 
 import Data.Data (Typeable, Data)
-import Data.Generics (everywhere, mkT, everywhereM, mkM)
+import Data.Generics (everywhere, mkT{-, everywhereM, mkM-})
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -43,9 +43,11 @@ import qualified Control.Monad.Reader as M.R
 import qualified Control.Monad.State  as M.S
 import qualified Control.Monad.RWS    as RWS
 
--- import System.IO.Unsafe (unsafePerformIO)
--- p :: (Show a) => a -> b -> b
--- p a b = unsafePerformIO (print a) `seq` b
+import System.IO.Unsafe (unsafePerformIO)
+p :: Show a => a -> b -> b
+p a b = unsafePerformIO (print a) `seq` b
+pM :: (Show a, Monad m) => a -> m ()
+pM a = if p a True then return () else fail "wibble"
 -- p = const
 
 -- Get the usage (sharing) of a variable in an expression:
@@ -469,7 +471,7 @@ tcExpr = tc where
       tassgot (t1 <: t')
         "cast (:>)" t1 (show t')
       e1'' <- coerceExpression (e1' <<@ e0) t' ta'
-      tcExpr e1'' -- re-type check the coerced expression
+      -- tcExpr e1'' -- re-type check the coerced expression
       return (ta', e1'')
     [$ex| $anti:a |] -> $antifail
 
@@ -508,7 +510,7 @@ tcExApp tc e0 = do
         let (tvs, t1f) = vtQus Forall t1 -- peel off quantification
             (tas, _)   = vtFuns t1f      -- peel off arg types
             nargs      = min (length tas) (length ts)
-            tup ps     = tyApp tcTuple (take nargs ps)
+            tup ps     = foldl tyTuple tyUnit (take nargs ps)
         -- try to find types to unify formals and actuals, and apply
         t1' <- tryUnify tvs (tup tas) (tup ts) >>= foldM tapply t1
         arrows t1' ts
@@ -577,10 +579,10 @@ tcPatt t x0 = case x0 of
             (dx1, gx1, x1') <- tcPatt t1' x1
             return (dx1, gx1, PaCon u (Just x1') isexn)
           _ -> tgot "Pattern" t "wrong arity"
-      (vtBot -> Just bot) -> case mx of
+      _ | isBotType t' -> case mx of
             Nothing -> return (empty, empty, x0)
-            Just x  -> tcPatt bot x
-      _ -> tgot "Pattern" t' ("constructor " ++ show u)
+            Just x  -> tcPatt tyBot x
+        | otherwise -> tgot "Pattern" t' ("constructor " ++ show u)
   [$pa| ($x, $y) |] -> do
     t' <- hnT t >>! mapBottom (tyApp tcTuple . replicate 2)
     case t' of
@@ -632,8 +634,8 @@ tcPatt t x0 = case x0 of
 --   to it
 mapBottom :: (Type -> Type) -> Type -> Type
 mapBottom ft t
-  | isTyBot t = ft t
-  | otherwise = t
+  | isBotType t = ft t
+  | otherwise   = t
 
 -- | Run a computation in the context of the bindings from
 --   a pattern.
@@ -656,18 +658,18 @@ tryUnify :: (?loc :: Loc, Monad m) =>
             [TyVar] -> Type -> Type -> m [Type]
 tryUnify [] _ _        = return []
 tryUnify tvs t t'      = 
-  case subtype 100 S.empty t' (S.fromList tvs) t of
-    Left s         -> giveUp where _ = s :: String
-    Right (_, m) ->
-      forM tvs $ \tv -> maybe giveUp return (M.lookup tv m)
+  case subtype 100 [] t' tvs t of
+    Left s         -> giveUp s
+    Right (_, ts)  -> return ts
   where
-  giveUp = terr $
+  giveUp s = terr $
     "\nCannot guess type" ++
     (if length tvs == 1 then " t1" else "s t1, .., t" ++ show (length tvs))
-    ++ " such that\n  (" ++ show t ++ ")" ++
+    ++ " such that\n  " ++ showsPrec 10 t "" ++
     concat [ "[t" ++ show i ++ "/" ++ show tv ++ "]"
            | tv <- tvs | i <- [ 1.. ] :: [Integer] ] ++
-    "\n  = " ++ show t'
+    "\n  >: " ++ show t'
+    ++ "\n(" ++ s ++ ")"
 
 {- -- deprecated?
 -- Given a type variable tv, type t in which tv may be free,
@@ -908,7 +910,7 @@ withLet x mt e k = do
       return t'
     Nothing -> do
       tassert (qualConst te == Qu) $
-        "Type of top-level binding " ++ show x ++ " is not unlimited"
+        "Type of top-level binding `" ++ show x ++ "' is not unlimited"
       return te
   (d, g, x') <- tcPatt t' x
   tassert (isEmpty d) $
@@ -970,7 +972,7 @@ withMod x b k = do
 --   in a given scope, and give them an ugly printing name
 hideInvisible :: Monad m =>
                  Scope -> TC m Scope
-hideInvisible (PEnv modenv level) = do
+hideInvisible (PEnv modenv level) = return (PEnv modenv level) {- do
   level' <- withAny level $ everywhereM (mkM repair) level
   withAny level' $ do
     ((), modenv') <- mapAccumM
@@ -987,11 +989,12 @@ hideInvisible (PEnv modenv level) = do
         then t
         else TyApp (hide tc) ts cache
     repair t = return t
-
+    --
     hide :: TyCon -> TyCon
     hide tc@TyCon { tcName = J (Uid "?" : _) _ } = tc
     hide tc@TyCon { tcName = J qs (Lid k), tcId = i } =
       tc { tcName = J (Uid "?":qs) (Lid (k ++ ':' : show i)) }
+-}
 
 -- | Replace the printing name of each type with the shortest
 --   path to access that type.  (So unnecessary!)

@@ -38,7 +38,7 @@ primBasis  = [
 
     -- Primitive types:
     -- "unit" built in
-    dec [$dc| type any  = all '<a. '<a |],
+    "any"    `primtype` tcBot,
     dec [$dc| type bool = false | true |],
     "int"    `primtype` tcInt,
     dec [$dc| type char = int |],
@@ -187,6 +187,7 @@ primBasis  = [
       submod "Exn"    Basis.Exn.entries,
       submod "SessionType" [
         "dual"   `primtype` tcDual,
+        ";"      `primtype` tcSemi,
         "send"   `primtype` tcSend,
         "recv"   `primtype` tcRecv,
         "select" `primtype` tcSelect,

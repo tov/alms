@@ -21,7 +21,7 @@ module Type (
   -- ** Deep reduction
   isNormalType, normalizeTypeK, normalizeType,
   -- ** Freshness
-  alltv, Ftv(..), freshTyVar, freshTyVars,
+  Ftv(..), freshTyVar, freshTyVars,
   -- ** Substitutions
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
@@ -29,20 +29,19 @@ module Type (
   -- * Built-in types
   -- ** Type constructors
   mkTC,
-  tcUnit, tcInt, tcFloat, tcString, tcExn, tcTuple, tcUn, tcAf,
+  tcBot, tcUnit, tcInt, tcFloat, tcString, tcExn, tcTuple, tcUn, tcAf,
   tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual,
   -- ** Types
   tyNulOp, tyUnOp, tyBinOp,
   tyArr, tyLol,
   tyAll, tyEx,
-  tyBot, isTyBot,
   -- *** Convenience
-  tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf, tyTop,
+  tyBot, tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf, tyTop,
   tyIdent, tyConst, tySend, tyRecv, tyDual,
   tyTuple, tySelect, tyFollow, tySemi,
   (.*.), (.->.), (.-*.), (.:.),
   -- * Views
-  vtAppTc, vtBot,
+  vtAppTc, isBotType,
   -- ** Unfolds
   vtFuns, vtQus,
   -- * Re-exports
@@ -50,6 +49,8 @@ module Type (
   module Syntax.Kind,
   module Syntax.POClass,
   Stx.Quant(..),
+  -- * Debugging
+  dumpType,
 ) where
 
 import qualified Env
@@ -61,8 +62,9 @@ import qualified Syntax as Stx
 import Util
 import Viewable
 
-import Data.Generics (Typeable, Data, everything, mkQ)
+import qualified Control.Monad.Writer as CMW
 import Data.Char (isDigit)
+import Data.Generics (Typeable, Data, everything, mkQ)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -138,16 +140,13 @@ qualifier (TyMu tv t)     = qSubst tv minBound (qualifier t)
 --- Free type variables, freshness, and substitution
 ---
 
--- All mentioned type variables, including bound and free.
-alltv :: Data a => a -> S.Set TyVar
-alltv  = everything S.union (mkQ S.empty S.singleton)
-
 -- | Class for getting free type variables (from types, expressions,
 -- lists thereof, pairs thereof, etc.)
 class Ftv a where
   ftvVs :: a -> M.Map TyVar Variance
   ftv   :: a -> S.Set TyVar
   ftv    = M.keysSet . ftvVs
+  alltv :: a -> S.Set TyVar
 
 instance Ftv Type where
   ftv (TyApp _ ts _)  = S.unions (map ftv ts)
@@ -166,23 +165,32 @@ instance Ftv Type where
   ftvVs (TyVar tv)      = M.singleton tv 1
   ftvVs (TyQu _ tv t)   = M.delete tv (ftvVs t)
   ftvVs (TyMu tv t)     = M.delete tv (ftvVs t)
+  alltv (TyApp _ ts _)  = alltv ts
+  alltv (TyVar tv)      = alltv tv
+  alltv (TyFun q t1 t2) = alltv q `S.union` alltv t1 `S.union` alltv t2
+  alltv (TyQu _ tv t)   = tv `S.insert` alltv t
+  alltv (TyMu tv t)     = tv `S.insert` alltv t
 
 instance (Data a, Ord a, Ftv a) => Ftv (QDen a) where
   ftv   = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVar))
   ftvVs = everything M.union
             (mkQ M.empty (ftvVs :: a -> M.Map TyVar Variance))
+  alltv = everything S.union (mkQ S.empty (alltv :: a -> S.Set TyVar))
 
 instance Ftv a => Ftv [a] where
   ftv   = S.unions . map ftv
   ftvVs = M.unionsWith (+) . map ftvVs
+  alltv = S.unions . map alltv
 
 instance Ftv TyVar where
   ftv      = S.singleton
   ftvVs tv = M.singleton tv 1
+  alltv    = S.singleton
 
 instance (Ftv a, Ftv b) => Ftv (a, b) where
   ftv (a, b)   = ftv a `S.union` ftv b
   ftvVs (a, b) = M.unionWith (+) (ftvVs a) (ftvVs b)
+  alltv (a, b) = alltv a `S.union` alltv b
 
 -- | Given a type variable, rename it (if necessary) to make it
 --   fresh for a set of type variables.
@@ -503,21 +511,22 @@ mkTC i s = extTC TyCon {
   tcNext   = Nothing
 }
 
-tcUnit, tcInt, tcFloat, tcString,
+tcBot, tcUnit, tcInt, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcTuple, tcIdent, tcConst :: TyCon
 
-tcUnit       = mkTC (-1) "unit" ([], Env.fromList [(Uid "()", Nothing)])
-tcInt        = mkTC (-2) "int"
-tcFloat      = mkTC (-3) "float"
-tcString     = mkTC (-4) "string"
-tcExn        = mkTC (-5) "exn" (maxBound :: QDen Int)
-tcUn         = mkTC (-6) "U"
-tcAf         = mkTC (-7) "A"   (maxBound :: QDen Int)
-tcTuple      = mkTC (-8) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
+tcBot        = mkTC (-1) "any"
+tcUnit       = mkTC (-2) "unit" ([], Env.fromList [(Uid "()", Nothing)])
+tcInt        = mkTC (-3) "int"
+tcFloat      = mkTC (-4) "float"
+tcString     = mkTC (-5) "string"
+tcExn        = mkTC (-6) "exn" (maxBound :: QDen Int)
+tcUn         = mkTC (-7) "U"
+tcAf         = mkTC (-8) "A"   (maxBound :: QDen Int)
+tcTuple      = mkTC (-9) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
   [ ([TpVar (tvAf "a")], TyVar (tvAf "a")) ]
-tcIdent      = mkTC (-9)  "id"    (0 :: QDen Int) [(Qa, 1)]
+tcIdent      = mkTC (-10) "id"    (0 :: QDen Int) [(Qa, 1)]
     [([TpVar (tvAf "a")], TyVar (tvAf "a"))]
-tcConst      = mkTC (-10) "const" (0 :: QDen Int) [(Qa, 1)]
+tcConst      = mkTC (-11) "const" (0 :: QDen Int) [(Qa, 1)]
     [([TpVar (tvAf "a")], tyUnit)]
 
 -- For session types:
@@ -578,21 +587,13 @@ tyAll  = TyQu Stx.Forall
 tyEx  :: TyVar -> Type -> Type
 tyEx   = TyQu Stx.Exists
 
--- | Construct the bottom type
-tyBot :: QLit -> Type
-tyBot qlit = tyAll (TV (Lid "a") qlit) (TyVar (TV (Lid "a") qlit))
-
--- | To recognize the bottom type
-isTyBot :: Type -> Bool
-isTyBot (TyQu Stx.Forall tv (TyVar tv')) = tv == tv'
-isTyBot _                                = False
-
 -- | Preconstructed types
-tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf :: Type
+tyBot, tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf :: Type
 tyIdent, tyConst, tySend, tyRecv, tyDual :: Type -> Type
 tyTuple, tySelect, tyFollow, tySemi :: Type -> Type -> Type
 tyTop :: QLit -> Type
 
+tyBot    = tyNulOp tcBot
 tyUnit   = tyNulOp tcUnit
 tyInt    = tyNulOp tcInt
 tyFloat  = tyNulOp tcFloat
@@ -724,11 +725,10 @@ vtAppTc tc t = case headNormalizeType t of
   _                              -> t
 
 -- | Normalize a type enough to see if it's bottom
-vtBot :: Type -> Maybe Type
-vtBot t = case view t of
-  TyQu Stx.Forall tv (view -> TyVar tv')
-    | tv == tv' -> Just (tyAll tv (TyVar tv'))
-  _             -> Nothing
+isBotType :: Type -> Bool
+isBotType t = case view t of
+  TyApp tc _ _ -> tc == tcBot
+  _            -> False
 
 -- | Unfold the arguments of a function type, normalizing as
 --   necessary
@@ -743,3 +743,30 @@ vtQus  :: Stx.Quant -> Type -> ([TyVar], Type)
 vtQus u t = case view t of
   TyQu u' x t' | u == u' -> first (x:) (vtQus u t')
   _ -> ([], t)
+
+-- | Noisy type printer for debugging (includes type tags that aren't
+--   normally pretty-printed)
+dumpType :: Type -> String
+dumpType = CMW.execWriter . loop 0 where
+  loop i t0 = do
+    CMW.tell (replicate i ' ')
+    case t0 of
+      TyApp tc ts _ -> do
+        CMW.tell $ show (tcName tc) ++ "[" ++ show (tcId tc) ++ "] {\n"
+        mapM_ (loop (i + 2)) ts
+        CMW.tell (replicate i ' ' ++ "}\n")
+      TyFun q dom cod -> do
+        CMW.tell $ "-[" ++ show q ++ "]> {\n"
+        loop (i + 2) dom
+        loop (i + 2) cod
+        CMW.tell (replicate i ' ' ++ "}\n")
+      TyVar tv -> CMW.tell $ show tv
+      TyQu u a t -> do
+        CMW.tell $ show u ++ " " ++ show a ++ ". {\n"
+        loop (i + 2) t
+        CMW.tell (replicate i ' ' ++ "}\n")
+      TyMu a t -> do
+        CMW.tell $ "mu " ++ show a ++ ". {\n"
+        loop (i + 2) t
+        CMW.tell (replicate i ' ' ++ "}\n")
+

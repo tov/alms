@@ -67,3 +67,16 @@ instance Ord a => PO (S.Set a) where
   (\/) = S.union
   (/\) = S.intersection
 
+instance PO a => PO (Maybe a) where
+  Just a  \/? Just b  = liftM Just (a \/? b)
+  Nothing \/? b       = return b
+  a       \/? Nothing = return a
+
+  Just a  /\? Just b  = return (a /\? b)
+  Nothing /\? _       = return Nothing
+  _       /\? Nothing = return Nothing
+
+  Just a  <:  Just b    = a <: b
+  Nothing <:  _         = True
+  _       <:  Nothing   = False
+

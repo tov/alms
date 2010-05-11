@@ -6,7 +6,7 @@
 open SessionType
 
 type 'a protocol = ('a send; 'a send; 'a recv; unit
-                       +
+                       ,
                        'a send; 'a recv; unit) select
 
 let server =

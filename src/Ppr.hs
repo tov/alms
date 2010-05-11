@@ -157,7 +157,7 @@ instance Ppr (Decl i) where
         ]
       at:ats ->
         vcat [
-          vcat (text "abstype" <> pprAbsTy at :
+          vcat (text "abstype" <+> pprAbsTy at :
                 [ nest 4 $ text "and" <+> pprAbsTy ati | ati <- ats ])
             <+> text "with",
           nest 2 $ vcat (map ppr ds),

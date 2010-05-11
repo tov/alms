@@ -97,8 +97,7 @@ tyLol          = TyFun maxBound
 
 infixr 8 `tyArr`, `tyLol`
 
--- | Noisy type printer for debugging (includes type tags that aren't
---   normally pretty-printed)
+-- | Noisy type printer for debugging
 dumpType :: Int -> Type i -> IO ()
 dumpType i t0 = do
   putStr (replicate i ' ')
