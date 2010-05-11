@@ -574,10 +574,8 @@ subtypeTests = T.test
     TyMu b (tyAll d ((tyInt .->. TyVar d) .->. TyVar c))
   , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)  <:!
     TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)
-  {-
-  , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a) !<:
+  , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a) <:!
     TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)
-  -}
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a  <:!
     tyAll b (TyVar b .*. tyInt) .->. TyVar a 
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a !<:
@@ -598,10 +596,8 @@ subtypeTests = T.test
     TyMu a (TyVar a .*.          (tyInt   .->. tyInt))
   , TyMu b (TyVar b .*. (tyAll a (tyInt   .->. TyVar a)))  <:!
     TyMu a (TyVar a .*.          (tyInt   .->. tyInt))
-  {-
-  , TyMu a (tyAll b (TyVar b .->. TyVar a))  !<:
+  , TyMu a (tyAll b (TyVar b .->. TyVar a))  <:!
     TyMu a          (tyInt   .->. TyVar a)
-  -}
   , tyAll a (TyVar a .*. tyInt)    <:! TyMu a (TyVar a .*. tyInt)
   , tyAll a (TyVar a .*. TyVar a) !<: TyMu a (TyVar a .*. tyInt)
   , tyAll a (TyMu b (TyVar a .->. TyVar b))  <:!
@@ -613,6 +609,14 @@ subtypeTests = T.test
   , (tyInt .->. tyInt) .->. tyInt            <:!
     tyAll a (tyInt .->. TyVar a) .->. tyInt
   , tyAll a (tyInt .->. TyVar a) !<: tyInt .->. tyInt .-*. tyInt
+  , TyMu a (tyAll c (tyInt .->. tyAll d (TyVar c .->. TyVar a))) !<:
+    tyAll c (tyInt .->.
+             TyMu a (tyAll d (TyVar c .->.
+                              tyAll c (tyInt .->. TyVar a))))
+  , tyAll c (tyInt .->.
+             TyMu a (tyAll d (TyVar c .->.
+                              tyAll c (tyInt .->. TyVar a)))) !<:
+    TyMu a (tyAll c (tyInt .->. tyAll d (TyVar c .->. TyVar a)))
   ]
   where
   t1  <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)
@@ -817,14 +821,12 @@ joinTests = T.test
   , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)           /\!
     TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)           ==!
     TyMu b (tyAll c (tyInt .-*. TyVar c) .->. TyVar b)
-    {-
   , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a)         \/!
     TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)         ==!
-    TyMu b (tyAll d (tyUn .->. TyVar d) .->. TyVar b)
+    TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)
   , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a)         /\!
     TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)         ==!
-    TyMu b (tyAll d tyAf .->. TyVar b)
-    -}
+    TyMu b (tyAll d (TyVar b .-*. TyVar d) .->. TyVar b)
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a  \/!
     tyAll b (TyVar b .*. tyInt) .->. TyVar a  ==!
     tyAll b (TyVar b .*. tyInt) .->. TyVar a 
