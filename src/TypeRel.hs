@@ -46,13 +46,6 @@ replaceTyCon tc' = everywhere (mkT tycon `extT` tyapp) where
 qualConst :: Type -> QLit
 qualConst  = qConstBound . qualifier
 
-{- -- deprecated?
-squashUnTyVars :: QExp TyVar -> QExp TyVar
-squashUnTyVars = everywhere (mkT each) where
-  each (QeVar tv) | tvqual tv <: Qu = QeLit Qu
-  each qe = qe
--}
-
 -- | A fresh type for defining alpha equality up to mu.
 newtype AType = AType { unAType :: Type }
 
@@ -94,16 +87,12 @@ instance Ord AType where
       TyQu _ _ _    =?= _           = LT
       _             =?= TyQu _ _ _  = GT
 
-instance Eq Type where
-  t1 == t2 = t1 <: t2 && t2 <: t1
-
 type UT s t a = CMR.ReaderT (TCS s t) (ST t String) a
 
 -- | An environment mapping mu-bound type variables to their
 --   definition for unrolling ('Left') or forall-bound variables
 --   to a pair of lower and upper bounds, for instantiation ('Right')
-type UEnv t = M.Map TyVar (UBnd t)
-type UBnd t = Either Type (UVar t)
+type UEnv t = M.Map TyVar (UVar t)
 type UVar t = (Int, STRef t (Type, Type))
 
 data TCS s t = TCS {
@@ -152,8 +141,8 @@ runUT m set =
         tcsEnv2   = M.empty
       }
 
-getVar :: TyVar -> Field s t -> UT s t (Maybe (UBnd t))
-getVar tv field = CMR.ask >>! M.lookup tv . get field
+getVar :: TyVar -> Field s t -> UT s t (Maybe (UVar t))
+getVar tv field = CMR.asks (M.lookup tv . get field)
 
 -- | To add some unification variables to the scope, run the body,
 --   and return a map containing their lower and upper bounds.
@@ -166,7 +155,7 @@ withUVars tvs field body = do
   level <- CMR.asks tcsLevel
   refs  <- lift $ sequence
     [ do ref <- newTransSTRef (tyBot, tyTop (tvqual tv))
-         return (tv, Right (level, ref))
+         return (tv, (level, ref))
     | tv <- tvs ]
   res   <- CMR.local
     (\st -> update field st (M.fromList refs `M.union` get field st))
@@ -185,20 +174,12 @@ withUVars tvs field body = do
           else fail $
             "Unification cannot solve:\n" ++
             dumpType lower ++ " <: " ++ dumpType upper
-    | (_, Right (_, ref)) <- refs ]
+    | (_, (_, ref)) <- refs ]
   return (res, typs)
 
 -- | Bump up the quantification nesting level
 incU :: UT s t a -> UT s t a
 incU  = CMR.local (\st -> st { tcsLevel = tcsLevel st + 1 })
-
--- | Lexically bind a mu-bound variable, restoring its old value (if
---   it has one) upon leaving the block.
-withMuVar :: TyVar -> Type -> Field s t -> UT s t a -> UT s t a
-withMuVar tv t field body =
-  CMR.local
-    (\st -> update field st (M.insert tv (Left t) (get field st)))
-    body
 
 -- | Try to assert an upper bound on a unification variable.
 upperBoundUVar :: STRef t (Type, Type) -> Type -> UT s t ()
@@ -222,8 +203,7 @@ getUVars :: UT s t (TyVar -> Maybe (Int, STRef t (Type, Type)),
                     TyVar -> Maybe (Int, STRef t (Type, Type)))
 getUVars = do
   st <- CMR.ask
-  let look env tv = either (const Nothing) Just =<< M.lookup tv env
-  return (look (tcsEnv1 st), look (tcsEnv2 st))
+  return (flip M.lookup (tcsEnv1 st), flip M.lookup (tcsEnv2 st))
 
 -- | Check if two types have been seen before.  If so, return the
 --   previously stored answer.  If not, temporarily store the given
@@ -258,12 +238,6 @@ freshU qlit = do
   f:supply <- lift $ readSTRef ref
   lift $ writeSTRef ref supply
   return (f qlit)
-
--- | Hide all mu bindings in the given scope
-hideU :: UT s t a -> UT s t a
-hideU body = CMR.local hide body where
-  hide st = st { tcsEnv1 = M.filter isRight (tcsEnv1 st),
-                 tcsEnv2 = M.filter isRight (tcsEnv2 st) }
 
 -- | Print a debug message
 -- debug :: Show b => b -> UT s t ()
@@ -302,26 +276,22 @@ subtype limit uvars1 t1i uvars2 t2i =
         mt' <- getVar vt env1
         mu' <- getVar vu env2
         case (mt', mu') of
-          (Just (Left t'), _)             -> cmp t' u
-          (_, Just (Left u'))             -> cmp t u'
-          (Just (Right (_, t')), Nothing) -> upperBoundUVar t' u
-          (Nothing, Just (Right (_, u'))) -> lowerBoundUVar u' t
-          (Just (Right (lt, t')), Just (Right (lu, u')))
-            | lt > lu                     -> upperBoundUVar t' u
-            | lt < lu                     -> lowerBoundUVar u' t
-          _                               -> unless (vt == vu) $ giveUp t u
+          (Just (_, t'), Nothing) -> upperBoundUVar t' u
+          (Nothing, Just (_, u')) -> lowerBoundUVar u' t
+          (Just (lt, t'), Just (lu, u'))
+            | lt > lu             -> upperBoundUVar t' u
+            | lt < lu             -> lowerBoundUVar u' t
+          _                       -> unless (vt == vu) $ giveUp t u
       (TyVar vt, _) -> do
         mt' <- getVar vt env1
         case mt' of
-          Just (Left t')       -> cmp t' u
-          Just (Right (_, t')) -> upperBoundUVar t' u
-          Nothing              -> giveUp t u
+          Just (_, t') -> upperBoundUVar t' u
+          Nothing      -> giveUp t u
       (_, TyVar vu) -> do
         mu' <- getVar vu env2
         case mu' of
-          Just (Left u')       -> cmp t u'
-          Just (Right (_, u')) -> lowerBoundUVar u' t
-          Nothing              -> giveUp t u
+          Just (_, u') -> lowerBoundUVar u' t
+          Nothing      -> giveUp t u
       -- Type applications
       (TyApp tct ts _, TyApp tcu us _)
         | tct == tcu,
@@ -349,22 +319,17 @@ subtype limit uvars1 t1i uvars2 t2i =
         | qt == qu,
           tvqual tvu <: tvqual tvt -> do
         tv' <- freshU (tvqual tvu)
-        hideU $
-          cmp (tysubst tvt (TyVar tv') t1)
-              (tysubst tvu (TyVar tv') u1)
+        cmp (tysubst tvt (TyVar tv') t1)
+            (tysubst tvu (TyVar tv') u1)
       (TyQu Forall tvt t1, _) -> do
         tv' <- freshU (tvqual tvt)
         incU $
           withUVars [tv'] env1 $
-            hideU $
-              cmp (tysubst tvt (TyVar tv') t1) u
+            cmp (tysubst tvt (TyVar tv') t1) u
         return ()
       -- Recursion
-      (TyMu tvt t1, _) ->
-        -- Need to rename to dodge unification variables?
-        withMuVar tvt t env1 $ cmp t1 u
-      (_, TyMu tvu u1) ->
-        withMuVar tvu u env2 $ cmp t u1
+      (TyMu tvt t1, _) -> cmp (tysubst tvt t t1) u
+      (_, TyMu tvu u1) -> cmp t (tysubst tvu u u1)
       -- Failure
       _ -> giveUp t u
     --
@@ -445,12 +410,6 @@ jointype limit b t1i t2i =
       (TyVar vt, TyVar ut)
         | vt == ut ->
         return t
-      (TyVar vt, _) -> do
-        Just (Left t') <- getVar vt env1
-        cmp m t' u
-      (_, TyVar ut) -> do
-        Just (Left u') <- getVar ut env2
-        cmp m t u'
       -- Arrows
       (TyFun qt t1 t2, TyFun qu u1 u2) -> do
         q'  <- ifMJ direction qt qu
@@ -463,14 +422,13 @@ jointype limit b t1i t2i =
         q'  <- ifMJ direction (tvqual tvt) (tvqual tvu)
         tv' <- freshU q'
         liftM (TyQu qt tv') $
-          hideU $
-            cmp m (tysubst tvt (TyVar tv') t1)
-                  (tysubst tvu (TyVar tv') u1)
+          cmp m (tysubst tvt (TyVar tv') t1)
+                (tysubst tvu (TyVar tv') u1)
       -- Recursion
       (TyMu tvt t1, _) ->
-        withMuVar tvt t env1 $ cmp m t1 u
+        cmp m (tysubst tvt t t1) u
       (_, TyMu tvu u1) ->
-        withMuVar tvu u env2 $ cmp m t u1
+        cmp m t (tysubst tvu u u1)
       -- Failure
       _ ->
         fail $
@@ -528,6 +486,9 @@ runEither :: (String -> r) -> (a -> r) -> Either String a -> r
 runEither  = either
 
 -- | The Type partial order
+instance Eq Type where
+  t1 == t2 = t1 <: t2 && t2 <: t1
+
 instance PO Type where
   t1 <: t2     = runEither (const False) (const True)
                            (subtype 100 [] t1 [] t2)
@@ -613,8 +574,10 @@ subtypeTests = T.test
     TyMu b (tyAll d ((tyInt .->. TyVar d) .->. TyVar c))
   , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)  <:!
     TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)
+  {-
   , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a) !<:
     TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)
+  -}
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a  <:!
     tyAll b (TyVar b .*. tyInt) .->. TyVar a 
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a !<:
@@ -635,8 +598,10 @@ subtypeTests = T.test
     TyMu a (TyVar a .*.          (tyInt   .->. tyInt))
   , TyMu b (TyVar b .*. (tyAll a (tyInt   .->. TyVar a)))  <:!
     TyMu a (TyVar a .*.          (tyInt   .->. tyInt))
+  {-
   , TyMu a (tyAll b (TyVar b .->. TyVar a))  !<:
     TyMu a          (tyInt   .->. TyVar a)
+  -}
   , tyAll a (TyVar a .*. tyInt)    <:! TyMu a (TyVar a .*. tyInt)
   , tyAll a (TyVar a .*. TyVar a) !<: TyMu a (TyVar a .*. tyInt)
   , tyAll a (TyMu b (TyVar a .->. TyVar b))  <:!
@@ -852,12 +817,14 @@ joinTests = T.test
   , TyMu a (tyAll c (tyInt .-*. TyVar c) .->. TyVar a)           /\!
     TyMu b (tyAll d (tyInt .->. TyVar d) .->. TyVar b)           ==!
     TyMu b (tyAll c (tyInt .-*. TyVar c) .->. TyVar b)
+    {-
   , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a)         \/!
     TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)         ==!
     TyMu b (tyAll d (tyUn .->. TyVar d) .->. TyVar b)
   , TyMu a (tyAll c (TyVar a .-*. TyVar c) .->. TyVar a)         /\!
     TyMu b (tyAll d (TyVar b .->. TyVar d) .->. TyVar b)         ==!
     TyMu b (tyAll d tyAf .->. TyVar b)
+    -}
   , tyAll a (TyVar a .*. tyInt) .->. TyVar a  \/!
     tyAll b (TyVar b .*. tyInt) .->. TyVar a  ==!
     tyAll b (TyVar b .*. tyInt) .->. TyVar a 
@@ -958,6 +925,18 @@ uvarsTests = T.test
     tyRecv (TyVar e) .*. tyRecv (TyVar f)
   , T.assertEqual "'<c `supertype` '<d = ERROR"
       Nothing (subtype 100 [c] (TyVar c) [d] (TyVar d))
+  , tyFollow (TyVar a) (TyVar b) >:!
+    tyFollow tyUnit (tyRecv tyInt .:.
+                     TyMu e (tyFollow tyUnit (tyRecv tyInt .:.
+                                              TyVar e)))
+      ==! (tyUnit, (tyRecv tyInt .:.
+                     TyMu e (tyFollow tyUnit (tyRecv tyInt .:.
+                                              TyVar e))), noA, noA)
+  , tyFollow (TyVar a) (TyVar b) >:!
+    TyMu e (tyFollow tyUnit (tyRecv tyInt .:. TyVar e))
+      ==! (tyUnit, (tyRecv tyInt .:.
+                     TyMu e (tyFollow tyUnit (tyRecv tyInt .:.
+                                              TyVar e))), noA, noA)
   ]
   where
   t1 <:! t2 = Left (t1, t2)

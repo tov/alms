@@ -139,7 +139,7 @@ let clipper (plane: plane)
              if isPointAbovePlane pt plane
                then put oc pt
                else oc in
-         match follow[unit, point recv; mu 'x. (unit, point recv; 'x) follow] ic with
+         match follow ic with
          | Left _   -> finish oc
          | Right ic ->
              let (pt0, ic) = recv ic in
@@ -147,7 +147,7 @@ let clipper (plane: plane)
                           (oc: point stream dual channel)
                           (pt: point) : unit =
                        let oc = putVisible oc pt in
-                         match follow[unit, point recv; mu 'x. (unit, point recv; 'x) follow] ic with
+                         match follow ic with
                          | Left _   -> let oc = putCross oc pt pt0 in
                                          finish oc
                          | Right ic -> let (pt', ic) = recv ic in
@@ -157,7 +157,7 @@ let clipper (plane: plane)
 
 let printer : point stream channel -> unit =
   let rec loop (ic: point stream channel): unit =
-            match follow[unit, point recv; mu 'x. (unit, point recv; 'x) follow] ic with
+            match follow ic with
             | Left _   -> ()
             | Right ic -> let (pt, ic) = recv ic in
                             putStrLn (string_of_point pt);
@@ -186,7 +186,7 @@ let parser : main_prot dual channel -> unit =
 let main : unit -> unit =
   let rec get_planes (acc: plane list) (ic: main_prot channel)
                      : plane list * point stream channel =
-            match follow[point stream, plane recv; mu 'x. (point stream, plane recv; 'x) follow] ic with
+            match follow ic with
             | Left ic  -> (rev acc, ic)
             | Right ic -> let (plane, ic) = recv ic in
                             get_planes (Cons(plane,acc)) ic in
