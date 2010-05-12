@@ -13,3 +13,4 @@ affine-6.*
 html
 *.hi-boot
 *.o-boot
+test.alms
