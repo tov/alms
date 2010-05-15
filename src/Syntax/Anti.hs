@@ -1,38 +1,42 @@
 {-# LANGUAGE
       DeriveDataTypeable,
+      FlexibleContexts,
       FlexibleInstances,
-      QuasiQuotes,
+      PatternGuards,
       RankNTypes,
-      TemplateHaskell,
-      TypeFamilies,
-      TypeOperators #-}
+      TemplateHaskell #-}
 module Syntax.Anti (
   -- * Representation of antiquotes
   Anti(..),
   -- ** Raising errors when encountering antiquotes
   AntiFail(..), AntiError(..),
   -- * Generic anti projection/injection
-  Antible(..),
-  deriveAntible, deriveAntibleType,
-  (!!!),
+  Antible(..), deriveAntibles,
+  -- * Generic location expansion
+  LocAst(..), deriveLocAsts,
   -- * Antiquote expansion
   -- ** Generic expander construction
-  AntiDict,
-  expandAnti, expandAntible, expandAntible1,
-  expandAntiFun, expandAntibleType,
-  -- ** Antiquote dictionaries for various non-terminals
-  litAntis, pattAntis,
-  exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, qExpAntis, tyVarAntis,
-  declAntis, tyDecAntis, absTyAntis, modExpAntis,
-  lidAntis, uidAntis, qlidAntis, quidAntis, idAntis,
-  noAntis, optAntis, listAntis, maybeAntis
+  expandAntibles, expandAntible, expandAntibleType,
+  -- * Syntax classes and antiquote tables
+  -- ** Antiquote tables
+  -- *** Types
+  AntiDict, PreTrans, Trans(..),
+  -- *** Constructors
+  (=:), (=:!), (=:<), (&),
+  -- ** Syntax classs
+  -- *** Types
+  SyntaxClass(..), SyntaxTable,
+  -- *** Constructors
+  (=::), ($:), (!:),
 ) where
 
-import Loc (fromTHLoc)
+import Loc as Loc
 import Syntax.THQuasi
+import Syntax.Notable
+import Util
 
 import Data.Generics (Typeable, Data, extQ)
+import Data.List (elemIndex)
 import qualified Data.Map as M
 import Language.Haskell.TH as TH
 
@@ -104,238 +108,262 @@ instance Antible a => Antible (Maybe a) where
   prjAnti = (prjAnti =<<)
   dictOf  = const optAntis
 
-(!!!) :: Antible a => a -> String -> a
-stx !!! msg = case prjAnti stx of
-  Nothing -> stx
-  Just a  -> antierror msg a
+optAntis, listAntis :: AntiDict
 
--- Given the name of the constructor for storing Anti and the name
--- of an antiquote dictionary, generate an instance of Antible
-deriveAntible :: TH.Name -> TH.Name -> TH.Q [TH.Dec]
-deriveAntible con = deriveAntibleType (resType =<< reify con) con
-  where
-  resType (TH.DataConI _ t0 _ _) = loop t0 where
-    loop (TH.ForallT _ _ t) = loop t
-    loop (TH.AppT (TH.AppT TH.ArrowT _) t) = return t
-    loop _  = fail $ "deriveAntible: `" ++ show con ++ "' does not " ++
-                     "have exactly one argument"
-  resType _ = fail $ "deriveAntible: `" ++ show con ++
-                     "' is not a data constructor"
+listAntis 
+  = "list"  =:  Nothing
+  & "nil"   =:  Just (\_ -> conS '[] [])
+  & "list1" =:  Just (\v -> listS [varS (TH.mkName v) []])
 
--- Like deriveAntibleType, but requires the type for the instance
--- to declare as well.
-deriveAntibleType :: TH.TypeQ -> TH.Name -> TH.Name -> TH.Q [TH.Dec]
-deriveAntibleType typ con dict =
-  [d| instance Antible $typ where
-        injAnti     = $(conE con)
-        prjAnti stx = $(caseE [| stx |] [
-                          match (conP con [varP a])
-                                (normalB [| Just $(varE a) |])
-                                [],
-                          match wildP
-                                (normalB [| Nothing |])
-                                []
-                       ])
-        dictOf _    = $(varE dict)
-        injAntiList     = return . injAnti
-        prjAntiList [b] = prjAnti b
-        prjAntiList _   = Nothing
-        dictOfList      = const listAntis
-  |]
-  where
-  a = mkName "a"
+optAntis
+  = "opt"   =:  Nothing
+  & "some"  =:< 'Just
+  & "none"  =:  Just (\_ -> conS 'Nothing [])
+
+---
+--- Deriving antiquotes
+---
+
+-- Given the syntax table, we need to derive instances of Antible
+-- and antiquoters
+deriveAntibles :: SyntaxTable -> TH.Q [TH.Dec]
+deriveAntibles  = concatMapM each where
+  each SyntaxClass { scDict = Nothing } = return []
+  each SyntaxClass {
+         scDict = Just dict,
+         scName = name,
+         scAnti = con,
+         scWrap = wrap
+       } = do
+    TH.TyConI tc <- reify name
+    tvs <- case tc of
+      TH.DataD _ _ tvs _ _    -> return tvs
+      TH.NewtypeD _ _ tvs _ _ -> return tvs
+      TH.TySynD _ tvs _       -> return tvs
+      _ -> fail "deriveAntibles requires type"
+    a <- TH.newName "a"
+    let wrapper p = case wrap of
+          Nothing -> p
+          Just _  -> TH.conP 'N [TH.wildP, p]
+    [d| instance Antible $(foldl TH.appT (TH.conT name)
+                                 (map typeOfTyVarBndr tvs)) where
+          injAnti     = $(varE (maybe 'id id wrap)) . $(conE con)
+          prjAnti stx = $(caseE [| stx |] [
+                            match (wrapper (TH.conP con [TH.varP a]))
+                                  (TH.normalB [| Just $(TH.varE a) |])
+                                  [],
+                            match TH.wildP
+                                  (TH.normalB [| Nothing |])
+                                  []
+                         ])
+          dictOf _    = $(varE dict)
+          injAntiList     = return . injAnti
+          prjAntiList [b] = prjAnti b
+          prjAntiList _   = Nothing
+          dictOfList      = const listAntis
+      |]
+
+typeOfTyVarBndr :: TH.TyVarBndr -> TH.TypeQ
+typeOfTyVarBndr (TH.PlainTV tv)    = TH.varT tv
+typeOfTyVarBndr (TH.KindedTV tv k) = TH.sigT (TH.varT tv) k
 
 --
--- Antiquote table
+-- Location expanders
+--
+
+class LocAst stx where
+  toLocAstQ :: ToSyntax ast => TH.Name -> stx -> TH.Q ast
+
+deriveLocAst :: Name -> SyntaxClass -> TH.Q [TH.Dec]
+deriveLocAst _     SyntaxClass { scWrap = Nothing } = return []
+deriveLocAst build SyntaxClass { scName = name } = do
+  info <- reify name
+  case info of
+    -- Located t i
+    TyConI (TySynD _ _ (AppT (AppT _ (ConT _)) _)) ->
+      thenNote ''LocNote
+    -- N (note i) (t i)
+    TyConI (TySynD _ _ (AppT (AppT _ (AppT (ConT note) _))
+                             (AppT (ConT _) _))) ->
+      thenNote note
+    _ -> return []
+  where
+  --
+  thenNote note = do
+    info <- reify note
+    case info of
+      TyConI (DataD _ _ _ [con] _)  -> thenCon con
+      TyConI (NewtypeD _ _ _ con _) -> thenCon con
+      _ -> runIO (print (name, info)) >> return []
+  --
+  thenCon (ForallC _ _ con)     = thenCon con
+  thenCon (InfixC st1 dcon st2) = thenDCon dcon [snd st1, snd st2]
+  thenCon (NormalC dcon sts)    = thenDCon dcon (map snd sts)
+  thenCon (RecC dcon vsts)      = thenDCon dcon [t | (_,_,t) <- vsts]
+  --
+  thenDCon dcon ts
+    | Just ix <- elemIndex (ConT ''Loc.Loc) ts
+      = [d| instance Data i => LocAst ($(conT name) i) where
+              toLocAstQ loc stx =
+                do
+                  ast <- $(varE build) stx
+                  case ast of
+                    VarE _ -> return ast
+                    _      -> varS $(stringE (show 'setLoc))
+                                   [return ast, varS loc []]
+                `whichS'`
+                do
+                  let pat preAstQ =
+                        conS $(stringE (show 'N))
+                            [ conS $(stringE (show dcon))
+                                   $(listE [ if i == ix
+                                               then [| varS loc [] |]
+                                               else [| wildS |]
+                                           | i <- [0 .. length ts - 1] ])
+                            , preAstQ ]
+                  ast <- $(varE build) stx
+                  case ast of
+                    VarP v -> asP v (pat wildP)
+                    ConP _ [_, preAst] -> pat (return preAst)
+                    _ -> fail $
+                      "BUG! toLocAstQ did not recognize " ++
+                      "expanded code: " ++ show ast
+          |]
+    | otherwise = return []
+
+deriveLocAsts :: Name -> SyntaxTable -> TH.Q [TH.Dec]
+deriveLocAsts name = concatMapM (deriveLocAst name)
+
+--
+-- Antiquote expanders
+--
+
+expandAntibles :: Name -> SyntaxTable -> ExpQ
+expandAntibles name = foldr each [| id |] where
+  each sc rest = [| $(expandAntible name sc) . $rest |]
+
+expandAntible :: Name -> SyntaxClass -> ExpQ
+expandAntible build SyntaxClass { scName = name, scWrap = wrap } = do
+  info <- reify name
+  case info of
+    TyConI (DataD _ _ [_] _ _)    -> expandAntible1 build wrap name
+    TyConI (NewtypeD _ _ [_] _ _) -> expandAntible1 build wrap name
+    TyConI (TySynD _ [_] _)       -> expandAntible1 build wrap name
+    _                             -> expandAntible0 build wrap name
+
+expandAntible0 :: Name -> Maybe Name -> Name -> ExpQ
+expandAntible0 build maybeWrap typeName =
+  [| $(expandAntibleType build maybeWrap [t| $_t |]) |]
+  where _t = conT typeName
+
+expandAntible1 :: Name -> Maybe Name -> Name -> ExpQ
+expandAntible1 build maybeWrap typeName =
+  [| $(expandAntibleType build maybeWrap [t| $_t () |]) |]
+  where _t = conT typeName
+
+expandAntibleType :: Name -> Maybe Name -> TypeQ -> ExpQ
+expandAntibleType build maybeWrap _t =
+  let main = case maybeWrap of
+        Nothing  ->
+          [| \x -> expandAntiFun (x:: $_t) |]
+        Just wrap ->
+          [| \x -> expandWrappedAntiFun
+                     $(varE build)
+                     (mkName $(stringE (show wrap)))
+                     (x:: $_t) |]
+   in
+  [| (`extQ` $main)
+   . (`extQ` (\x -> expandAntiFun (x:: Maybe $_t)))
+   . (`extQ` (\x -> expandAntiFun (x:: [$_t]))) |]
+
+expandWrappedAntiFun :: (Antible (N note a), ToSyntax b) =>
+                        (a -> Q b) -> Name -> N note a -> Maybe (Q b)
+expandWrappedAntiFun build wrap stx =
+  Just $ case prjAnti stx of
+    Just (Anti tag name) -> case M.lookup tag (dictOf stx) of
+      Just (Trans trans)   -> case trans of
+        Just f               -> doWrap (f name)
+        Nothing              -> varS name []
+      Nothing              -> fail $
+        "Unrecognized antiquote tag: `" ++ tag ++ "'"
+    Nothing              -> doWrap (build (dataOf stx))
+  where
+  doWrap preStx = varS wrap [preStx] `whichS` conS 'N [wildS, preStx]
+
+expandAntiFun :: (Antible a, ToSyntax b) => a -> Maybe (Q b)
+expandAntiFun stx = do
+  Anti tag name <- prjAnti stx
+  case M.lookup tag (dictOf stx) of
+    Just trans -> return $ case unTrans trans of
+      Just f     -> f name
+      Nothing    -> varS name []
+    Nothing    -> fail $ "Unrecognized antiquote tag: `" ++ tag ++ "'"
+
+--
+-- Antiquote and syntax table
 --
 
 -- | A pat/exp-generic parser
-type PreTrans = forall b. ToSyntax b => String -> Q b
+type PreTrans = forall b. ToSyntax b => Maybe (String -> Q b)
 -- | A pat/exp-generic parser, wrapped
 newtype Trans = Trans { unTrans :: PreTrans }
 -- | A dictionary mapping antiquote tags to parsers
 type AntiDict = M.Map String Trans
 
--- | Generate an antiquote expander given the name of the constructor
---   to match to extract antiquotes and the name of the dictionary
-expandAnti    :: Name -> Name -> ExpQ
-expandAnti     = expandAntiPrj [| id |]
+-- | A descriptor for a syntactic category, used for generating
+--   antiquotes
+data SyntaxClass = SyntaxClass {
+  scName    :: Name,
+  -- | The name of the constructor for antiquotes
+  scAnti    :: Name,
+  -- | The safe injection from the underlying type to the main type
+  scWrap    :: Maybe Name,
+  -- | The dictionary of splice tags
+  scDict    :: Maybe Name
+}
 
--- | Generate an antiquote expander using the 'Antible' class
---   projection, given the name of a dictionary
-expandAntible'   :: TypeQ -> Name -> ExpQ
-expandAntible' _t = expandAntiPrj [| prjAnti:: $_t -> Maybe Anti |] 'Just
+type SyntaxTable = [SyntaxClass]
 
--- | Generate an antiquote expander, given the name of a projection
---   to get antiquotes out of things, a constructor to match them out,
---   and the name of a dictionary.
-expandAntiPrj :: ExpQ -> Name -> Name -> ExpQ
-expandAntiPrj prj con dict = do
-  term <- newName "term"
-  tag  <- newName "tag"
-  name <- newName "name"
-  lamE [varP term] $
-    caseE [| $prj $(varE term) |] [
-      match (conP con [conP 'Anti [varP tag, varP name]])
-            (normalB [| case M.lookup $(varE tag) $(varE dict) of
-                          Just tr -> Just (unTrans tr $(varE name))
-                          Nothing -> Nothing {- Just $ fail $
-                            "unknown antiquote `" ++ $(varE tag) ++
-                            "' for dict " ++
-                            $(litE (stringL (nameBase dict))) -}
-                      |])
-            [],
-      match wildP
-            (normalB [| Nothing |])
-            []
-    ]
+-- | Construct a single syntax class from the type name and antiquote
+--   constructor
+(=::) :: TH.Name -> TH.Name -> SyntaxClass
+name =:: anti = SyntaxClass {
+  scName   = name,
+  scAnti   = anti,
+  scWrap   = Nothing,
+  scDict   = Nothing
+}
 
-expandAntible :: Name -> ExpQ
-expandAntible name = do
-  info <- reify name
-  case info of
-    TyConI (DataD _ _ [_] _ _)    -> expandAntible1 name
-    TyConI (NewtypeD _ _ [_] _ _) -> expandAntible1 name
-    _                             -> expandAntible0 name
+-- | Extend a syntax class with the name of a function that lifts
+--   from pre-syntax to syntax
+(!:) :: SyntaxClass -> TH.Name -> SyntaxClass
+tab !: name = tab { scWrap = Just name }
 
-expandAntible0 :: Name -> ExpQ
-expandAntible0 name =
-  [| $(expandAntibleType [t| $_t |]) |]
-  where _t = conT name
+-- | Extend a syntax class with the name of an antiquote dictionary
+($:) :: SyntaxClass -> TH.Name -> SyntaxClass
+tab $: dict = tab { scDict = Just dict }
 
-expandAntible1 :: Name -> ExpQ
-expandAntible1 name = 
-  [| $(expandAntibleType [t| $_t () |]) |]
-  where _t = conT name
+infixl 2 =::, !:, $:
 
-expandAntibleType :: TypeQ -> ExpQ
-expandAntibleType _t =
-  [| (`extQ` (\x -> expandAntiFun (x:: $_t)))
-   . (`extQ` (\x -> expandAntiFun (x:: Maybe $_t)))
-   . (`extQ` (\x -> expandAntiFun (x:: [$_t]))) |]
+-- | Append two antiquote dictionaries
+(&) :: AntiDict -> AntiDict -> AntiDict
+(&)  = M.union
 
-expandAntiFun :: (Antible a, ToSyntax b) => a -> Maybe (Q b)
-expandAntiFun stx = do
-  Anti tag name <- prjAnti stx
-  trans         <- M.lookup tag (dictOf stx)
-  return (unTrans trans name)
+infixr 1 &
 
 -- | Construct a singleton antiquote dictionary from a key and
 --   generic parser
 (=:) :: String -> PreTrans -> AntiDict
 a =: b = M.singleton a (Trans b)
-infix 2 =:
 
--- | Concatenate antiquote dictionaries
-(&) :: AntiDict -> AntiDict -> AntiDict
-(&)  = M.union
-infixl 1 &
+-- | Create singleton dictionary with default (tagless) entry
+(=:!)  :: String -> PreTrans -> AntiDict
+a =:! b = M.union ("" =: b) (a =: b)
 
-litAntis, pattAntis,
-  exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, qExpAntis, tyVarAntis,
-  declAntis, tyDecAntis, absTyAntis, modExpAntis,
-  lidAntis, uidAntis, qlidAntis, quidAntis, idAntis,
-  noAntis, optAntis, listAntis, maybeAntis
-    :: AntiDict
+-- | Construct an antiquote dictionary for matching a
+--   simple constructor
+(=:<) :: String -> TH.Name -> AntiDict
+a =:< n  = a =: Just (\v -> conS n [varS v []])
 
-litAntis   = "lit"   =: [$th| <_> |]
-           & "str"   =: [$th| LtStr <_> |]
-           & "int"   =: [$th| LtInt <_> |]
-           & "flo"   =: [$th| LtFloat <_> |]
-           & "float" =: [$th| LtFloat <_> |]
-           & "antiL" =: [$th| LtAnti <_> |]
+infix 2 =:, =:!, =:<
 
-pattAntis  = ""      =: [$th| <_> |]
-           & "patt"  =: [$th| <_> |]
-           & "anti"  =: [$th| PaAnti <_> |]
-
-exprAntis  = ""      =: [$th| <_> |]
-           & "expr"  =: [$th| <_> |]
-           & "id"    =: [$th| exId <_>
-                            | Expr { expr_ = ExId <_> } |]
-           & "expr_" =: [$th| expr__tag_for_patterns_only
-                            | Expr { expr_ = <_> } |]
-           & "anti"  =: [$th| exAnti <_>
-                            | Expr { expr_ = ExAnti <_> } |]
-bindingAntis
-           = ""      =: [$th| <_> |]
-           & "bind"  =: [$th| <_> |]
-           & "anti"  =: [$th| BnAnti <_> |]
-caseAltAntis
-           = "case"  =: [$th| <_> |]
-           & "caseA" =: [$th| CaAnti <_> |]
-
-typeAntis  = ""      =: [$th| <_> |]
-           & "type"  =: [$th| <_> |]
-           & "stx"   =: (let tts = "typeToStx" in [$th| <tts> <_> |])
-           & "anti"  =: [$th| TyAnti <_> |]
-
-quantAntis = "quant" =: [$th| <_> |]
-           & "antiQ" =: [$th| QuAnti <_> |]
-
-qExpAntis  = ""      =: [$th| <_> |]
-           & "qexp"  =: [$th| <_> |]
-           & "qlit"  =: [$th| QeLit <_> |]
-           & "qvar"  =: [$th| QeVar <_> |]
-           & "qdisj" =: [$th| qeDisj <_> | QeDisj <_> |]
-           & "qconj" =: [$th| qeConj <_> | QeConj <_> |]
-           & "anti"  =: [$th| QeAnti <_> |]
-
-tyVarAntis = ""      =: [$th| <_> |]
-           & "tyvar" =: [$th| <_> |]
-
-declAntis  = ""      =: [$th| <_> |]
-           & "decl"  =: [$th| <_> |]
-           & "anti"  =: [$th| DcAnti <_> |]
-
-tyDecAntis = ""      =: [$th| <_> |]
-           & "tydec" =: [$th| <_> |]
-           & "anti"  =: [$th| TdAnti <_> |]
-
-absTyAntis = ""      =: [$th| <_> |]
-           & "absty" =: [$th| <_> |]
-           & "anti"  =: [$th| AbsTyAnti <_> |]
-
-modExpAntis= ""      =: [$th| <_> |]
-           & "mod"   =: [$th| <_> |]
-           & "anti"  =: [$th| MeAnti <_> |]
-
-lidAntis   = "lid"   =: [$th| <_> |]
-           & "name"  =: [$th| Lid <_> |]
-uidAntis   = "uid"   =: [$th| <_> |]
-           & "uname" =: [$th| Uid <_> |]
-qlidAntis  = "qlid"  =: [$th| <_> |]
-           & "qname" =: [$th| qlid <_> |] -- error in pattern context
-quidAntis  = "quid"  =: [$th| <_> |]
-           & "quname"=: [$th| quid <_> |] -- error in pattern context
-idAntis    = "id"    =: [$th| <_> |]
-
-noAntis    = M.empty
-
-optAntis   = "opt"   =: [$th| <_> |]
-           & "some"  =: [$th| Just <_> |]
-           & "none"  =: const [$th| Nothing |]
-
-listAntis  = "list"  =: [$th| <_> |]
-           & "nil"   =: const [$th| [ ] |]
-           & "list1" =: [$th| [ <_> ] |]
-
-maybeAntis = optAntis & listAntis
-
--- DcLet _ _ MaybeType _
--- DcType _ ListTyDec
--- DcAbs _ ListAbsTy ListDecl
--- DcLoc _ ListDecl ListDecl
--- DcExn _ _ MaybeType
--- MeStr ListDecl
--- ExCase _ ListCaseAlt
--- ExLetRec ListBinding _
--- ExPack MaybeType _ _
--- ExCast _ MaybeType _
--- PaCon _ MaybePatt _
--- TyCon _ ListType _
--- BnAnti
--- CaAnti
--- TdAnti
--- AbsTyAnti

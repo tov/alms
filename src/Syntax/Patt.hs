@@ -1,10 +1,18 @@
 {-# LANGUAGE
       DeriveDataTypeable,
-      TemplateHaskell #-}
+      FlexibleInstances,
+      NoMonomorphismRestriction,
+      TemplateHaskell,
+      TypeFamilies,
+      TypeSynonymInstances #-}
 module Syntax.Patt (
-  Patt(..), pv, ptv
+  Patt'(..), Patt,
+  paWild, paVar, paCon, paPair, paLit, paAs, paPack, paAnti,
+  ptv
 ) where
 
+import Meta.DeriveNotable
+import Syntax.Notable
 import Syntax.Anti
 import Syntax.Ident
 import Syntax.Lit
@@ -13,7 +21,7 @@ import qualified Data.Set as S
 import Data.Generics (Typeable, Data, everything, mkQ)
 
 -- | Patterns
-data Patt i
+data Patt' i
   -- | wildcard
   = PaWild
   -- | variable pattern
@@ -32,17 +40,23 @@ data Patt i
   | PaAnti Anti
   deriving (Typeable, Data)
 
--- | The set of variables bound by a pattern
-pv :: Patt i -> S.Set Lid
-pv PaWild               = S.empty
-pv (PaVar x)            = S.singleton x
-pv (PaCon _ Nothing _)  = S.empty
-pv (PaCon _ (Just x) _) = pv x
-pv (PaPair x y)         = pv x `S.union` pv y
-pv (PaLit _)            = S.empty
-pv (PaAs x y)           = pv x `S.union` S.singleton y
-pv (PaPack _ x)         = pv x
-pv (PaAnti a)           = antierror "pv" a
+type Patt i = Located Patt' i
+
+deriveNotable ''Patt
+
+instance Dv (Patt' i) where
+  dv PaWild               = S.empty
+  dv (PaVar x)            = S.singleton x
+  dv (PaCon _ Nothing _)  = S.empty
+  dv (PaCon _ (Just x) _) = dv x
+  dv (PaPair x y)         = dv x `S.union` dv y
+  dv (PaLit _)            = S.empty
+  dv (PaAs x y)           = dv x `S.union` S.singleton y
+  dv (PaPack _ x)         = dv x
+  dv (PaAnti a)           = antierror "dv" a
+
+instance Dv (N note (Patt' i)) where
+  dv = dv . dataOf
 
 ptv :: Id i => Patt i -> S.Set TyVar
 ptv = everything S.union $ mkQ S.empty S.singleton

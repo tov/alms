@@ -1,21 +1,28 @@
 -- | Source locations
 {-# LANGUAGE
-      DeriveDataTypeable #-}
+      DeriveDataTypeable,
+      TypeFamilies #-}
 module Loc (
   -- * Type and constructors
   Loc(..),
-  initial, mkBogus, bogus,
+  initial, spanLocs, mkBogus, bogus,
   -- * Destructors
-  isBogus,
+  isBogus, startOfLoc, endOfLoc,
 
   -- * Generic function for clearing source locations everywhere
   scrub,
-  
-  -- * Type class interface
+
+  -- * For locating things
+  -- ** Datatype interface
+  {-
+  Located(..), mkBogL, bogL,
+  -}
+
+  -- ** Type class interface
   Locatable(..), Relocatable(..), (<<@),
 
   -- * Interface to 'Parsec' and 'TH' source positions
-  toSourcePos, fromSourcePos, fromTHLoc
+  toSourcePos, fromSourcePos, fromSourcePosSpan, fromTHLoc
 ) where
 
 import Data.Generics (Typeable, Data, everywhere, mkT)
@@ -24,24 +31,53 @@ import qualified Language.Haskell.TH as TH
 
 -- | Source locations
 data Loc = Loc {
-    file :: !String,
-    line :: !Int,
-    col  :: !Int
+    file  :: !String,
+    line1 :: !Int,
+    col1  :: !Int,
+    line2 :: !Int,
+    col2  :: !Int
   }
   deriving (Eq, Ord, Typeable, Data)
 
+-- | Construct a location spanning two locations; assumes the locations
+--   are correctly ordered.
+spanLocs :: Loc -> Loc -> Loc
+spanLocs loc1 loc2
+  | isBogus loc2 = loc1
+  | isBogus loc1 = loc2
+  | otherwise    =
+      Loc (file loc1) (line1 loc1) (col1 loc1) (line2 loc2) (col2 loc2)
+
+-- | Get a single-point location from the start of a span
+startOfLoc :: Loc -> Loc
+startOfLoc loc = Loc (file loc) (line1 loc) (col1 loc) (line1 loc) (col1 loc)
+
+-- | Get a single-point location from the end of a span
+endOfLoc :: Loc -> Loc
+endOfLoc loc = Loc (file loc) (line2 loc) (col2 loc) (line2 loc) (col2 loc)
+
 -- | Extract a 'Parsec' source position
 toSourcePos :: Loc -> SourcePos
-toSourcePos loc = newPos (file loc) (line loc) (col loc)
+toSourcePos loc = newPos (file loc) (line1 loc) (col1 loc)
 
 -- | Create from a 'Parsec' source position
 fromSourcePos :: SourcePos -> Loc
-fromSourcePos pos = Loc (sourceName pos) (sourceLine pos) (sourceColumn pos)
+fromSourcePos pos
+  = Loc (sourceName pos) (sourceLine pos) (sourceColumn pos)
+                         (sourceLine pos) (sourceColumn pos)
+
+-- | Create a span from two 'Parsec' source positions
+fromSourcePosSpan :: SourcePos -> SourcePos -> Loc
+fromSourcePosSpan pos1 pos2
+  = Loc (sourceName pos1) (sourceLine pos1) (sourceColumn pos1)
+                          (sourceLine pos2) (sourceColumn pos2)
 
 fromTHLoc :: TH.Loc -> Loc
 fromTHLoc loc = Loc (TH.loc_filename loc)
                     (fst (TH.loc_start loc))
                     (snd (TH.loc_start loc))
+                    (fst (TH.loc_end loc))
+                    (snd (TH.loc_end loc))
 
 -- | The initial location for a named source file
 initial :: String -> Loc
@@ -55,12 +91,34 @@ bogus    = mkBogus "<bogus>"
 -- | A named bogus location; useful to provide default locations
 --   for generated code without losing real locations.
 mkBogus :: String -> Loc
-mkBogus s = Loc s (-1) (-1)
+mkBogus s = Loc s (-1) (-1) (-1) (-1)
 
 -- | Is the location bogus?
 isBogus :: Loc -> Bool
-isBogus (Loc _ (-1) (-1)) = True
-isBogus _                 = False
+isBogus (Loc _ (-1) (-1) (-1) (-1)) = True
+isBogus _                           = False
+
+-- | A value with a location attached
+{-
+data Located a = L {
+                   locatedLoc :: !Loc,
+                   locatedVal :: !a
+                 }
+  deriving (Eq, Ord, Typeable, Data)
+
+mkBogL :: String -> a -> Located a
+mkBogL  = L . mkBogus
+
+bogL :: a -> Located a
+bogL  = mkBogL "<bogus>"
+
+instance Show a => Show (Located a) where
+  showsPrec p = showsPrec p . locatedVal
+
+instance Viewable (Located a) where
+  type View (Located a) = a
+  view = locatedVal
+-}
 
 -- | Class for types that carry source locations
 class Locatable a where
@@ -69,6 +127,14 @@ class Locatable a where
 -- | Class for types that can have their source locations updated
 class Relocatable a where
   setLoc   :: a -> Loc -> a
+
+{-
+instance Locatable (Located a) where
+  getLoc (L loc _) = loc
+
+instance Relocatable (Located a) where
+  setLoc (L _ a) loc = L loc a
+-}
 
 instance Locatable Loc where
   getLoc   = id
@@ -85,14 +151,7 @@ instance Relocatable a => Relocatable (Maybe a) where
   setLoc (Just a) l = Just (setLoc a l)
 
 instance Locatable a => Locatable [a] where
-  getLoc []              = bogus
-  getLoc (x:xs)
-    | isBogus (getLoc x) = getLoc xs
-    | otherwise          = getLoc x
-
-instance Relocatable a => Relocatable [a] where
-  setLoc [] _            = []
-  setLoc (x:xs) l        = (setLoc x l:xs)
+  getLoc = foldr spanLocs bogus . map getLoc
 
 instance (Locatable a, Locatable b) => Locatable (Either a b) where
   getLoc (Left x)  = getLoc x
@@ -103,48 +162,21 @@ instance (Relocatable a, Relocatable b) => Relocatable (Either a b) where
   setLoc (Right x) l = Right (setLoc x l)
 
 instance (Locatable a, Locatable b) => Locatable (a, b) where
-  getLoc (x, y)
-    | not (isBogus (getLoc x)) = getLoc x
-    | otherwise                = getLoc y
-
-instance (Relocatable a, Relocatable b) => Relocatable (a, b) where
-  setLoc (x, y) l        = (setLoc x l, y)
+  getLoc (x, y) = getLoc x `spanLocs` getLoc y
 
 instance (Locatable a, Locatable b, Locatable c) =>
          Locatable (a, b, c) where
-  getLoc (x, y, z)
-    | not (isBogus (getLoc x)) = getLoc x
-    | not (isBogus (getLoc y)) = getLoc y
-    | otherwise                = getLoc z
-
-instance (Relocatable a, Relocatable b, Relocatable c) =>
-         Relocatable (a, b, c) where
-  setLoc (x, y, z) l           = (setLoc x l, y, z)
+  getLoc (x, y, z) = getLoc x `spanLocs` getLoc y `spanLocs` getLoc z
 
 instance (Locatable a, Locatable b, Locatable c, Locatable d) =>
          Locatable (a, b, c, d) where
-  getLoc (x, y, z, v)
-    | not (isBogus (getLoc x)) = getLoc x
-    | not (isBogus (getLoc y)) = getLoc y
-    | not (isBogus (getLoc z)) = getLoc z
-    | otherwise                = getLoc v
-
-instance (Relocatable a, Relocatable b, Relocatable c, Relocatable d) =>
-         Relocatable (a, b, c, d) where
-  setLoc (x, y, z, v) l        = (setLoc x l, y, z, v)
+  getLoc (x, y, z, v) = getLoc x `spanLocs` getLoc y `spanLocs` getLoc z
+                          `spanLocs` getLoc v
 
 instance (Locatable a, Locatable b, Locatable c, Locatable d, Locatable e) =>
          Locatable (a, b, c, d, e) where
-  getLoc (x, y, z, v, w)
-    | not (isBogus (getLoc x)) = getLoc x
-    | not (isBogus (getLoc y)) = getLoc y
-    | not (isBogus (getLoc z)) = getLoc z
-    | not (isBogus (getLoc v)) = getLoc v
-    | otherwise                = getLoc w
-
-instance (Relocatable a, Relocatable b, Relocatable c, Relocatable d, Relocatable e) =>
-         Relocatable (a, b, c, d, e) where
-  setLoc (x, y, z, v, w) l     = (setLoc x l, y, z, v, w)
+  getLoc (x, y, z, v, w) = getLoc x `spanLocs` getLoc y `spanLocs` getLoc z
+                             `spanLocs` getLoc v `spanLocs` getLoc w
 
 instance Relocatable b => Relocatable (a -> b) where
   setLoc f loc x = setLoc (f x) loc
@@ -160,7 +192,14 @@ scrub a = everywhere (mkT bogosify) a where
   bogosify  = const bogus
 
 instance Show Loc where
-  showsPrec p loc
-    | isBogus loc = showChar '(' . showString (file loc) . showChar ')'
-    | otherwise   = showsPrec p (toSourcePos loc)
+  showsPrec _ loc
+    | isBogus loc = showString (file loc)
+    | otherwise   =
+        showString (file loc) . showChar ':' .
+        spn (line1 loc) (line2 loc) . showChar ':' .
+        spn (col1 loc) (col2 loc)
+    where
+    spn n1 n2 = if n1 == n2
+                  then shows n1
+                  else shows n1 . showChar '-' . shows n2
 

@@ -1,5 +1,6 @@
 {-# LANGUAGE
-      ScopedTypeVariables #-}
+      ScopedTypeVariables,
+      TypeFamilies #-}
 -- | Parser
 module Parser (
   -- * The parsing monad
@@ -8,7 +9,7 @@ module Parser (
   parseQuasi,
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
-    parseTyDec, parseType, parseQExp, parseExpr, parsePatt,
+    parseTyDec, parseAbsTy, parseType, parseQExp, parseExpr, parsePatt,
   -- * Convenience parsers (quick and dirty)
   pp, pds, pd, pme, ptd, pt, pqe, pe, px
 ) where
@@ -18,7 +19,6 @@ import Paths
 import Prec
 import Syntax
 import Sigma
-import Loc
 import Lexer
 
 import Data.Generics (Data)
@@ -47,7 +47,7 @@ parse p  = runParser p state0
 
 -- | Run a parser on the given string in quasiquote mode
 parseQuasi :: Data a =>
-              String -> (Maybe Char -> Maybe String -> P a) -> TH.Q a
+              String -> (Maybe Char -> Maybe TH.Name -> P a) -> TH.Q a
 parseQuasi str p = do
   setter <- TH.location >>! mkSetter
   let parser = do
@@ -59,7 +59,7 @@ parseQuasi str p = do
                                char '!' >> return Nothing ],
                    return (Just "_loc")
                  ]
-        p iflag lflag
+        p iflag (fmap TH.mkName lflag)
   case runParser parser state0 { stAnti = True } "-" str of
     Left e  -> fail (show e)
     Right a -> return (scrub a)
@@ -85,9 +85,10 @@ curLoc  = getPosition >>! fromSourcePos
 
 addLoc :: Relocatable a => P a -> P a
 addLoc p = do
-  loc <- curLoc
-  a   <- p
-  return (a <<@ loc)
+  before <- getPosition
+  a      <- p
+  after  <- getPosition
+  return (a <<@ fromSourcePosSpan before after)
 
 punit :: P ()
 punit  = pure ()
@@ -158,13 +159,15 @@ antiblep    = antip (dictOf (undefined::a)) >>! injAnti
 antioptp   :: Antible a => P a -> P (Maybe a)
 antioptp    = antioptaroundp id
 
-antioptaroundp :: Antible a => (P (Maybe a) -> P (Maybe a)) -> P a -> P (Maybe a)
+antioptaroundp :: Antible a =>
+                  (P (Maybe a) -> P (Maybe a)) ->
+                  P a -> P (Maybe a)
 antioptaroundp wrap p = wrap present <|> pure Nothing
   where present = antiblep
               <|> Just <$> antiblep
               <|> Just <$> p
 
-antilist1p       :: Antible a => P () -> P a -> P [a]
+antilist1p       :: Antible a => P b -> P a -> P [a]
 antilist1p sep p  = antiblep
                 <|> sepBy1 (antiblep <|> p) sep
 
@@ -203,8 +206,10 @@ quidp  = pathp (uidp >>! flip J)
      <|> antiblep
 
 -- Qualified lowercase identifiers:
--- qlidp :: P QLid
--- qlidp  = pathp (lidp >>! flip J)
+--  - module name identifier lists
+qlidp :: P QLid
+qlidp  = pathp (lidp >>! flip J)
+     <|> antiblep
 
 -- Qualified lowercase identifiers or naturals:
 --  - tycon occurences
@@ -247,38 +252,38 @@ typep  :: P (Type i)
 typep   = typepP precStart
 
 typepP :: Int -> P (Type i)
-typepP p
-  | p == precStart
-         = do
-             tc <- TyQu <$> quantp
-               <|> TyMu <$  reserved "mu"
-             tvs <- many tyvarp
-             dot
-             t   <- typepP p
-             return (foldr tc t tvs)
-           <|> typepP (p + 1)
-  | p == precArr
-         = chainr1last (typepP (p + 1))
-             (choice
-              [ tyArr <$ arrow,
-                tyLol <$ lolli,
-                funbraces (TyFun <$> qExpp) ])
-             (typepP precStart)
-  | p == precPlus
-         = chainl1last (typepP (p + 1))
-             (tybinopp [plus]) (typepP precStart) 
-  | p == precStar
-         = chainl1last (typepP (p + 1))
-             (tybinopp [star, slash]) (typepP precStart)
-  | p == precSemi
-         = chainr1last (typepP (p + 1))
-             (tybinopp [semi]) (typepP precStart)
-  | p == precApp -- this case ensures termination
-         = tyarg >>= tyapp'
-  | p <= precMax
-         = typepP (p + 1)
-  | otherwise
-         = typepP precStart
+typepP p = addLoc $ case () of
+  _ | p == precStart
+          -> do
+               tc <- tyQu <$> quantp
+                 <|> tyMu <$  reserved "mu"
+               tvs <- many tyvarp
+               dot
+               t   <- typepP p
+               return (foldr tc t tvs)
+             <|> typepP (p + 1)
+    | p == precArr
+          -> chainr1last (typepP (p + 1))
+               (choice
+                [ tyArr <$ arrow,
+                  tyLol <$ lolli,
+                  funbraces (tyFun <$> qExpp) ])
+               (typepP precStart)
+    | p == precPlus
+          -> chainl1last (typepP (p + 1))
+               (tybinopp [plus]) (typepP precStart) 
+    | p == precStar
+          -> chainl1last (typepP (p + 1))
+               (tybinopp [star, slash]) (typepP precStart)
+    | p == precSemi
+          -> chainr1last (typepP (p + 1))
+               (tybinopp [semi]) (typepP precStart)
+    | p == precApp -- this case ensures termination
+          -> tyarg >>= tyapp'
+    | p <= precMax
+          -> typepP (p + 1)
+    | otherwise
+          -> typepP precStart
   where
   tyarg :: P [Type i]
   tyarg  = choice
@@ -286,8 +291,8 @@ typepP p
              (:[]) <$> tyatom ]
 
   tyatom :: P (Type i)
-  tyatom  = TyVar <$> tyvarp
-        <|> TyApp <$> qlidnatp <*> pure []
+  tyatom  = tyVar <$> tyvarp
+        <|> tyApp <$> qlidnatp <*> pure []
         <|> antiblep
         <|> tyUn <$ qualU
         <|> tyAf <$ qualA
@@ -295,10 +300,10 @@ typepP p
   tyapp' :: [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
     tc <- qlidnatp
-    tyapp' [TyApp tc [t]]
+    tyapp' [tyApp tc [t]]
   tyapp' ts  = do
                  tc <- qlidnatp
-                 tyapp' [TyApp tc ts]
+                 tyapp' [tyApp tc ts]
 
 tybinopp :: [P String] -> P (Type i -> Type i -> Type i)
 tybinopp ops = do
@@ -310,8 +315,8 @@ progp  = choice [
            do ds <- declsp
               when (null ds) pzero
               e  <- antioptaroundp (reserved "in" `between` punit) exprp
-              return (Prog ds e),
-           antioptp exprp >>! Prog []
+              return (prog ds e),
+           antioptp exprp >>! prog []
          ]
 
 replp :: Id i => P [Decl i]
@@ -321,7 +326,7 @@ replp  = choice [
              when (null ds) pzero
              eof
              return ds,
-           exprp >>! (prog2decls . Prog [] . Just)
+           exprp >>! (prog2decls . prog [] . Just)
          ]
 
 declsp :: Id i => P [Decl i]
@@ -374,7 +379,7 @@ declp  = addLoc $ choice [
              return (dcLoc ds0 ds1),
            do
              reserved "abstype"
-             at <- abstysp
+             at <- absTysp
              reserved "with"
              ds <- declsp
              reserved "end"
@@ -388,26 +393,26 @@ declp  = addLoc $ choice [
          ]
 
 modexpp :: Id i => P (ModExp i)
-modexpp  = choice [
-             MeStr  <$> between (reserved "struct") (reserved "end") declsp,
-             MeName <$> quidp,
+modexpp  = addLoc $ choice [
+             meStr  <$> between (reserved "struct") (reserved "end") declsp,
+             meName <$> quidp
+                    <*> option [] (antilist1p comma qlidp),
              antiblep
            ]
 
 tyDecp :: P (TyDec i)
-tyDecp = do
+tyDecp = addLoc $ antiblep <|> do
   (arity, tvs, name) <- tyProtp
   choice [
     do
       unless (all (== Invariant) arity) pzero
       reservedOp "="
       choice [
-        typep >>! TdSyn name tvs,
-        altsp >>! TdDat name tvs ],
+        typep >>! tdSyn name tvs,
+        altsp >>! tdDat name tvs ],
     do
       quals <- qualsp
-      return (TdAbs name tvs arity quals),
-    antiblep ]
+      return (tdAbs name tvs arity quals) ]
 
 tyProtp :: P ([Variance], [TyVar], Lid)
 tyProtp  = choice [
@@ -435,17 +440,17 @@ letp  = do
         t <- typep
         reservedOp "="
         e <- withSigma sigma exprp
-        return (Binding f (fixt t) (fixe e))
-      let names    = map bnvar bindings
+        return (bnBind f (fixt t) (fixe e))
+      let names    = map (bnvar . dataOf) bindings
           namesExp = foldl1 exPair (map exBVar names)
-          namesPat = foldl1 PaPair (map PaVar names)
+          namesPat = foldl1 paPair (map paVar names)
           tempVar  = Lid "#letrec"
-          decls0   = [ dcLet (PaVar tempVar) Nothing $
+          decls0   = [ dcLet (paVar tempVar) Nothing $
                          exLetRec bindings namesExp ]
-          decls1   = [ dcLet (PaVar (bnvar binding)) Nothing $
+          decls1   = [ dcLet (paVar (bnvar binding)) Nothing $
                          exLet namesPat (exBVar tempVar) $
                             exBVar (bnvar binding)
-                     | binding <- bindings ]
+                     | N _ binding <- bindings ]
       return $ dcLoc decls0 decls1,
     do
       f <- varp
@@ -453,20 +458,23 @@ letp  = do
       t <- antioptaroundp (colon `between` punit) typep
       reservedOp "="
       e <- withSigma sigma exprp
-      return (dcLet (PaVar f) (fmap fixt t) (fixe e)),
+      return (dcLet (paVar f) (fmap fixt t) (fixe e)),
     dcLet <$> pattp
           <*> antioptaroundp (colon `between` punit) typep
           <*  reservedOp "="
           <*> exprp
     ]
 
-abstysp :: P [AbsTy i]
-abstysp = antilist1p (reserved "and") $ do
+absTysp :: P [AbsTy i]
+absTysp = antilist1p (reserved "and") $ absTyp
+
+absTyp :: P (AbsTy i)
+absTyp  = addLoc $ antiblep <|> do
   (arity, tvs, name) <- tyProtp
   quals        <- qualsp
   reservedOp "="
   alts         <- altsp
-  return (AbsTy arity quals (TdDat name tvs alts))
+  return (absTy arity quals (tdDat name tvs alts))
 
 paramsVp :: P ([Variance], [TyVar])
 paramsVp  = delimList punit parens comma paramVp >>! unzip
@@ -491,17 +499,18 @@ qualsp    = option minBound $ reserved "qualifier" *> qExpp
 
 qExpp :: P (QExp TyVar)
 qExpp  = qexp where
-  qexp  = qeDisj <$> sepBy1 qterm (reservedOp "\\/")
-  qterm = qeConj <$> sepBy1 qfact (reservedOp "/\\")
-  qfact = parens qexp <|> qatom
-  qatom = QeLit Qu <$  qualU
-      <|> QeLit Qa <$  qualA
+  qexp  = addLoc $ qeDisj <$> sepBy1 qterm (reservedOp "\\/")
+  qterm = addLoc $ qeConj <$> sepBy1 qfact (reservedOp "/\\")
+  qfact = addLoc $ parens qexp <|> qatom
+  qatom = addLoc $
+          qeLit Qu <$  qualU
+      <|> qeLit Qa <$  qualA
       <|> clean    <$> tyvarp
       <|> qeLid    <$> lidp
       <|> antiblep
-  qeLid = QeVar . flip TV Qa
+  qeLid = qeVar . flip TV Qa
   clean (TV _ Qu) = minBound
-  clean tv        = QeVar tv
+  clean tv        = qeVar tv
 
 altsp :: P [(Uid, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
@@ -522,14 +531,14 @@ exprp = expr0 where
     [ do reserved "let"
          choice
            [ do reserved "rec"
-                bs <- antilist1p (reserved "and") $ do
+                bs <- antilist1p (reserved "and") $ addLoc $ do
                   x    <- varp
                   (sigma, ft, fe) <- afargsp
                   colon
                   t    <- typep
                   reservedOp "="
                   e    <- withSigma sigma expr0
-                  return (Binding x (ft t) (fe e))
+                  return (bnBind x (ft t) (fe e))
                 reserved "in"
                 e2 <- expr0
                 return (exLetRec bs e2),
@@ -555,14 +564,14 @@ exprp = expr0 where
                 e2   <- expr0
                 return (exLetDecl d e2) ],
       do reserved "if"
-         ec <- expr0
-         reserved "then"
-         et <- expr0
-         reserved "else"
-         ef <- expr0
-         return (exCase ec
-                   [CaseAlt (PaCon (quid "true")  Nothing False) et,
-                    CaseAlt (PaCon (quid "false") Nothing False) ef]),
+         ec  <- expr0
+         clt <- addLoc $ do
+           reserved "then"
+           caClause (paCon (quid "true") Nothing False) <$> expr0
+         clf <- addLoc $ do
+           reserved "else"
+           caClause (paCon (quid "false") Nothing False) <$> expr0
+         return (exCase ec [clt, clf]),
       do reserved "match"
          e1 <- expr0
          reserved "with"
@@ -570,18 +579,18 @@ exprp = expr0 where
            exCase e1 <$> antiblep,
            do
              optional (reservedOp "|")
-             clauses <- flip sepBy1 (reservedOp "|") $
+             clauses <- flip sepBy1 (reservedOp "|") $ addLoc $
                const <$> antiblep <|> do
                  (xi, sigma, lift) <- pattbangp
                  reservedOp "->"
                  ei <- mapSigma (sigma ||) expr0
-                 return (\b -> lift b CaseAlt xi ei)
+                 return (\b -> lift b caClause xi ei)
              return (exCase e1 (onlyOne clauses)) ],
       do reserved "try"
          e1 <- expr0
          reserved "with"
          optional (reservedOp "|")
-         clauses <- flip sepBy1 (reservedOp "|") $ do
+         clauses <- flip sepBy1 (reservedOp "|") $ addLoc $ do
            (xi, sigma, lift) <- pattbangp
            reservedOp "->"
            ei <- mapSigma (sigma ||) expr0
@@ -590,29 +599,25 @@ exprp = expr0 where
                   (\xi' ei' ->
                      -- TODO: Make this robust to redefinition of
                      -- Left and Right
-                     CaseAlt {
-                       capatt = PaCon (quid "Left") (Just xi') False,
-                       caexpr = ei'
-                     })
+                     caClause (paCon (quid "Left") (Just xi') False) ei')
                   xi ei
          let tryQ = qlid $
                       "INTERNALS.Exn.tryfun"
          return $
            exCase (exApp (exVar tryQ)
-                         (exAbs PaWild tyUnit
+                         (exAbs paWild tyUnit
                             e1)) $
-             CaseAlt {
-               capatt = PaCon (quid "Right")
-                              (Just (PaVar (Lid "x"))) False,
-               caexpr = exVar (qlid "x")
-             } :
+             caClause (paCon (quid "Right")
+                             (Just (paVar (Lid "x"))) False)
+                      (exVar (qlid "x"))
+             :
              clauses ++
-             [CaseAlt {
-                capatt = PaCon (quid "Left")
-                               (Just (PaVar (Lid "e"))) False,
-                caexpr = exApp (exVar (qlid "INTERNALS.Exn.raise"))
-                               (exVar (qlid "e"))
-              }],
+             [caClause
+                (paCon (quid "Left")
+                       (Just (paVar (Lid "e"))) False)
+                (exApp (exVar (qlid "INTERNALS.Exn.raise"))
+                       (exVar (qlid "e")))
+              ],
       do reserved "fun"
          (sigma, build) <- choice
            [
@@ -633,13 +638,13 @@ exprp = expr0 where
                    e2 <- expr0
                    return (exSeq e1 e2),
                 return e1 ]
-  expr3 = chainl1last expr4 (opappp (Left 3))  expr0
-  expr4 = chainr1last expr5 (opappp (Right 4)) expr0
-  expr5 = chainl1last expr6 (opappp (Left 5))  expr0
-  expr6 = chainl1last expr7 (opappp (Left 6))  expr0
+  expr3 = addLoc $ chainl1last expr4 (opappp (Left 3))  expr0
+  expr4 = addLoc $ chainr1last expr5 (opappp (Right 4)) expr0
+  expr5 = addLoc $ chainl1last expr6 (opappp (Left 5))  expr0
+  expr6 = addLoc $ chainl1last expr7 (opappp (Left 6))  expr0
   expr7 = expr8
-  expr8 = chainr1last expr9 (opappp (Right 8)) expr0
-  expr9 = choice
+  expr8 = addLoc $ chainr1last expr9 (opappp (Right 8)) expr0
+  expr9 = addLoc $ choice
             [ chainl1 expr10 (addLoc (return exApp)),
               do
                 reserved "Pack"
@@ -650,11 +655,11 @@ exprp = expr0 where
                   e  <- exprN1
                   return (exPack t1 t2 e)
                 ]
-  expr10 = do
+  expr10 = addLoc $ do
     ops <- many $ addLoc $ oplevelp (Right 10) >>! exBVar
     arg <- expr11
     return (foldr exApp arg ops)
-  expr11 = do
+  expr11 = addLoc $ do
              e  <- exprA
              ts <- many . brackets $ commaSep1 typep
              return (foldl exTApp e (concat ts))
@@ -677,11 +682,10 @@ exprp = expr0 where
         return e1 ]
 
 -- Parse an infix operator at given precedence
-opappp :: Prec -> P (Expr i -> Expr i -> Expr i)
+opappp :: Id i => Prec -> P (Expr i -> Expr i -> Expr i)
 opappp p = do
-  loc <- curLoc
-  op  <- oplevelp p
-  return (\e1 e2 -> (exBVar op <<@ loc `exApp` e1) `exApp` e2)
+  op  <- addLoc (oplevelp p >>! exBVar)
+  return (\e1 e2 -> op `exApp` e1 `exApp` e2)
 
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
@@ -735,8 +739,8 @@ vargp :: Id i =>
          (Type i -> Type i -> Type i) ->
          P (Bool, Type i -> Type i, Expr i -> Expr i)
 vargp arrcon = do
-  loc    <- curLoc
   inBang <- bangp
+  loc    <- curLoc
   (p, t) <- paty
   return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
@@ -744,7 +748,7 @@ vargp arrcon = do
 paty :: P (Patt i, Type i)
 paty  = do
   (p, mt) <- pamty
-  case (p, mt) of
+  case (dataOf p, mt) of
     (_, Just t) -> return (p, t)
     (PaCon (J [] (Uid "()")) Nothing False, Nothing)
                 -> return (p, tyUnit)
@@ -760,7 +764,7 @@ pamty  = parens $ choice
              do
                p <- pattp
                maybecolon p,
-             return (PaCon (quid "()") Nothing False, Nothing)
+             return (paCon (quid "()") Nothing False, Nothing)
            ]
   where
     maybecolon p = choice
@@ -773,7 +777,7 @@ pamty  = parens $ choice
       ]
     moreps p = do
       ps <- many (comma >> pattp)
-      return (foldl PaPair p ps, Nothing)
+      return (foldl paPair p ps, Nothing)
     morepts p0 t0 = do
       (ps, ts) <- liftM unzip . many $ do
         comma
@@ -788,14 +792,14 @@ pamty  = parens $ choice
               p <- pattp
               colonType p
           ]
-      return (foldl PaPair p0 ps, Just (foldl tyTuple t0 ts))
+      return (foldl paPair p0 ps, Just (foldl tyTuple t0 ts))
     colonType p = do
       colon
       t <- typep
       return (p, t)
 
 -- Parse a sequence of one or more tyvar arguments
-tyargp :: P (Type i -> Type i, Expr i -> Expr i)
+tyargp :: Id i => P (Type i -> Type i, Expr i -> Expr i)
 tyargp  = do
   tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
   return (\t -> foldr (\(_,   tv) -> tyAll tv) t tvs,
@@ -830,42 +834,42 @@ bangp  = (bang >> return True) <|> return False
 
 pattp :: P (Patt i)
 pattp  = patt0 where
-  patt0 = do
+  patt0 = addLoc $ do
     x <- patt9
     choice
       [ do
           reserved "as"
           y <- varp
-          return (PaAs x y),
+          return (paAs x y),
         return x
       ]
-  patt9 = choice
+  patt9 = addLoc $ choice
     [ do
         reserved "Pack"
         parens $ do
           tv <- tyvarp
           comma
           x  <- pattN1
-          return (PaPack tv x),
-      PaCon <$> quidp
+          return (paPack tv x),
+      paCon <$> quidp
             <*> antioptp (try pattA)
             <*> isexnp,
       pattA ]
-  pattA = choice
-    [ PaWild <$  reserved "_",
-      PaVar  <$> varp,
-      PaLit  <$> litp,
-      PaCon  <$> quidp
+  pattA = addLoc $ choice
+    [ paWild <$  reserved "_",
+      paVar  <$> varp,
+      paLit  <$> litp,
+      paCon  <$> quidp
              <*> pure Nothing
              <*> isexnp,
       antiblep,
       parens pattN1
     ]
-  pattN1 = do
+  pattN1 = addLoc $ do
     xs <- commaSep patt0
     case xs of
-      []    -> return (PaCon (quid "()") Nothing False)
-      x:xs' -> return (foldl PaPair x xs')
+      []    -> return (paCon (quid "()") Nothing False)
+      x:xs' -> return (foldl paPair x xs')
 
 -- Dirty hack for specifying, in surface syntax, whether a datacon
 -- pattern matches an exception.  TODO: get rid of
@@ -900,6 +904,8 @@ parseDecl     :: Id i => P (Decl i)
 parseModExp   :: Id i => P (ModExp i)
 -- | Parse a type declaration
 parseTyDec    :: Id i => P (TyDec i)
+-- | Parse a abstype declaration
+parseAbsTy    :: Id i => P (AbsTy i)
 -- | Parse a type
 parseType     :: Id i => P (Type i)
 -- | Parse a qualifier expression
@@ -914,6 +920,7 @@ parseDecls     = finish declsp
 parseDecl      = finish declp
 parseModExp    = finish modexpp
 parseTyDec     = finish tyDecp
+parseAbsTy     = finish absTyp
 parseType      = finish typep
 parseQExp      = finish qExpp
 parseExpr      = finish exprp

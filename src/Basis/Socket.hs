@@ -15,6 +15,10 @@ import Quasi
 import Syntax
 import Value
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 instance Valuable S.Socket where
   veq = (==)
   vpprPrec _ _ = text "#<socket>"

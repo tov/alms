@@ -9,6 +9,10 @@ import Quasi
 import Syntax
 import Value (Value, Valuable(..))
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 import qualified Control.Concurrent as CC
 import qualified Control.Concurrent.MVar as MV
 

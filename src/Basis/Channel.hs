@@ -9,6 +9,10 @@ import Quasi
 import Syntax
 import Value (Value, Valuable(..))
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 import qualified Basis.Channel.Haskell as C
 
 newtype Channel = Channel { unChannel :: C.Chan Value }

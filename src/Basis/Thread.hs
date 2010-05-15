@@ -9,6 +9,10 @@ import Quasi
 import Syntax
 import Value (Vinj(..))
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 entries :: [Entry]
 entries =  [
     -- Threads

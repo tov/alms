@@ -1,11 +1,23 @@
 -- vim: ft=haskell
+{-# LANGUAGE
+      FlexibleInstances,
+      TypeFamilies,
+      TypeSynonymInstances #-}
+{-# OPTIONS_GHC -w #-}
 module Syntax.Decl where
 
-import Data.Generics (Data)
-import Loc (Locatable, Relocatable)
+import Syntax.Notable
+import Syntax.Ident (Id, Fv, Dv)
 
-data Decl i
+import Data.Data (Data)
 
-instance Data i => Data (Decl i)
-instance Locatable (Decl i)
-instance Relocatable (Decl i)
+data DeclNote i
+data Decl' i
+type Decl i = N (DeclNote i) (Decl' i)
+
+instance Data i => Data (DeclNote i)
+instance Data i => Data (Decl' i)
+instance Locatable (DeclNote i)
+instance Notable (DeclNote i)
+instance Fv (N (DeclNote i) a)
+instance Dv (N (DeclNote i) a)

@@ -1,7 +1,8 @@
 -- | Pretty-printing
 {-# LANGUAGE
       PatternGuards,
-      QuasiQuotes
+      QuasiQuotes,
+      TypeSynonymInstances
     #-}
 module Ppr (
   -- * Pretty-printing class
@@ -18,6 +19,11 @@ module Ppr (
 import Prec
 import Quasi
 import Syntax
+
+import qualified Syntax.Notable
+import qualified Syntax.Expr
+import qualified Syntax.Decl
+import qualified Loc
 
 import Text.PrettyPrint
 import Data.List (intersperse)
@@ -64,7 +70,7 @@ instance Ppr (Type i) where
   pprPrec p [$ty| $t1 -[$q]> $t2 |]
                   = parensIf (p > precArr) $
                     sep [ pprPrec (precArr + 1) t1,
-                          pprArr q <+> pprPrec precArr t2 ]
+                          pprArr (view q) <+> pprPrec precArr t2 ]
     where pprArr (QeLit Qu) = text "->"
           pprArr (QeLit Qa) = text "-o"
           pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
@@ -106,31 +112,33 @@ instance Ppr (Type i) where
   pprPrec p [$ty| $anti:a |] = pprPrec p a
 
 instance (Typeable a, Ppr a) => Ppr (QExp a) where
-  pprPrec p (QeLit qu)    = pprPrec p qu
-  pprPrec p (QeVar v)     = case cast v of
+  pprPrec p [$qeQ| $qlit:qu |] = pprPrec p qu
+  pprPrec p [$qeQ| $qvar:v |] = case cast v of
     Just (TV lid Qa)  -> pprPrec p lid
     _                 -> pprPrec p v
-  pprPrec p (QeDisj [])   = pprPrec p Qu
-  pprPrec p (QeDisj [qe]) = pprPrec p qe
-  pprPrec p (QeDisj qes)  = parensIf (p > precPlus) $
-                              fsep $
-                                intersperse (text "\\/") $
-                                  map (pprPrec (precPlus + 1)) qes
-  pprPrec p (QeConj [])   = pprPrec p Qa
-  pprPrec p (QeConj [qe]) = pprPrec p qe
-  pprPrec p (QeConj qes)  = parensIf (p > precStar) $
-                              hcat $
-                                intersperse (text "/\\") $
-                                  map (pprPrec (precStar + 1)) qes
-  pprPrec p (QeAnti a)    = pprPrec p a
+  pprPrec p [$qeQ| $qdisj:qes |] = case qes of
+    []    -> pprPrec p Qu
+    [qe]  -> pprPrec p qe
+    _     -> parensIf (p > precPlus) $
+               fsep $
+                 intersperse (text "\\/") $
+                   map (pprPrec (precPlus + 1)) qes
+  pprPrec p [$qeQ| $qconj:qes |] = case qes of
+    []    -> pprPrec p Qa
+    [qe]  -> pprPrec p qe
+    _     -> parensIf (p > precStar) $
+               hcat $
+                 intersperse (text "/\\") $
+                   map (pprPrec (precStar + 1)) qes
+  pprPrec p [$qeQ| $anti:a |] = pprPrec p a
 
 instance Ppr Int where
   ppr = int
 
 instance Ppr (Prog i) where
-  ppr [$pr| $list:ms |]       = vcat (map ppr ms)
-  ppr [$pr| $expr:e |]        = ppr e
-  ppr [$pr| $list:ms in $e |] = vcat (map ppr ms) $+$
+  ppr [$prQ| $list:ms |]       = vcat (map ppr ms)
+  ppr [$prQ| $expr:e |]        = ppr e
+  ppr [$prQ| $list:ms in $e |] = vcat (map ppr ms) $+$
                                  (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
@@ -181,18 +189,20 @@ instance Ppr (Decl i) where
   ppr [$dc| $anti:a |] = ppr a
 
 instance Ppr (TyDec i) where
-  ppr (TdAbs n ps vs qs) = pprProtoV n vs ps >?> pprQuals qs
-  ppr (TdSyn n ps rhs)   = pprProto n ps >?> equals <+> ppr rhs
-  ppr (TdDat n ps alts)  = pprProto n ps >?> pprAlternatives alts
-  ppr (TdAnti a)         = ppr a
+  ppr td = case view td of
+    TdAbs n ps vs qs -> pprProtoV n vs ps >?> pprQuals qs
+    TdSyn n ps rhs   -> pprProto n ps >?> equals <+> ppr rhs
+    TdDat n ps alts  -> pprProto n ps >?> pprAlternatives alts
+    TdAnti a         -> ppr a
 
 pprAbsTy :: AbsTy i -> Doc
-pprAbsTy (AbsTy variances qual (TdDat name params alts)) =
+pprAbsTy at = case view at of
+  AbsTy variances qual (N _ (TdDat name params alts)) ->
     pprProtoV name variances params
       >?> pprQuals qual
       >?> pprAlternatives alts
-pprAbsTy (AbsTy _ _ td) = ppr td -- shouldn't happen (yet)
-pprAbsTy (AbsTyAnti a) = ppr a
+  AbsTy _ _ td -> ppr td -- shouldn't happen (yet)
+  AbsTyAnti a -> ppr a
 
 pprProto     :: Lid -> [TyVar] -> Doc
 pprProto n [tv1, tv2]
@@ -218,8 +228,8 @@ pprParamsV vs tvs = delimList parens comma (zipWith pprParam vs tvs)
     pprParam v         tv = ppr v <> ppr tv
 
 pprQuals :: (Typeable a, Ppr a) => QExp a -> Doc
-pprQuals (QeLit Qu) = empty
-pprQuals qs         = text "qualifier" <+> pprPrec precApp qs
+pprQuals [$qeQ| U |] = empty
+pprQuals qs          = text "qualifier" <+> pprPrec precApp qs
 
 pprAlternatives :: [(Uid, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals
@@ -232,6 +242,9 @@ pprAlternatives (a:as) = sep $
 pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
 pprModExp add modexp = case modexp of
   [$me| $quid:n |] -> add (ppr n)
+  [$me| $quid:n $list:qls |] ->
+    add (ppr n) <+>
+    brackets (fsep (punctuate comma (map ppr qls)))
   [$me| struct $list:ds end |] ->
     add (text "struct")
     $$ nest 2 (vcat (map ppr ds))
@@ -259,24 +272,24 @@ instance Ppr (Expr i) where
                     nest 2 $ ppr e1,
                     text "with" ] : map alt clauses)
       where
-        alt (CaseAlt xi ei) =
+        alt (N _ (CaClause xi ei)) =
           hang (char '|' <+> pprPrec precDot xi <+> text "->")
                 4
                 (pprPrec precDot ei)
-        alt (CaAnti a)      = char '|' <+> ppr a
+        alt (N _ (CaAnti a))      = char '|' <+> ppr a
     [$ex| let rec $list:bs in $e2 |] ->
       text "let" <+>
       vcat (zipWith each ("rec" : repeat "and") bs) $$
       text "in" <+> pprPrec precDot e2
         where
-          each kw (Binding x t e) =
+          each kw (N _ (BnBind x t e)) =
             -- This could be better by pulling some args out.
             hang (hang (text kw <+> ppr x)
                        6
                        (colon <+> ppr t <+> equals))
                  2
                  (ppr e)
-          each kw (BnAnti a) = text kw <+> ppr a
+          each kw (N _ (BnAnti a)) = text kw <+> ppr a
     [$ex| let $decl:d in $e2 |] ->
       text "let" <+> ppr d $$
       (text "in" >+> pprPrec precDot e2)
@@ -344,14 +357,14 @@ pprAbs p e = parensIf (p > precDot) $
       >+> pprPrec precDot body
   where (args, body)   = unfoldExAbs e
         argsDoc = case args of
-          [Left ([$pa| _ |], [$ty| unit |])]
+          [Left ([$pa| _ |], [$ty|@! unit |])]
                         -> parens empty
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
 pprArgList :: [Either (Patt i, Type i) TyVar] -> Doc
 pprArgList = fsep . map eachArg . combine where
-  eachArg (Left ([$pa| _ |], [$ty| unit |]))
+  eachArg (Left ([$pa| _ |], [$ty|@! unit |]))
                           = parens empty
   eachArg (Left (x, t))   = parens $
                               ppr x

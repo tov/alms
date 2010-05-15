@@ -1,5 +1,8 @@
 {-# LANGUAGE
-      TemplateHaskell #-}
+      RankNTypes,
+      TemplateHaskell,
+      TypeFamilies,
+      TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 -- |
 -- This module provides syntax and basic syntax operations for
@@ -12,13 +15,15 @@ module Syntax (
   -- * Identifiers
   module Syntax.Anti,
   module Syntax.POClass,
-  module Syntax.Kind,
+  module Syntax.Notable,
   module Syntax.Ident,
+  module Syntax.Kind,
   module Syntax.Type,
   module Syntax.Lit,
   module Syntax.Patt,
   module Syntax.Expr,
   module Syntax.Decl,
+  module Syntax.AntiDicts,
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
@@ -30,34 +35,59 @@ module Syntax (
 
 import Syntax.Anti
 import Syntax.POClass
-import Syntax.Kind
+import Syntax.Notable
 import Syntax.Ident
+import Syntax.Kind
 import Syntax.Type
 import Syntax.Lit
 import Syntax.Patt
 import Syntax.Expr
 import Syntax.Decl
+import Syntax.AntiDicts
 
 import Util
 import Viewable
 
-deriveAntible 'LtAnti    'litAntis
-deriveAntible 'PaAnti    'pattAntis
-deriveAntible 'ExAnti    'noAntis
-deriveAntible 'BnAnti    'bindingAntis
-deriveAntible 'CaAnti    'caseAltAntis
-deriveAntible 'TyAnti    'typeAntis
-deriveAntible 'QuantAnti 'quantAntis
-deriveAntible 'QeAnti    'qExpAntis
-deriveAntible 'DcAnti    'declAntis
-deriveAntible 'TdAnti    'tyDecAntis
-deriveAntible 'AbsTyAnti 'absTyAntis
-deriveAntible 'MeAnti    'modExpAntis
+deriveAntibles syntaxTable
 
-instance Antible (Expr i) where
-  injAnti = exAnti
-  prjAnti = prjAnti . view
-  dictOf  = const exprAntis
+-- These should be generated:
+instance Antible (Prog i) where
+  injAnti _ = error "BUG! injAnti: Cannot inject into Prog"
+  prjAnti   = const Nothing
+  dictOf    = const noAntis
+
+instance Antible Lid where
+  injAnti = Lid . injAnti
+  prjAnti = prjAnti . unLid
+  dictOf  = const lidAntis
+
+instance Antible Uid where
+  injAnti = Uid . injAnti
+  prjAnti = prjAnti . unUid
+  dictOf  = const uidAntis
+
+instance Antible TyVar where
+  injAnti = flip TV Qu . injAnti
+  prjAnti = prjAnti . tvname
+  dictOf  = const tyVarAntis
+
+instance Antible Ident where
+  injAnti         = J [] . Var . injAnti
+  prjAnti (J [] (Var l)) = prjAnti l
+  prjAnti _              = Nothing
+  dictOf                 = const idAntis
+
+instance Antible QLid where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qlidAntis
+
+instance Antible QUid where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const quidAntis
 
 -- Unfolding various sequences
 
@@ -73,8 +103,8 @@ unfoldExAbs  = unscanr each where
 -- | Get the list of formal parameters and body of a qualified type
 unfoldTyQu  :: Quant -> Type i -> ([TyVar], Type i)
 unfoldTyQu u = unscanr each where
-  each (TyQu u' x t) | u == u' = Just (x, t)
-  each _                       = Nothing
+  each (N _ (TyQu u' x t)) | u == u' = Just (x, t)
+  each _                             = Nothing
 
 -- | Get the list of actual parameters and body of a type application
 unfoldExTApp :: Expr i -> ([Type i], Expr i)
@@ -93,8 +123,8 @@ unfoldExApp  = unscanl each where
 -- | Get the list of argument types and result type of a function type
 unfoldTyFun :: Type i -> ([Type i], Type i)
 unfoldTyFun  = unscanr each where
-  each (TyFun _ ta tr) = Just (ta, tr)
-  each _               = Nothing
+  each (N _ (TyFun _ ta tr)) = Just (ta, tr)
+  each _                     = Nothing
 
 unfoldTupleExpr :: Expr i -> ([Expr i], Expr i)
 unfoldTupleExpr  = unscanl each where
@@ -104,6 +134,6 @@ unfoldTupleExpr  = unscanl each where
 
 unfoldTuplePatt :: Patt i -> ([Patt i], Patt i)
 unfoldTuplePatt  = unscanl each where
-  each p = case p of
+  each p = case view p of
     PaPair p1 p2 -> Just (p2, p1)
     _            -> Nothing

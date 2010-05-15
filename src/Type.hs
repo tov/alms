@@ -25,7 +25,7 @@ module Type (
   -- ** Substitutions
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
-  castableType, typeToStx, qualifier,
+  castableType, typeToStx, typeToStx', qualifier,
   -- * Built-in types
   -- ** Type constructors
   mkTC,
@@ -132,7 +132,7 @@ qualifier (TyApp tc ts _) = denumberQDen (map qualifier ts) (tcQual tc)
 qualifier (TyFun q _ _)   = q
 qualifier (TyVar tv)
   | tvqual tv <: Qu       = minBound
-  | otherwise             = qInterpret (QeVar tv)
+  | otherwise             = qInterpret (qeVar tv)
 qualifier (TyQu _ tv t)   = qSubst tv minBound (qualifier t)
 qualifier (TyMu tv t)     = qSubst tv minBound (qualifier t)
 
@@ -627,20 +627,24 @@ infixr 8 .:., `tySemi`
 --- Miscellany
 ---
 
+-- | Represent a type value as a pre-syntactic type, for printing
+typeToStx' :: Type -> Stx.Type' i
+typeToStx'  = view . typeToStx
+
 -- | Represent a type value as a syntactic type, for printing
 typeToStx :: Type -> Stx.Type i
 typeToStx t0 = case t0 of
-  TyVar tv      -> Stx.TyVar tv
-  TyFun q t1 t2 -> Stx.TyFun (qRepresent q) (typeToStx t1) (typeToStx t2)
-  TyApp tc ts _ -> Stx.TyApp (tcName tc) (map typeToStx ts)
-  TyQu qu tv t1 -> Stx.TyQu qu tv (typeToStx t1)
-  TyMu tv t1    -> Stx.TyMu tv (typeToStx t1)
+  TyVar tv      -> Stx.tyVar tv
+  TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (typeToStx t1) (typeToStx t2)
+  TyApp tc ts _ -> Stx.tyApp (tcName tc) (map typeToStx ts)
+  TyQu qu tv t1 -> Stx.tyQu qu tv (typeToStx t1)
+  TyMu tv t1    -> Stx.tyMu tv (typeToStx t1)
 
 -- | Represent a type pattern as a syntactic type, for printing
 tyPatToStx :: TyPat -> Stx.Type i
 tyPatToStx tp0 = case tp0 of
-  TpVar tv      -> Stx.TyVar tv
-  TpApp tc tps  -> Stx.TyApp (tcName tc) (map tyPatToStx tps)
+  TpVar tv      -> Stx.tyVar tv
+  TpApp tc tps  -> Stx.tyApp (tcName tc) (map tyPatToStx tps)
 
 castableType :: Type -> Bool
 castableType t = case headNormalizeType t of

@@ -14,6 +14,10 @@ import Syntax
 import Util
 import Value (Valuable(..), vinjData, vprjDataM)
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 instance Valuable IO.Handle where
   veq = (==)
   vpprPrec _ _ = text "#<handle>"

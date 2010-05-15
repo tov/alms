@@ -1,12 +1,14 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       FlexibleInstances,
-      ParallelListComp #-}
+      ParallelListComp,
+      TemplateHaskell,
+      TypeFamilies #-}
 module Syntax.Type (
   -- * Types
-  Quant(..), Type(..),
-  -- ** Accessors and updaters
-  tycon, tyargs, setTycon,
+  Quant(..), Type'(..), Type,
+  -- ** Constructors
+  tyApp, tyVar, tyFun, tyQu, tyMu, tyAnti,
 
   -- * Built-in types
   tyNulOp, tyUnOp, tyBinOp,
@@ -19,6 +21,8 @@ module Syntax.Type (
   dumpType
 ) where
 
+import Meta.DeriveNotable
+import Syntax.Notable
 import Syntax.Anti
 import Syntax.Kind
 import Syntax.Ident
@@ -31,31 +35,23 @@ data Quant = Forall | Exists | QuantAnti Anti
 
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon
-data Type i = TyApp  QLid [Type i]
-            | TyVar  TyVar
-            | TyFun  (QExp TyVar) (Type i) (Type i)
-            | TyQu   Quant TyVar (Type i)
-            | TyMu   TyVar (Type i)
-            | TyAnti Anti
+data Type' i
+  = TyApp  QLid [Type i]
+  | TyVar  TyVar
+  | TyFun  (QExp TyVar) (Type i) (Type i)
+  | TyQu   Quant TyVar (Type i)
+  | TyMu   TyVar (Type i)
+  | TyAnti Anti
   deriving (Typeable, Data)
 
-tycon :: Type i -> QLid
-tycon (TyApp tc _)  = tc
-tycon _             = error "tycon: not a TyApp"
-tyargs :: Type i -> [Type i]
-tyargs (TyApp _ ts) = ts
-tyargs _            = error "tyargs: not a TyApp"
+type Type i = Located Type' i
 
-setTycon :: Type i -> QLid -> Type i
-setTycon (TyApp _ ts) tc = TyApp tc ts
-setTycon t _             = t
-
-infixl `setTycon`
+deriveNotable ''Type
 
 -- | Convenience constructors for qualified types
 tyAll, tyEx :: TyVar -> Type i -> Type i
-tyAll = TyQu Forall
-tyEx  = TyQu Exists
+tyAll = tyQu Forall
+tyEx  = tyQu Exists
 
 instance Show Quant where
   show Forall = "all"
@@ -69,13 +65,13 @@ instance Show Quant where
 --- Convenience constructors
 
 tyNulOp       :: String -> Type i
-tyNulOp s      = TyApp (qlid s) []
+tyNulOp s      = tyApp (qlid s) []
 
 tyUnOp        :: String -> Type i -> Type i
-tyUnOp s a     = TyApp (qlid s) [a]
+tyUnOp s a     = tyApp (qlid s) [a]
 
 tyBinOp       :: String -> Type i -> Type i -> Type i
-tyBinOp s a b  = TyApp (qlid s) [a, b]
+tyBinOp s a b  = tyApp (qlid s) [a, b]
 
 tyUnit        :: Type i
 tyUnit         = tyNulOp "unit"
@@ -90,16 +86,16 @@ tyAf          :: Type i
 tyAf           = tyNulOp "A"
 
 tyArr         :: Type i -> Type i -> Type i
-tyArr          = TyFun minBound
+tyArr          = tyFun minBound
 
 tyLol         :: Type i -> Type i -> Type i
-tyLol          = TyFun maxBound
+tyLol          = tyFun maxBound
 
 infixr 8 `tyArr`, `tyLol`
 
 -- | Noisy type printer for debugging
 dumpType :: Int -> Type i -> IO ()
-dumpType i t0 = do
+dumpType i (N _ t0) = do
   putStr (replicate i ' ')
   case t0 of
     TyApp n ps -> do

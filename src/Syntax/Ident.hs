@@ -12,6 +12,9 @@ module Syntax.Ident (
   Ident, QLid, QUid,
   TyVar(..), tvUn, tvAf, tvalphabet,
   isOperator, qlid, quid,
+  -- * Free and defined vars
+  FvMap, Fv(..), Dv(..), ADDITIVE(..),
+  (|*|), (|+|), (|-|), (|--|)
 ) where
 
 import Env (Path(..), (:>:)(..))
@@ -22,6 +25,8 @@ import Syntax.Kind (QLit(..))
 
 import Data.Char (isAlpha, isDigit)
 import Data.Generics (Typeable(..), Data(..))
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 class Data i => Id i where
   stupidIdMethod :: i
@@ -129,35 +134,46 @@ instance Antible Char where
   prjAnti _ = error "prjAnti: Not defined for Char"
   dictOf _  = error "dictOf: Not defined for Char"
 
-instance Antible Lid where
-  injAnti = Lid . injAnti
-  prjAnti = prjAnti . unLid
-  dictOf  = const lidAntis
 
-instance Antible Uid where
-  injAnti = Uid . injAnti
-  prjAnti = prjAnti . unUid
-  dictOf  = const uidAntis
+---
+--- Free variables
+---
 
-instance Antible TyVar where
-  injAnti = flip TV Qu . injAnti
-  prjAnti = prjAnti . tvname
-  dictOf  = const tyVarAntis
+-- | Our free variables function returns not merely a set,
+-- but a map from names to a count of maximum occurrences.
+type FvMap = M.Map QLid Integer
 
-instance Antible Ident where
-  injAnti         = J [] . Var . injAnti
-  prjAnti (J [] (Var l)) = prjAnti l
-  prjAnti _              = Nothing
-  dictOf                 = const idAntis
+-- | The free variables analysis
+class Fv a where
+  fv :: a -> FvMap
 
-instance Antible QLid where
-  injAnti          = J [] . injAnti
-  prjAnti (J [] i) = prjAnti i
-  prjAnti _        = Nothing
-  dictOf           = const qlidAntis
+-- | The defined variables analysis
+class Dv a where
+  qdv :: a -> S.Set QLid
+  dv  :: a -> S.Set Lid
 
-instance Antible QUid where
-  injAnti          = J [] . injAnti
-  prjAnti (J [] i) = prjAnti i
-  prjAnti _        = Nothing
-  dictOf           = const quidAntis
+  qdv  = S.mapMonotonic (J []) . dv
+  dv a = S.fromDistinctAscList [ v | J [] v <- S.toAscList (qdv a) ]
+
+instance Fv a => Fv [a] where
+  fv = foldr (|+|) M.empty . map fv
+
+instance Dv a => Dv [a] where
+  dv = S.unions . map dv
+
+newtype ADDITIVE a = ADDITIVE [a]
+
+instance Fv a => Fv (ADDITIVE a) where
+  fv (ADDITIVE a) = foldr (|+|) M.empty (map fv a)
+
+-- | Used by the free variables analysis
+(|*|), (|+|) :: FvMap -> FvMap -> FvMap
+(|*|) = M.unionWith (+)
+(|+|) = M.unionWith max
+
+(|-|) :: FvMap -> QLid -> FvMap
+(|-|)  = flip M.delete
+
+(|--|) :: FvMap -> S.Set QLid -> FvMap
+(|--|)  = S.fold M.delete
+

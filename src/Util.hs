@@ -6,6 +6,7 @@ module Util (
   foldl2, foldr2, all2, any2,
   -- ** Monadic version
   foldrM, anyM, allM, anyM2, allM2,
+  concatMapM,
   -- ** Applicative versions
   mapA,
   -- ** Unfold with an accumulator
@@ -68,7 +69,11 @@ anyM2 p as bs = anyM (uncurry p) (zip as bs)
 allM2 :: Monad m => (a -> b -> m Bool) -> [a] -> [b] -> m Bool
 allM2 p as bs = allM (uncurry p) (zip as bs)
 
+concatMapM :: Monad m => (a -> m [b]) -> [a] -> m [b]
+concatMapM f xs = concat `liftM` mapM f xs
+
 -- | Map an applicative over a list
+mapA         :: Applicative t => (a -> t b) -> [a] -> t [b]
 mapA _ []     = pure []
 mapA f (x:xs) = (:) <$> f x <*> mapA f xs
 

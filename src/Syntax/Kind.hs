@@ -1,9 +1,13 @@
 {-# LANGUAGE
       DeriveDataTypeable,
-      GeneralizedNewtypeDeriving #-}
+      GeneralizedNewtypeDeriving,
+      TemplateHaskell,
+      TypeFamilies #-}
 module Syntax.Kind (
   -- * Qualifiers, qualifiers sets, and variance
-  QLit(..), QExp(..), qeDisj, qeConj, QDen,
+  QLit(..), QExp'(..),
+  QExp, qeLit, qeVar, qeDisj, qeConj, qeAnti,
+  QDen,
   Variance(..),
   -- ** Qualifier operations
   qConstBound, elimQLit,
@@ -11,10 +15,12 @@ module Syntax.Kind (
   qSubst, numberQDenM, numberQDen, denumberQDen
 ) where
 
+import Meta.DeriveNotable
 import PDNF (PDNF)
 import qualified PDNF
-import Syntax.POClass
 import Syntax.Anti
+import Syntax.Notable
+import Syntax.POClass
 import Util
 
 import Control.Monad.Identity (runIdentity)
@@ -33,7 +39,7 @@ data QLit
 
 -- | The syntactic version of qualifier expressions, which are
 --   positive logical formulae over literals and type variables
-data QExp a
+data QExp' a
   = QeLit QLit
   | QeVar a
   | QeDisj [QExp a]
@@ -41,19 +47,23 @@ data QExp a
   | QeAnti Anti
   deriving (Typeable, Data)
 
+type QExp a = Located QExp' a
+
+deriveNotable ['QeDisj, 'QeConj] ''QExp
+
 -- | Synthetic constructor to avoid constructing nullary or unary
 --   disjunctions
 qeDisj :: [QExp a] -> QExp a
-qeDisj []   = QeLit Qu
+qeDisj []   = newN (QeLit Qu)
 qeDisj [qe] = qe
-qeDisj qes  = QeDisj qes
+qeDisj qes  = newN (QeDisj qes)
 
 -- | Synthetic constructor to avoid constructing nullary or unary
 --   conjunctions
 qeConj :: [QExp a] -> QExp a
-qeConj []   = QeLit Qa
+qeConj []   = newN (QeLit Qa)
 qeConj [qe] = qe
-qeConj qes  = QeConj qes
+qeConj qes  = newN (QeConj qes)
 
 -- | The meaning of qualifier expressions
 newtype QDen a = QDen { unQDen :: PDNF a }
@@ -85,12 +95,13 @@ elimQLit _ a Qa = a
 
 -- | Find the meaning of a qualifier expression
 qInterpretM :: (Monad m, Ord a) => QExp a -> m (QDen a)
-qInterpretM (QeLit Qu)  = return minBound
-qInterpretM (QeLit Qa)  = return maxBound
-qInterpretM (QeVar v)   = return (QDen (PDNF.variable v))
-qInterpretM (QeDisj es) = bigVee `liftM` mapM qInterpretM es
-qInterpretM (QeConj es) = bigWedge `liftM` mapM qInterpretM es
-qInterpretM (QeAnti a)  = antifail "Syntax.Kind.qInterpret" a
+qInterpretM (N note qe0) = case qe0 of
+  QeLit Qu  -> return minBound
+  QeLit Qa  -> return maxBound
+  QeVar v   -> return (QDen (PDNF.variable v))
+  QeDisj es -> bigVee `liftM` mapM qInterpretM es
+  QeConj es -> bigWedge `liftM` mapM qInterpretM es
+  QeAnti a  -> antifail ("Syntax.Kind.qInterpret: " ++ show (getLoc note)) a
 
 -- | Find the meaning of a qualifier expression
 qInterpret :: Ord a => QExp a -> QDen a
@@ -99,20 +110,21 @@ qInterpret  = runIdentity . qInterpretM
 -- | Convert a canonical representation back to a denotation.
 --   (Unsafe if the representation is not actually canonical)
 qInterpretCanonical :: Ord a => QExp a -> QDen a
-qInterpretCanonical (QeDisj clauses) = QDen $
+qInterpretCanonical (N _ (QeDisj clauses)) = QDen $
   PDNF.fromListsUnsafe $
-    [ [ v ] | QeVar v <- clauses ] ++
-    [ [ v | QeVar v <- clause  ] | QeConj clause <- clauses ]
+    [ [ v ] | N _ (QeVar v) <- clauses ] ++
+    [ [ v | N _ (QeVar v) <- clause ] | N _ (QeConj clause) <- clauses ]
 qInterpretCanonical e = qInterpret e
 
 -- | Return the canonical representation of the meaning of a
 --   qualifier expression
 qRepresent :: Ord a => QDen a -> QExp a
 qRepresent (QDen pdnf)
-  | PDNF.isUnsat pdnf = QeLit Qu
-  | PDNF.isValid pdnf = QeLit Qa
+  | PDNF.isUnsat pdnf = newN (QeLit Qu)
+  | PDNF.isValid pdnf = newN (QeLit Qa)
   | otherwise         =
-      qeDisj (map (qeConj . map QeVar) (PDNF.toLists pdnf))
+      qeDisj (map (qeConj . map qeVar)
+                  (PDNF.toLists pdnf))
 
 qDenToLit :: Ord a => QDen a -> Maybe QLit
 qDenToLit (QDen pdnf)
@@ -156,7 +168,7 @@ instance Bounded QLit where
   minBound = Qu
   maxBound = Qa
 
-instance Bounded (QExp a) where
+instance Bounded (QExp' a) where
   minBound = QeLit minBound
   maxBound = QeLit maxBound
 

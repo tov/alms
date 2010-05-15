@@ -16,6 +16,7 @@ import Env
 import ErrorST
 import Type
 import Util
+import Viewable
 
 import qualified Control.Monad.Reader as CMR
 import Data.Generics (Data, everywhere, mkT, extT)
@@ -355,7 +356,7 @@ subtype limit uvars1 t1i uvars2 t2i =
     subkind qd1 qd2 orElse =
       if qd1 <: qd2 then return () else do
         (m1, m2) <- getUVars
-        case (qRepresent qd1, qRepresent qd2) of
+        case (view $ qRepresent qd1, view $ qRepresent qd2) of
           (QeVar tv1, QeVar tv2)
             | Just (_, ref) <- m1 tv1, Nothing <- m2 tv2
             -> upperBoundUVar ref (TyVar tv2)
@@ -905,9 +906,9 @@ uvarsTests = T.test
   , TyVar a .->. TyVar a !>:  tyInt .-*. tyInt
   , TyVar a .-*. TyVar a  >:! tyUn  .->. tyInt
       ==!  (tyInt, noU, noA, noA)
-  , TyFun (qInterpret (QeVar c)) tyInt tyInt <:! tyInt .-*. tyInt
+  , TyFun (qInterpret (qeVar c)) tyInt tyInt <:! tyInt .-*. tyInt
       ==!  (noU, noU, noA, noA)
-  , TyFun (qInterpret (QeVar c)) tyInt tyInt <:! tyInt .->. tyInt
+  , TyFun (qInterpret (qeVar c)) tyInt tyInt <:! tyInt .->. tyInt
       ==!  (noU, noU, noA, noA)
   , (TyVar c .->. TyVar d .-*. TyVar d) .*. TyVar d .*. tyRecv (TyVar c)
     <:!

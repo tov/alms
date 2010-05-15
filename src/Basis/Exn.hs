@@ -7,6 +7,9 @@ import Value
 import Quasi
 import Syntax
 
+import qualified Loc
+import qualified Syntax.Notable
+
 import Control.Exception
 
 eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId

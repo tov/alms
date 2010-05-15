@@ -1,5 +1,6 @@
 {-# LANGUAGE
       DeriveDataTypeable,
+      RankNTypes,
       TemplateHaskell,
       TypeSynonymInstances #-}
 module Syntax.THQuasi (th, ToSyntax(..)) where
@@ -104,7 +105,7 @@ instance ToName String where
   nameIsWild = (== "_")
 
 -- Generic constructors for building both patterns and expressions
-class ToSyntax b where
+class Data b => ToSyntax b where
   varS   :: ToName a => a -> [Q b] -> Q b
   conS   :: ToName a => a -> [Q b] -> Q b
   listS  :: [Q b] -> Q b
@@ -113,11 +114,12 @@ class ToSyntax b where
   -- | Return the first argument in expression context and the second
   --   in pattern context
   whichS :: Q b -> Q b -> Q b
+  whichS':: Q Exp -> Q Pat -> Q b
   -- | A wild card expression, interpreted as @()@ in expression
   --   (strange, but often right)
   wildS  :: Q b
   -- | Lift data, generically
-  dataS  :: Data a => a -> Q b
+  dataS  :: Data a => (forall c. Data c => c -> Maybe (Q b)) -> a -> Q b
 
 instance ToSyntax Exp where
   varS      = foldl appE . varE . toName
@@ -126,8 +128,9 @@ instance ToSyntax Exp where
   recS      = recConE
   fieldS    = fieldExp
   whichS    = const
+  whichS'   = const
   wildS     = conE (mkName "()")
-  dataS     = dataToExpQ (const Nothing)
+  dataS     = dataToExpQ
 
 instance ToSyntax Pat where
   varS n []
@@ -139,8 +142,9 @@ instance ToSyntax Pat where
   recS      = recP
   fieldS    = fieldPat
   whichS    = const id
+  whichS'   = const id
   wildS     = wildP
-  dataS     = dataToPatQ (const Nothing)
+  dataS     = dataToPatQ
 
 -- Figure out the head and arguments of a curried application
 unfoldApp :: HsAst -> (HsAst, [HsAst])

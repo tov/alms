@@ -14,6 +14,10 @@ import Quasi
 import Syntax
 import Type
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 import qualified Basis.IO
 import qualified Basis.Socket
 import qualified Basis.Exn

@@ -19,6 +19,9 @@ import Quasi
 import Value
 import Util
 import Syntax
+import qualified Syntax.Notable
+import qualified Syntax.Expr
+import qualified Syntax.Decl
 import Env
 import Ppr (Ppr(..), Doc, text, precApp)
 
@@ -86,14 +89,14 @@ evalDecls :: [Decl i] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl i -> DDecl
-evalDecl (DcLet _ x _ e) = evalLet x e
-evalDecl (DcTyp _ _)     = return
-evalDecl (DcAbs _ _ ds)  = evalDecls ds
-evalDecl (DcOpn _ b)     = evalOpen b
-evalDecl (DcMod _ n b)   = evalMod n b
-evalDecl (DcLoc _ d0 d1) = evalLocal d0 d1
-evalDecl (DcExn _ n mt)  = evalExn n mt
-evalDecl (DcAnti a)      = $antifail
+evalDecl [$dc| let $x : $opt:_ = $e |]              = evalLet x e
+evalDecl [$dc| type $list:_ |]                      = return
+evalDecl [$dc| abstype $list:_ with $list:ds end |] = evalDecls ds
+evalDecl [$dc| open $b |]                           = evalOpen b
+evalDecl [$dc| module $uid:n = $b |]                = evalMod n b
+evalDecl [$dc| local $list:d0 with $list:d1 end |]  = evalLocal d0 d1
+evalDecl [$dc| exception $uid:n of $opt:mt |]       = evalExn n mt
+evalDecl [$dc| $anti:a |]                           = $antifail
 
 evalLet :: Patt i -> Expr i -> DDecl
 evalLet x e env = do
@@ -119,14 +122,14 @@ evalLocal ds ds'  env0 = do
   return (env2 =+= scope)
 
 evalModExp :: ModExp i -> E -> IO Scope
-evalModExp (MeStr ds)   env = do
+evalModExp [$me| struct $list:ds end |]  env = do
   scope:_ <- evalDecls ds (genEmpty:env)
   return scope
-evalModExp (MeName n)   env = do
+evalModExp [$me| $quid:n $list:_ |]      env = do
   case env =..= n of
     Just scope -> return scope
     Nothing    -> fail $ "BUG! Unknown module: " ++ show n
-evalModExp (MeAnti a)   _   = antifail "dynamics" a
+evalModExp [$me| $anti:a |]              _   = $antifail
 
 evalExn :: Uid -> Maybe (Type i) -> DDecl
 evalExn u mt env = do
@@ -138,8 +141,8 @@ evalExn u mt env = do
     _ -> fail $ "BUG! Can't create new exception ID for: " ++ show u
 
 eval :: E -> Prog i -> Result
-eval env0 (Prog ds (Just e0)) = evalDecls ds env0 >>= valOf e0
-eval env0 (Prog ds Nothing  ) = evalDecls ds env0 >>  return (vinj ())
+eval env0 [$prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
+eval env0 [$prQ| $list:ds        |] = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
 valOf :: Expr i -> D
@@ -157,19 +160,20 @@ valOf e env = case e of
   [$ex| $antiL:a |]  -> $antifail
   [$ex| match $e1 with $list:clauses |] -> do
     v1 <- valOf e1 env
-    let loop (CaseAlt xi ei:rest) = case bindPatt xi v1 env of
+    let loop (N _ (CaClause xi ei):rest) = case bindPatt xi v1 env of
           Just env' -> valOf ei env'
           Nothing   -> loop rest
-        loop [] = throwPatternMatch v1 (map (show . capatt) clauses) env
-        loop (CaAnti a:_) = $antifail
+        loop [] = throwPatternMatch v1
+                    (map (show . capatt . dataOf) clauses) env
+        loop (N _ (CaAnti a):_) = $antifail
     loop clauses
   [$ex| let rec $list:bs in $e2 |] -> do
-    let extend (envI, rs) b = do
+    let extend (envI, rs) (N _ b) = do
           r <- newIORef (fail "Accessed let rec binding too early")
           return (envI =+= bnvar b =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
-      (\r b -> do
+      (\r (N _ b) -> do
          v <- valOf (bnexpr b) env'
          writeIORef r (return v))
       (reverse rev_rs)

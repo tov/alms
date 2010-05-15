@@ -10,6 +10,10 @@ import Syntax
 import Util
 import Value (Value, Valuable(..))
 
+import qualified Loc
+import qualified Syntax.Notable
+import qualified Syntax.Decl
+
 import qualified Control.Concurrent.MVar as MV
 
 newtype MVar = MVar { unMVar :: MV.MVar Value }

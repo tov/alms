@@ -25,8 +25,11 @@ module Statics (
 import Quasi
 import Util
 import qualified Syntax
-import Syntax hiding (Type(..), tyAll, tyEx, tyUn, tyAf,
-                      tyTuple, tyUnit, tyArr)
+import qualified Syntax.Notable
+import qualified Syntax.Expr
+import qualified Syntax.Decl
+import Syntax hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
+                      tyTuple, tyUnit, tyArr, tyApp)
 import Loc
 import Env as Env
 import Ppr ()
@@ -359,7 +362,7 @@ tcType = tc where
   tc [$ty| mu '$tv . $t |] = withTVs [tv] $ \[tv'] -> do
     t' <- tc t
     tassert (qualConst t' == tvqual tv) $
-      "Recursive type " ++ show (Syntax.TyMu tv t) ++ " qualifier " ++
+      "Recursive type " ++ show (Syntax.tyMu tv t) ++ " qualifier " ++
       "does not match its own type variable."
     return (TyMu tv' t')
   tc [$ty| $anti:a |] = $antifail
@@ -386,16 +389,17 @@ tcExpr = tc where
     [$ex| $antiL:a |] -> $antifail
     [$ex| match $e with $list:clauses |] -> do
       (t0, e') <- tc e
-      (t1:ts, clauses') <- liftM unzip . forM clauses $ \ca -> do
+      (t1:ts, clauses') <- liftM unzip . forM clauses $ \(N _ ca) -> do
         (gi, xi', ti, ei') <- withPatt t0 (capatt ca) $ tc (caexpr ca)
         checkSharing "match" gi (caexpr ca)
-        return (ti, CaseAlt xi' ei')
+        return (ti, caClause xi' ei')
       tr <- foldM (\ti' ti -> ti' \/? ti
                       |! "Mismatch in match/let: " ++ show ti ++
                           " and " ++ show ti')
             t1 ts
       return (tr, [$ex|+ match $e' with $list:clauses' |])
-    [$ex| let rec $list:bs in $e2 |] -> do
+    [$ex| let rec $list:bsN in $e2 |] -> do
+      let bs = map dataOf bsN
       tfs <- mapM (tcType . bntype) bs
       let makeG seen (b:bs') (t:ts') = do
             tassert (bnvar b `notElem` seen) $
@@ -416,9 +420,10 @@ tcExpr = tc where
                       show tf ++ " in let rec")
                 tfs tas
       (t2, e2') <- withVars g' $ tc e2
-      let b's = zipWith3
-                  (\b tf e' -> b { bntype = typeToStx tf, bnexpr = e' })
-                  bs tfs e's
+      let b's =
+            zipWith3
+              (\b tf e' -> newBinding b { bntype = typeToStx tf, bnexpr = e' })
+              bs tfs e's
       return (t2, [$ex|+ let rec $list:b's in $e2' |])
     [$ex| let $decl:d in $e2 |] ->
       withDecl d $ \d' -> do
@@ -558,7 +563,7 @@ tcPatt :: (?loc :: Loc, Monad m) =>
 tcPatt t x0 = case x0 of
   [$pa| _ |]      -> return (empty, empty, x0)
   [$pa| $lid:x |] -> return (empty, Var x =:= t, x0)
-  PaCon u mx _ -> do
+  N _ (PaCon u mx _) -> do
     t' <- hnT t
     case t' of
       TyApp _ ts _ -> do
@@ -573,11 +578,11 @@ tcPatt t x0 = case x0 of
         let isexn = findIsExn t'
         case (mt, mx) of
           (Nothing, Nothing) ->
-            return (empty, empty, PaCon u Nothing isexn)
+            return (empty, empty, paCon u Nothing isexn)
           (Just t1, Just x1) -> do
             let t1' = tysubsts params ts t1
             (dx1, gx1, x1') <- tcPatt t1' x1
-            return (dx1, gx1, PaCon u (Just x1') isexn)
+            return (dx1, gx1, paCon u (Just x1') isexn)
           _ -> tgot "Pattern" t "wrong arity"
       _ | isBotType t' -> case mx of
             Nothing -> return (empty, empty, x0)
@@ -598,15 +603,15 @@ tcPatt t x0 = case x0 of
   [$pa| $str:s |] -> do
       tassgot (t <: tyString)
         "Pattern" t "string"
-      return (empty, empty, PaLit (LtStr s))
+      return (empty, empty, [$pa| $str:s |])
   [$pa| $int:z |] -> do
       tassgot (t <: tyInt)
         "Pattern" t "int"
-      return (empty, empty, PaLit (LtInt z))
+      return (empty, empty, [$pa| $int:z |])
   [$pa| $flo:f |] -> do
       tassgot (t <: tyFloat)
         "Pattern" t "float"
-      return (empty, empty, PaLit (LtFloat f))
+      return (empty, empty, [$pa| $flo:f |])
   [$pa| $antiL:a |] -> $antifail
   [$pa| $x as $lid:y |] -> do
     (dx, gx, x') <- tcPatt t x
@@ -728,7 +733,7 @@ indexQuals name tvs qexp = do
 withTyDecs :: (?loc :: Loc, Monad m) =>
               [TyDec i] -> ([TyDec i] -> TC m a) -> TC m a
 withTyDecs tds0 k0 = do
-  tassert (unique (map tdaName tds0)) $
+  tassert (unique (map (tdaName . dataOf) tds0)) $
     "Duplicate type(s) in recursive type declaration"
   let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
   stds <- topSort getEdge stds0
@@ -741,9 +746,10 @@ withTyDecs tds0 k0 = do
                 else k0 (map fst tds'changed)
      in loop
   where
-    withStub (TdDat name params _) k = allocStub name params k
-    withStub (TdSyn name params _) k = allocStub name params k
-    withStub _           k           = k
+    withStub td0 k = case dataOf td0 of
+      TdDat name params _ -> allocStub name params k
+      TdSyn name params _ -> allocStub name params k
+      _                   -> k
     --
     allocStub name params k = do
       tassert (unique params) "Repeated type parameter"
@@ -752,14 +758,15 @@ withTyDecs tds0 k0 = do
                     [ (tvqual tv, Omnivariant) | tv <- params ]
       withTypes (name =:= tc) k
     --
-    getEdge (TdSyn name _ t)    = (name, tyConsOfType t)
-    getEdge (TdAbs name _ _ _)  = (name, S.empty)
-    getEdge (TdDat name _ alts) = (name, names) where
-       names = S.unions [ tyConsOfType t | (_, Just t) <- alts ]
-    getEdge (TdAnti a)          = $antierror
+    getEdge td0 = case dataOf td0 of
+      TdSyn name _ t    -> (name, tyConsOfType t)
+      TdAbs name _ _ _  -> (name, S.empty)
+      TdDat name _ alts -> (name, names) where
+        names = S.unions [ tyConsOfType t | (_, Just t) <- alts ]
+      TdAnti a          -> $antierror
     --
     partition td (atds, stds, dtds) =
-      case td of
+      case dataOf td of
         TdAbs _ _ _ _ -> (td : atds, stds, dtds)
         TdSyn _ _ _   -> (atds, td : stds, dtds)
         TdDat _ _ _   -> (atds, stds, td : dtds)
@@ -771,50 +778,51 @@ withTyDecs tds0 k0 = do
 -- to a fixpoint.
 withTyDec :: (?loc :: Loc, Monad m) =>
              TyDec i -> ((TyDec i, Bool) -> TC m a) -> TC m a
-withTyDec (TdAbs name params variances quals) k = do
-  tassert (unique params) "Repeated type parameter"
-  index  <- newIndex
-  quals' <- indexQuals name params quals
-  withTypes
-    (name =:= mkTC index (unLid name) quals'
-              [ (tvqual parm, var) | var <- variances | parm <- params ])
-    (k (TdAbs name params variances quals, False))
-withTyDec (TdSyn name params rhs) k = do
-  tc <- getType (J [] name)
-  (params', rhs') <- withTVs params $ \params' -> do
-    rhs' <- tcType rhs
-    return (params', rhs')
-  let qual    = numberQDen params' (qualifier rhs')
-      arity   = typeVariances params' rhs'
-      changed = arity /= tcArity tc
-             || qual  /= tcQual tc
-      tc'     = tc { tcArity = arity, tcQual = qual,
-                     tcNext  = Just [(map TpVar params', rhs')] }
-  withTypes (name =:= tc')
-    (k (TdSyn name params rhs, changed))
-withTyDec (TdDat name params alts) k = do
-  tc <- getType (J [] name)
-  (params', alts') <-
-    withTVs params $ \params' -> do
-      alts' <- sequence
-        [ case mt of
-            Nothing -> return (cons, Nothing)
-            Just t  -> do
-              t' <- tcType t
-              return (cons, Just t')
-        | (cons, mt) <- alts ]
-      return (params', alts')
-  let t'      = foldl tyTuple tyUnit [ t | (_, Just t) <- alts' ]
-      qual    = numberQDen params' (qualifier t')
-      arity   = typeVariances params' t'
-      changed = arity /= tcArity tc
-             || qual  /= tcQual tc
-      tc'     = tc { tcArity = arity, tcQual = qual,
-                     tcCons = (params', fromList alts') }
-  withTypes (name =:= tc') $
-    withVars (alts2env params' tc' alts') $
-      (k (TdDat name params alts, changed))
-withTyDec (TdAnti a) _ = $antifail
+withTyDec td0 k = case dataOf td0 of
+  TdAbs name params variances quals -> do
+    tassert (unique params) "Repeated type parameter"
+    index  <- newIndex
+    quals' <- indexQuals name params quals
+    withTypes
+      (name =:= mkTC index (unLid name) quals'
+                [ (tvqual parm, var) | var <- variances | parm <- params ])
+      (k (tdAbs name params variances quals, False))
+  TdSyn name params rhs -> do
+    tc <- getType (J [] name)
+    (params', rhs') <- withTVs params $ \params' -> do
+      rhs' <- tcType rhs
+      return (params', rhs')
+    let qual    = numberQDen params' (qualifier rhs')
+        arity   = typeVariances params' rhs'
+        changed = arity /= tcArity tc
+               || qual  /= tcQual tc
+        tc'     = tc { tcArity = arity, tcQual = qual,
+                       tcNext  = Just [(map TpVar params', rhs')] }
+    withTypes (name =:= tc')
+      (k (tdSyn name params rhs, changed))
+  TdDat name params alts -> do
+    tc <- getType (J [] name)
+    (params', alts') <-
+      withTVs params $ \params' -> do
+        alts' <- sequence
+          [ case mt of
+              Nothing -> return (cons, Nothing)
+              Just t  -> do
+                t' <- tcType t
+                return (cons, Just t')
+          | (cons, mt) <- alts ]
+        return (params', alts')
+    let t'      = foldl tyTuple tyUnit [ t | (_, Just t) <- alts' ]
+        qual    = numberQDen params' (qualifier t')
+        arity   = typeVariances params' t'
+        changed = arity /= tcArity tc
+               || qual  /= tcQual tc
+        tc'     = tc { tcArity = arity, tcQual = qual,
+                       tcCons = (params', fromList alts') }
+    withTypes (name =:= tc') $
+      withVars (alts2env params' tc' alts') $
+        (k (tdDat name params alts, changed))
+  TdAnti a -> $antifail
 
 -- | Are all elements of the list unique?
 unique :: Ord a => [a] -> Bool
@@ -1044,15 +1052,15 @@ requalifyTypes _uids env = env {- map (fmap repairLevel) env where
 -- | Type check a module body
 tcModExp :: (?loc :: Loc, Monad m, Id i) =>
              ModExp i -> TC m (ModExp i, Scope)
-tcModExp (MeStr ds) =
+tcModExp [$me| struct $list:ds end |] =
   pushScope $
     withDecls ds $ \ds' -> do
       scope <- askScope
-      return (MeStr ds', scope)
-tcModExp (MeName n)   = do
+      return ([$me| struct $list:ds' end |], scope)
+tcModExp [$me| $quid:n $list:qls |] = do
   scope <- getModule n
-  return (MeName n, scope)
-tcModExp (MeAnti a)   = $antifail
+  return ([$me| $quid:n $list:qls |], scope)
+tcModExp [$me| $anti:a |] = $antifail
 
 -- | Run a computation in the context of an abstype block
 withAbsTy :: (?loc :: Loc, Monad m, Id i) =>
@@ -1060,36 +1068,38 @@ withAbsTy :: (?loc :: Loc, Monad m, Id i) =>
              ([AbsTy i] -> [Decl i] -> TC m a) ->
              TC m a
 withAbsTy atds ds k0 =
-  let vars  = map atvariance atds
-      quals = map atquals atds
-      tds   = map atdecl atds in
+  let atds' = map view atds
+      vars  = map atvariance atds'
+      quals = map atquals atds'
+      tds   = map atdecl atds' in
   withTyDecs tds $ \tds' ->
     withDecls ds $ \ds' ->
       mapCont absDecl atds $ \tcs' ->
-        k0 (zipWith3 AbsTy vars quals tds')
+        k0 (zipWith3 absTy vars quals tds')
            (foldr replaceTyCon ds' tcs')
   where
-    absDecl (AbsTy arity quals (TdDat name params _)) k = do
-      tc      <- getType (J [] name)
-      qualSet <- indexQuals name params quals
-      tassert (length params == length (tcArity tc)) $
-        "abstract-with-end: " ++ show (length params) ++
-        " given for type " ++ show name ++
-        " which has " ++ show (length (tcArity tc))
-      tassert (all2 (<:) (tcArity tc) arity) $
-        "abstract-with-end: declared arity for type " ++ show name ++
-        ", " ++ show arity ++
-        ", is more general than actual arity " ++ show (tcArity tc)
-      tassert (tcQual tc <: qualSet) $ 
-        "abstract-with-end: declared qualifier for type " ++ show name ++
-        ", " ++ show qualSet ++
-        ", is more general than actual qualifier " ++ show (tcQual tc)
-      let tc' = abstractTyCon tc
-      withoutConstructors tc' .
-        withReplacedTyCons tc' .
-          withTypes (name =:= tc') $
-            k tc'
-    absDecl _ _ = terr "(BUG) Can't abstract non-datatypes"
+    absDecl at0 k = case view at0 of
+      AbsTy arity quals (N _ (TdDat name params _)) -> do
+        tc      <- getType (J [] name)
+        qualSet <- indexQuals name params quals
+        tassert (length params == length (tcArity tc)) $
+          "abstract-with-end: " ++ show (length params) ++
+          " given for type " ++ show name ++
+          " which has " ++ show (length (tcArity tc))
+        tassert (all2 (<:) (tcArity tc) arity) $
+          "abstract-with-end: declared arity for type " ++ show name ++
+          ", " ++ show arity ++
+          ", is more general than actual arity " ++ show (tcArity tc)
+        tassert (tcQual tc <: qualSet) $ 
+          "abstract-with-end: declared qualifier for type " ++ show name ++
+          ", " ++ show qualSet ++
+          ", is more general than actual qualifier " ++ show (tcQual tc)
+        let tc' = abstractTyCon tc
+        withoutConstructors tc' .
+          withReplacedTyCons tc' .
+            withTypes (name =:= tc') $
+              k tc'
+      _ -> terr "(BUG) Can't abstract non-datatypes"
 
 -- | Run a computation in the context of a declaration
 withDecl :: (Id i, Monad m) =>
@@ -1097,14 +1107,28 @@ withDecl :: (Id i, Monad m) =>
 withDecl decl k =
   let ?loc = getLoc decl in
     case decl of
-      DcLet loc x t e ->  withLet x t e (\x' t' -> k . DcLet loc x' t')
-      DcTyp loc tds   ->  withTyDecs tds (k . DcTyp loc)
-      DcAbs loc at ds ->  withAbsTy at ds ((.) k . DcAbs loc)
-      DcMod loc x b   ->  withMod x b (k . DcMod loc x)
-      DcOpn loc b     ->  withOpen b (k . DcOpn loc)
-      DcLoc loc d0 d1 ->  withLocal d0 d1 ((.) k . DcLoc loc)
-      DcExn loc n mt  ->  withExn n mt (k . DcExn loc n)
-      DcAnti a        ->  $antifail
+      [$dc| let $x : $opt:t = $e |]
+        -> withLet x t e $ \x' t' e' ->
+             k [$dc| let $x' : $opt:t' = $e' |] 
+      [$dc| type $list:tds |]
+        -> withTyDecs tds $ \tds' ->
+             k [$dc| type $list:tds' |]
+      [$dc| abstype $list:at with $list:ds end |]
+        -> withAbsTy at ds $ \at' ds' ->
+             k [$dc| abstype $list:at' with $list:ds' end |]
+      [$dc| module $uid:x = $b |]
+        -> withMod x b $ \b' ->
+             k [$dc| module $uid:x = $b' |]
+      [$dc| open $b |]
+        -> withOpen b $ \b' ->
+             k [$dc| open $b' |]
+      [$dc| local $list:ds0 with $list:ds1 end |]
+        -> withLocal ds0 ds1 $ \ds0' ds1' ->
+             k [$dc| local $list:ds0' with $list:ds1' end |]
+      [$dc| exception $uid:n of $opt:mt |]
+        -> withExn n mt $ \mt' ->
+             k [$dc| exception $uid:n of $opt:mt' |]
+      [$dc| $anti:a |] -> $antifail
 
 -- | Run a computation in the context of a declaration sequence
 withDecls :: (Id i, Monad m) =>
@@ -1191,7 +1215,7 @@ addMod gg0 x k = do
 
 -- | Type check a program
 tcProg :: (Monad m, Id i) => S -> Prog i -> m (Type, Prog i)
-tcProg gg (Prog ds e0) =
+tcProg gg [$prQ| $list:ds in $opt:e0 |] =
   runTC gg $
     withDecls ds $ \ds' -> do
       (t, e') <- case e0 of
@@ -1200,7 +1224,7 @@ tcProg gg (Prog ds e0) =
                      return (t, Just e')
                    Nothing -> do
                      return (tyUnit, Nothing)
-      return (t, Prog ds' e')
+      return (t, prog ds' e')
 
 -- | The initial type-checking state
 --
@@ -1220,21 +1244,21 @@ env0  = S e0 0 where
 tyConToDec :: Id i => TyCon -> TyDec i
 tyConToDec tc = case tc of
   _ | tc == tcExn
-    -> TdAbs (Lid "exn") [] [] maxBound
+    -> tdAbs (Lid "exn") [] [] maxBound
   TyCon { tcName = n, tcNext = Just [(tp, rhs)] }
-    -> TdSyn (jname n) [ tv | TpVar tv <- tp ] (typeToStx rhs)
+    -> tdSyn (jname n) [ tv | TpVar tv <- tp ] (typeToStx rhs)
   TyCon { tcName = n, tcCons = (ps, alts) }
     | not (isEmpty alts)
-    -> TdDat (jname n) ps [ (uid, fmap typeToStx mt)
+    -> tdDat (jname n) ps [ (uid, fmap typeToStx mt)
                           | (uid, mt) <- toList alts ]
   TyCon { tcName = n }
     ->
     let tyvars = zipWith ($) tvalphabet (tcBounds tc)
-     in TdAbs (jname n)
+     in tdAbs (jname n)
               (zipWith const tyvars (tcArity tc))
               (tcArity tc)
               (qRepresent
                 (denumberQDen
-                  (map (qInterpret . QeVar) tyvars)
+                  (map (qInterpret . qeVar) tyvars)
                   (tcQual tc)))
 

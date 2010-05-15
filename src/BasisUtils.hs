@@ -35,8 +35,10 @@ import Ppr (ppr, pprPrec, text, precApp)
 import Quasi
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
+import qualified Syntax.Notable
+import qualified Syntax.Decl
 import Type (TyCon)
-import Loc (Loc(Loc), mkBogus)
+import Loc (Loc(Loc), mkBogus, setLoc)
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
               ExnId(..))

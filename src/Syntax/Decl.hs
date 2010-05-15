@@ -1,23 +1,32 @@
 {-# LANGUAGE
       DeriveDataTypeable,
-      TemplateHaskell #-}
+      FlexibleInstances,
+      StandaloneDeriving,
+      TemplateHaskell,
+      TypeFamilies,
+      TypeSynonymInstances #-}
 module Syntax.Decl (
   -- * Declarations
-  Decl(..),
+  Decl'(..), Decl, DeclNote(..), newDecl,
   -- ** Type declarations
-  TyDec(..), AbsTy(..),
+  TyDec'(..), TyDec, AbsTy'(..), AbsTy,
   -- ** Modules
-  ModExp(..),
-  -- ** Synthetic consructors
+  ModExp'(..), ModExp, newModExp,
+  -- ** Synthetic constructors
   -- | These fill in the source location fields with a bogus location
-  dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn,
+  dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn, dcAnti,
+  absTy, absTyAnti,
+  tdAbs, tdSyn, tdDat, tdAnti,
+  meStr, meName, meAnti,
+  prog,
 
   -- * Programs
-  Prog(..),
+  Prog'(..), Prog,
   prog2decls
 ) where
 
-import Loc as Loc
+import Meta.DeriveNotable
+import Syntax.Notable
 import Syntax.Anti
 import Syntax.Kind
 import Syntax.Ident
@@ -26,129 +35,179 @@ import Syntax.Patt
 import Syntax.Expr
 
 import Data.Generics (Typeable(..), Data(..))
+import qualified Data.Set as S
+import qualified Data.Map as M
+
+type Decl i   = N (DeclNote i) (Decl' i)
+type ModExp i = N (DeclNote i) (ModExp' i)
+type Prog i   = Located Prog' i
+type AbsTy i  = Located AbsTy' i
+type TyDec i  = Located TyDec' i
 
 -- | A program is a sequence of declarations, maybe followed by an
 -- expression
-data Prog i = Prog [Decl i] (Maybe (Expr i))
+data Prog' i = Prog [Decl i] (Maybe (Expr i))
   deriving (Typeable, Data)
 
 -- | Declarations
-data Decl i
+data Decl' i
   -- | Constant declaration
-  = DcLet Loc (Patt i) (Maybe (Type i)) (Expr i)
+  = DcLet (Patt i) (Maybe (Type i)) (Expr i)
   -- | Type declaration
-  | DcTyp Loc [TyDec i]
+  | DcTyp [TyDec i]
   -- | Abstype block declaration
-  | DcAbs Loc [AbsTy i] [Decl i]
+  | DcAbs [AbsTy i] [Decl i]
   -- | Module declaration
-  | DcMod Loc Uid (ModExp i)
+  | DcMod Uid (ModExp i)
   -- | Module open
-  | DcOpn Loc (ModExp i)
+  | DcOpn (ModExp i)
   -- | Local block
-  | DcLoc Loc [Decl i] [Decl i]
+  | DcLoc [Decl i] [Decl i]
   -- | Exception declaration
-  | DcExn Loc Uid (Maybe (Type i))
+  | DcExn Uid (Maybe (Type i))
   -- | Antiquote
   | DcAnti Anti
   deriving (Typeable, Data)
 
--- | Build a constant declaration with bogus source location
-dcLet :: Patt i -> Maybe (Type i) -> Expr i -> Decl i
-dcLet  = DcLet bogus
-
--- | Build a type declaration with bogus source location
-dcTyp :: [TyDec i] -> Decl i
-dcTyp  = DcTyp bogus
-
--- | Build a abstype declaration with bogus source location
-dcAbs :: [AbsTy i] -> [Decl i] -> Decl i
-dcAbs  = DcAbs bogus
-
--- | Build a module with bogus source location
-dcMod :: Uid -> ModExp i -> Decl i
-dcMod  = DcMod bogus
-
--- | Build an open declaration with bogus source location
-dcOpn :: ModExp i -> Decl i
-dcOpn  = DcOpn bogus
-
--- | Build local block with bogus source location
-dcLoc :: [Decl i] -> [Decl i] -> Decl i
-dcLoc  = DcLoc bogus
-
--- | Build an exception declaration with bogus source location
-dcExn :: Uid -> Maybe (Type i) -> Decl i
-dcExn  = DcExn bogus
-
--- | Affine language type declarations
-data TyDec i
-  -- | An abstract (empty) type
-  = TdAbs {
-    tdaName      :: Lid,
-    tdaParams    :: [TyVar],
-    -- | The variance of each parameter
-    tdaVariances :: [Variance],
-    -- | Whether each parameter contributes to the qualifier
-    tdaQual      :: QExp TyVar
-  }
-  -- | A type synonym
-  | TdSyn {
-    tdaName      :: Lid,
-    tdaParams    :: [TyVar],
-    tdaRHS       :: Type i
-  }
-  -- | An algebraic datatype
-  | TdDat {
-    tdaName      :: Lid,
-    tdaParams    :: [TyVar],
-    tdaAlts      :: [(Uid, Maybe (Type i))]
-  }
-  | TdAnti Anti
-  deriving (Typeable, Data)
-
--- | An abstract type in language A needs to specify variances
--- and the qualifier
-data AbsTy i = AbsTy {
-                 atvariance :: [Variance],
-                 atquals    :: QExp TyVar,
-                 atdecl     :: TyDec i
-               }
-             | AbsTyAnti Anti
-  deriving (Typeable, Data)
-
 -- | A module expression
-data ModExp i
+data ModExp' i
   -- | A module literal
   = MeStr [Decl i]
   -- | A module variable
-  | MeName QUid
+  | MeName QUid [QLid]
   -- | An antiquote
   | MeAnti Anti
   deriving (Typeable, Data)
 
------
------ Some classes and instances
------
+-- | Affine language type declarations
+data TyDec' i
+  -- | An abstract (empty) type
+  = TdAbs {
+      tdaName      :: Lid,
+      tdaParams    :: [TyVar],
+      -- | The variance of each parameter
+      tdaVariances :: [Variance],
+      -- | Whether each parameter contributes to the qualifier
+      tdaQual      :: QExp TyVar
+    }
+  -- | A type synonym
+  | TdSyn {
+      tdaName      :: Lid,
+      tdaParams    :: [TyVar],
+      tdaRHS       :: Type i
+    }
+  -- | An algebraic datatype
+  | TdDat {
+      tdaName      :: Lid,
+      tdaParams    :: [TyVar],
+      tdaAlts      :: [(Uid, Maybe (Type i))]
+    }
+  | TdAnti Anti
+  deriving (Typeable, Data)
 
-instance Locatable (Decl i) where
-  getLoc (DcLet loc _ _ _) = loc
-  getLoc (DcTyp loc _)     = loc
-  getLoc (DcAbs loc _ _)   = loc
-  getLoc (DcMod loc _ _)   = loc
-  getLoc (DcOpn loc _)     = loc
-  getLoc (DcLoc loc _ _)   = loc
-  getLoc (DcExn loc _ _)   = loc
-  getLoc (DcAnti a)        = antierror "getLoc" a
+-- | An abstract type needs to specify variances and the qualifier
+data AbsTy' i
+  = AbsTy {
+      atvariance :: [Variance],
+      atquals    :: QExp TyVar,
+      atdecl     :: TyDec i
+    }
+  | AbsTyAnti Anti
+  deriving (Typeable, Data)
 
-instance Relocatable (Decl i) where
-  setLoc (DcLet _ n t e) loc = DcLet loc n t e
-  setLoc (DcTyp _ td)    loc = DcTyp loc td
-  setLoc (DcAbs _ at ds) loc = DcAbs loc at ds
-  setLoc (DcMod _ m b)   loc = DcMod loc m b
-  setLoc (DcOpn _ m)     loc = DcOpn loc m
-  setLoc (DcLoc _ d d')  loc = DcLoc loc d d'
-  setLoc (DcExn _ u e)   loc = DcExn loc u e
-  setLoc (DcAnti a)      _   = DcAnti a
+data DeclNote i
+  = DeclNote {
+      -- | source location
+      dloc_  :: !Loc,
+      -- | free variables
+      dfv_   :: FvMap,
+      -- | defined variables
+      ddv_   :: S.Set QLid
+    }
+  deriving (Typeable, Data)
+
+instance Locatable (DeclNote i) where
+  getLoc = dloc_
+
+instance Relocatable (DeclNote i) where
+  setLoc note loc = note { dloc_ = loc }
+
+instance Notable (DeclNote i) where
+  newNote = DeclNote bogus M.empty S.empty
+
+newDecl :: Decl' i -> Decl i
+newDecl d0 = flip N d0 $ case d0 of
+  DcLet p1 t2 e3 ->
+    DeclNote {
+      dloc_  = getLoc (p1, t2, e3),
+      dfv_   = fv e3,
+      ddv_   = qdv p1
+    }
+  DcTyp tds ->
+    newNote {
+      dloc_  = getLoc tds
+    }
+  DcAbs at1 ds2 ->
+    newNote {
+      dloc_  = getLoc (at1, ds2),
+      dfv_   = fv ds2,
+      ddv_   = S.unions (map qdv ds2)
+    }
+  DcMod u1 me2 ->
+    DeclNote {
+      dloc_  = getLoc me2,
+      dfv_   = fv me2,
+      ddv_   = S.mapMonotonic (\(J p n) -> J (u1:p) n) (qdv me2)
+    }
+  DcOpn me1 ->
+    DeclNote {
+      dloc_  = getLoc me1,
+      dfv_   = fv me1,
+      ddv_   = qdv me1
+    }
+  DcLoc ds1 ds2 ->
+    DeclNote {
+      dloc_  = getLoc (ds1, ds2),
+      dfv_   = fv ds1 |+| (fv ds2 |--| qdv ds1),
+      ddv_   = qdv ds2
+    }
+  DcExn _ t2 ->
+    newNote {
+      dloc_  = getLoc t2
+    }
+  DcAnti a ->
+    newNote {
+      dfv_  = antierror "fv" a,
+      ddv_  = antierror "dv" a
+    }
+
+
+newModExp :: ModExp' i -> ModExp i
+newModExp me0 = flip N me0 $ case me0 of
+  MeStr ds ->
+    DeclNote {
+      dloc_  = getLoc ds,
+      dfv_   = fv ds,
+      ddv_   = qdv ds
+    }
+  MeName _ qls ->
+    newNote {
+      ddv_  = S.fromList qls
+    }
+  MeAnti a ->
+    newNote {
+      dfv_  = antierror "fv" a,
+      ddv_  = antierror "dv" a
+    }
+
+instance Fv (N (DeclNote i) a)   where fv  = dfv_ . noteOf
+instance Dv (N (DeclNote i) a)   where qdv = ddv_ . noteOf
+
+deriveNotable 'newDecl   ''Decl
+deriveNotable 'newModExp ''ModExp
+deriveNotable ''AbsTy
+deriveNotable ''TyDec
+deriveNotable ''Prog
 
 ---
 --- Syntax Utils
@@ -157,8 +216,7 @@ instance Relocatable (Decl i) where
 -- | Turn a program into a sequence of declarations by replacing
 -- the final expression with a declaration of variable 'it'.
 prog2decls :: Prog i -> [Decl i]
-prog2decls (Prog ds (Just e))
-  = ds ++ [DcLet (getLoc e) (PaVar (Lid "it")) Nothing e]
-prog2decls (Prog ds Nothing)
+prog2decls (N _ (Prog ds (Just e)))
+  = ds ++ [dcLet (paVar (Lid "it")) Nothing e]
+prog2decls (N _ (Prog ds Nothing))
   = ds
-

@@ -12,7 +12,9 @@ import Loc
 import Ppr ()
 import Quasi
 import qualified Syntax
-import Syntax hiding (Type(..))
+import qualified Syntax.Expr
+import qualified Syntax.Notable
+import Syntax hiding (Type, Type'(..))
 import Type
 import TypeRel ()
 import Util
@@ -77,7 +79,7 @@ build recs tfrom tto
                foldr (\tv0 acc -> exTAbs tv0 . acc) id tvs $
                exAbsVar' (Lid "x") (typeToStx t1') $
                instContract body `exApp`
-               foldl (\acc tv0 -> exTApp acc (Syntax.TyVar tv0))
+               foldl (\acc tv0 -> exTApp acc (Syntax.tyVar tv0))
                      (exBVar (Lid "f")) tvs `exApp`
                exBVar (Lid "x")
 build recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
