@@ -3,15 +3,15 @@
       QuasiQuotes #-}
 module Basis.Thread (entries) where
 
-import qualified Control.Concurrent as CC
 import BasisUtils
-import Quasi
 import Syntax
 import Value (Vinj(..))
 
 import qualified Loc
 import qualified Syntax.Notable
 import qualified Syntax.Decl
+
+import qualified Control.Concurrent as CC
 
 entries :: [Entry]
 entries =  [

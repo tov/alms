@@ -6,15 +6,15 @@
       ScopedTypeVariables,
       TemplateHaskell,
       TypeSynonymInstances #-}
-module Quasi (
+module Meta.Quasi (
   pa, ty, ex, dc, me,
   prQ, qeQ, tdQ, atQ,
 ) where
 
+import Meta.QuoteData
+import Meta.THHelpers
 import Parser
-import QuoteData
 import Syntax
-import Syntax.THQuasi
 
 import Data.Generics
 import qualified Language.Haskell.TH as TH

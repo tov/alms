@@ -4,7 +4,7 @@
 {-# LANGUAGE
       RankNTypes,
       ScopedTypeVariables #-}
-module QuoteData (dataToExpQ, dataToPatQ) where
+module Meta.QuoteData (dataToExpQ, dataToPatQ) where
 
 import Language.Haskell.TH
 import Data.Data

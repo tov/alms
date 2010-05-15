@@ -9,7 +9,6 @@ import qualified IO
 
 import Data.Data (Typeable, Data)
 import BasisUtils
-import Quasi
 import Syntax
 import Util
 import Value (Valuable(..), vinjData, vprjDataM)

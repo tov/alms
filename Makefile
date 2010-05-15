@@ -1,7 +1,7 @@
 EXE      = alms
 GHC      = ghc
 EXAMPLES = examples
-SRC      = src/*.hs src/Basis/*.hs src/Meta/*.hs
+SRC      = src/*.hs src/Basis/*.hs src/Syntax/*.hs src/Meta/*.hs
 
 DOC      = dist/doc/html/alms/alms/
 

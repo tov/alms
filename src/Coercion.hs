@@ -9,8 +9,8 @@ module Coercion  (
 ) where
 
 import Loc
+import Meta.Quasi
 import Ppr ()
-import Quasi
 import qualified Syntax
 import qualified Syntax.Expr
 import qualified Syntax.Notable

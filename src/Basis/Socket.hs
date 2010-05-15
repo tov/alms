@@ -11,7 +11,6 @@ import qualified Network.Socket as S
 
 import Basis.IO ()
 import BasisUtils
-import Quasi
 import Syntax
 import Value
 

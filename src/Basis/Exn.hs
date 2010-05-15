@@ -4,7 +4,6 @@ module Basis.Exn ( entries, ioexn2vexn ) where
 
 import BasisUtils
 import Value
-import Quasi
 import Syntax
 
 import qualified Loc

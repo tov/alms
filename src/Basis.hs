@@ -10,7 +10,6 @@ module Basis (
 import Util
 import BasisUtils
 import Value (Valuable(..), Value(..))
-import Quasi
 import Syntax
 import Type
 

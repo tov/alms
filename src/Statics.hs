@@ -22,7 +22,7 @@ module Statics (
   NewDefs(..), V, T, emptyNewDefs, TyCon, tyConToDec
 ) where
 
-import Quasi
+import Meta.Quasi
 import Util
 import qualified Syntax
 import qualified Syntax.Notable

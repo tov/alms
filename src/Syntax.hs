@@ -23,7 +23,7 @@ module Syntax (
   module Syntax.Patt,
   module Syntax.Expr,
   module Syntax.Decl,
-  module Syntax.AntiDicts,
+  module Syntax.SyntaxTable,
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
@@ -43,7 +43,7 @@ import Syntax.Lit
 import Syntax.Patt
 import Syntax.Expr
 import Syntax.Decl
-import Syntax.AntiDicts
+import Syntax.SyntaxTable
 
 import Util
 import Viewable

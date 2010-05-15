@@ -16,8 +16,8 @@ module Ppr (
   module Prec
 ) where
 
+import Meta.Quasi
 import Prec
-import Quasi
 import Syntax
 
 import qualified Syntax.Notable

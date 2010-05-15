@@ -3,7 +3,7 @@
       RankNTypes,
       TemplateHaskell,
       TypeSynonymInstances #-}
-module Syntax.THQuasi (th, ToSyntax(..)) where
+module Meta.THHelpers (th, ToSyntax(..)) where
 
 import Lexer (lid, uid)
 import Util

@@ -31,7 +31,7 @@ module Syntax.Anti (
 ) where
 
 import Loc as Loc
-import Syntax.THQuasi
+import Meta.THHelpers
 import Syntax.Notable
 import Util
 

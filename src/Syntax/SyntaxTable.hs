@@ -1,9 +1,9 @@
 {-# LANGUAGE
       RankNTypes,
       TemplateHaskell #-}
-module Syntax.AntiDicts where
+module Syntax.SyntaxTable where
 
-import Syntax.THQuasi
+import Meta.THHelpers
 import Syntax.Anti
 import Syntax.Notable
 import Syntax.Ident

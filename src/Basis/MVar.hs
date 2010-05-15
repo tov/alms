@@ -5,7 +5,6 @@ module Basis.MVar (entries) where
 
 import Data.Typeable (Typeable)
 import BasisUtils
-import Quasi
 import Syntax
 import Util
 import Value (Value, Valuable(..))

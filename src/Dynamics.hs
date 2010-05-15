@@ -12,10 +12,10 @@ module Dynamics (
   -- * Re-export to remove warning (!)
   -- | We need to import Quasi for the TH phase, but using it at the
   --   TH phase isn't sufficient to prevent an unused import warning.
-  module Quasi
+  module Meta.Quasi
 ) where
 
-import Quasi
+import Meta.Quasi
 import Value
 import Util
 import Syntax

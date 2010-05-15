@@ -26,13 +26,14 @@ module BasisUtils (
 
   -- * Re-exports
   text, Uid(..),
+  module Meta.Quasi,
 ) where
 
 import Dynamics (E, addVal, addMod, addExn)
 import Env (GenEmpty(..))
+import Meta.Quasi
 import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
-import Quasi
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
 import qualified Syntax.Notable
