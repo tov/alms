@@ -163,10 +163,6 @@ deriveAntibles  = concatMapM each where
           dictOfList      = const listAntis
       |]
 
-typeOfTyVarBndr :: TH.TyVarBndr -> TH.TypeQ
-typeOfTyVarBndr (TH.PlainTV tv)    = TH.varT tv
-typeOfTyVarBndr (TH.KindedTV tv k) = TH.sigT (TH.varT tv) k
-
 --
 -- Location expanders
 --

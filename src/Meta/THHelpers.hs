@@ -3,7 +3,14 @@
       RankNTypes,
       TemplateHaskell,
       TypeSynonymInstances #-}
-module Meta.THHelpers (th, ToSyntax(..)) where
+module Meta.THHelpers (
+  -- * Simplified TH quasiquote
+  th,
+  -- * Generic expression/pattern AST construction
+  ToSyntax(..),
+  -- * Miscellany
+  typeOfTyVarBndr, conName,
+) where
 
 import Lexer (lid, uid)
 import Util
@@ -145,6 +152,18 @@ instance ToSyntax Pat where
   whichS'   = const id
   wildS     = wildP
   dataS     = dataToPatQ
+
+-- Turn a type variable binder into a type
+typeOfTyVarBndr :: TyVarBndr -> TypeQ
+typeOfTyVarBndr (PlainTV tv)    = varT tv
+typeOfTyVarBndr (KindedTV tv k) = sigT (varT tv) k
+
+-- The name of a data constructor
+conName :: Con -> Name
+conName (NormalC n _)     = n
+conName (RecC n _)        = n
+conName (InfixC _ n _)    = n
+conName (ForallC _ _ con) = conName con
 
 -- Figure out the head and arguments of a curried application
 unfoldApp :: HsAst -> (HsAst, [HsAst])

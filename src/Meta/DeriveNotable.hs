@@ -7,6 +7,7 @@ module Meta.DeriveNotable (
 ) where
 
 import Syntax.Notable
+import Meta.THHelpers
 
 import Data.Char (toLower)
 import Language.Haskell.TH
@@ -59,16 +60,6 @@ go except new toName context tvs cons = do
                       | con <- cons,
                         conName con `notElem` except ]
   return (concat declses)
-
-typeOfTyVarBndr :: TyVarBndr -> TypeQ
-typeOfTyVarBndr (PlainTV tv)    = varT tv
-typeOfTyVarBndr (KindedTV tv k) = sigT (varT tv) k
-
-conName :: Con -> Name
-conName (NormalC n _)     = n
-conName (RecC n _)        = n
-conName (InfixC _ n _)    = n
-conName (ForallC _ _ con) = conName con
 
 deriveOne :: Name -> (TypeQ -> TypeQ) -> TypeQ -> Con -> Q [Dec]
 deriveOne new quant rtype (NormalC cname params0) = do
