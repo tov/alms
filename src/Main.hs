@@ -73,10 +73,11 @@ loadString st name src = do
   case parse parseProg name src of
     Left e     -> fail (show e)
     Right ast0 -> do
-      (st1, _, ast1) <- statics False (st, prog2decls (ast0 :: Prog Renamed))
-      (st2, ast2)    <- translation (st1, ast1)
-      (st3, _)       <- dynamics (st2, ast2)
-      return st3
+      (st1, ast1)    <- renaming (st, prog2decls (ast0 :: Prog Raw))
+      (st2, _, ast2) <- statics False (st1, ast1)
+      (st3, ast3)    <- translation (st2, ast2)
+      (st4, _)       <- dynamics (st3, ast3)
+      return st4
 
 batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
 batch filename msrc opt st0 = do
@@ -121,10 +122,14 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
+renaming    :: (ReplState, [Decl Raw]) -> IO (ReplState, [Decl Renamed])
 statics     :: Bool -> (ReplState, [Decl Renamed]) ->
                IO (ReplState, NewDefs, [Decl Renamed])
 translation :: (ReplState, [Decl Renamed])   -> IO (ReplState, [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed])  -> IO (ReplState, NewValues)
+
+renaming (st, ast) =
+  return (st, map trivialRename2 ast)
 
 statics slow (rs, ast) = do
   (g', new, ast') <- tcDecls slow (rsStatics rs) ast
@@ -180,8 +185,8 @@ interactive opt rs0 = do
       execute :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
       display :: NewDefs -> NewValues -> ReplState -> IO ReplState
 
-      rename (st0, ast0) =
-        check (st0, map trivialRename2 ast0)
+      rename (st0, ast0) = do
+        renaming (st0, ast0) >>= check
 
       check stast0   = if opt Don'tType
                          then execute emptyNewDefs stast0
