@@ -1,6 +1,7 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       FlexibleInstances,
+      MultiParamTypeClasses,
       StandaloneDeriving,
       TemplateHaskell,
       TypeFamilies,
@@ -58,13 +59,13 @@ data Decl' i
   -- | Abstype block declaration
   | DcAbs [AbsTy i] [Decl i]
   -- | Module declaration
-  | DcMod Uid (ModExp i)
+  | DcMod (Uid i) (ModExp i)
   -- | Module open
   | DcOpn (ModExp i)
   -- | Local block
   | DcLoc [Decl i] [Decl i]
   -- | Exception declaration
-  | DcExn Uid (Maybe (Type i))
+  | DcExn (Uid i) (Maybe (Type i))
   -- | Antiquote
   | DcAnti Anti
   deriving (Typeable, Data)
@@ -74,7 +75,7 @@ data ModExp' i
   -- | A module literal
   = MeStr [Decl i]
   -- | A module variable
-  | MeName QUid [QLid]
+  | MeName (QUid i) [QLid i]
   -- | An antiquote
   | MeAnti Anti
   deriving (Typeable, Data)
@@ -83,7 +84,7 @@ data ModExp' i
 data TyDec' i
   -- | An abstract (empty) type
   = TdAbs {
-      tdaName      :: Lid,
+      tdaName      :: Lid i,
       tdaParams    :: [TyVar],
       -- | The variance of each parameter
       tdaVariances :: [Variance],
@@ -92,15 +93,15 @@ data TyDec' i
     }
   -- | A type synonym
   | TdSyn {
-      tdaName      :: Lid,
+      tdaName      :: Lid i,
       tdaParams    :: [TyVar],
       tdaRHS       :: Type i
     }
   -- | An algebraic datatype
   | TdDat {
-      tdaName      :: Lid,
+      tdaName      :: Lid i,
       tdaParams    :: [TyVar],
-      tdaAlts      :: [(Uid, Maybe (Type i))]
+      tdaAlts      :: [(Uid i, Maybe (Type i))]
     }
   | TdAnti Anti
   deriving (Typeable, Data)
@@ -120,9 +121,9 @@ data DeclNote i
       -- | source location
       dloc_  :: !Loc,
       -- | free variables
-      dfv_   :: FvMap,
+      dfv_   :: FvMap i,
       -- | defined variables
-      ddv_   :: S.Set QLid
+      ddv_   :: S.Set (QLid i)
     }
   deriving (Typeable, Data)
 
@@ -135,7 +136,7 @@ instance Relocatable (DeclNote i) where
 instance Notable (DeclNote i) where
   newNote = DeclNote bogus M.empty S.empty
 
-newDecl :: Decl' i -> Decl i
+newDecl :: Id i => Decl' i -> Decl i
 newDecl d0 = flip N d0 $ case d0 of
   DcLet p1 t2 e3 ->
     DeclNote {
@@ -181,8 +182,7 @@ newDecl d0 = flip N d0 $ case d0 of
       ddv_  = antierror "dv" a
     }
 
-
-newModExp :: ModExp' i -> ModExp i
+newModExp :: Id i => ModExp' i -> ModExp i
 newModExp me0 = flip N me0 $ case me0 of
   MeStr ds ->
     DeclNote {
@@ -200,11 +200,11 @@ newModExp me0 = flip N me0 $ case me0 of
       ddv_  = antierror "dv" a
     }
 
-instance Fv (N (DeclNote i) a)   where fv  = dfv_ . noteOf
-instance Dv (N (DeclNote i) a)   where qdv = ddv_ . noteOf
+instance Id i => Fv (N (DeclNote i) a) i where fv  = dfv_ . noteOf
+instance Id i => Dv (N (DeclNote i) a) i where qdv = ddv_ . noteOf
 
-deriveNotable 'newDecl   ''Decl
-deriveNotable 'newModExp ''ModExp
+deriveNotable 'newDecl   (''Id, [0]) ''Decl
+deriveNotable 'newModExp (''Id, [0]) ''ModExp
 deriveNotable ''AbsTy
 deriveNotable ''TyDec
 deriveNotable ''Prog
@@ -215,8 +215,8 @@ deriveNotable ''Prog
 
 -- | Turn a program into a sequence of declarations by replacing
 -- the final expression with a declaration of variable 'it'.
-prog2decls :: Prog i -> [Decl i]
+prog2decls :: Id i => Prog i -> [Decl i]
 prog2decls (N _ (Prog ds (Just e)))
-  = ds ++ [dcLet (paVar (Lid "it")) Nothing e]
+  = ds ++ [dcLet (paVar (lid "it")) Nothing e]
 prog2decls (N _ (Prog ds Nothing))
   = ds

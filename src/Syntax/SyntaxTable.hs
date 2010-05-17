@@ -59,56 +59,61 @@ qExpAntis
   & "anti"   =:< 'QeAnti
 tyVarAntis
   = "tyvar"  =:! Nothing
+  & "anti"   =:< 'TVAnti
 declAntis
   = "decl"   =:! Nothing
   & "anti"   =:< 'DcAnti
 tyDecAntis
-  = "tydec" =:! Nothing
-  & "anti"  =:< 'TdAnti
+  = "tydec"  =:! Nothing
+  & "anti"   =:< 'TdAnti
 absTyAntis
-  = "absty" =:! Nothing
-  & "anti"  =:< 'AbsTyAnti
+  = "absty"  =:! Nothing
+  & "anti"   =:< 'AbsTyAnti
 modExpAntis
-  = "mod"   =:! Nothing
-  & "anti"  =:< 'MeAnti
+  = "mod"    =:! Nothing
+  & "anti"   =:< 'MeAnti
 lidAntis
-  = "lid"   =:  Nothing
-  & "name"  =:< 'Lid
+  = "lid"    =:  Nothing
+  & "name"   =:  Just (\v -> varS 'lid [varS v []]
+                    `whichS` conS 'Lid [wildS, varS v []])
+  & "antiLid"=:< 'LidAnti
 uidAntis
-  = "uid"   =:  Nothing
-  & "uname" =:< 'Uid
+  = "uid"    =:  Nothing
+  & "uname"  =:  Just (\v -> varS 'uid [varS v []]
+                    `whichS` conS 'Uid [wildS, varS v []])
+  & "antiUid"=:< 'LidAnti
 qlidAntis
-  = "qlid"  =:  Nothing
-  & "qname" =:  appFun 'qlid -- error in pattern context
+  = "qlid"   =:  Nothing
+  & "qname"  =:  appFun 'qlid -- error in pattern context
 quidAntis
-  = "quid"  =:  Nothing
-  & "quname"=:  appFun 'quid -- error in pattern context
+  = "quid"   =:  Nothing
+  & "quname" =:  appFun 'quid -- error in pattern context
 idAntis
-  = "id"    =:  Nothing
+  = "id"     =:  Nothing
 noAntis
   = M.empty
 
 appFun :: ToSyntax b => TH.Name -> Maybe (String -> TH.Q b)
-appFun n = Just (\v -> varS n [varS (TH.mkName v) []])
+appFun n = Just (\v -> varS n [varS v []])
 
 syntaxTable :: SyntaxTable
 syntaxTable =
-  [ ''Prog    =:: 'Prog                       !: 'newN
+  [ ''Prog    =:: 'Prog                       !: 'newN       >: (''Id, [0])
   , ''Lit     =:: 'LtAnti    $: 'litAntis
   , ''Patt    =:: 'PaAnti    $: 'pattAntis    !: 'newN
-  , ''Expr    =:: 'ExAnti    $: 'exprAntis    !: 'newExpr
-  , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding
-  , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt
+  , ''Expr    =:: 'ExAnti    $: 'exprAntis    !: 'newExpr    >: (''Id, [0])
+  , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding >: (''Id, [0])
+  , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt >: (''Id, [0])
   , ''Type    =:: 'TyAnti    $: 'typeAntis    !: 'newN
   , ''Quant   =:: 'QuantAnti $: 'quantAntis
   , ''QExp    =:: 'QeAnti    $: 'qExpAntis    !: 'newN
-  , ''TyVar   =:: 'TyVar
-  , ''Decl    =:: 'DcAnti    $: 'declAntis    !: 'newDecl
+  , ''TyVar   =:: 'TVAnti    $: 'tyVarAntis
+  , ''Decl    =:: 'DcAnti    $: 'declAntis    !: 'newDecl    >: (''Id, [0])
   , ''TyDec   =:: 'TdAnti    $: 'tyDecAntis   !: 'newN
   , ''AbsTy   =:: 'AbsTyAnti $: 'absTyAntis   !: 'newN
-  , ''ModExp  =:: 'MeAnti    $: 'modExpAntis  !: 'newModExp
-  , ''Lid     =:: 'Lid
-  , ''Uid     =:: 'Uid
+  , ''ModExp  =:: 'MeAnti    $: 'modExpAntis  !: 'newModExp  >: (''Id, [0])
+  , ''Lid     =:: 'LidAnti   $: 'lidAntis
+  , ''Uid     =:: 'UidAnti   $: 'uidAntis
   , ''QLid    =:: '()
   , ''QUid    =:: '()
   , ''Ident   =:: '()

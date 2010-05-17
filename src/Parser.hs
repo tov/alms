@@ -21,7 +21,6 @@ import Syntax
 import Sigma
 import Lexer
 
-import Data.Generics (Data)
 import qualified Data.Map as M
 import qualified Language.Haskell.TH as TH
 import Text.ParserCombinators.Parsec hiding (parse)
@@ -46,8 +45,7 @@ parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p state0
 
 -- | Run a parser on the given string in quasiquote mode
-parseQuasi :: Data a =>
-              String -> (Maybe Char -> Maybe TH.Name -> P a) -> TH.Q a
+parseQuasi :: String -> (Maybe Char -> Maybe TH.Name -> P a) -> TH.Q a
 parseQuasi str p = do
   setter <- TH.location >>! mkSetter
   let parser = do
@@ -57,12 +55,13 @@ parseQuasi str p = do
                    do char '@'
                       choice [ char '=' >> identp_no_ws >>! Just,
                                char '!' >> return Nothing ],
+                   char '!' >> return Nothing,
                    return (Just "_loc")
                  ]
         p iflag (fmap TH.mkName lflag)
   case runParser parser state0 { stAnti = True } "-" str of
     Left e  -> fail (show e)
-    Right a -> return (scrub a)
+    Right a -> return a
   where
   mkSetter = setPosition . toSourcePos . fromTHLoc
 
@@ -172,27 +171,27 @@ antilist1p sep p  = antiblep
                 <|> sepBy1 (antiblep <|> p) sep
 
 -- Just uppercase identifiers
-uidp :: P Uid
-uidp  = Uid <$> uid
+uidp :: Id i => P (Uid i)
+uidp  = Syntax.uid <$> Lexer.uid
     <|> antiblep
 
 -- Just lowercase identifiers
-lidp :: P Lid
-lidp  = Lid <$> lid
+lidp :: Id i => P (Lid i)
+lidp  = Syntax.lid <$> Lexer.lid
     <|> antiblep
 
 -- Lowercase identifiers or naturals
 --  - tycon declarations
-lidnatp :: P Lid
-lidnatp = Lid <$> (lid <|> show <$> natural)
+lidnatp :: Id i => P (Lid i)
+lidnatp = Syntax.lid <$> (Lexer.lid <|> show <$> natural)
       <|> antiblep
 
 -- Just operators
-operatorp :: P Lid
-operatorp  = try (parens operator) >>! Lid
+operatorp :: Id i => P (Lid i)
+operatorp  = try (parens operator) >>! Syntax.lid
 
 -- Add a path before something
-pathp :: P ([Uid] -> b) -> P b
+pathp :: Id i => P ([Uid i] -> b) -> P b
 pathp p = try $ do
   path <- many $ try $ uidp <* dot
   make <- p
@@ -201,34 +200,34 @@ pathp p = try $ do
 -- Qualified uppercase identifiers:
 --  - module names occurences
 --  - datacons in patterns (though path is ignored)
-quidp :: P QUid
+quidp :: Id i => P (QUid i)
 quidp  = pathp (uidp >>! flip J)
      <|> antiblep
 
 -- Qualified lowercase identifiers:
 --  - module name identifier lists
-qlidp :: P QLid
+qlidp :: Id i => P (QLid i)
 qlidp  = pathp (lidp >>! flip J)
      <|> antiblep
 
 -- Qualified lowercase identifiers or naturals:
 --  - tycon occurences
-qlidnatp :: P QLid
+qlidnatp :: Id i => P (QLid i)
 qlidnatp  = pathp (lidnatp >>! flip J)
         <|> antiblep
 
 -- Lowercase identifiers and operators
 --  - variable bindings
-varp :: P Lid
+varp :: Id i => P (Lid i)
 varp  = lidp <|> operatorp
 
 -- Qualified lowercase identifers and operators
 --  - variable occurences
--- qvarp :: P QLid
+-- qvarp :: Id i => P (QLid i)
 -- qvarp  = pathp (varp >>! flip J)
 
 -- Identifier expressions
-identp :: P Ident
+identp :: Id i => P (Ident i)
 identp = antiblep
       <|> pathp (flip J <$> (Var <$> varp <|> Con <$> uidp))
 
@@ -240,18 +239,18 @@ tyvarp  = do
          , flip TV <$> (Qa <$ char '<' <|> pure Qu)
                    <*> lidp ]
 
-oplevelp :: Prec -> P Lid
-oplevelp  = liftM Lid . opP
+oplevelp :: Id i => Prec -> P (Lid i)
+oplevelp  = liftM Syntax.lid . opP
 
 quantp :: P Quant
 quantp  = Forall <$ reserved "all"
       <|> Exists <$ reserved "ex"
       <|> antiblep
 
-typep  :: P (Type i)
+typep  :: Id i => P (Type i)
 typep   = typepP precStart
 
-typepP :: Int -> P (Type i)
+typepP :: Id i => Int -> P (Type i)
 typepP p = addLoc $ case () of
   _ | p == precStart
           -> do
@@ -285,19 +284,19 @@ typepP p = addLoc $ case () of
     | otherwise
           -> typepP precStart
   where
-  tyarg :: P [Type i]
+  tyarg :: Id i => P [Type i]
   tyarg  = choice
            [ parens $ antiblep <|> commaSep1 (typepP precStart),
              (:[]) <$> tyatom ]
 
-  tyatom :: P (Type i)
+  tyatom :: Id i => P (Type i)
   tyatom  = tyVar <$> tyvarp
         <|> tyApp <$> qlidnatp <*> pure []
         <|> antiblep
         <|> tyUn <$ qualU
         <|> tyAf <$ qualA
 
-  tyapp' :: [Type i] -> P (Type i)
+  tyapp' :: Id i => [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
     tc <- qlidnatp
     tyapp' [tyApp tc [t]]
@@ -305,7 +304,7 @@ typepP p = addLoc $ case () of
                  tc <- qlidnatp
                  tyapp' [tyApp tc ts]
 
-tybinopp :: [P String] -> P (Type i -> Type i -> Type i)
+tybinopp :: Id i => [P String] -> P (Type i -> Type i -> Type i)
 tybinopp ops = do
   op <- choice ops
   return (tyBinOp op)
@@ -400,7 +399,7 @@ modexpp  = addLoc $ choice [
              antiblep
            ]
 
-tyDecp :: P (TyDec i)
+tyDecp :: Id i => P (TyDec i)
 tyDecp = addLoc $ antiblep <|> do
   (arity, tvs, name) <- tyProtp
   choice [
@@ -414,11 +413,11 @@ tyDecp = addLoc $ antiblep <|> do
       quals <- qualsp
       return (tdAbs name tvs arity quals) ]
 
-tyProtp :: P ([Variance], [TyVar], Lid)
+tyProtp :: Id i => P ([Variance], [TyVar], Lid i)
 tyProtp  = choice [
   try $ do
     (v1, tv1) <- paramVp
-    con <- choice [ semi, star, slash, plus ] >>! Lid
+    con <- choice [ semi, star, slash, plus ] >>! Syntax.lid
     (v2, tv2) <- paramVp
     return ([v1, v2], [tv1, tv2], con),
   do
@@ -444,7 +443,7 @@ letp  = do
       let names    = map (bnvar . dataOf) bindings
           namesExp = foldl1 exPair (map exBVar names)
           namesPat = foldl1 paPair (map paVar names)
-          tempVar  = Lid "#letrec"
+          tempVar  = Syntax.lid "#letrec"
           decls0   = [ dcLet (paVar tempVar) Nothing $
                          exLetRec bindings namesExp ]
           decls1   = [ dcLet (paVar (bnvar binding)) Nothing $
@@ -465,10 +464,10 @@ letp  = do
           <*> exprp
     ]
 
-absTysp :: P [AbsTy i]
+absTysp :: Id i => P [AbsTy i]
 absTysp = antilist1p (reserved "and") $ absTyp
 
-absTyp :: P (AbsTy i)
+absTyp :: Id i => P (AbsTy i)
 absTyp  = addLoc $ antiblep <|> do
   (arity, tvs, name) <- tyProtp
   quals        <- qualsp
@@ -512,10 +511,10 @@ qExpp  = qexp where
   clean (TV _ Qu) = minBound
   clean tv        = qeVar tv
 
-altsp :: P [(Uid, Maybe (Type i))]
+altsp :: Id i => P [(Uid i, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
 
-altp  :: P (Uid, Maybe (Type i))
+altp  :: Id i => P (Uid i, Maybe (Type i))
 altp   = do
   k <- uidp
   t <- optionMaybe $ do
@@ -608,13 +607,13 @@ exprp = expr0 where
                          (exAbs paWild tyUnit
                             e1)) $
              caClause (paCon (quid "Right")
-                             (Just (paVar (Lid "x"))) False)
+                             (Just (paVar (Syntax.lid "x"))) False)
                       (exVar (qlid "x"))
              :
              clauses ++
              [caClause
                 (paCon (quid "Left")
-                       (Just (paVar (Lid "e"))) False)
+                       (Just (paVar (Syntax.lid "e"))) False)
                 (exApp (exVar (qlid "INTERNALS.Exn.raise"))
                        (exVar (qlid "e")))
               ],
@@ -667,7 +666,7 @@ exprp = expr0 where
     [ identp          >>! exId,
       litp            >>! exLit,
       antiblep,
-      parens (exprN1 <|> return (exBCon (Uid "()")))
+      parens (exprN1 <|> return (exBCon (Syntax.uid "()")))
     ]
   exprN1 = addLoc $ do
     e1 <- expr0
@@ -745,17 +744,17 @@ vargp arrcon = do
   return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
-paty :: P (Patt i, Type i)
+paty :: Id i => P (Patt i, Type i)
 paty  = do
   (p, mt) <- pamty
   case (dataOf p, mt) of
     (_, Just t) -> return (p, t)
-    (PaCon (J [] (Uid "()")) Nothing False, Nothing)
+    (PaCon (J [] (Uid _ "()")) Nothing False, Nothing)
                 -> return (p, tyUnit)
     _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
-pamty :: P (Patt i, Maybe (Type i))
+pamty :: Id i => P (Patt i, Maybe (Type i))
 pamty  = parens $ choice
            [
              do
@@ -825,14 +824,14 @@ condSigma :: Id i =>
 condSigma True  = exSigma
 condSigma False = const id
 
-condMakeBang :: Bool -> Patt i -> Patt i
+condMakeBang :: Id i => Bool -> Patt i -> Patt i
 condMakeBang True  = makeBangPatt
 condMakeBang False = id
 
 bangp :: P Bool
 bangp  = (bang >> return True) <|> return False
 
-pattp :: P (Patt i)
+pattp :: Id i => P (Patt i)
 pattp  = patt0 where
   patt0 = addLoc $ do
     x <- patt9
@@ -929,26 +928,26 @@ parsePatt      = finish pattp
 -- Convenience functions for quick-and-dirty parsing:
 
 -- | Parse a program
-pp  :: String -> Prog ()
+pp  :: String -> Prog Renamed
 pp   = makeQaD parseProg
 
 -- | Parse a sequence of declarations
-pds :: String -> [Decl ()]
+pds :: String -> [Decl Renamed]
 pds  = makeQaD parseDecls
 
 -- | Parse a declaration
-pd  :: String -> Decl ()
+pd  :: String -> Decl Renamed
 pd   = makeQaD parseDecl
 
-pme :: String -> ModExp ()
+pme :: String -> ModExp Renamed
 pme  = makeQaD parseModExp
 
 -- | Parse a type declaration
-ptd :: String -> TyDec ()
+ptd :: String -> TyDec Renamed
 ptd  = makeQaD parseTyDec
 
 -- | Parse a type
-pt  :: String -> Type ()
+pt  :: String -> Type Renamed
 pt   = makeQaD parseType
 
 -- | Parse a qualifier expression
@@ -956,11 +955,11 @@ pqe :: String -> QExp TyVar
 pqe  = makeQaD parseQExp
 
 -- | Parse an expression
-pe  :: String -> Expr ()
+pe  :: String -> Expr Renamed
 pe   = makeQaD parseExpr
 
 -- | Parse a pattern
-px  :: String -> Patt ()
+px  :: String -> Patt Renamed
 px   = makeQaD parsePatt
 
 makeQaD :: P a -> String -> a

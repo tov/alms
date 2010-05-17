@@ -1,6 +1,7 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       FlexibleInstances,
+      MultiParamTypeClasses,
       TemplateHaskell,
       TypeFamilies,
       TypeSynonymInstances #-}
@@ -19,14 +20,13 @@ module Syntax.Expr (
   caClause, caAnti,
   bnBind, bnAnti,
   -- ** Synthetic expression constructors
-  exVar, exCon, exBVar, exBCon,
+  exVar, exCon, exExn, exBVar, exBCon, exBExn,
   exStr, exInt, exFloat,
   exLet, exSeq,
   -- ** Optimizing expression constructors
   exLet', exLetVar', exAbs', exAbsVar', exTAbs',
 
   -- * Expression accessors and updaters
-  setExn, isExn, (*<*),
   syntacticValue
 ) where
 
@@ -52,7 +52,7 @@ type CaseAlt i = N (ExprNote i) (CaseAlt' i)
 -- dealing with the common fields above.
 data Expr' i
   -- | variables and datacons
-  = ExId Ident
+  = ExId (Ident i)
   -- | literals
   | ExLit Lit
   -- | case expressions (including desugared @if@ and @let@)
@@ -82,7 +82,7 @@ data Expr' i
 -- | Let-rec bindings require us to give types
 data Binding' i
   = BnBind {
-      bnvar  :: Lid,
+      bnvar  :: Lid i,
       bntype :: Type i,
       bnexpr :: Expr i
     }
@@ -103,9 +103,7 @@ data ExprNote i
       -- | source location
       eloc_  :: !Loc,
       -- | free variables
-      efv_   :: FvMap,
-      -- | is it an exception constructor?
-      isexn_ :: !Bool
+      efv_   :: FvMap i
     }
   deriving (Typeable, Data)
 
@@ -116,16 +114,15 @@ instance Relocatable (ExprNote i) where
   setLoc note loc = note { eloc_ = loc }
 
 -- | Types with free variable analyses
-instance Fv (N (ExprNote i) a) where fv = efv_ . noteOf
+instance Id i => Fv (N (ExprNote i) a) i where fv = efv_ . noteOf
 
 instance Notable (ExprNote i) where
   newNote = ExprNote {
     eloc_  = bogus,
-    efv_   = M.empty,
-    isexn_ = False
+    efv_   = M.empty
   }
 
-newExpr :: Expr' i -> Expr i
+newExpr :: Id i => Expr' i -> Expr i
 newExpr e0 = flip N e0 $ case e0 of
   ExId i  ->
     newNote {
@@ -191,7 +188,7 @@ newExpr e0 = flip N e0 $ case e0 of
       efv_  = antierror "fv" a
     }
 
-newBinding :: Binding' i -> Binding i
+newBinding :: Id i => Binding' i -> Binding i
 newBinding b0 = flip N b0 $ case b0 of
   BnBind x t e ->
     newNote {
@@ -203,7 +200,7 @@ newBinding b0 = flip N b0 $ case b0 of
       efv_  = antierror "fv" a
     }
 
-newCaseAlt :: CaseAlt' i -> CaseAlt i
+newCaseAlt :: Id i => CaseAlt' i -> CaseAlt i
 newCaseAlt ca0 = flip N ca0 $ case ca0 of
   CaClause x e ->
     newNote {
@@ -215,35 +212,41 @@ newCaseAlt ca0 = flip N ca0 $ case ca0 of
       efv_  = antierror "fv" a
     }
 
-deriveNotable 'newExpr    ''Expr
-deriveNotable 'newCaseAlt ''CaseAlt
-deriveNotable 'newBinding ''Binding
+deriveNotable 'newExpr    (''Id, [0]) ''Expr
+deriveNotable 'newCaseAlt (''Id, [0]) ''CaseAlt
+deriveNotable 'newBinding (''Id, [0]) ''Binding
 
-exVar :: QLid -> Expr i
+exVar :: Id i => QLid i -> Expr i
 exVar  = exId . fmap Var
 
-exCon :: QUid -> Expr i
+exCon :: Id i => QUid i -> Expr i
 exCon  = exId . fmap Con
 
-exBVar :: Lid -> Expr i
+exExn :: Id i => QUid i -> Expr i
+exExn  = exId . fmap Exn
+
+exBVar :: Id i => Lid i -> Expr i
 exBVar  = exId . J [] . Var
 
-exBCon :: Uid -> Expr i
+exBCon :: Id i => Uid i -> Expr i
 exBCon  = exId . J [] . Con
 
-exStr :: String -> Expr i
+exBExn :: Id i => Uid i -> Expr i
+exBExn  = exId . J [] . Exn
+
+exStr :: Id i => String -> Expr i
 exStr  = exLit . LtStr
 
-exInt :: Integer -> Expr i
+exInt :: Id i => Integer -> Expr i
 exInt  = exLit . LtInt
 
-exFloat :: Double -> Expr i
+exFloat :: Id i => Double -> Expr i
 exFloat  = exLit . LtFloat
 
-exLet :: Patt i -> Expr i -> Expr i -> Expr i
+exLet :: Id i => Patt i -> Expr i -> Expr i -> Expr i
 exLet x e1 e2 = exCase e1 [caClause x e2]
 
-exSeq :: Expr i -> Expr i -> Expr i
+exSeq :: Id i => Expr i -> Expr i -> Expr i
 exSeq e1 e2 = exCase e1 [caClause paWild e2]
 
 -- | Constructs a let expression, but with a special case:
@@ -252,11 +255,11 @@ exSeq e1 e2 = exCase e1 [caClause paWild e2]
 --   @let (x, y) = e in (x, y)   ==   e@
 --
 -- This is always safe to do.
-exLet' :: Patt i -> Expr i -> Expr i -> Expr i
+exLet' :: Id i => Patt i -> Expr i -> Expr i -> Expr i
 exLet' x e1 e2 = if (x -==+ e2) then e1 else exLet x e1 e2
 
 -- | Constructs a let expression whose pattern is a variable.
-exLetVar' :: Lid -> Expr i -> Expr i -> Expr i
+exLetVar' :: Id i => Lid i -> Expr i -> Expr i -> Expr i
 exLetVar'  = exLet' . paVar
 
 -- | Constructs a lambda expression, but with a special case:
@@ -264,7 +267,7 @@ exLetVar'  = exLet' . paVar
 --    @exAbs' x t (exApp (exVar f) (exVar x))  ==  exVar f@
 --
 -- This eta-contraction is always safe, because f has no effect
-exAbs' :: Patt i -> Type i -> Expr i -> Expr i
+exAbs' :: Id i => Patt i -> Type i -> Expr i -> Expr i
 exAbs' x t e = case view e of
   ExApp e1 e2 -> case (dataOf x, view e1, view e2) of
     (PaVar y, ExId (J p (Var f)), ExId (J [] (Var y'))) |
@@ -274,7 +277,7 @@ exAbs' x t e = case view e of
   _           -> exAbs x t e
 
 -- | Construct an abstraction whose pattern is just a variable.
-exAbsVar' :: Lid -> Type i -> Expr i -> Expr i
+exAbsVar' :: Id i => Lid i -> Type i -> Expr i -> Expr i
 exAbsVar'  = exAbs' . paVar
 
 -- | Construct a type-lambda expression, but with a special case:
@@ -282,7 +285,7 @@ exAbsVar'  = exAbs' . paVar
 --   @exTAbs' tv (exTApp (exVar f) tv)  ==  exVar f@
 --
 -- This should always be safe, because f has no effect
-exTAbs' :: TyVar -> Expr i -> Expr i
+exTAbs' :: Id i => TyVar -> Expr i -> Expr i
 exTAbs' tv e = case view e of
   ExTApp e1 t2 -> case (view e1, dataOf t2) of
     (ExId (J p (Var f)), TyVar tv') |
@@ -293,12 +296,12 @@ exTAbs' tv e = case view e of
 -- | Does a pattern exactly match an expression?  That is, is
 --   @let p = e1 in e@ equivalent to @e1@?  Note that we cannot
 --   safely handle data constructors, because they may fail to match.
-(-==+) :: Patt i -> Expr i -> Bool
+(-==+) :: Id i => Patt i -> Expr i -> Bool
 p -==+ e = case (dataOf p, dataOf e) of
   (PaVar l,      ExId (J [] (Var l')))
     -> l == l'
-  (PaCon (J [] (Uid "(")) Nothing False,
-   ExId (J [] (Con (Uid "()"))))
+  (PaCon (J [] (Uid _ "()")) Nothing False,
+   ExId (J [] (Con (Uid _ "()"))))
     -> True
   (PaPair p1 p2, ExPair e1 e2)
     -> p1 -==+ e1 && p2 -==+ e2
@@ -325,17 +328,4 @@ syntacticConstructor e = case view e of
   ExApp e1 e2         -> syntacticConstructor e1 && syntacticValue e2
   ExAnti a            -> antierror "syntacticConstructor" a
   _                   -> False
-
--- | Is the given expression an exception constructor?
-isExn :: Expr i -> Bool
-isExn  = isexn_ . noteOf
-
--- | Make the expression an exception constructor
-setExn :: Expr i -> Bool -> Expr i
-setExn e b = e { noteOf = (noteOf e) { isexn_ = b } }
-
--- | Clone the exceptionness from the right expression
--- onto the left expression
-(*<*) :: Expr i -> Expr i' -> Expr i
-e *<* e' = e `setExn` isExn e'
 

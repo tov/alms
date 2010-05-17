@@ -9,7 +9,7 @@ module Meta.THHelpers (
   -- * Generic expression/pattern AST construction
   ToSyntax(..),
   -- * Miscellany
-  typeOfTyVarBndr, conName,
+  buildContext, typeOfTyVarBndr, conName,
 ) where
 
 import Lexer (lid, uid)
@@ -152,6 +152,14 @@ instance ToSyntax Pat where
   whichS'   = const id
   wildS     = wildP
   dataS     = dataToPatQ
+
+-- ! Build a type class context from a list of type class names
+--   and parameter positions, given a list of binders to use
+--   as parameters.
+buildContext :: [TyVarBndr] -> [(Name, [Int])] -> CxtQ
+buildContext = mapM . each . map typeOfTyVarBndr
+  where
+    each tvs (n, ixs) = classP n [ tvs !! ix | ix <- ixs ]
 
 -- Turn a type variable binder into a type
 typeOfTyVarBndr :: TyVarBndr -> TypeQ

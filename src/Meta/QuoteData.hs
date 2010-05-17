@@ -3,10 +3,13 @@
 ---
 {-# LANGUAGE
       RankNTypes,
+      RelaxedPolyRec,
+      PatternGuards,
       ScopedTypeVariables #-}
 module Meta.QuoteData (dataToExpQ, dataToPatQ) where
 
 import Language.Haskell.TH
+
 import Data.Data
 
 dataToQa  ::  forall a k q. Data a
@@ -17,18 +20,23 @@ dataToQa  ::  forall a k q. Data a
           ->  [(String, String)]
           ->  a
           ->  Q q
-dataToQa mkCon mkLit appCon antiQ quals t =
+dataToQa mkCon mkLit appCon antiQ quals = loop where
+  loop :: forall b. Data b => b -> Q q
+  loop t =
     case antiQ t of
       Nothing ->
-          case constrRep constr of
-            AlgConstr _  ->
-                appCon con conArgs
-            IntConstr n ->
-                mkLit $ integerL n
-            FloatConstr n ->
-                mkLit $ rationalL (toRational n)
-            CharConstr c ->
-                mkLit $ charL c
+        case () of
+        _ | Just str <- cast t -> mkLit (stringL str)
+          | otherwise ->
+            case constrRep constr of
+              AlgConstr _  ->
+                  appCon con conArgs
+              IntConstr n ->
+                  mkLit $ integerL n
+              FloatConstr n ->
+                  mkLit $ rationalL (toRational n)
+              CharConstr c ->
+                  mkLit $ charL c
         where
           constr :: Constr
           constr = toConstr t
@@ -48,7 +56,7 @@ dataToQa mkCon mkLit appCon antiQ quals t =
           con :: k
           con = mkCon (mkName (constrName constr))
           conArgs :: [Q q]
-          conArgs = gmapQ (dataToQa mkCon mkLit appCon antiQ quals) t
+          conArgs = gmapQ loop t
 
       Just y -> y
 

@@ -44,6 +44,9 @@ import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
               ExnId(..))
 
+-- | Kind of identifier used in this module
+type R = Renamed
+
 -- | Default source location for primitives
 _loc :: Loc
 _loc  = mkBogus "<primitive>"
@@ -52,28 +55,28 @@ _loc  = mkBogus "<primitive>"
 data Entry
   -- | A value entry has a name, a types, and a value
   = ValEn {
-    enName  :: Lid,
-    enType  :: Type (),
+    enName  :: Lid R,
+    enType  :: Type R,
     enValue :: Value
   }
   -- | A declaration entry
   | DecEn {
-    enSrc   :: Decl ()
+    enSrc   :: Decl R
   }
   -- | A type entry associates a tycon name with information about it
   | TypEn {
-    enName  :: Lid,
+    enName  :: Lid R,
     enTyCon :: TyCon
   }
   -- | A module entry associates a module name with a list of entries
   | ModEn {
-    enModName :: Uid,
+    enModName :: Uid R,
     enEnts    :: [Entry]
   }
   -- | An exception entry associates an exception name with its unique id
   | ExnEn {
     enExnId   :: ExnId,
-    enExnType :: Maybe (Type ())
+    enExnType :: Maybe (Type R)
   }
 
 -- | Type class for embedding Haskell functions as object language
@@ -113,34 +116,35 @@ baseMkFun :: (Valuable a, Valuable b) => FunName -> (a -> b) -> Value
 baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 
 -- | Make a value entry for a Haskell non-function.
-val :: Valuable v => String -> Type () -> v -> Entry
-val name t v = ValEn (Lid name) t (vinj v)
+val :: Valuable v => String -> Type R -> v -> Entry
+val name t v = ValEn (lid name) t (vinj v)
 
 -- | Make a value entry for a Haskell function, given a names and types
 --   for the sublanguages.  (Leave blank to leave the binding out of
 --   that language.
 fun :: (MkFun r, Valuable v) =>
-       String -> Type () -> (v -> r) -> Entry
-fun name t f = ValEn (Lid name) t (mkFun (FNNamed (ppr (Lid name))) f)
+       String -> Type R -> (v -> r) -> Entry
+fun name t f = ValEn (lid name) t
+                 (mkFun (FNNamed (ppr (lid name :: Lid R))) f)
 
 typ :: String -> Entry
-typ s      = DecEn [$dc| type $tydec:td |] where td = ptd s
+typ s = DecEn [$dc|+ type $tydec:td |] where td = ptd s
 
 -- | Creates a declaration entry
-dec :: Decl () -> Entry
+dec :: Decl R -> Entry
 dec  = DecEn
 
 -- | Creates a module entry
 submod :: String -> [Entry] -> Entry
-submod  = ModEn . Uid
+submod  = ModEn . uid
 
 -- | Creates a primitve type entry, binding a name to a type tag
 --   (which is usually defined in Syntax.hs)
 primtype  :: String -> TyCon -> Entry
-primtype   = TypEn . Lid
+primtype   = TypEn . lid
 
 -- | Creates a primitve exception entry
-primexn :: ExnId -> Maybe (Type ()) -> Entry
+primexn :: ExnId -> Maybe (Type R) -> Entry
 primexn ei t = ExnEn { enExnId = ei, enExnType = t }
 
 -- | Application
@@ -153,7 +157,7 @@ infixr 0 -=
 
 -- | Instance of 'fun' for making binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry
-binArith name = fun name [$ty| int -> int -> int |]
+binArith name = fun name [$ty|+ int -> int -> int |]
 
 -- | Apply an object language function (as a 'Value')
 vapp :: Valuable a => Value -> a -> IO Value

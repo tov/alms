@@ -36,7 +36,7 @@ data Quant = Forall | Exists | QuantAnti Anti
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon
 data Type' i
-  = TyApp  QLid [Type i]
+  = TyApp  (QLid i) [Type i]
   | TyVar  TyVar
   | TyFun  (QExp TyVar) (Type i) (Type i)
   | TyQu   Quant TyVar (Type i)
@@ -64,25 +64,25 @@ instance Show Quant where
 
 --- Convenience constructors
 
-tyNulOp       :: String -> Type i
+tyNulOp       :: Id i => String -> Type i
 tyNulOp s      = tyApp (qlid s) []
 
-tyUnOp        :: String -> Type i -> Type i
+tyUnOp        :: Id i => String -> Type i -> Type i
 tyUnOp s a     = tyApp (qlid s) [a]
 
-tyBinOp       :: String -> Type i -> Type i -> Type i
+tyBinOp       :: Id i => String -> Type i -> Type i -> Type i
 tyBinOp s a b  = tyApp (qlid s) [a, b]
 
-tyUnit        :: Type i
+tyUnit        :: Id i => Type i
 tyUnit         = tyNulOp "unit"
 
-tyTuple       :: Type i -> Type i -> Type i
+tyTuple       :: Id i => Type i -> Type i -> Type i
 tyTuple        = tyBinOp "*"
 
-tyUn          :: Type i
+tyUn          :: Id i => Type i
 tyUn           = tyNulOp "U"
 
-tyAf          :: Type i
+tyAf          :: Id i => Type i
 tyAf           = tyNulOp "A"
 
 tyArr         :: Type i -> Type i -> Type i

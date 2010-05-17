@@ -56,34 +56,19 @@ instance Antible (Prog i) where
   prjAnti   = const Nothing
   dictOf    = const noAntis
 
-instance Antible Lid where
-  injAnti = Lid . injAnti
-  prjAnti = prjAnti . unLid
-  dictOf  = const lidAntis
-
-instance Antible Uid where
-  injAnti = Uid . injAnti
-  prjAnti = prjAnti . unUid
-  dictOf  = const uidAntis
-
-instance Antible TyVar where
-  injAnti = flip TV Qu . injAnti
-  prjAnti = prjAnti . tvname
-  dictOf  = const tyVarAntis
-
-instance Antible Ident where
-  injAnti         = J [] . Var . injAnti
+instance Antible (Ident i) where
+  injAnti                = J [] . Var . injAnti
   prjAnti (J [] (Var l)) = prjAnti l
   prjAnti _              = Nothing
   dictOf                 = const idAntis
 
-instance Antible QLid where
+instance Antible (QLid i) where
   injAnti          = J [] . injAnti
   prjAnti (J [] i) = prjAnti i
   prjAnti _        = Nothing
   dictOf           = const qlidAntis
 
-instance Antible QUid where
+instance Antible (QUid i) where
   injAnti          = J [] . injAnti
   prjAnti (J [] i) = prjAnti i
   prjAnti _        = Nothing

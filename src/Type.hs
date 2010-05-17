@@ -90,9 +90,9 @@ data Type
 data TyCon
   = TyCon {
       -- | Unique identifier used for equality
-      tcId        :: Integer,
-      -- | Printable name (not yet unique)
-      tcName      :: QLid,
+      tcId        :: Int,
+      -- | Printable name
+      tcName      :: QLid Renamed,
       -- | Variances for parameters, and correct length
       tcArity     :: [Variance],
       -- | Bounds for parameters (may be infinite)
@@ -100,7 +100,7 @@ data TyCon
       -- | Qualifier as a function of parameters
       tcQual      :: QDen Int,
       -- | For pattern-matchable types, the data constructors
-      tcCons      :: ([TyVar], Env.Env Uid (Maybe Type)),
+      tcCons      :: ([TyVar], Env.Env (Uid Renamed) (Maybe Type)),
       -- | For type operators, the next head reduction
       tcNext      :: Maybe [([TyPat], Type)]
     }
@@ -195,22 +195,23 @@ instance (Ftv a, Ftv b) => Ftv (a, b) where
 -- | Given a type variable, rename it (if necessary) to make it
 --   fresh for a set of type variables.
 freshTyVar :: TyVar -> S.Set TyVar -> TyVar
-freshTyVar (TV lid q) set = TV lid' q where
-  lid'     = if lid `S.member` names
+freshTyVar (TV l q) set = TV l' q where
+  l'       = if l `S.member` names
                then loop count
-               else lid
+               else l
   names    = S.map tvname set
   loop n   =
     let tv' = attach n
     in if tv' `S.member` names
          then loop (n + 1)
          else tv'
-  suffix   = reverse . takeWhile isDigit . reverse . unLid $ lid
-  prefix   = reverse . dropWhile isDigit . reverse . unLid $ lid
+  suffix   = reverse . takeWhile isDigit . reverse . unLid $ l
+  prefix   = reverse . dropWhile isDigit . reverse . unLid $ l
   count    = case reads suffix of
                ((n, ""):_) -> n
                _           -> 1::Integer
-  attach n = Lid (prefix ++ show n)
+  attach n = lid (prefix ++ show n)
+freshTyVar (TVAnti a) _ = Stx.antierror "Type.freshTyVar" a
 
 -- | Given a list of type variables, rename them (if necessary) to make
 --   each of them fresh for both the set of type variables and each
@@ -482,28 +483,24 @@ class ExtTC r where
 
 instance ExtTC TyCon where
   extTC = id
-instance ExtTC r => ExtTC (Integer -> r) where
-  extTC tc x = extTC (tc { tcId = x })
-instance ExtTC r => ExtTC (String -> r) where
-  extTC tc x = extTC (tc { tcName = qlid x })
-instance ExtTC r => ExtTC (QLid -> r) where
+instance ExtTC r => ExtTC (QLid Renamed -> r) where
   extTC tc x = extTC (tc { tcName = x })
 instance (v ~ Variance, ExtTC r) => ExtTC ([(QLit, v)] -> r) where
   extTC tc x = extTC (tc { tcArity = map snd x, tcBounds = map fst x })
 instance ExtTC r => ExtTC (QDen Int -> r) where
   extTC tc x = extTC (tc { tcQual = x })
-instance (v ~ TyVar, a ~ Type, ExtTC r) =>
-         ExtTC (([v], Env.Env Uid (Maybe a)) -> r) where
+instance (v ~ TyVar, a ~ Type, i ~ Renamed, ExtTC r) =>
+         ExtTC (([v], Env.Env (Uid i) (Maybe a)) -> r) where
   extTC tc x = extTC (tc { tcCons = x })
 instance ExtTC r => ExtTC ([([TyPat], Type)] -> r) where
   extTC tc x = extTC (tc { tcNext = Just x })
 instance ExtTC r => ExtTC (Maybe [([TyPat], Type)] -> r) where
   extTC tc x = extTC (tc { tcNext = x })
 
-mkTC :: ExtTC r => Integer -> String -> r
+mkTC :: ExtTC r => Int -> String -> r
 mkTC i s = extTC TyCon {
   tcId     = i,
-  tcName   = qlid s,
+  tcName   = J [] (Lid (Ren_ i) s),
   tcArity  = [],
   tcBounds = [],
   tcQual   = minBound,
@@ -515,7 +512,7 @@ tcBot, tcUnit, tcInt, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcTuple, tcIdent, tcConst :: TyCon
 
 tcBot        = mkTC (-1) "any"
-tcUnit       = mkTC (-2) "unit" ([], Env.fromList [(Uid "()", Nothing)])
+tcUnit       = mkTC (-2) "unit" ([], Env.fromList [(uid "()", Nothing)])
 tcInt        = mkTC (-3) "int"
 tcFloat      = mkTC (-4) "float"
 tcString     = mkTC (-5) "string"
@@ -628,11 +625,11 @@ infixr 8 .:., `tySemi`
 ---
 
 -- | Represent a type value as a pre-syntactic type, for printing
-typeToStx' :: Type -> Stx.Type' i
+typeToStx' :: Type -> Stx.Type' Renamed
 typeToStx'  = view . typeToStx
 
 -- | Represent a type value as a syntactic type, for printing
-typeToStx :: Type -> Stx.Type i
+typeToStx :: Type -> Stx.Type Renamed
 typeToStx t0 = case t0 of
   TyVar tv      -> Stx.tyVar tv
   TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (typeToStx t1) (typeToStx t2)
@@ -641,7 +638,7 @@ typeToStx t0 = case t0 of
   TyMu tv t1    -> Stx.tyMu tv (typeToStx t1)
 
 -- | Represent a type pattern as a syntactic type, for printing
-tyPatToStx :: TyPat -> Stx.Type i
+tyPatToStx :: TyPat -> Stx.Type Renamed
 tyPatToStx tp0 = case tp0 of
   TpVar tv      -> Stx.tyVar tv
   TpApp tc tps  -> Stx.tyApp (tcName tc) (map tyPatToStx tps)

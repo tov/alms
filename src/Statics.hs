@@ -54,28 +54,31 @@ pM a = if p a True then return () else fail "wibble"
 -- p = const
 
 -- Get the usage (sharing) of a variable in an expression:
-usage :: QLid -> Expr i -> QLit
+usage :: QLid R -> Expr R -> QLit
 usage x e = case M.lookup x (fv e) of
   Just u | u > 1 -> Qu
   _              -> Qa
+
+-- The kind of names we're using.  Should change to 'Renamed'
+type R = Renamed
 
 -- Type environments
 type D = Env TyVar TyVar       -- tyvars in scope, with idempot. renaming
 
 -- | Mapping from identifiers to value types (includes datacons)
-type V       = Env BIdent Type
+type V       = Env (BIdent R) Type
 -- | Mapping from type constructor names to tycon info
-type T       = Env Lid TyCon
+type T       = Env (Lid R) TyCon
 data Level   = Level {
                  vlevel :: V, -- values
                  tlevel :: T  -- types
                }
   deriving (Typeable, Data)
 -- path env includes modules
-type Scope = PEnv Uid Level
+type Scope = PEnv (Uid R) Level
 type E = [Scope]
 
-emptyPath :: [Uid]
+emptyPath :: [Uid R]
 emptyPath  = []
 
 -- Instances for generalizing environment operations over
@@ -90,9 +93,9 @@ instance GenExtend Level V where
   level =+= ve' = level =+= Level ve' empty
 instance GenExtend Level T where
   level =+= te' = level =+= Level empty te'
-instance GenLookup Level BIdent Type where
+instance GenLookup Level (BIdent R) Type where
   level =..= k = vlevel level =..= k
-instance GenLookup Level Lid TyCon where
+instance GenLookup Level (Lid R) TyCon where
   level =..= k = tlevel level =..= k
 
 -- | The packaged-up state of the type-checker, which needs to be
@@ -101,23 +104,23 @@ data S   = S {
              -- | The environment, from language C's perspective
              cEnv    :: E,
              -- | Index for gensyms
-             currIx  :: Integer
+             currIx  :: !Int
            }
 
 -- | The type checking monad is the composition of
 --   reader carrying an environment and state carrying a gensym counter,
 --   parametric in the underlying monad.
 newtype TC m a =
-  TC { unTC :: M.R.ReaderT TCEnv (M.S.StateT Integer m) a }
+  TC { unTC :: M.R.ReaderT TCEnv (M.S.StateT Int m) a }
 -- | The environment contains type mappings and type variable
 --   environments.
 data TCEnv = TCEnv E D
 
-instance GenLookup TCEnv QUid Scope where
+instance GenLookup TCEnv (QUid R) Scope where
   TCEnv env _ =..= k = env =..= k
-instance GenLookup TCEnv QLid TyCon where
+instance GenLookup TCEnv (QLid R) TyCon where
   TCEnv env _ =..= k = env =..= k
-instance GenLookup TCEnv Ident Type where
+instance GenLookup TCEnv (Ident R) Type where
   TCEnv env _ =..= k = env =..= k
 instance GenLookup TCEnv TyVar TyVar where
   TCEnv _ d =..= k = d =..= k
@@ -126,9 +129,9 @@ instance GenExtend TCEnv Scope where
   TCEnv env dd =+= scope = TCEnv (env =+= scope) dd
 instance GenExtend TCEnv Level where
   TCEnv env dd =+= level = TCEnv (env =+= level) dd
-instance GenExtend TCEnv (Env Ident Type) where
+instance GenExtend TCEnv (Env (Ident R) Type) where
   TCEnv env dd =+= venv = TCEnv (env =+= venv) dd
-instance GenExtend TCEnv (Env Uid Scope) where
+instance GenExtend TCEnv (Env (Uid R) Scope) where
   TCEnv env dd =+= menv = TCEnv (env =+= menv) dd
 instance GenExtend TCEnv T where
   TCEnv env dd =+= tenv = TCEnv (env =+= tenv) dd
@@ -172,7 +175,7 @@ runTC s (TC m) = do
   M.S.evalStateT (M.R.runReaderT m tc) ix
 
 -- | Gensym
-newIndex :: Monad m => TC m Integer
+newIndex :: Monad m => TC m Int
 newIndex  = TC $ do
   M.S.modify (+ 1)
   M.S.get
@@ -241,7 +244,7 @@ withoutConstructors tc = TC . M.R.local clean . unTC where
   flevel level    = level { vlevel = eachVe (vlevel level) }
   eachVe         :: V -> V
   eachVe          = fromList . filter keep . toList
-  keep           :: (BIdent, Type) -> Bool
+  keep           :: (BIdent R, Type) -> Bool
   keep (Con _, TyFun _ _ (TyApp tc' _ _)) = tc' /= tc
   keep (Con _, TyApp tc' _ _)             = tc' /= tc
   keep _                                  = True
@@ -273,22 +276,22 @@ getTV  = getAny "Free type variable"
 
 -- | Get the type of a variable, or fail
 getVar :: (?loc :: Loc, Monad m) =>
-          Ident -> TC m Type
+          Ident R -> TC m Type
 getVar x = do
   t <- tryGetVar x
   t |! "Unbound variable: " ++ show x
 
 -- | Try getting the type of a variable
 tryGetVar :: Monad m =>
-             Ident -> TC m (Maybe Type)
+             Ident R -> TC m (Maybe Type)
 tryGetVar x = TC $ asksM (return . (=..= x))
 
 -- | Get the info associated with a tycon, or fail
-getType :: (?loc :: Loc, Monad m) => QLid -> TC m TyCon
+getType :: (?loc :: Loc, Monad m) => QLid R -> TC m TyCon
 getType  = getAny "Unbound type constructor"
 
 -- | Look up a module, or fail
-getModule :: (?loc :: Loc, Monad m) => QUid -> TC m Scope
+getModule :: (?loc :: Loc, Monad m) => QUid R -> TC m Scope
 getModule  = getAny "Unbound module identifier"
 
 -- | Raise a type error, with the dynamically-bound source location
@@ -330,9 +333,9 @@ hnT  = headNormalizeTypeM 100
 
 -- | Check type for closed-ness and and defined-ness, and add info
 tcType :: (?loc :: Loc, Monad m) =>
-          Syntax.Type i -> TC m Type
+          Syntax.Type R -> TC m Type
 tcType = tc where
-  tc :: Monad m => Syntax.Type i -> TC m Type
+  tc :: Monad m => Syntax.Type R -> TC m Type
   tc [$ty| '$tv |] = do
     TyVar <$> getTV tv
   tc [$ty| $t1 -[$q]> $t2 |] = do
@@ -371,22 +374,26 @@ tcType = tc where
 --   a new type variable 
 makeExType :: Type -> Type -> Type
 makeExType t1 t2 = TyQu Exists tv $ everywhere (mkT erase) t1 where
-  tv       = freshTyVar (TV (Lid "a") (qualConst t2)) (ftv [t1, t2])
+  tv       = freshTyVar (TV (lid "a") (qualConst t2)) (ftv [t1, t2])
   erase t' = if t' == t2 then TyVar tv else t'
 
 -- | Type check an A expression
-tcExpr :: (Monad m, Id i) => Expr i -> TC m (Type, Expr i)
+tcExpr :: Monad m => Expr R -> TC m (Type, Expr R)
 tcExpr = tc where
-  tc :: (Monad m, Id i) => Expr i -> TC m (Type, Expr i)
+  tc :: Monad m => Expr R -> TC m (Type, Expr R)
   tc e0 = let ?loc = getLoc e0 in case e0 of
     [$ex| $id:x |] -> do
       tx    <- getVar x
-      let e' = [$ex|+ $id:x |] `setExn` findIsExn tx
-      return (tx, e')
+      x'    <- case view x of
+                 Left _        -> return x
+                 Right (qu, _) ->
+                   if findIsExn tx
+                     then return (fmap Exn qu)
+                     else return (fmap Con qu)
+      return (tx, [$ex|+ $id:x' |])
     [$ex| $str:s |] -> return (tyString, [$ex|+ $str:s |])
     [$ex| $int:z |] -> return (tyInt,    [$ex|+ $int:z |])
     [$ex| $flo:f |] -> return (tyFloat,  [$ex|+ $flo:f |])
-    [$ex| $antiL:a |] -> $antifail
     [$ex| match $e with $list:clauses |] -> do
       (t0, e') <- tc e
       (t1:ts, clauses') <- liftM unzip . forM clauses $ \(N _ ca) -> do
@@ -478,11 +485,12 @@ tcExpr = tc where
       e1'' <- coerceExpression (e1' <<@ e0) t' ta'
       -- tcExpr e1'' -- re-type check the coerced expression
       return (ta', e1'')
-    [$ex| $anti:a |] -> $antifail
+    [$ex| $anti:a |]    -> $antifail
+    [$ex| $antiL:a |]   -> $antifail
 
   -- | Assert that type given to a name is allowed by its usage
   checkSharing :: (Monad m, ?loc :: Loc) =>
-                  String -> V -> Expr i -> TC m ()
+                  String -> V -> Expr R -> TC m ()
   checkSharing name g e =
     forM_ (toList g) $ \(x, tx) ->
       case x of
@@ -508,8 +516,8 @@ tcExpr = tc where
 -- This is highly ad-hoc, as it does significant local type inference.
 -- Ick.
 tcExApp :: (?loc :: Loc, Monad m) =>
-           (Expr i -> TC m (Type, Expr i)) ->
-           Expr i -> TC m (Type, Expr i)
+           (Expr R -> TC m (Type, Expr R)) ->
+           Expr R -> TC m (Type, Expr R)
 tcExApp tc e0 = do
   let foralls t1 ts = do
         let (tvs, t1f) = vtQus Forall t1 -- peel off quantification
@@ -559,7 +567,7 @@ tapply t1 _ = tgot "type application" t1 "(for)all type"
 -- Given the type of thing to match and a pattern, return
 -- the type environment bound by that pattern.
 tcPatt :: (?loc :: Loc, Monad m) =>
-          Type -> Patt i -> TC m (D, V, Patt i)
+          Type -> Patt R -> TC m (D, V, Patt R)
 tcPatt t x0 = case x0 of
   [$pa| _ |]      -> return (empty, empty, x0)
   [$pa| $lid:x |] -> return (empty, Var x =:= t, x0)
@@ -612,7 +620,6 @@ tcPatt t x0 = case x0 of
       tassgot (t <: tyFloat)
         "Pattern" t "float"
       return (empty, empty, [$pa| $flo:f |])
-  [$pa| $antiL:a |] -> $antifail
   [$pa| $x as $lid:y |] -> do
     (dx, gx, x') <- tcPatt t x
     let gy        = y =:= t
@@ -633,7 +640,8 @@ tcPatt t x0 = case x0 of
             "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
           return (dx =+= tv =:+= tv', gx, [$pa| Pack('$tv', $x') |])
       _ -> tgot "Pattern" t' "existential type"
-  [$pa| $anti:a |] -> $antifail
+  [$pa| $antiL:a |] -> $antifail
+  [$pa| $anti:a |]  -> $antifail
 
 -- | Check if type is bottom, and if so, apply the given function
 --   to it
@@ -645,8 +653,8 @@ mapBottom ft t
 -- | Run a computation in the context of the bindings from
 --   a pattern.
 withPatt :: (?loc :: Loc, Monad m) =>
-            Type -> Patt i -> TC m (Type, e) ->
-            TC m (V, Patt i, Type, e)
+            Type -> Patt R -> TC m (Type, e) ->
+            TC m (V, Patt R, Type, e)
 withPatt t x m = do
   (d, g, x') <- tcPatt t x
   (t', e')   <- withAny d $ withVars g $ m
@@ -720,7 +728,7 @@ findSubst tv = chk [] where
 --   list of qualifier-significant tyvars to a set of type parameter
 --   indices
 indexQuals :: (?loc :: Loc, Monad m) =>
-              Lid -> [TyVar] -> QExp TyVar -> TC m (QDen Int)
+              Lid R -> [TyVar] -> QExp TyVar -> TC m (QDen Int)
 indexQuals name tvs qexp = do
   qden <- qInterpretM qexp
   numberQDenM unbound tvs qden where
@@ -731,7 +739,7 @@ indexQuals name tvs qexp = do
 
 -- | Run a computation in the context of type declarations
 withTyDecs :: (?loc :: Loc, Monad m) =>
-              [TyDec i] -> ([TyDec i] -> TC m a) -> TC m a
+              [TyDec R] -> ([TyDec R] -> TC m a) -> TC m a
 withTyDecs tds0 k0 = do
   tassert (unique (map (tdaName . dataOf) tds0)) $
     "Duplicate type(s) in recursive type declaration"
@@ -777,7 +785,7 @@ withTyDecs tds0 k0 = do
 -- whether the type metadata has changed, which allows for iterating
 -- to a fixpoint.
 withTyDec :: (?loc :: Loc, Monad m) =>
-             TyDec i -> ((TyDec i, Bool) -> TC m a) -> TC m a
+             TyDec R -> ((TyDec R, Bool) -> TC m a) -> TC m a
 withTyDec td0 k = case dataOf td0 of
   TdAbs name params variances quals -> do
     tassert (unique params) "Repeated type parameter"
@@ -832,12 +840,12 @@ unique  = loop S.empty where
 
 -- | Build an environment of datacon types from a datatype's
 --   alternatives
-alts2env :: [TyVar] -> TyCon -> [(Uid, Maybe Type)] -> V
+alts2env :: [TyVar] -> TyCon -> [(Uid R, Maybe Type)] -> V
 alts2env params tc = fromList . map each where
-  each (uid, Nothing) = (Con uid, alls result)
-  each (uid, Just t)  = (Con uid, alls (t .->. result))
-  alls t              = foldr tyAll t params
-  result              = tyApp tc (map TyVar params)
+  each (u, Nothing) = (Con u, alls result)
+  each (u, Just t)  = (Con u, alls (t .->. result))
+  alls t            = foldr tyAll t params
+  result            = tyApp tc (map TyVar params)
 
 -- | Compute the variances at which some type variables occur
 --   in an open type expression
@@ -885,11 +893,11 @@ topSort getEdge edges = do
                        | info <- edges ]
 
 -- | The (unqualified) tycons that appear in a syntactic type
-tyConsOfType :: Syntax.Type i -> S.Set Lid
+tyConsOfType :: Syntax.Type R -> S.Set (Lid R)
 tyConsOfType [$ty| ($list:ts) $qlid:n |] =
   case n of
-    J [] lid -> S.singleton lid
-    _        -> S.empty
+    J [] l -> S.singleton l
+    _      -> S.empty
   `S.union` S.unions (map tyConsOfType ts)
 tyConsOfType [$ty| '$_ |]              = S.empty
 tyConsOfType [$ty| $t1 -[$_]> $t2 |]   =
@@ -901,9 +909,9 @@ tyConsOfType [$ty| $anti:a |]          = $antierror
 -- END type decl checking
 
 -- | Run a computation in the context of a let declaration
-withLet :: (?loc :: Loc, Monad m, Id i) =>
-           Patt i -> Maybe (Syntax.Type i) -> Expr i ->
-           (Patt i -> Maybe (Syntax.Type i) -> Expr i -> TC m a) ->
+withLet :: (?loc :: Loc, Monad m) =>
+           Patt R -> Maybe (Syntax.Type R) -> Expr R ->
+           (Patt R -> Maybe (Syntax.Type R) -> Expr R -> TC m a) ->
            TC m a
 withLet x mt e k = do
   (te, e') <- tcExpr e
@@ -927,8 +935,8 @@ withLet x mt e k = do
     k x' (Just (typeToStx t')) e'
 
 -- | Run a computation in the context of a module open declaration
-withOpen :: (?loc :: Loc, Monad m, Id i) =>
-            ModExp i -> (ModExp i -> TC m a) -> TC m a
+withOpen :: (?loc :: Loc, Monad m) =>
+            ModExp R -> (ModExp R -> TC m a) -> TC m a
 withOpen b k = do
   (b', scope) <- tcModExp b
   let [scope'] = requalifyTypes [] [scope]
@@ -936,9 +944,9 @@ withOpen b k = do
 
 -- | Run a computation in the context of a local block (that is, after
 --   the block)
-withLocal :: (?loc :: Loc, Monad m, Id i) =>
-             [Decl i] -> [Decl i] ->
-             ([Decl i] -> [Decl i] -> TC m a) -> TC m a
+withLocal :: (?loc :: Loc, Monad m) =>
+             [Decl R] -> [Decl R] ->
+             ([Decl R] -> [Decl R] -> TC m a) -> TC m a
 withLocal ds0 ds1 k = do
   (scope, ds0', ds1') <-
     pushScope $
@@ -954,8 +962,8 @@ withLocal ds0 ds1 k = do
 
 -- | Run a computation in the context of a new exception variant
 withExn :: (?loc :: Loc, Monad m) =>
-           Uid -> Maybe (Syntax.Type i) ->
-           (Maybe (Syntax.Type i) -> TC m a) -> TC m a
+           Uid R -> Maybe (Syntax.Type R) ->
+           (Maybe (Syntax.Type R) -> TC m a) -> TC m a
 withExn n mt k = do
   mt'   <- gmapM tcType mt
   withVars (Con n =:= maybe tyExn (`tyArr` tyExn) mt') $
@@ -969,8 +977,8 @@ findIsExn (TyApp tc _ _)             = tc == tcExn
 findIsExn _ = False
 
 -- | Run a computation in the context of a module
-withMod :: (?loc :: Loc, Monad m, Id i) =>
-           Uid -> ModExp i -> (ModExp i -> TC m a) -> TC m a
+withMod :: (?loc :: Loc, Monad m) =>
+           Uid R -> ModExp R -> (ModExp R -> TC m a) -> TC m a
 withMod x b k = do
   (b', scope) <- tcModExp b
   let [scope'] = requalifyTypes [x] [scope]
@@ -999,14 +1007,14 @@ hideInvisible (PEnv modenv level) = return (PEnv modenv level) {- do
     repair t = return t
     --
     hide :: TyCon -> TyCon
-    hide tc@TyCon { tcName = J (Uid "?" : _) _ } = tc
-    hide tc@TyCon { tcName = J qs (Lid k), tcId = i } =
-      tc { tcName = J (Uid "?":qs) (Lid (k ++ ':' : show i)) }
+    hide tc@TyCon { tcName = J (Uid _ "?" : _) _ } = tc
+    hide tc@TyCon { tcName = J qs (Lid _ k), tcId = i } =
+      tc { tcName = J (Uid "?":qs) (Lid _ (k ++ ':' : show i)) }
 -}
 
 -- | Replace the printing name of each type with the shortest
 --   path to access that type.  (So unnecessary!)
-requalifyTypes :: [Uid] -> E -> E
+requalifyTypes :: [Uid R] -> E -> E
 requalifyTypes _uids env = env {- map (fmap repairLevel) env where
   repairLevel :: Level -> Level
   repairLevel level = everywhere (mkT repair) level
@@ -1017,10 +1025,10 @@ requalifyTypes _uids env = env {- map (fmap repairLevel) env where
     Just name -> t `setTycon` name
   repair t = t
 
-  tyConsInThisEnv :: Env Integer QLid
+  tyConsInThisEnv :: Env Integer (QLid R)
   tyConsInThisEnv  = uids <...> foldr addToScopeMap empty env
 
-  addToScopeMap :: Scope -> Env Integer QLid -> Env Integer QLid
+  addToScopeMap :: Scope -> Env Integer (QLid R) -> Env Integer (QLid R)
   addToScopeMap (PEnv ms level) acc = 
     foldr (Env.unionWith chooseQLid) acc
       (makeLevelMap level :
@@ -1037,7 +1045,7 @@ requalifyTypes _uids env = env {- map (fmap repairLevel) env where
   tagOfTyInfo (TiDat tag _ _) = [tag]
   tagOfTyInfo TiExn           = [tdExn]
 
-  chooseQLid :: QLid -> QLid -> QLid
+  chooseQLid :: QLid R -> QLid R -> QLid R
   chooseQLid q1@(J p1 _) q2@(J p2 _)
     | length p1 < length p2 = q1
     | otherwise             = q2
@@ -1050,8 +1058,8 @@ requalifyTypes _uids env = env {- map (fmap repairLevel) env where
 
 -}
 -- | Type check a module body
-tcModExp :: (?loc :: Loc, Monad m, Id i) =>
-             ModExp i -> TC m (ModExp i, Scope)
+tcModExp :: (?loc :: Loc, Monad m) =>
+             ModExp R -> TC m (ModExp R, Scope)
 tcModExp [$me| struct $list:ds end |] =
   pushScope $
     withDecls ds $ \ds' -> do
@@ -1063,9 +1071,9 @@ tcModExp [$me| $quid:n $list:qls |] = do
 tcModExp [$me| $anti:a |] = $antifail
 
 -- | Run a computation in the context of an abstype block
-withAbsTy :: (?loc :: Loc, Monad m, Id i) =>
-             [AbsTy i] -> [Decl i] ->
-             ([AbsTy i] -> [Decl i] -> TC m a) ->
+withAbsTy :: (?loc :: Loc, Monad m) =>
+             [AbsTy R] -> [Decl R] ->
+             ([AbsTy R] -> [Decl R] -> TC m a) ->
              TC m a
 withAbsTy atds ds k0 =
   let atds' = map view atds
@@ -1102,8 +1110,8 @@ withAbsTy atds ds k0 =
       _ -> terr "(BUG) Can't abstract non-datatypes"
 
 -- | Run a computation in the context of a declaration
-withDecl :: (Id i, Monad m) =>
-            Decl i -> (Decl i -> TC m a) -> TC m a
+withDecl :: Monad m =>
+            Decl R -> (Decl R -> TC m a) -> TC m a
 withDecl decl k =
   let ?loc = getLoc decl in
     case decl of
@@ -1131,8 +1139,8 @@ withDecl decl k =
       [$dc| $anti:a |] -> $antifail
 
 -- | Run a computation in the context of a declaration sequence
-withDecls :: (Id i, Monad m) =>
-             [Decl i] -> ([Decl i] -> TC m a) -> TC m a
+withDecls :: Monad m =>
+             [Decl R] -> ([Decl R] -> TC m a) -> TC m a
 withDecls []     k = k []
 withDecls (d:ds) k = withDecl d $ \d' ->
                        withDecls ds $ \ds' ->
@@ -1141,8 +1149,8 @@ withDecls (d:ds) k = withDecl d $ \d' ->
 -- | Type check a sequence of declarations
 --
 -- Returns information for printing new declarations in the REPL
-tcDecls :: (Monad m, Id i) =>
-           Bool -> S -> [Decl i] -> m (S, NewDefs, [Decl i])
+tcDecls :: Monad m =>
+           Bool -> S -> [Decl R] -> m (S, NewDefs, [Decl R])
 tcDecls interactive gg ds =
   runTC gg $
     pushScope $
@@ -1160,7 +1168,7 @@ data NewDefs
     -- | New declared values
     newValues  :: V,
     -- | New declared module names
-    newModules :: [Uid]
+    newModules :: [Uid R]
   }
 
 -- | No new definitions
@@ -1180,22 +1188,22 @@ askNewDefs  = do
          }
 
 -- | Add the type of a value binding
-addVal :: (Ident :>: k, Monad m) =>
-          S -> k -> Syntax.Type i -> m S
+addVal :: (Ident R :>: k, Monad m) =>
+          S -> k -> Syntax.Type R -> m S
 addVal gg x t = runTC gg $ do
   let ?loc = mkBogus "<addVal>"
   t' <- tcType t
   withAny (x' =:= t') $ saveTC False
-    where x' :: Ident = liftKey x
+    where x' :: Ident R = liftKey x
 
 -- | Add a type constructor binding
-addType :: S -> Lid -> TyCon -> S
+addType :: S -> Lid R -> TyCon -> S
 addType gg n td =
   gg { cEnv = cEnv gg =+= Level empty (n =:= td) }
 
 -- | Add a new exception variant
 addExn :: Monad m =>
-          S -> Uid -> Maybe (Syntax.Type i) -> m S
+          S -> Uid R -> Maybe (Syntax.Type R) -> m S
 addExn gg n mt =
   runTC gg $ do
     withExn n mt $ \_ ->
@@ -1203,7 +1211,7 @@ addExn gg n mt =
   where ?loc = mkBogus "<addExn>"
 
 -- | Add a nested submodule
-addMod :: (Monad m) => S -> Uid -> (S -> m S) -> m S
+addMod :: Monad m => S -> Uid R -> (S -> m S) -> m S
 addMod gg0 x k = do
   let env = cEnv gg0
       gg1 = gg0 { cEnv = genEmpty : env }
@@ -1214,7 +1222,7 @@ addMod gg0 x k = do
   return gg3
 
 -- | Type check a program
-tcProg :: (Monad m, Id i) => S -> Prog i -> m (Type, Prog i)
+tcProg :: Monad m => S -> Prog R -> m (Type, Prog R)
 tcProg gg [$prQ| $list:ds in $opt:e0 |] =
   runTC gg $
     withDecls ds $ \ds' -> do
@@ -1227,30 +1235,25 @@ tcProg gg [$prQ| $list:ds in $opt:e0 |] =
       return (t, prog ds' e')
 
 -- | The initial type-checking state
---
--- Binds the unit type and value, and the exception type @exn@
--- (both of which would be tricky to add using the 'BasisUtils'
--- facilities).
 env0 :: S
 env0  = S e0 0 where
   e0 :: E
   e0  = genEmpty =+= level0 where
     level0  = Level venv0 tenv0
-    venv0   = Con (Uid "()") -:- tyUnit
-    tenv0   = Lid "unit"     -:- tcUnit
-          -+- Lid "exn"      -:- tcExn
+    venv0   = Con (uid "()") -:- tyUnit
+    tenv0   = empty
 
 -- | Reconstruct the declaration from a tycon binding, for printing
-tyConToDec :: Id i => TyCon -> TyDec i
+tyConToDec :: TyCon -> TyDec R
 tyConToDec tc = case tc of
   _ | tc == tcExn
-    -> tdAbs (Lid "exn") [] [] maxBound
+    -> tdAbs (lid "exn") [] [] maxBound
   TyCon { tcName = n, tcNext = Just [(tp, rhs)] }
     -> tdSyn (jname n) [ tv | TpVar tv <- tp ] (typeToStx rhs)
   TyCon { tcName = n, tcCons = (ps, alts) }
     | not (isEmpty alts)
-    -> tdDat (jname n) ps [ (uid, fmap typeToStx mt)
-                          | (uid, mt) <- toList alts ]
+    -> tdDat (jname n) ps [ (u, fmap typeToStx mt)
+                          | (u, mt) <- toList alts ]
   TyCon { tcName = n }
     ->
     let tyvars = zipWith ($) tvalphabet (tcBounds tc)

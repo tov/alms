@@ -32,6 +32,9 @@ import Control.Exception (throw)
 -- Our semantic domains
 --
 
+-- | The kind of identifiers used
+type R        = Renamed
+
 -- | The result of a computation
 type Result   = IO Value
 
@@ -41,7 +44,7 @@ type Result   = IO Value
 type E        = [Scope]
 -- | Each scope binds paths of uppercase identifiers to flat value
 --   and exn environments
-type Scope    = PEnv Uid Level
+type Scope    = PEnv (Uid R) Level
 -- | A level binds values and exceptions
 data Level    = Level {
                   vlevel :: VE,
@@ -49,24 +52,24 @@ data Level    = Level {
                 }
 -- | We bind 'IO' 'Value's rather than values, so that we can use
 -- 'IORef' to set up recursion
-type VE       = Env Lid (IO Value)
+type VE       = Env (Lid R) (IO Value)
 -- | We associate exception names with their identity, since new
 --   kinds of exceptions may be generated at run time.
 type XE       = Env ExnName ExnId
 
 -- | To distinguish exn names from path components.
-newtype ExnName = ExnName Uid
+newtype ExnName = ExnName (Uid R)
   deriving (Eq, Ord)
 
 instance GenEmpty Level where
   genEmpty = Level empty empty
-instance GenLookup Level Lid (IO Value) where
+instance GenLookup Level (Lid R) (IO Value) where
   level =..= k = vlevel level =..= k
 instance GenLookup Level ExnName ExnId where
   level =..= k = xlevel level =..= k
 instance GenExtend Level Level where
   Level ve xe =+= Level ve' xe' = Level (ve =+= ve') (xe =+= xe')
-instance GenExtend Level (Env Lid (IO Value)) where
+instance GenExtend Level (Env (Lid R) (IO Value)) where
   level =+= ve' = level =+= Level ve' empty
 instance GenExtend Level (Env ExnName ExnId) where
   level =+= xe' = level =+= Level empty xe'
@@ -85,10 +88,10 @@ infix 6 =:!=
 -- Evaluation
 --
 
-evalDecls :: [Decl i] -> DDecl
+evalDecls :: [Decl R] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
-evalDecl :: Decl i -> DDecl
+evalDecl :: Decl R -> DDecl
 evalDecl [$dc| let $x : $opt:_ = $e |]              = evalLet x e
 evalDecl [$dc| type $list:_ |]                      = return
 evalDecl [$dc| abstype $list:_ with $list:ds end |] = evalDecls ds
@@ -98,30 +101,30 @@ evalDecl [$dc| local $list:d0 with $list:d1 end |]  = evalLocal d0 d1
 evalDecl [$dc| exception $uid:n of $opt:mt |]       = evalExn n mt
 evalDecl [$dc| $anti:a |]                           = $antifail
 
-evalLet :: Patt i -> Expr i -> DDecl
+evalLet :: Patt R -> Expr R -> DDecl
 evalLet x e env = do
   v <- valOf e env
   case bindPatt x v env of
     Just env' -> return env'
     Nothing   -> throwPatternMatch v [show x] env
 
-evalOpen :: ModExp i -> DDecl
+evalOpen :: ModExp R -> DDecl
 evalOpen b env = do
   e <- evalModExp b env
   return (env =+= e)
 
-evalMod :: Uid -> ModExp i -> DDecl
+evalMod :: Uid R -> ModExp R -> DDecl
 evalMod x b env = do
   e <- evalModExp b env
   return (env =+= x =:= e)
 
-evalLocal :: [Decl i] -> [Decl i] -> DDecl
+evalLocal :: [Decl R] -> [Decl R] -> DDecl
 evalLocal ds ds'  env0 = do
   env1          <- evalDecls ds (genEmpty:env0)
   scope:_:env2  <- evalDecls ds' (genEmpty:env1)
   return (env2 =+= scope)
 
-evalModExp :: ModExp i -> E -> IO Scope
+evalModExp :: ModExp R -> E -> IO Scope
 evalModExp [$me| struct $list:ds end |]  env = do
   scope:_ <- evalDecls ds (genEmpty:env)
   return scope
@@ -131,29 +134,28 @@ evalModExp [$me| $quid:n $list:_ |]      env = do
     Nothing    -> fail $ "BUG! Unknown module: " ++ show n
 evalModExp [$me| $anti:a |]              _   = $antifail
 
-evalExn :: Uid -> Maybe (Type i) -> DDecl
+evalExn :: Uid R -> Maybe (Type R) -> DDecl
 evalExn u mt env = do
-  case env =..= qlid "INTERNALS.Exn.exceptionIdCounter" of
+  case env =..= (qlid "INTERNALS.Exn.exceptionIdCounter" :: QLid R) of
     Just entry -> do
       VaFun _ f <- entry
       ix <- f vaUnit >>= vprjM
       return (addExn env (ExnId ix u mt))
     _ -> fail $ "BUG! Can't create new exception ID for: " ++ show u
 
-eval :: E -> Prog i -> Result
+eval :: E -> Prog R -> Result
 eval env0 [$prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
 eval env0 [$prQ| $list:ds        |] = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
-valOf :: Expr i -> D
+valOf :: Expr R -> D
 valOf e env = case e of
   [$ex| $id:ident |] -> case view ident of
     Left x     -> case env =..= x of
       Just v     -> v
       Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
-    Right c    -> case isExn e of
-      True       -> makeExn env c
-      False      -> return (VaCon (jname c) Nothing)
+    Right (c, True)  -> makeExn env c
+    Right (c, False) -> return (VaCon (jname c) Nothing)
   [$ex| $str:s |]    -> return (vinj s)
   [$ex| $int:z |]    -> return (vinj z)
   [$ex| $flo:f |]    -> return (vinj f)
@@ -203,7 +205,7 @@ valOf e env = case e of
   [$ex| ( $e1 : $opt:_ :> $_ ) |] -> valOf e1 env
   [$ex| $anti:a |]                -> $antifail
 
-makeExn :: Monad m => E -> QUid -> m Value
+makeExn :: Monad m => E -> QUid R -> m Value
 makeExn env c = do
   ei <- getExnId env c
   return $ case ei of
@@ -212,22 +214,22 @@ makeExn env c = do
     _ -> VaFun (FNAnonymous [ppr (eiName ei)]) $ \v ->
            return (vinj (VExn ei (Just v)))
 
-getExnId :: Monad m => E -> QUid -> m ExnId
+getExnId :: Monad m => E -> QUid R -> m ExnId
 getExnId env c = case env =..= ExnName `fmap` c of
   Nothing -> fail $ "BUG! could not lookup exception: " ++ show c
   Just ei -> return ei
 
-bindPatt :: Monad m => Patt i -> Value -> E -> m E
+bindPatt :: Monad m => Patt R -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   [$pa| _ |] 
     -> return env
-  [$pa| $lid:lid |]
-    -> return (env =+= lid =:!= (lid `nameFun` v))
+  [$pa| $lid:l |]
+    -> return (env =+= l =:!= (l `nameFun` v))
   [$pa| $quid:qu $opt:mx |]
-    -> let uid = jname qu in
+    -> let u = jname qu in
        case (mx, v) of
-      (Nothing, VaCon uid' Nothing)   | uid == uid' -> return env
-      (Just x,  VaCon uid' (Just v')) | uid == uid' -> bindPatt x v' env
+      (Nothing, VaCon u' Nothing)   | u == u' -> return env
+      (Just x,  VaCon u' (Just v')) | u == u' -> bindPatt x v' env
       _                                             -> perr
   [$pa| $quid:qu $opt:mx !!! |]
     -> do
@@ -254,10 +256,10 @@ bindPatt x0 v env = case x0 of
          else perr
   [$pa| Pack('$_, $x) |]
     -> bindPatt x v env
-  [$pa| $x as $lid:lid |]
+  [$pa| $x as $lid:l |]
     -> do
       env' <- bindPatt x v env
-      return (env' =+= lid =:!= v)
+      return (env' =+= l =:!= v)
   [$pa| $anti:a |]
     -> antifail "dynamics" a
   [$pa| $antiL:a |]
@@ -279,10 +281,10 @@ throwPatternMatch v ps env = do
 ---
 
 -- Add the given name to an anonymous function
-nameFun :: Lid -> Value -> Value
-nameFun (Lid x) (VaFun (FNAnonymous _) lam)
-  | x /= "it"          = VaFun (FNNamed (text x)) lam
-nameFun _       value  = value
+nameFun :: Lid R -> Value -> Value
+nameFun (Lid r x) (VaFun (FNAnonymous _) lam)
+  | x /= "it" || not (isTrivial r) = VaFun (FNNamed (text x)) lam
+nameFun _ value  = value
 
 -- Get the name of an applied function
 nameApp :: FunName -> Doc -> Value -> Value
@@ -297,11 +299,11 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- | For printing in the REPL, 'addDecls' returns an environment
 --   mapping any newly bound names to their values
-type NewValues = (Env Lid Value, [ExnId])
+type NewValues = (Env (Lid R) Value, [ExnId])
 
 -- | Interpret declarations by adding to the environment, potentially
 --   with side effects
-addDecls :: E -> [Decl i] -> IO (E, NewValues)
+addDecls :: E -> [Decl R] -> IO (E, NewValues)
 addDecls env decls = do
   env' <- evalDecls decls (genEmpty : [collapse env])
   let PEnv _ level : _ = env'
@@ -309,12 +311,12 @@ addDecls env decls = do
   return (env', (vl', range (xlevel level)))
 
 -- | Bind a name to a value
-addVal :: E -> Lid -> Value -> E
+addVal :: E -> Lid R -> Value -> E
 addVal e n v     = e =+= n =:= (return v :: IO Value)
 
 -- | Bind a name to a module, which is represented as a nested
 --   environment
-addMod :: E -> Uid -> E -> E
+addMod :: E -> Uid R -> E -> E
 addMod e n e' = e =+= n =:= collapse e'
 
 -- | To register an exception ID.

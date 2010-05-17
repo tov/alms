@@ -31,7 +31,7 @@ tenv0 :: TEnv
 tenv0  = ()
 
 -- | Translate a whole program
-translate :: TEnv -> Prog i -> Prog i
+translate :: TEnv -> Prog Renamed -> Prog Renamed
 translate _ = id
 
 -- | Location to use for constructed code
@@ -41,10 +41,11 @@ _loc  = mkBogus "<coercion>"
 -- | Translation a sequence of declarations in the context
 --   of a translation environment, returning a new translation
 --   environment
-translateDecls :: TEnv -> [Decl i] -> (TEnv, [Decl i])
+translateDecls :: TEnv -> [Decl Renamed] -> (TEnv, [Decl Renamed])
 translateDecls tenv decls = (tenv, decls)
 
-coerceExpression :: Monad m => Expr i -> Type -> Type -> m (Expr i)
+coerceExpression :: Monad m =>
+                    Expr Renamed -> Type -> Type -> m (Expr Renamed)
 coerceExpression e tfrom tto = do
   prj <- CMS.evalStateT (build M.empty tfrom tto) 0
   return $ exApp (exApp prj (exPair (exStr neg) (exStr pos))) e
@@ -53,8 +54,8 @@ coerceExpression e tfrom tto = do
   pos = "value at " ++ show (getLoc e)
 
 build :: Monad m =>
-         M.Map (TyVar, TyVar) (Maybe Lid) -> Type -> Type ->
-         CMS.StateT Integer m (Expr i)
+         M.Map (TyVar, TyVar) (Maybe (Lid Renamed)) -> Type -> Type ->
+         CMS.StateT Integer m (Expr Renamed)
 build recs tfrom tto
   | (tvs,  TyFun qd  t1  t2)  <- vtQus Forall tfrom,
     (tvs', TyFun qd' t1' t2') <- vtQus Forall tto,
@@ -75,13 +76,13 @@ build recs tfrom tto
         return $ if null tvs
           then body
           else absContract $
-               exAbsVar' (Lid "f") (typeToStx tfrom) $
+               exAbsVar' (lid "f") (typeToStx tfrom) $
                foldr (\tv0 acc -> exTAbs tv0 . acc) id tvs $
-               exAbsVar' (Lid "x") (typeToStx t1') $
+               exAbsVar' (lid "x") (typeToStx t1') $
                instContract body `exApp`
                foldl (\acc tv0 -> exTApp acc (Syntax.tyVar tv0))
-                     (exBVar (Lid "f")) tvs `exApp`
-               exBVar (Lid "x")
+                     (exBVar (lid "f")) tvs `exApp`
+               exBVar (lid "x")
 build recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
   body <- build recs' t t' >>! instContract
@@ -91,20 +92,20 @@ build recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
       [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $stx:t) ->
                Pack[ex '$tv'. $stx:t']('$tv'', $body e) |]
 build recs (view -> TyMu tv t) (view -> TyMu tv' t') = do
-  lid  <- freshLid
-  let recs' = M.insert (tv, tv') (Just lid) (shadow [tv] [tv'] recs)
+  l    <- freshLid
+  let recs' = M.insert (tv, tv') (Just l) (shadow [tv] [tv'] recs)
   body <- build recs' t t'
   return $
     [$ex|+
-      let rec $lid:lid
+      let rec $lid:l
               (parties : string * string)
                        : (mu '$tv. $stx:t) -> mu '$tv'. $stx:t'
           = $body parties
-       in $lid:lid
+       in $lid:l
     |]
 build recs (view -> TyVar tv) (view -> TyVar tv')
-  | Just (Just lid) <- M.lookup (tv, tv') recs
-    = return [$ex|+ $lid:lid |]
+  | Just (Just l) <- M.lookup (tv, tv') recs
+    = return [$ex|+ $lid:l |]
   | Just Nothing <- M.lookup (tv, tv') recs
     = return [$ex|+ INTERNALS.Contract.any ['$tv'] |]
 build _ t t' =
@@ -117,16 +118,16 @@ shadow :: [TyVar] -> [TyVar] ->
 shadow tvs tvs' = M.filterWithKey
                     (\(tv, tv') _ -> tv `notElem` tvs && tv' `notElem` tvs')
 
-absContract :: Expr i -> Expr i
+absContract :: Expr Renamed -> Expr Renamed
 absContract body =
   [$ex|+ fun (neg: string, pos: string) -> $body |]
 
-instContract :: Expr i -> Expr i
+instContract :: Expr Renamed -> Expr Renamed
 instContract con = [$ex|+ $con (neg, pos) |]
 
-freshLid :: Monad m => CMS.StateT Integer m Lid
+freshLid :: Monad m => CMS.StateT Integer m (Lid Renamed)
 freshLid = do
   n <- CMS.get
   CMS.put (n + 1)
-  return (Lid ("c" ++ show n))
+  return (lid ("c" ++ show n))
 

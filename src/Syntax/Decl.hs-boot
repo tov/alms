@@ -1,6 +1,7 @@
 -- vim: ft=haskell
 {-# LANGUAGE
       FlexibleInstances,
+      MultiParamTypeClasses,
       TypeFamilies,
       TypeSynonymInstances #-}
 {-# OPTIONS_GHC -w #-}
@@ -15,9 +16,9 @@ data DeclNote i
 data Decl' i
 type Decl i = N (DeclNote i) (Decl' i)
 
-instance Data i => Data (DeclNote i)
-instance Data i => Data (Decl' i)
+instance Id i => Data (DeclNote i)
+instance Id i => Data (Decl' i)
 instance Locatable (DeclNote i)
 instance Notable (DeclNote i)
-instance Fv (N (DeclNote i) a)
-instance Dv (N (DeclNote i) a)
+instance Id i => Fv (N (DeclNote i) a) i
+instance Id i => Dv (N (DeclNote i) a) i

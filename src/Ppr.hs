@@ -74,15 +74,15 @@ instance Ppr (Type i) where
     where pprArr (QeLit Qu) = text "->"
           pprArr (QeLit Qa) = text "-o"
           pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
-  pprPrec p [$ty| ($t1, $t2) $name:n |]
-    | isOperator (Lid n)
-                  = case precOp n of
+  pprPrec p [$ty| ($t1, $t2) $lid:n |]
+    | isOperator n
+                  = case precOp (unLid n) of
         Left prec  -> parensIf (p > prec) $
                       sep [ pprPrec prec t1,
-                            text n <+> pprPrec (prec + 1) t2 ]
+                            text (unLid n) <+> pprPrec (prec + 1) t2 ]
         Right prec -> parensIf (p > prec) $
                       sep [ pprPrec (prec + 1) t1,
-                            text n <+> pprPrec prec t2]
+                            text (unLid n) <+> pprPrec prec t2]
   pprPrec _ [$ty| $qlid:n |]  = ppr n
     -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   pprPrec p [$ty| $t $qlid:n |]
@@ -114,8 +114,8 @@ instance Ppr (Type i) where
 instance (Typeable a, Ppr a) => Ppr (QExp a) where
   pprPrec p [$qeQ| $qlit:qu |] = pprPrec p qu
   pprPrec p [$qeQ| $qvar:v |] = case cast v of
-    Just (TV lid Qa)  -> pprPrec p lid
-    _                 -> pprPrec p v
+    Just (TV l Qa)  -> pprPrec p l
+    _               -> pprPrec p v
   pprPrec p [$qeQ| $qdisj:qes |] = case qes of
     []    -> pprPrec p Qu
     [qe]  -> pprPrec p qe
@@ -204,12 +204,12 @@ pprAbsTy at = case view at of
   AbsTy _ _ td -> ppr td -- shouldn't happen (yet)
   AbsTyAnti a -> ppr a
 
-pprProto     :: Lid -> [TyVar] -> Doc
+pprProto     :: Lid i -> [TyVar] -> Doc
 pprProto n [tv1, tv2]
   | isOperator n = ppr tv1 <+> text (unLid n) <+> ppr tv2
 pprProto n tvs   = pprParams tvs <?> ppr n
 
-pprProtoV     :: Lid -> [Variance] -> [TyVar] -> Doc
+pprProtoV     :: Lid i -> [Variance] -> [TyVar] -> Doc
 pprProtoV n [v1, v2] [tv1, tv2]
   | isOperator n   = ppr v1 <> ppr tv1 <+>
                      text (unLid n)    <+>
@@ -231,13 +231,13 @@ pprQuals :: (Typeable a, Ppr a) => QExp a -> Doc
 pprQuals [$qeQ| U |] = empty
 pprQuals qs          = text "qualifier" <+> pprPrec precApp qs
 
-pprAlternatives :: [(Uid, Maybe (Type i))] -> Doc
+pprAlternatives :: [(Uid i, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals
 pprAlternatives (a:as) = sep $
   equals <+> alt a : [ char '|' <+> alt a' | a' <- as ]
   where
-    alt (Uid s, Nothing) = text s
-    alt (Uid s, Just t)  = text s <+> text "of" <+> pprPrec precDot t
+    alt (u, Nothing) = ppr u
+    alt (u, Just t)  = ppr u <+> text "of" <+> pprPrec precDot t
 
 pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
 pprModExp add modexp = case modexp of
@@ -382,7 +382,7 @@ pprArgList = fsep . map eachArg . combine where
 
 instance Ppr (Patt i) where
   pprPrec _ [$pa| _ |]             = text "_"
-  pprPrec _ [$pa| $lid:lid |]      = ppr lid
+  pprPrec _ [$pa| $lid:l |]        = ppr l
   pprPrec _ [$pa| $quid:qu |]      = ppr qu
   pprPrec p [$pa| $quid:qu $x |]   = parensIf (p > precApp) $
                                        pprPrec precApp qu <+>
@@ -425,9 +425,9 @@ instance (Typeable a, Ppr a) =>
 instance Ppr QLit      where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Quant     where pprPrec = pprFromShow
-instance Ppr Lid       where pprPrec = pprFromShow
-instance Ppr Uid       where pprPrec = pprFromShow
-instance Ppr BIdent    where pprPrec = pprFromShow
+instance Ppr (Lid i)   where pprPrec = pprFromShow
+instance Ppr (Uid i)   where pprPrec = pprFromShow
+instance Ppr (BIdent i)where pprPrec = pprFromShow
 instance Ppr TyVar     where pprPrec = pprFromShow
 instance Ppr Anti      where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow

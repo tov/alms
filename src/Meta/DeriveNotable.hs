@@ -1,7 +1,8 @@
 {-# LANGUAGE
       FlexibleInstances,
       MultiParamTypeClasses,
-      TemplateHaskell #-}
+      TemplateHaskell,
+      TypeFamilies #-}
 module Meta.DeriveNotable (
   deriveNotable
 ) where
@@ -16,30 +17,34 @@ data DeriveNotableRec
   = DeriveNotableRec {
       dnFrom       :: Maybe Name,
       dnBy         :: Name,
-      dnExcept     :: [Name]
+      dnExcept     :: [Name],
+      dnContext    :: [(Name, [Int])]
     }
 
 class ExtDN a r where
   extDN :: DeriveNotableRec -> a -> r
 instance ExtDN Name (Q [Dec]) where
-  extDN dn = deriveNotableBEF (dnBy dn) (dnExcept dn) (dnFrom dn)
+  extDN = deriveNotableRec
 instance ExtDN a r => ExtDN (Maybe Name) (a -> r) where
   extDN dn mn = extDN (dn { dnFrom = mn })
 instance ExtDN a r => ExtDN Name (a -> r) where
   extDN dn n = extDN (dn { dnBy = n })
 instance ExtDN a r => ExtDN [Name] (a -> r) where
   extDN dn ns = extDN (dn { dnExcept = ns })
+instance (ExtDN a r, ix ~ Int) => ExtDN (Name, [ix]) (a -> r) where
+  extDN dn cxt = extDN (dn { dnContext = cxt : dnContext dn })
 
 deriveNotable :: ExtDN a r => a -> r
 deriveNotable = extDN DeriveNotableRec {
-  dnBy     = 'newN,
-  dnExcept = [],
-  dnFrom   = Nothing
+  dnBy      = 'newN,
+  dnExcept  = [],
+  dnFrom    = Nothing,
+  dnContext = []
 }
 
-deriveNotableBEF :: Name -> [Name] -> Maybe Name -> Name -> Q [Dec]
-deriveNotableBEF new except fromName toName = do
-  TyConI tc <- case fromName of
+deriveNotableRec :: DeriveNotableRec -> Name -> Q [Dec]
+deriveNotableRec dnr toName = do
+  TyConI tc <- case dnFrom dnr of
     Just n  -> reify n
     Nothing -> do
       TyConI (TySynD _ _ fromType) <- reify toName
@@ -48,17 +53,18 @@ deriveNotableBEF new except fromName toName = do
         AppT (AppT _ (ConT n)) _                   -> reify n
         _ -> fail "deriveNotable: Can't find data type"
   case tc of
-    DataD context _ tvs cons _   -> go except new toName context tvs cons
-    NewtypeD context _ tvs con _ -> go except new toName context tvs [con]
+    DataD context _ tvs cons _   -> go dnr toName context tvs cons
+    NewtypeD context _ tvs con _ -> go dnr toName context tvs [con]
     _ -> fail "deriveNotable supports data and newtype only"
 
-go :: [Name] -> Name -> Name -> Cxt -> [TyVarBndr] -> [Con] -> Q [Dec]
-go except new toName context tvs cons = do
+go :: DeriveNotableRec -> Name -> Cxt -> [TyVarBndr] -> [Con] -> Q [Dec]
+go dnr toName context tvs cons = do
+  context' <- buildContext tvs (dnContext dnr)
   let rtype = foldl appT (conT toName) (map typeOfTyVarBndr tvs)
-      quant = forallT tvs (return context)
-  declses <- sequence [ deriveOne new quant rtype con 
+      quant = forallT tvs (return (context' ++ context))
+  declses <- sequence [ deriveOne (dnBy dnr) quant rtype con 
                       | con <- cons,
-                        conName con `notElem` except ]
+                        conName con `notElem` dnExcept dnr ]
   return (concat declses)
 
 deriveOne :: Name -> (TypeQ -> TypeQ) -> TypeQ -> Con -> Q [Dec]

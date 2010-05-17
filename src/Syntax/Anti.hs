@@ -27,7 +27,7 @@ module Syntax.Anti (
   -- *** Types
   SyntaxClass(..), SyntaxTable,
   -- *** Constructors
-  (=::), ($:), (!:),
+  (=::), ($:), (!:), (>:)
 ) where
 
 import Loc as Loc
@@ -129,39 +129,38 @@ optAntis
 deriveAntibles :: SyntaxTable -> TH.Q [TH.Dec]
 deriveAntibles  = concatMapM each where
   each SyntaxClass { scDict = Nothing } = return []
-  each SyntaxClass {
-         scDict = Just dict,
-         scName = name,
-         scAnti = con,
-         scWrap = wrap
-       } = do
-    TH.TyConI tc <- reify name
-    tvs <- case tc of
-      TH.DataD _ _ tvs _ _    -> return tvs
-      TH.NewtypeD _ _ tvs _ _ -> return tvs
-      TH.TySynD _ tvs _       -> return tvs
+  each sc@SyntaxClass { scDict = Just dict } = do
+    TH.TyConI tc <- reify (scName sc)
+    (cxt, tvs) <- case tc of
+      TH.DataD cxt _ tvs _ _    -> return (cxt, tvs)
+      TH.NewtypeD cxt _ tvs _ _ -> return (cxt, tvs)
+      TH.TySynD _ tvs _         -> return ([], tvs)
       _ -> fail "deriveAntibles requires type"
     a <- TH.newName "a"
-    let wrapper p = case wrap of
+    let wrapper p = case scWrap sc of
           Nothing -> p
           Just _  -> TH.conP 'N [TH.wildP, p]
-    [d| instance Antible $(foldl TH.appT (TH.conT name)
-                                 (map typeOfTyVarBndr tvs)) where
-          injAnti     = $(varE (maybe 'id id wrap)) . $(conE con)
-          prjAnti stx = $(caseE [| stx |] [
-                            match (wrapper (TH.conP con [TH.varP a]))
-                                  (TH.normalB [| Just $(TH.varE a) |])
-                                  [],
-                            match TH.wildP
-                                  (TH.normalB [| Nothing |])
-                                  []
-                         ])
-          dictOf _    = $(varE dict)
-          injAntiList     = return . injAnti
-          prjAntiList [b] = prjAnti b
-          prjAntiList _   = Nothing
-          dictOfList      = const listAntis
-      |]
+    [InstanceD context head decs] <-
+      [d| instance Antible $(foldl TH.appT (TH.conT (scName sc))
+                                   (map typeOfTyVarBndr tvs)) where
+            injAnti     = $(varE (maybe 'id id (scWrap sc)))
+                        . $(conE (scAnti sc))
+            prjAnti stx = $(caseE [| stx |] [
+                              match (wrapper (TH.conP (scAnti sc) [TH.varP a]))
+                                    (TH.normalB [| Just $(TH.varE a) |])
+                                    [],
+                              match TH.wildP
+                                    (TH.normalB [| Nothing |])
+                                    []
+                           ])
+            dictOf _    = $(varE dict)
+            injAntiList     = return . injAnti
+            prjAntiList [b] = prjAnti b
+            prjAntiList _   = Nothing
+            dictOfList      = const listAntis
+        |]
+    context' <- buildContext tvs (scCxt sc)
+    return [InstanceD (context' ++ context) head decs]
 
 --
 -- Location expanders
@@ -172,7 +171,7 @@ class LocAst stx where
 
 deriveLocAst :: Name -> SyntaxClass -> TH.Q [TH.Dec]
 deriveLocAst _     SyntaxClass { scWrap = Nothing } = return []
-deriveLocAst build SyntaxClass { scName = name } = do
+deriveLocAst build SyntaxClass { scName = name, scCxt = cxt } = do
   info <- reify name
   case info of
     -- Located t i
@@ -198,10 +197,13 @@ deriveLocAst build SyntaxClass { scName = name } = do
   thenCon (RecC dcon vsts)      = thenDCon dcon [t | (_,_,t) <- vsts]
   --
   thenDCon dcon ts
-    | Just ix <- elemIndex (ConT ''Loc.Loc) ts
-      = [d| instance Data i => LocAst ($(conT name) i) where
+    | Just ix <- elemIndex (ConT ''Loc.Loc) ts = do
+      i <- newName "i"
+      [InstanceD [] head decls] <-
+        [d| instance LocAst ($(conT name) $(varT i)) where
               toLocAstQ loc stx =
                 do
+                  let _ignore = $(stringE (show name))
                   ast <- $(varE build) stx
                   case ast of
                     VarE _ -> return ast
@@ -225,6 +227,8 @@ deriveLocAst build SyntaxClass { scName = name } = do
                       "BUG! toLocAstQ did not recognize " ++
                       "expanded code: " ++ show ast
           |]
+      context' <- buildContext [PlainTV i] ((''Data, [0]) : cxt)
+      return [InstanceD context' head decls]
     | otherwise = return []
 
 deriveLocAsts :: Name -> SyntaxTable -> TH.Q [TH.Dec]
@@ -234,17 +238,17 @@ deriveLocAsts name = concatMapM (deriveLocAst name)
 -- Antiquote expanders
 --
 
-expandAntibles :: Name -> SyntaxTable -> ExpQ
-expandAntibles name = foldr each [| id |] where
-  each sc rest = [| $(expandAntible name sc) . $rest |]
+expandAntibles :: [Name] -> Name -> SyntaxTable -> ExpQ
+expandAntibles params name = foldr each [| id |] where
+  each sc rest = [| $(expandAntible params name sc) . $rest |]
 
-expandAntible :: Name -> SyntaxClass -> ExpQ
-expandAntible build SyntaxClass { scName = name, scWrap = wrap } = do
+expandAntible :: [Name] -> Name -> SyntaxClass -> ExpQ
+expandAntible params build SyntaxClass { scName = name, scWrap = wrap } = do
   info <- reify name
   case info of
-    TyConI (DataD _ _ [_] _ _)    -> expandAntible1 build wrap name
-    TyConI (NewtypeD _ _ [_] _ _) -> expandAntible1 build wrap name
-    TyConI (TySynD _ [_] _)       -> expandAntible1 build wrap name
+    TyConI (DataD _ _ [_] _ _)    -> expandAntible1 params build wrap name
+    TyConI (NewtypeD _ _ [_] _ _) -> expandAntible1 params build wrap name
+    TyConI (TySynD _ [_] _)       -> expandAntible1 params build wrap name
     _                             -> expandAntible0 build wrap name
 
 expandAntible0 :: Name -> Maybe Name -> Name -> ExpQ
@@ -252,9 +256,11 @@ expandAntible0 build maybeWrap typeName =
   [| $(expandAntibleType build maybeWrap [t| $_t |]) |]
   where _t = conT typeName
 
-expandAntible1 :: Name -> Maybe Name -> Name -> ExpQ
-expandAntible1 build maybeWrap typeName =
-  [| $(expandAntibleType build maybeWrap [t| $_t () |]) |]
+expandAntible1 :: [Name] -> Name -> Maybe Name -> Name -> ExpQ
+expandAntible1 params build maybeWrap typeName =
+  foldr (\a b -> [| $a . $b |]) [| id |]
+    [ expandAntibleType build maybeWrap [t| $_t $(conT _p) |]
+    | _p <- params ]
   where _t = conT typeName
 
 expandAntibleType :: Name -> Maybe Name -> TypeQ -> ExpQ
@@ -315,7 +321,9 @@ data SyntaxClass = SyntaxClass {
   -- | The safe injection from the underlying type to the main type
   scWrap    :: Maybe Name,
   -- | The dictionary of splice tags
-  scDict    :: Maybe Name
+  scDict    :: Maybe Name,
+  -- | Type class context required for wrapping
+  scCxt     :: [(Name, [Int])]
 }
 
 type SyntaxTable = [SyntaxClass]
@@ -327,7 +335,8 @@ name =:: anti = SyntaxClass {
   scName   = name,
   scAnti   = anti,
   scWrap   = Nothing,
-  scDict   = Nothing
+  scDict   = Nothing,
+  scCxt    = []
 }
 
 -- | Extend a syntax class with the name of a function that lifts
@@ -339,7 +348,11 @@ tab !: name = tab { scWrap = Just name }
 ($:) :: SyntaxClass -> TH.Name -> SyntaxClass
 tab $: dict = tab { scDict = Just dict }
 
-infixl 2 =::, !:, $:
+-- | Extend a syntax class with a context
+(>:) :: SyntaxClass -> (Name, [Int]) -> SyntaxClass
+tab >: cxt  = tab { scCxt = cxt : scCxt tab }
+
+infixl 2 =::, !:, $:, >:
 
 -- | Append two antiquote dictionaries
 (&) :: AntiDict -> AntiDict -> AntiDict

@@ -10,7 +10,7 @@ import Syntax
 import Util
 
 import qualified Control.Monad.State as CMS
-import Data.Generics (Data, everywhere, mkT)
+import Data.Generics (Data, everywhere, mkT, extT)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -35,8 +35,8 @@ exSigma ret binder patt body =
 --   normal variables.
 exAddSigma :: Id i =>
               Bool ->
-              ([Lid] -> Patt i -> Expr i -> a) ->
-              S.Set Lid -> Patt i -> Expr i -> a
+              ([Lid i] -> Patt i -> Expr i -> a) ->
+              S.Set (Lid i) -> Patt i -> Expr i -> a
 exAddSigma ret binder env patt body =
   let env'             = dv patt
       (b_vars, b_code) = transform (env' `S.union` env) body
@@ -196,7 +196,7 @@ exAddSigma ret binder env patt body =
     [assuming no shadowing]
 -}
 
-transform :: Id i => S.Set Lid -> Expr i -> ([Lid], Expr i)
+transform :: Id i => S.Set (Lid i) -> Expr i -> ([Lid i], Expr i)
 transform env = loop where
   capture e1
     | vars <- [ v | J [] v <- M.keys (fv e1),
@@ -354,21 +354,21 @@ transform env = loop where
 (+:+)   :: Id i => Expr i -> [Expr i] -> Expr i
 (+:+)    = foldl exPair
 
-(+::)   :: Id i => Expr i -> [Lid] -> Expr i
+(+::)   :: Id i => Expr i -> [Lid i] -> Expr i
 e +:: vs = e +:+ map exBVar vs
 
 (-:-)   :: Patt i -> [Patt i] -> Patt i
 (-:-)    = foldl paPair
 
-(-::)   :: Patt i -> [Lid] -> Patt i
+(-::)   :: Patt i -> [Lid i] -> Patt i
 p -:: vs = p -:- map paVar vs
 
-r1, r2 :: Lid
-r1 = Lid "r1.!"
-r2 = Lid "r2.!"
+r1, r2 :: Id i => Lid i
+r1 = lid "r1.!"
+r2 = lid "r2.!"
 
 {-
-expr2vs :: Expr i -> Maybe [Lid]
+expr2vs :: Expr i -> Maybe [Lid i]
 expr2vs e = case view e of
   ExId (J [] (Var l)) -> return [l]
   ExPair e1 e2
@@ -378,15 +378,16 @@ expr2vs e = case view e of
   _ -> mzero
 -}
 
-makeBangPatt :: Patt i -> Patt i
-makeBangPatt p = paCon (J [] (Uid "!")) (Just p) False
+makeBangPatt :: Id i => Patt i -> Patt i
+makeBangPatt p = paCon (J [] (uid "!")) (Just p) False
 
-parseBangPatt :: Patt i -> Maybe (Patt i)
-parseBangPatt (dataOf -> PaCon (J [] (Uid "!")) mp False) = mp
-parseBangPatt _                                           = Nothing
+parseBangPatt :: Id i => Patt i -> Maybe (Patt i)
+parseBangPatt (dataOf -> PaCon (J [] (Uid i "!")) mp False)
+  | isTrivial i = mp
+parseBangPatt _ = Nothing
 
 {-
-fbvSet :: Expr i -> S.Set Lid
+fbvSet :: Expr i -> S.Set (Lid i)
 fbvSet e = S.fromList [ lid | J [] lid <- M.keys (fv e) ]
 -}
 
@@ -395,15 +396,15 @@ disjoint s1 s2 = S.null (s1 `S.intersection` s2)
 
 -- | Transform an expression into a pattern, if possible, using only
 --   the specified variables and type variables
-expr2patt :: Id i => S.Set Lid -> S.Set TyVar -> Expr i -> Maybe (Patt i)
+expr2patt :: Id i => S.Set (Lid i) -> S.Set TyVar -> Expr i -> Maybe (Patt i)
 expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
   loop e = case view e of
     ExId ident -> case view ident of
-      Left (J [] l) -> do
+      Left (J [] l)     -> do
         sawVar l
         return (paVar l)
-      Left (J _ _)  -> mzero
-      Right qu      -> return (paCon qu Nothing (isExn e))
+      Left (J _ _)      -> mzero
+      Right (qu, isExn) -> return (paCon qu Nothing isExn)
     -- no string or integer literals
     ExPair e1 e2        -> do
       p1 <- loop e1
@@ -411,10 +412,10 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
       return (paPair p1 p2)
     ExApp e1 e2 |
       ExId ident <- view (snd (unfoldExTApp e1)),
-      Right qu   <- view ident
+      Right (qu, isExn) <- view ident
                         -> do
         p2 <- loop e2
-        return (paCon qu (Just p2) (isExn e1))
+        return (paCon qu (Just p2) isExn)
     ExTApp e1 _         -> loop e1
     ExPack Nothing (dataOf -> TyVar tv) e2 -> do
       sawTyVar tv
@@ -439,8 +440,10 @@ patt2expr :: Id i => Patt i -> Expr i
 patt2expr p = case dataOf p of
   PaWild         -> exUnit
   PaVar l        -> exBVar l
-  PaCon u Nothing exn
-                 -> exCon u `setExn` exn
+  PaCon u Nothing False
+                 -> exCon u
+  PaCon u Nothing True
+                 -> exExn u
   PaCon u (Just p2) exn
                  -> exApp e1 e2 where
     e1 = patt2expr (paCon u Nothing exn)
@@ -454,7 +457,7 @@ patt2expr p = case dataOf p of
   PaAnti a       -> antierror "exSigma" a
 
 -- | Transform a pattern to a flattened pattern.
-flatpatt :: Patt i -> Patt i
+flatpatt :: Id i => Patt i -> Patt i
 flatpatt p0 = case loop p0 of
                 []   -> paUnit
                 p:ps -> foldl paPair p ps
@@ -473,12 +476,16 @@ flatpatt p0 = case loop p0 of
     PaAnti a       -> antierror "exSigma" a
 
 ren :: Data a => a -> a
-ren = everywhere (mkT each) where
-  each (Lid s) = Lid (s ++ "!")
+ren = everywhere (mkT eachRaw `extT` eachRen) where
+  eachRaw :: Lid Raw -> Lid Raw
+  eachRen :: Lid Renamed -> Lid Renamed
+  eachRaw = each; eachRen = each
+  each (Lid _ s)   = lid (s ++ "!")
+  each (LidAnti a) = LidAnti a
 
-renOnly :: Data a => S.Set Lid -> a -> a
+renOnly :: (Data a, Id i) => S.Set (Lid i) -> a -> a
 renOnly set = everywhere (mkT each) where
-  each l | l `S.member` set = Lid (unLid l ++ "!")
+  each l | l `S.member` set = lid (unLid l ++ "!")
          | otherwise        = l
 
 {-
@@ -493,12 +500,12 @@ remove set = everywhere (mkT expr `extT` patt) where
   expr e               = e
   -}
 
-kill :: (Id i, Foldable f) => f Lid -> Expr i -> Expr i
+kill :: (Id i, Foldable f) => f (Lid i) -> Expr i -> Expr i
 kill  = translate paVar (const exUnit)
 
 translate :: (Id i, Foldable f) =>
-             (Lid -> Patt i) -> (Lid -> Expr i) ->
-             f Lid -> Expr i -> Expr i
+             (Lid i -> Patt i) -> (Lid i -> Expr i) ->
+             f (Lid i) -> Expr i -> Expr i
 translate mkpatt mkexpr set =
   case toList set of
     []   -> id
@@ -508,6 +515,6 @@ translate mkpatt mkexpr set =
 exUnit :: Id i => Expr i
 exUnit  = exCon (quid "()")
 
-paUnit :: Patt i
+paUnit :: Id i => Patt i
 paUnit  = paCon (quid "()") Nothing False
 

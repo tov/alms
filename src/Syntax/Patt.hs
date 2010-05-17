@@ -1,6 +1,7 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       FlexibleInstances,
+      MultiParamTypeClasses,
       NoMonomorphismRestriction,
       TemplateHaskell,
       TypeFamilies,
@@ -25,15 +26,15 @@ data Patt' i
   -- | wildcard
   = PaWild
   -- | variable pattern
-  | PaVar Lid
+  | PaVar (Lid i)
   -- | datacon, possibly with parameter, possibly an exception
-  | PaCon QUid (Maybe (Patt i)) Bool
+  | PaCon (QUid i) (Maybe (Patt i)) Bool
   -- | pair pattern
   | PaPair (Patt i) (Patt i)
   -- | literal pattern
   | PaLit Lit
   -- | bind an identifer and a pattern (@as@)
-  | PaAs (Patt i) Lid
+  | PaAs (Patt i) (Lid i)
   -- | existential opening
   | PaPack TyVar (Patt i)
   -- | antiquote
@@ -44,7 +45,7 @@ type Patt i = Located Patt' i
 
 deriveNotable ''Patt
 
-instance Dv (Patt' i) where
+instance Id i => Dv (Patt' i) i where
   dv PaWild               = S.empty
   dv (PaVar x)            = S.singleton x
   dv (PaCon _ Nothing _)  = S.empty
@@ -55,7 +56,7 @@ instance Dv (Patt' i) where
   dv (PaPack _ x)         = dv x
   dv (PaAnti a)           = antierror "dv" a
 
-instance Dv (N note (Patt' i)) where
+instance Id i => Dv (N note (Patt' i)) i where
   dv = dv . dataOf
 
 ptv :: Id i => Patt i -> S.Set TyVar

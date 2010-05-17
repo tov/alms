@@ -17,7 +17,7 @@ import Value (VExn(..), vppr, ExnId(..))
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Id, Prog, Decl, TyDec, BIdent(..), prog2decls)
+import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls, Renamed)
 import Env (empty, unionProduct, toList)
 
 import System.Exit (exitFailure)
@@ -72,7 +72,7 @@ loadString st name src = do
   case parse parseProg name src of
     Left e     -> fail (show e)
     Right ast0 -> do
-      (st1, _, ast1) <- statics False (st, prog2decls (ast0 :: Prog ()))
+      (st1, _, ast1) <- statics False (st, prog2decls (ast0 :: Prog Renamed))
       (st2, ast2)    <- translation (st1, ast1)
       (st3, _)       <- dynamics (st2, ast2)
       return st3
@@ -82,10 +82,10 @@ batch filename msrc opt st0 = do
       src <- msrc
       case parse parseProg filename src of
         Left e    -> fail $ "syntax error: " ++ show e
-        Right ast -> check (ast :: Prog ()) where
-          check   :: Id i => Prog i -> IO ()
-          coerce  :: Id i => Prog i -> IO ()
-          execute :: Id i => Prog i -> IO ()
+        Right ast -> check (ast :: Prog Renamed) where
+          check   :: Prog Renamed -> IO ()
+          coerce  :: Prog Renamed -> IO ()
+          execute :: Prog Renamed -> IO ()
 
           check ast0 =
             if opt Don'tType
@@ -117,13 +117,10 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
-statics     :: Id i =>
-               Bool -> (ReplState, [Decl i]) ->
-               IO (ReplState, NewDefs, [Decl i])
-translation :: Id i =>
-               (ReplState, [Decl i])   -> IO (ReplState, [Decl i])
-dynamics    :: Id i =>
-               (ReplState, [Decl i])  -> IO (ReplState, NewValues)
+statics     :: Bool -> (ReplState, [Decl Renamed]) ->
+               IO (ReplState, NewDefs, [Decl Renamed])
+translation :: (ReplState, [Decl Renamed])   -> IO (ReplState, [Decl Renamed])
+dynamics    :: (ReplState, [Decl Renamed])  -> IO (ReplState, NewValues)
 
 statics slow (rs, ast) = do
   (g', new, ast') <- tcDecls slow (rsStatics rs) ast
@@ -169,13 +166,13 @@ interactive opt rs0 = do
       case mast of
         Nothing  -> return ()
         Just ast -> do
-          st' <- doLine st (ast :: [Decl ()])
+          st' <- doLine st (ast :: [Decl Renamed])
                    `handleExns` return st
           repl st'
     doLine st ast = let
-      check   :: Id i => (ReplState, [Decl i]) -> IO ReplState
-      coerce  :: Id i => NewDefs -> (ReplState, [Decl i]) -> IO ReplState
-      execute :: Id i => NewDefs -> (ReplState, [Decl i]) -> IO ReplState
+      check   :: (ReplState, [Decl Renamed]) -> IO ReplState
+      coerce  :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
+      execute :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
       display :: NewDefs -> NewValues -> ReplState -> IO ReplState
 
       check stast0   = if opt Don'tType
@@ -242,14 +239,15 @@ interactive opt rs0 = do
       where
       pprMod uid      = text "module" <+> ppr uid
 
-      pprType (_, tc) = text "type" <+> ppr (tyConToDec tc :: TyDec ())
+      pprType (_, tc) = text "type" <+> ppr (tyConToDec tc :: TyDec Renamed)
 
-      pprExn (ExnId { eiName = uid, eiParam = Just t })
-        = text "exception" <+> ppr uid <+> text "of" <+> ppr t
-      pprExn (ExnId { eiName = uid })
-        = text "exception" <+> ppr uid
+      pprExn (ExnId { eiName = u, eiParam = Just t })
+        = text "exception" <+> ppr u <+> text "of" <+> ppr t
+      pprExn (ExnId { eiName = u})
+        = text "exception" <+> ppr u
 
       pprValue (Con _, _)        = Ppr.empty
+      pprValue (Exn _, _)        = Ppr.empty
       pprValue (Var k, (mt, mv)) =
         addHang '=' (fmap ppr mv) $
           addHang ':' (fmap ppr mt) $

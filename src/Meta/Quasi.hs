@@ -15,6 +15,7 @@ import Meta.QuoteData
 import Meta.THHelpers
 import Parser
 import Syntax
+import Util
 
 import Data.Generics
 import qualified Language.Haskell.TH as TH
@@ -39,9 +40,10 @@ antiPat :: Data a => a -> Maybe TH.PatQ
 antiPat  = antiGen
            `extQ`  antiLocPat
            `extQ`  antiUnitPat
+           `extQ`  antiRawPat
 
 antiGen :: forall a b. (Data a, ToSyntax b) => a -> Maybe (TH.Q b)
-antiGen  = $(expandAntibles 'toAstQ syntaxTable)
+antiGen  = $(expandAntibles [''Raw, ''Renamed] 'toAstQ syntaxTable)
          . $(expandAntibleType 'toAstQ (Just 'newN) [t| QExp Int |])
          . $(expandAntibleType 'toAstQ (Just 'newN) [t| QExp TyVar |])
          $ const Nothing
@@ -51,6 +53,9 @@ antiLocPat _ = Just TH.wildP
 
 antiUnitPat :: () -> Maybe TH.PatQ
 antiUnitPat _ = Just TH.wildP
+
+antiRawPat :: Raw -> Maybe TH.PatQ
+antiRawPat _ = Just TH.wildP
 
 ---
 --- Syntax helpers
@@ -79,16 +84,24 @@ tdQ = mkQuasi parseTyDec
 atQ = mkQuasi parseAbsTy
 
 mkQuasi :: forall stx note.
-           (Data (note ()), Data (stx ()),
-            LocAst (N (note ()) (stx ()))) =>
+           (Data (note Raw), Data (stx Raw),
+            LocAst (N (note Raw) (stx Raw)),
+            Data (note Renamed), Data (stx Renamed),
+            LocAst (N (note Renamed) (stx Renamed))) =>
            (forall i. Id i => P (N (note i) (stx i))) ->
            QuasiQuoter
 mkQuasi parser = QuasiQuoter qast qast where
-  qast s = do
-    (stx, lflag) <- parseQuasi s $ \_ lflag -> do
-      stx <- parser :: P (N (note ()) (stx ()))
-      return (stx, lflag)
-    maybe toAstQ toLocAstQ lflag stx
+  qast s =
+    join $
+      parseQuasi s $ \iflag lflag ->
+        case iflag of
+          Just '+' -> do
+            stx <- parser :: P (N (note Renamed) (stx Renamed))
+            convert lflag stx
+          _        -> do
+            stx <- parser :: P (N (note Raw) (stx Raw))
+            convert lflag stx
+  convert flag stx = return $ maybe toAstQ toLocAstQ flag (scrub stx)
 
 qeQ :: QuasiQuoter
 qeQ  = QuasiQuoter qast qast where

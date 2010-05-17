@@ -12,30 +12,30 @@ import qualified Syntax.Notable
 import Control.Exception
 
 eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId
-eiFailure       = ExnId (-21) (Uid "Failure")
-                    (Just [$ty| string |])
-eiIOError       = ExnId (-22) (Uid "IOError")
-                    (Just [$ty| string |])
-eiBlame         = ExnId (-23) (Uid "Blame")
-                    (Just [$ty| string * string|])
-eiPatternMatch  = ExnId (-24) (Uid "PatternMatch")
-                    (Just [$ty| string * string list|])
+eiFailure       = ExnId (-21) (uid "Failure")
+                    (Just [$ty|+ string |])
+eiIOError       = ExnId (-22) (uid "IOError")
+                    (Just [$ty|+ string |])
+eiBlame         = ExnId (-23) (uid "Blame")
+                    (Just [$ty|+ string * string|])
+eiPatternMatch  = ExnId (-24) (uid "PatternMatch")
+                    (Just [$ty|+ string * string list|])
 
 entries :: [Entry]
 entries = [
-    primexn eiFailure      $ Just [$ty| string |],
-    primexn eiIOError      $ Just [$ty| string |],
-    primexn eiBlame        $ Just [$ty| string * string |],
-    primexn eiPatternMatch $ Just [$ty| string * string list |],
+    primexn eiFailure      $ Just [$ty|+ string |],
+    primexn eiIOError      $ Just [$ty|+ string |],
+    primexn eiBlame        $ Just [$ty|+ string * string |],
+    primexn eiPatternMatch $ Just [$ty|+ string * string list |],
 
-    fun "raise" -: [$ty| exn -> any |]
+    fun "raise" -: [$ty|+ exn -> any |]
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
-    fun "tryfun" -: [$ty| all '<a. (unit -o '<a) -> exn + '<a |]
+    fun "tryfun" -: [$ty|+ all '<a. (unit -o '<a) -> exn + '<a |]
       -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
                          :: IO (Either VExn Value),
 
-    fun "raiseBlame" -: [$ty| string -> string -> any |]
+    fun "raiseBlame" -: [$ty|+ string -> string -> any |]
       -= \s1 s2 -> throw VExn {
            exnId    = eiBlame,
            exnParam = Just (vinj (s1 :: String, s2 :: String))
