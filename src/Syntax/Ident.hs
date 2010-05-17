@@ -12,7 +12,7 @@ module Syntax.Ident (
   -- * Identifier classes
   Id(..), Raw(..), Renamed(..), renamed0,
   -- ** Dirty tricks
-  trivialRename, WRAP(..),
+  trivialRename, trivialRename2,
   -- * Identifiers 
   Path(..),
   Lid(..), Uid(..), BIdent(..),
@@ -75,7 +75,12 @@ trivialRename  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
   each :: i -> i
   each _ = Unsafe.Coerce.unsafeCoerce (trivialId :: j)
 
-newtype WRAP f g h i = WRAP { unWRAP :: f (g i) (h i) }
+trivialRename2 :: forall f g h i j.
+                 (Id i, Id j, Data (f (g i) (h i))) =>
+                 f (g i) (h i) -> f (g j) (h j)
+trivialRename2  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
+  each :: i -> i
+  each _ = Unsafe.Coerce.unsafeCoerce (trivialId :: j)
 
 -- IDENTIFIERS
 

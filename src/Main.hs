@@ -17,7 +17,8 @@ import Value (VExn(..), vppr, ExnId(..))
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv)
-import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls, Renamed)
+import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
+               Raw, Renamed, trivialRename2)
 import Env (empty, unionProduct, toList)
 
 import System.Exit (exitFailure)
@@ -82,10 +83,13 @@ batch filename msrc opt st0 = do
       src <- msrc
       case parse parseProg filename src of
         Left e    -> fail $ "syntax error: " ++ show e
-        Right ast -> check (ast :: Prog Renamed) where
+        Right ast -> rename ast where
+          rename  :: Prog Raw     -> IO ()
           check   :: Prog Renamed -> IO ()
           coerce  :: Prog Renamed -> IO ()
           execute :: Prog Renamed -> IO ()
+
+          rename ast0 = check (trivialRename2 ast0)
 
           check ast0 =
             if opt Don'tType
@@ -166,14 +170,18 @@ interactive opt rs0 = do
       case mast of
         Nothing  -> return ()
         Just ast -> do
-          st' <- doLine st (ast :: [Decl Renamed])
+          st' <- doLine st ast
                    `handleExns` return st
           repl st'
     doLine st ast = let
+      rename  :: (ReplState, [Decl Raw]) -> IO ReplState
       check   :: (ReplState, [Decl Renamed]) -> IO ReplState
       coerce  :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
       execute :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
       display :: NewDefs -> NewValues -> ReplState -> IO ReplState
+
+      rename (st0, ast0) =
+        check (st0, map trivialRename2 ast0)
 
       check stast0   = if opt Don'tType
                          then execute emptyNewDefs stast0
@@ -201,7 +209,7 @@ interactive opt rs0 = do
                           = do printResult newDefs newVals
                                return st3
 
-      in check (st, ast)
+      in rename (st, ast)
     quiet  = opt Quiet
     say    = if quiet then const (return ()) else print
     get    = if quiet then const (readline "") else readline
