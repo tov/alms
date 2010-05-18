@@ -84,24 +84,24 @@ data ModExp' i
 data TyDec' i
   -- | An abstract (empty) type
   = TdAbs {
-      tdaName      :: Lid i,
-      tdaParams    :: [TyVar],
+      tdName      :: Lid i,
+      tdParams    :: [TyVar],
       -- | The variance of each parameter
-      tdaVariances :: [Variance],
+      tdVariances :: [Variance],
       -- | Whether each parameter contributes to the qualifier
-      tdaQual      :: QExp TyVar
+      tdQual      :: QExp TyVar
     }
   -- | A type synonym
   | TdSyn {
-      tdaName      :: Lid i,
-      tdaParams    :: [TyVar],
-      tdaRHS       :: Type i
+      tdName      :: Lid i,
+      tdParams    :: [TyVar],
+      tdRHS       :: Type i
     }
   -- | An algebraic datatype
   | TdDat {
-      tdaName      :: Lid i,
-      tdaParams    :: [TyVar],
-      tdaAlts      :: [(Uid i, Maybe (Type i))]
+      tdName      :: Lid i,
+      tdParams    :: [TyVar],
+      tdAlts      :: [(Uid i, Maybe (Type i))]
     }
   | TdAnti Anti
   deriving (Typeable, Data)

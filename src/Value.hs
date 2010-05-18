@@ -291,7 +291,7 @@ instance Show a => Show (Vinj a) where
 
 -- | The representation of exceptions
 data VExn = VExn {
-              exnId    :: ExnId,
+              exnId    :: ExnId R,
               exnParam :: Maybe Value
             }
   deriving (Typeable, Eq)
@@ -306,14 +306,14 @@ instance Show VExn where
 instance Exn.Exception VExn
 
 -- | Exception identity, generated dynamically
-data ExnId = ExnId {
-               eiIndex :: Integer,
-               eiName  :: Uid R,
-               eiParam :: Maybe (Type R)
-             }
+data ExnId i = ExnId {
+                 eiIndex :: Int,
+                 eiName  :: Uid i,
+                 eiParam :: Maybe (Type i)
+               }
   deriving (Typeable, Data)
 
-instance Eq ExnId where
+instance Eq (ExnId i) where
   ei == ei'  =  eiIndex ei == eiIndex ei'
 
 -- nasty syb stuff

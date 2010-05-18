@@ -1,13 +1,24 @@
 module Exn = struct
   open Prim.Exn
 
-  let failwith (msg: string) =
-    raise (Failure msg)
-
   let exceptionIdCounter =
     let index = ref 0 in
     fun () -> index <- !index + 1
+
+    (*
+  let failwith (msg: string) =
+    raise (Failure msg)
+
+  let tryfun['<a] (thunk: unit -o '<a) : exn + '<a =
+    match tryfun_string thunk with
+    | Left str -> Left[exn,'<a] (IOError str)
+    | Right a  -> a
+
+  let raiseBlame (who: string) (what: string) =
+    raise (Blame who what)
+  *)
 end
+(*
 
 open Exn
 
@@ -125,10 +136,9 @@ module Contract = struct
                      -> raiseBlame pos "raised blame" in 
         cod (neg, pos) y
 end
+*)
 
 module INTERNALS = struct
   module Exn = Exn
-  module Contract = Contract
+  -- module Contract = Contract
 end
-(*
-*)

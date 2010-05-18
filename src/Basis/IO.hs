@@ -29,32 +29,32 @@ instance Valuable IO.IOMode where
 deriving instance Typeable IO.IOMode
 deriving instance Data IO.IOMode
 
-entries :: [Entry]
+entries :: [Entry Raw]
 entries = [
-    dec [$dc|+ type handle |],
-    dec [$dc|+ type ioMode = ReadMode
+    dec [$dc| type handle |],
+    dec [$dc| type ioMode = ReadMode
                            | WriteMode
                            | AppendMode
                            | ReadWriteMode |],
     -- File operations
-    fun "openFile"        -: [$ty|+ string -> ioMode -> handle |]
+    fun "openFile"        -: [$ty| string -> ioMode -> handle |]
       -= IO.openFile,
-    fun "hGetChar"        -: [$ty|+ handle -> char |]
+    fun "hGetChar"        -: [$ty| handle -> char |]
       -= fmap char2integer . IO.hGetChar,
-    fun "hGetLine"        -: [$ty|+ handle -> string |]
+    fun "hGetLine"        -: [$ty| handle -> string |]
       -= IO.hGetLine,
-    fun "hIsEOF"          -: [$ty|+ handle -> bool |]
+    fun "hIsEOF"          -: [$ty| handle -> bool |]
       -= IO.hIsEOF,
-    fun "hPutChar"        -: [$ty|+ handle -> char -> unit |]
+    fun "hPutChar"        -: [$ty| handle -> char -> unit |]
       -= \h -> IO.hPutChar h . integer2char,
-    fun "hPutStr"         -: [$ty|+ handle -> string -> unit |]
+    fun "hPutStr"         -: [$ty| handle -> string -> unit |]
       -= IO.hPutStr,
-    fun "hClose"          -: [$ty|+ handle -> unit |]
+    fun "hClose"          -: [$ty| handle -> unit |]
       -= IO.hClose,
-    fun "hFlush"          -: [$ty|+ handle -> unit |]
+    fun "hFlush"          -: [$ty| handle -> unit |]
       -= IO.hFlush,
 
-    val "stdin"  -: [$ty|+ handle |] -= IO.stdin,
-    val "stdout" -: [$ty|+ handle |] -= IO.stdout,
-    val "stderr" -: [$ty|+ handle |] -= IO.stderr
+    val "stdin"  -: [$ty| handle |] -= IO.stdin,
+    val "stdout" -: [$ty| handle |] -= IO.stdout,
+    val "stderr" -: [$ty| handle |] -= IO.stderr
   ]

@@ -741,7 +741,7 @@ indexQuals name tvs qexp = do
 withTyDecs :: (?loc :: Loc, Monad m) =>
               [TyDec R] -> ([TyDec R] -> TC m a) -> TC m a
 withTyDecs tds0 k0 = do
-  tassert (unique (map (tdaName . dataOf) tds0)) $
+  tassert (unique (map (tdName . dataOf) tds0)) $
     "Duplicate type(s) in recursive type declaration"
   let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
   stds <- topSort getEdge stds0

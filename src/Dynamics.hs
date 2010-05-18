@@ -55,7 +55,7 @@ data Level    = Level {
 type VE       = Env (Lid R) (IO Value)
 -- | We associate exception names with their identity, since new
 --   kinds of exceptions may be generated at run time.
-type XE       = Env ExnName ExnId
+type XE       = Env ExnName (ExnId R)
 
 -- | To distinguish exn names from path components.
 newtype ExnName = ExnName (Uid R)
@@ -65,13 +65,13 @@ instance GenEmpty Level where
   genEmpty = Level empty empty
 instance GenLookup Level (Lid R) (IO Value) where
   level =..= k = vlevel level =..= k
-instance GenLookup Level ExnName ExnId where
+instance GenLookup Level ExnName (ExnId R) where
   level =..= k = xlevel level =..= k
 instance GenExtend Level Level where
   Level ve xe =+= Level ve' xe' = Level (ve =+= ve') (xe =+= xe')
 instance GenExtend Level (Env (Lid R) (IO Value)) where
   level =+= ve' = level =+= Level ve' empty
-instance GenExtend Level (Env ExnName ExnId) where
+instance GenExtend Level (Env ExnName (ExnId R)) where
   level =+= xe' = level =+= Level empty xe'
 
 -- | Domain for the meaning of an expression:
@@ -135,13 +135,17 @@ evalModExp [$me| $quid:n $list:_ |]      env = do
 evalModExp [$me| $anti:a |]              _   = $antifail
 
 evalExn :: Uid R -> Maybe (Type R) -> DDecl
-evalExn u mt env = do
+evalExn u mt env = 
+  let Ren_ ix = uidUnique u in
+  return (addExn env (ExnId ix u mt))
+  {-do
   case env =..= (qlid "INTERNALS.Exn.exceptionIdCounter" :: QLid R) of
     Just entry -> do
       VaFun _ f <- entry
       ix <- f vaUnit >>= vprjM
       return (addExn env (ExnId ix u mt))
     _ -> fail $ "BUG! Can't create new exception ID for: " ++ show u
+    -}
 
 eval :: E -> Prog R -> Result
 eval env0 [$prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
@@ -214,7 +218,7 @@ makeExn env c = do
     _ -> VaFun (FNAnonymous [ppr (eiName ei)]) $ \v ->
            return (vinj (VExn ei (Just v)))
 
-getExnId :: Monad m => E -> QUid R -> m ExnId
+getExnId :: Monad m => E -> QUid R -> m (ExnId R)
 getExnId env c = case env =..= ExnName `fmap` c of
   Nothing -> fail $ "BUG! could not lookup exception: " ++ show c
   Just ei -> return ei
@@ -299,7 +303,7 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- | For printing in the REPL, 'addDecls' returns an environment
 --   mapping any newly bound names to their values
-type NewValues = (Env (Lid R) Value, [ExnId])
+type NewValues = (Env (Lid R) Value, [ExnId R])
 
 -- | Interpret declarations by adding to the environment, potentially
 --   with side effects
@@ -320,6 +324,6 @@ addMod :: E -> Uid R -> E -> E
 addMod e n e' = e =+= n =:= collapse e'
 
 -- | To register an exception ID.
-addExn :: E -> ExnId -> E
+addExn :: E -> ExnId R -> E
 addExn env exnid = env =+= ExnName (eiName exnid) =:= exnid
 

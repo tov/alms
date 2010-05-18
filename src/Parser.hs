@@ -962,7 +962,7 @@ pme :: String -> ModExp Renamed
 pme  = makeQaD parseModExp
 
 -- | Parse a type declaration
-ptd :: String -> TyDec Renamed
+ptd :: String -> TyDec Raw
 ptd  = makeQaD parseTyDec
 
 -- | Parse a type

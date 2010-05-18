@@ -19,7 +19,7 @@ module BasisUtils (
   _loc,
   module Loc,
   -- ** Environment construction
-  basis2venv, basis2tenv,
+  basis2venv, basis2tenv, basis2renv,
 
   -- * Function embedding
   MkFun(..), baseMkFun, vapp,
@@ -34,49 +34,49 @@ import Env (GenEmpty(..))
 import Meta.Quasi
 import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
+import Rename
 import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
 import Syntax
 import qualified Syntax.Notable
 import qualified Syntax.Decl
-import Type (TyCon)
+import Type (TyCon, tcId)
 import Loc (Loc(Loc), mkBogus, setLoc)
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
               ExnId(..))
 
 -- | Kind of identifier used in this module
-type R = Renamed
+type R = Raw
 
 -- | Default source location for primitives
 _loc :: Loc
 _loc  = mkBogus "<primitive>"
 
 -- | An entry in the initial environment
-data Entry
+data Entry i
   -- | A value entry has a name, a types, and a value
   = ValEn {
-    enName  :: Lid R,
-    enType  :: Type R,
+    enName  :: Lid i,
+    enType  :: Type i,
     enValue :: Value
   }
   -- | A declaration entry
   | DecEn {
-    enSrc   :: Decl R
+    enSrc   :: Decl i
   }
   -- | A type entry associates a tycon name with information about it
   | TypEn {
-    enName  :: Lid R,
+    enName  :: Lid i,
     enTyCon :: TyCon
   }
   -- | A module entry associates a module name with a list of entries
   | ModEn {
-    enModName :: Uid R,
-    enEnts    :: [Entry]
+    enModName :: Uid i,
+    enEnts    :: [Entry i]
   }
   -- | An exception entry associates an exception name with its unique id
   | ExnEn {
-    enExnId   :: ExnId,
-    enExnType :: Maybe (Type R)
+    enExnId   :: ExnId i
   }
 
 -- | Type class for embedding Haskell functions as object language
@@ -116,36 +116,36 @@ baseMkFun :: (Valuable a, Valuable b) => FunName -> (a -> b) -> Value
 baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 
 -- | Make a value entry for a Haskell non-function.
-val :: Valuable v => String -> Type R -> v -> Entry
+val :: Valuable v => String -> Type R -> v -> Entry Raw
 val name t v = ValEn (lid name) t (vinj v)
 
 -- | Make a value entry for a Haskell function, given a names and types
 --   for the sublanguages.  (Leave blank to leave the binding out of
 --   that language.
 fun :: (MkFun r, Valuable v) =>
-       String -> Type R -> (v -> r) -> Entry
+       String -> Type R -> (v -> r) -> Entry Raw
 fun name t f = ValEn (lid name) t
                  (mkFun (FNNamed (ppr (lid name :: Lid R))) f)
 
-typ :: String -> Entry
-typ s = DecEn [$dc|+ type $tydec:td |] where td = ptd s
+typ :: String -> Entry Raw
+typ s = DecEn [$dc| type $tydec:td |] where td = ptd s
 
 -- | Creates a declaration entry
-dec :: Decl R -> Entry
+dec :: Decl R -> Entry Raw
 dec  = DecEn
 
 -- | Creates a module entry
-submod :: String -> [Entry] -> Entry
+submod :: String -> [Entry Raw] -> Entry Raw
 submod  = ModEn . uid
 
 -- | Creates a primitve type entry, binding a name to a type tag
 --   (which is usually defined in Syntax.hs)
-primtype  :: String -> TyCon -> Entry
+primtype  :: String -> TyCon -> Entry Raw
 primtype   = TypEn . lid
 
 -- | Creates a primitve exception entry
-primexn :: ExnId -> Maybe (Type R) -> Entry
-primexn ei t = ExnEn { enExnId = ei, enExnType = t }
+primexn :: ExnId i -> Entry i
+primexn ei = ExnEn { enExnId = ei }
 
 -- | Application
 (-:), (-=) :: (a -> b) -> a -> b
@@ -156,18 +156,43 @@ infixl 5 -:
 infixr 0 -=
 
 -- | Instance of 'fun' for making binary arithmetic functions
-binArith :: String -> (Integer -> Integer -> Integer) -> Entry
-binArith name = fun name [$ty|+ int -> int -> int |]
+binArith :: String -> (Integer -> Integer -> Integer) -> Entry Raw
+binArith name = fun name [$ty| int -> int -> int |]
 
 -- | Apply an object language function (as a 'Value')
 vapp :: Valuable a => Value -> a -> IO Value
 vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
+-- | Build the renaming environment and rename the entries
+basis2renv :: Monad m => [Entry Raw] ->
+              m ([Entry Renamed], RenameState)
+basis2renv =
+  runRenamingM False renameState0 . renameMapM each where
+  each ValEn { enName = u, enType = t, enValue = v } = do
+    u' <- Rename.addVal u
+    t' <- renameType t
+    return ValEn { enName = u', enType = t', enValue = v }
+  each DecEn { enSrc = d } = do
+    d' <- renameDecl d
+    return DecEn { enSrc = d' }
+  each TypEn { enName = l, enTyCon = tc } = do
+    l' <- Rename.addType l (tcId tc)
+    return TypEn { enName = l', enTyCon = tc }
+  each ModEn { enModName = u, enEnts = es } = do
+    (u', es') <- Rename.addMod u $ renameMapM each es
+    return ModEn { enModName = u', enEnts = es' }
+  each ExnEn { enExnId = ExnId { eiIndex = i, eiName = u, eiParam = t } } = do
+    u' <- Rename.addExn u i
+    t' <- gmapM renameType t
+    return ExnEn {
+      enExnId = ExnId { eiIndex = i, eiName = u', eiParam = t' }
+    }
+
 -- | Build the dynamic environment
-basis2venv :: Monad m => [Entry] -> m E
+basis2venv :: Monad m => [Entry Renamed] -> m E
 basis2venv es = foldM add genEmpty es where
-  add :: Monad m => E -> Entry -> m E
+  add :: Monad m => E -> Entry Renamed -> m E
   add e (ValEn { enName = n, enValue = v })
           = return (Dynamics.addVal e n v)
   add e (ModEn { enModName = n, enEnts = es' })
@@ -177,7 +202,7 @@ basis2venv es = foldM add genEmpty es where
   add e _ = return e
 
 -- | Build the static environment
-basis2tenv :: Monad m => [Entry] -> m S
+basis2tenv :: Monad m => [Entry Renamed] -> m S
 basis2tenv  = foldM each env0 where
   each gg0 (ValEn { enName = n, enType = t }) = do
     Statics.addVal gg0 n t
@@ -188,6 +213,5 @@ basis2tenv  = foldM each env0 where
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
-  each gg0 (ExnEn { enExnId = ExnId { eiName = n }, enExnType = t }) =
+  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiParam = t } }) =
     Statics.addExn gg0 n t
-

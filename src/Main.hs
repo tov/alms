@@ -10,15 +10,16 @@ import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
 import qualified Ppr
 import Parser (parse, parseRepl, parseProg)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
+import Rename (RenameState, runRenamingM, renameDecls, renameProg)
 import Statics (tcProg, tcDecls, S,
                 NewDefs(..), emptyNewDefs, tyConToDec)
 import Coercion (translate, translateDecls, TEnv, tenv0)
 import Value (VExn(..), vppr, ExnId(..))
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
-import BasisUtils (basis2venv, basis2tenv)
+import BasisUtils (basis2venv, basis2tenv, basis2renv)
 import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
-               Raw, Renamed, trivialRename2)
+               Raw, Renamed)
 import Env (empty, unionProduct, toList)
 
 import System.Exit (exitFailure)
@@ -46,12 +47,13 @@ main :: IO ()
 main  = do
   args <- getArgs
   processArgs [] args $ \opts mmsrc filename -> do
-  g0  <- basis2tenv primBasis
-  e0  <- basis2venv primBasis
+  (primBasis', r0) <- basis2renv primBasis
+  g0 <- basis2tenv primBasis'
+  e0 <- basis2venv primBasis'
   case mmsrc of
     Nothing | Quiet `notElem` opts -> hPutStrLn stderr versionString
     _ -> return ()
-  let st0 = RS g0 tenv0 e0
+  let st0 = RS r0 g0 tenv0 e0
   st1 <- findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
   st2 <- foldM (\st n -> findAlmsLibRel n "-" >>= tryLoadFile st n)
                st1 (reverse [ name | LoadFile name <- opts ])
@@ -90,7 +92,9 @@ batch filename msrc opt st0 = do
           coerce  :: Prog Renamed -> IO ()
           execute :: Prog Renamed -> IO ()
 
-          rename ast0 = check (trivialRename2 ast0)
+          rename ast0 = do
+            (ast1, _) <- runRenamingM True (rsRenaming st0) (renameProg ast0)
+            check ast1
 
           check ast0 =
             if opt Don'tType
@@ -117,6 +121,7 @@ batch filename msrc opt st0 = do
                 mumble "RESULT" v
 
 data ReplState = RS {
+  rsRenaming    :: RenameState,
   rsStatics     :: S,
   rsTranslation :: TEnv,
   rsDynamics    :: E
@@ -128,8 +133,9 @@ statics     :: Bool -> (ReplState, [Decl Renamed]) ->
 translation :: (ReplState, [Decl Renamed])   -> IO (ReplState, [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed])  -> IO (ReplState, NewValues)
 
-renaming (st, ast) =
-  return (st, map trivialRename2 ast)
+renaming (st, ast) = do
+  (ast', r') <- runRenamingM True (rsRenaming st) (renameDecls ast)
+  return (st { rsRenaming = r' }, ast')
 
 statics slow (rs, ast) = do
   (g', new, ast') <- tcDecls slow (rsStatics rs) ast

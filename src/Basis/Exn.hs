@@ -1,50 +1,42 @@
 {-# LANGUAGE
       QuasiQuotes #-}
-module Basis.Exn ( entries, ioexn2vexn ) where
+module Basis.Exn ( entries ) where
 
 import BasisUtils
 import Value
 import Syntax
+import Util
 
 import qualified Loc
 import qualified Syntax.Notable
 
 import Control.Exception
 
-eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId
+eiFailure, eiIOError, eiBlame, eiPatternMatch :: ExnId Raw
 eiFailure       = ExnId (-21) (uid "Failure")
-                    (Just [$ty|+ string |])
+                    (Just [$ty| string |])
 eiIOError       = ExnId (-22) (uid "IOError")
-                    (Just [$ty|+ string |])
+                    (Just [$ty| string |])
 eiBlame         = ExnId (-23) (uid "Blame")
-                    (Just [$ty|+ string * string|])
+                    (Just [$ty| string * string|])
 eiPatternMatch  = ExnId (-24) (uid "PatternMatch")
-                    (Just [$ty|+ string * string list|])
+                    (Just [$ty| string * string list|])
 
-entries :: [Entry]
+entries :: [Entry Raw]
 entries = [
-    primexn eiFailure      $ Just [$ty|+ string |],
-    primexn eiIOError      $ Just [$ty|+ string |],
-    primexn eiBlame        $ Just [$ty|+ string * string |],
-    primexn eiPatternMatch $ Just [$ty|+ string * string list |],
+    primexn eiFailure,
+    primexn eiIOError,
+    primexn eiBlame,
+    primexn eiPatternMatch,
 
-    fun "raise" -: [$ty|+ exn -> any |]
+    fun "raise" -: [$ty| exn -> any |]
       -= \exn -> throw (vprj exn :: VExn)
                  :: IO Value,
-    fun "tryfun" -: [$ty|+ all '<a. (unit -o '<a) -> exn + '<a |]
-      -= \(VaFun _ f) -> try (ioexn2vexn (f vaUnit))
-                         :: IO (Either VExn Value),
-
-    fun "raiseBlame" -: [$ty|+ string -> string -> any |]
-      -= \s1 s2 -> throw VExn {
-           exnId    = eiBlame,
-           exnParam = Just (vinj (s1 :: String, s2 :: String))
-         } :: IO Value
+    fun "tryfun_string"
+                -: [$ty| all '<a. (unit -o '<a) -> string + (exn + '<a) |]
+      -= \(VaFun _ f) -> left show `fmap`
+                          (try
+                           (try (f vaUnit) :: IO (Either VExn Value))
+                           :: IO (Either IOError (Either VExn Value)))
+                 :: IO (Either String (Either VExn Value))
   ]
-
-ioexn2vexn :: IO a -> IO a
-ioexn2vexn  = handle $ \e ->
-  throw VExn {
-    exnId    = eiIOError,
-    exnParam = Just (vinj (show (e :: IOException)))
-  }
