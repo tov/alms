@@ -2,6 +2,7 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       ExistentialQuantification,
+      FlexibleInstances,
       MultiParamTypeClasses,
       PatternGuards,
       RankNTypes,
@@ -291,14 +292,13 @@ instance Show a => Show (Vinj a) where
 
 -- | The representation of exceptions
 data VExn = VExn {
-              exnId    :: ExnId R,
-              exnParam :: Maybe Value
+              exnValue :: Value
             }
   deriving (Typeable, Eq)
 
 instance Valuable VExn where
-  veq          = (==)
-  vpprPrec p e = vpprPrec p (VaCon (eiName (exnId e)) (exnParam e))
+  veq        = (==)
+  vpprPrec p = vpprPrec p . exnValue
 
 instance Show VExn where
   showsPrec p e = (show (vpprPrec p e) ++)
@@ -307,14 +307,13 @@ instance Exn.Exception VExn
 
 -- | Exception identity, generated dynamically
 data ExnId i = ExnId {
-                 eiIndex :: Int,
                  eiName  :: Uid i,
                  eiParam :: Maybe (Type i)
                }
   deriving (Typeable, Data)
 
-instance Eq (ExnId i) where
-  ei == ei'  =  eiIndex ei == eiIndex ei'
+instance Eq (ExnId Renamed) where
+  ei == ei'  =  eiName ei == eiName ei'
 
 -- nasty syb stuff
 

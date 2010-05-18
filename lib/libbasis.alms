@@ -1,26 +1,25 @@
-module Exn = struct
-  open Prim.Exn
+module INTERNALS = struct
+  module Exn = struct
+    open Prim.Exn
 
-  let exceptionIdCounter =
-    let index = ref 0 in
-    fun () -> index <- !index + 1
+    exception Failure of string
+    exception IOError of string 
+    exception Blame of string * string
+    exception PatternMatch of string * string list
 
-    (*
-  let failwith (msg: string) =
-    raise (Failure msg)
+    let failwith (msg: string) =
+      raise (Failure msg)
 
-  let tryfun['<a] (thunk: unit -o '<a) : exn + '<a =
-    match tryfun_string thunk with
-    | Left str -> Left[exn,'<a] (IOError str)
-    | Right a  -> a
+    let tryfun['<a] (thunk: unit -o '<a) : exn + '<a =
+      match tryfun_string thunk with
+      | Right a        -> Right[exn,'<a] a
+      | Left (Left e)  -> Left[exn,'<a] e
+      | Left (Right s) -> Left[exn,'<a] (IOError s)
 
-  let raiseBlame (who: string) (what: string) =
-    raise (Blame who what)
-  *)
+    let raiseBlame (who: string) (what: string) =
+      raise (Blame (who, what))
+  end
 end
-(*
-
-open Exn
 
 let not (b: bool) = if b then false else true
 let (!=)['a] (x: 'a) (y: 'a) = not (x == y)
@@ -77,68 +76,64 @@ let snd['<a,'<b] (_: '<a, y: '<b) = y
 let (=>!) ['<a] (x: '<a) ['<b] (y: '<b) = (y, x)
 
 module INTERNALS = struct
-  module Exn = Exn
-end
+  module Exn = INTERNALS.Exn
+  module Contract = struct
+    type party = string
+    type ('<a, '<b) coercion = party * party -> '<a -> '<b
+    type '<a contract = party * party -> '<a -> '<a
 
-module Contract = struct
-  type party = string
-  type ('<a, '<b) coercion = party * party -> '<a -> '<b
-  type '<a contract = party * party -> '<a -> '<a
+    (* Flat contracts for unlimited values. *)
+    let flat['a] (pred: 'a -> bool) : 'a contract =
+      fun (neg: party, pos: party) (a: 'a) ->
+        if pred a
+          then a
+          else Exn.raiseBlame pos "violated contract"
 
-  (* Flat contracts for unlimited values. *)
-  let flat['a] (pred: 'a -> bool) : 'a contract =
-    fun (neg: party, pos: party) (a: 'a) ->
-      if pred a
-        then a
-        else Exn.raiseBlame pos "violated contract"
+    (* Flat contracts for affine values. *)
+    let flatA['<a] (pred: '<a -> bool * '<a) : '<a contract =
+      fun (neg: party, pos: party) (a: '<a) ->
+        match pred a with
+        | (true, a)  -> a
+        | (false, _) -> Exn.raiseBlame pos "violated contract"
 
-  (* Flat contracts for affine values. *)
-  let flatA['<a] (pred: '<a -> bool * '<a) : '<a contract =
-    fun (neg: party, pos: party) (a: '<a) ->
-      match pred a with
-      | (true, a)  -> a
-      | (false, _) -> Exn.raiseBlame pos "violated contract"
+    (* The identity contract. *)
+    let any['<a] : '<a contract =
+      fun (_: party, _: party) (a: '<a) -> a
 
-  (* The identity contract. *)
-  let any['<a] : '<a contract =
-    fun (_: party, _: party) (a: '<a) -> a
-
-  (* Add domain and codomain contracts to a function. *)
-  let func['<q]
-          ['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
-          ['<b1, '<b2] (cod: ('<b1, '<b2) coercion)
-          : ('<a2 -['<q]> '<b1, '<a1 -['<q]> '<b2) coercion =
-    fun (neg: party, pos: party) (f: '<a2 -['<q]> '<b1) ->
-      fun (a: '<a1) -> cod (neg, pos) (f (dom (pos, neg) a))
-
-  (* Coerce an affine function to an unlimited function, and
-     check dynamically that it's applied only once. *)
-  let affunc['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
+    (* Add domain and codomain contracts to a function. *)
+    let func['<q]
+            ['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
             ['<b1, '<b2] (cod: ('<b1, '<b2) coercion)
-            : ('<a2 -o '<b1, '<a1 -> '<b2) coercion =
-    fun (neg: party, pos: party) (f: '<a2 -o '<b1) ->
-      let rf = ref (Some f) in
-        fun (a: '<a1) ->
-          match rf <- None['<a2 -o '<b1] with
-          | Some f -> cod (neg, pos) (f (dom (pos, neg) a))
-          | None   -> Exn.raiseBlame neg "reused one-shot function"
+            : ('<a2 -['<q]> '<b1, '<a1 -['<q]> '<b2) coercion =
+      fun (neg: party, pos: party) (f: '<a2 -['<q]> '<b1) ->
+        fun (a: '<a1) -> cod (neg, pos) (f (dom (pos, neg) a))
 
-  (* Check that an ostensibly unlimited function is actually
-     unlimited. *)
-  let unfunc['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
-            ['<b1, '<b2] (cod: ('<b1, '<b2) coercion)
-            : ('<a2 -> '<b1, '<a1 -> '<b2) coercion =
-    fun (neg: party, pos: party) (f: '<a2 -> '<b1) ->
-      fun (x: '<a1) ->
-        let x' = dom (pos, neg) x in
-        let y  = try f x' with
-                 | Blame(p, "reused one-shot function")
-                     -> raiseBlame pos "raised blame" in 
-        cod (neg, pos) y
-end
-*)
+    (* Coerce an affine function to an unlimited function, and
+       check dynamically that it's applied only once. *)
+    let affunc['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
+              ['<b1, '<b2] (cod: ('<b1, '<b2) coercion)
+              : ('<a2 -o '<b1, '<a1 -> '<b2) coercion =
+      fun (neg: party, pos: party) (f: '<a2 -o '<b1) ->
+        let rf = ref (Some f) in
+          fun (a: '<a1) ->
+            match rf <- None['<a2 -o '<b1] with
+            | Some f -> cod (neg, pos) (f (dom (pos, neg) a))
+            | None   -> Exn.raiseBlame neg "reused one-shot function"
 
-module INTERNALS = struct
-  module Exn = Exn
-  -- module Contract = Contract
+    (* Check that an ostensibly unlimited function is actually
+       unlimited. *)
+    let unfunc['<a1, '<a2] (dom: ('<a1, '<a2) coercion)
+              ['<b1, '<b2] (cod: ('<b1, '<b2) coercion)
+              : ('<a2 -> '<b1, '<a1 -> '<b2) coercion =
+      fun (neg: party, pos: party) (f: '<a2 -> '<b1) ->
+        fun (x: '<a1) ->
+          let x' = dom (pos, neg) x in
+          let y  = try f x' with
+                   | Exn.Blame(p, "reused one-shot function")
+                       -> Exn.raiseBlame pos "raised blame" in 
+          cod (neg, pos) y
+  end
 end
+
+open INTERNALS
+open Exn

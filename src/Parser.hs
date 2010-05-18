@@ -563,10 +563,10 @@ exprp = expr0 where
          ec  <- expr0
          clt <- addLoc $ do
            reserved "then"
-           caClause (paCon (quid "true") Nothing False) <$> expr0
+           caClause (paCon (quid "true") Nothing) <$> expr0
          clf <- addLoc $ do
            reserved "else"
-           caClause (paCon (quid "false") Nothing False) <$> expr0
+           caClause (paCon (quid "false") Nothing) <$> expr0
          return (exCase ec [clt, clf]),
       do reserved "match"
          e1 <- expr0
@@ -590,7 +590,7 @@ exprp = expr0 where
                   (\xi' ei' ->
                      -- TODO: Make this robust to redefinition of
                      -- Left and Right
-                     caClause (paCon (quid "Left") (Just xi') False) ei')
+                     caClause (paCon (quid "Left") (Just xi')) ei')
                   xi ei
          let tryQ = qlid $
                       "INTERNALS.Exn.tryfun"
@@ -599,13 +599,13 @@ exprp = expr0 where
                          (exAbs paWild tyUnit
                             e1)) $
              caClause (paCon (quid "Right")
-                             (Just (paVar (Syntax.lid "x"))) False)
+                             (Just (paVar (Syntax.lid "x"))))
                       (exVar (qlid "x"))
              :
              clauses ++
              [caClause
                 (paCon (quid "Left")
-                       (Just (paVar (Syntax.lid "e"))) False)
+                       (Just (paVar (Syntax.lid "e"))))
                 (exApp (exVar (qlid "INTERNALS.Exn.raise"))
                        (exVar (qlid "e")))
               ],
@@ -761,7 +761,7 @@ paty  = do
   (p, mt) <- pamty
   case (dataOf p, mt) of
     (_, Just t) -> return (p, t)
-    (PaCon (J [] (Uid _ "()")) Nothing False, Nothing)
+    (PaCon (J [] (Uid _ "()")) Nothing, Nothing)
                 -> return (p, tyUnit)
     _           -> pzero <?> ":"
 
@@ -775,7 +775,7 @@ pamty  = parens $ choice
              do
                p <- pattp
                maybecolon p,
-             return (paCon (quid "()") Nothing False, Nothing)
+             return (paCon (quid "()") Nothing, Nothing)
            ]
   where
     maybecolon p = choice
@@ -863,30 +863,22 @@ pattp  = patt0 where
           x  <- pattN1
           return (paPack tv x),
       paCon <$> quidp
-            <*> antioptp (try pattA)
-            <*> isexnp,
+            <*> antioptp (try pattA),
       pattA ]
   pattA = addLoc $ choice
     [ paWild <$  reserved "_",
       paVar  <$> varp,
       paLit  <$> litp,
       paCon  <$> quidp
-             <*> pure Nothing
-             <*> isexnp,
+             <*> pure Nothing,
       antiblep,
       parens pattN1
     ]
   pattN1 = addLoc $ do
     xs <- commaSep patt0
     case xs of
-      []    -> return (paCon (quid "()") Nothing False)
+      []    -> return (paCon (quid "()") Nothing)
       x:xs' -> return (foldl paPair x xs')
-
--- Dirty hack for specifying, in surface syntax, whether a datacon
--- pattern matches an exception.  TODO: get rid of
-isexnp  :: P Bool
-isexnp   = True <$ lexeme (symbol "!!!")
-       <|> pure False
 
 litp :: P Lit
 litp = choice [

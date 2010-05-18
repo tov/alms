@@ -11,8 +11,8 @@ module BasisUtils (
   fun, val, binArith,
   -- *** Types
   dec, typ, primtype,
-  -- *** Modules, exceptions, and arbitrary declarations
-  submod, primexn,
+  -- *** Modules
+  submod,
   -- ** Sugar operators for entry construction
   (-:), (-=),
   -- ** Default location for entries
@@ -29,21 +29,20 @@ module BasisUtils (
   module Meta.Quasi,
 ) where
 
-import Dynamics (E, addVal, addMod, addExn)
+import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
 import Meta.Quasi
 import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
 import Rename
-import Statics (S, env0, tcDecls, addVal, addType, addExn, addMod)
+import Statics (S, env0, tcDecls, addVal, addType, addMod)
 import Syntax
 import qualified Syntax.Notable
 import qualified Syntax.Decl
 import Type (TyCon, tcId)
 import Loc (Loc(Loc), mkBogus, setLoc)
 import Util
-import Value (Valuable(..), FunName(..), funNameDocs, Value(..),
-              ExnId(..))
+import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
 
 -- | Kind of identifier used in this module
 type R = Raw
@@ -73,10 +72,6 @@ data Entry i
   | ModEn {
     enModName :: Uid i,
     enEnts    :: [Entry i]
-  }
-  -- | An exception entry associates an exception name with its unique id
-  | ExnEn {
-    enExnId   :: ExnId i
   }
 
 -- | Type class for embedding Haskell functions as object language
@@ -143,10 +138,6 @@ submod  = ModEn . uid
 primtype  :: String -> TyCon -> Entry Raw
 primtype   = TypEn . lid
 
--- | Creates a primitve exception entry
-primexn :: ExnId i -> Entry i
-primexn ei = ExnEn { enExnId = ei }
-
 -- | Application
 (-:), (-=) :: (a -> b) -> a -> b
 (-:) = ($)
@@ -182,12 +173,6 @@ basis2renv =
   each ModEn { enModName = u, enEnts = es } = do
     (u', es') <- Rename.addMod u $ renameMapM each es
     return ModEn { enModName = u', enEnts = es' }
-  each ExnEn { enExnId = ExnId { eiIndex = i, eiName = u, eiParam = t } } = do
-    u' <- Rename.addExn u i
-    t' <- gmapM renameType t
-    return ExnEn {
-      enExnId = ExnId { eiIndex = i, eiName = u', eiParam = t' }
-    }
 
 -- | Build the dynamic environment
 basis2venv :: Monad m => [Entry Renamed] -> m E
@@ -197,8 +182,6 @@ basis2venv es = foldM add genEmpty es where
           = return (Dynamics.addVal e n v)
   add e (ModEn { enModName = n, enEnts = es' })
           = Dynamics.addMod e n `liftM` basis2venv es'
-  add e (ExnEn { enExnId = exnId })
-          = return (Dynamics.addExn e exnId)
   add e _ = return e
 
 -- | Build the static environment
@@ -213,5 +196,4 @@ basis2tenv  = foldM each env0 where
     return (Statics.addType gg0 n i)
   each gg0 (ModEn { enModName = n, enEnts = es }) =
     Statics.addMod gg0 n $ \gg' -> foldM each gg' es
-  each gg0 (ExnEn { enExnId = ExnId { eiName = n, eiParam = t } }) =
-    Statics.addExn gg0 n t
+

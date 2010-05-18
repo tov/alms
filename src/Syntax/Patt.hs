@@ -28,7 +28,7 @@ data Patt' i
   -- | variable pattern
   | PaVar (Lid i)
   -- | datacon, possibly with parameter, possibly an exception
-  | PaCon (QUid i) (Maybe (Patt i)) Bool
+  | PaCon (QUid i) (Maybe (Patt i))
   -- | pair pattern
   | PaPair (Patt i) (Patt i)
   -- | literal pattern
@@ -48,8 +48,8 @@ deriveNotable ''Patt
 instance Id i => Dv (Patt' i) i where
   dv PaWild               = S.empty
   dv (PaVar x)            = S.singleton x
-  dv (PaCon _ Nothing _)  = S.empty
-  dv (PaCon _ (Just x) _) = dv x
+  dv (PaCon _ Nothing)    = S.empty
+  dv (PaCon _ (Just x))   = dv x
   dv (PaPair x y)         = dv x `S.union` dv y
   dv (PaLit _)            = S.empty
   dv (PaAs x y)           = dv x `S.union` S.singleton y

@@ -387,12 +387,6 @@ instance Ppr (Patt i) where
   pprPrec p [$pa| $quid:qu $x |]   = parensIf (p > precApp) $
                                        pprPrec precApp qu <+>
                                        pprPrec (precApp + 1) x
-  -- ICK!  TODO: get rid of the next two cases:
-  pprPrec _ [$pa| $quid:qu !!! |]  = ppr qu
-  pprPrec p [$pa| $quid:qu $x !!! |]
-                                   = parensIf (p > precApp) $
-                                       pprPrec precApp qu <+>
-                                       pprPrec (precApp + 1) x
   pprPrec p [$pa| ($x, $y) |]      = parensIf (p > precCom) $
                                        pprPrec precCom x <> comma <+>
                                        pprPrec (precCom + 1) y

@@ -174,7 +174,7 @@ withUVars tvs field body = do
               else lower
           else fail $
             "Unification cannot solve:\n" ++
-            dumpType lower ++ " <: " ++ dumpType upper
+            show lower ++ " <: " ++ show upper
     | (_, (_, ref)) <- refs ]
   return (res, typs)
 

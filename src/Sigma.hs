@@ -379,10 +379,10 @@ expr2vs e = case view e of
 -}
 
 makeBangPatt :: Id i => Patt i -> Patt i
-makeBangPatt p = paCon (J [] (uid "!")) (Just p) False
+makeBangPatt p = paCon (J [] (uid "!")) (Just p)
 
 parseBangPatt :: Id i => Patt i -> Maybe (Patt i)
-parseBangPatt (dataOf -> PaCon (J [] (Uid i "!")) mp False)
+parseBangPatt (dataOf -> PaCon (J [] (Uid i "!")) mp)
   | isTrivial i = mp
 parseBangPatt _ = Nothing
 
@@ -404,7 +404,7 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
         sawVar l
         return (paVar l)
       Left (J _ _)      -> mzero
-      Right (qu, isExn) -> return (paCon qu Nothing isExn)
+      Right qu          -> return (paCon qu Nothing)
     -- no string or integer literals
     ExPair e1 e2        -> do
       p1 <- loop e1
@@ -412,10 +412,10 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
       return (paPair p1 p2)
     ExApp e1 e2 |
       ExId ident <- view (snd (unfoldExTApp e1)),
-      Right (qu, isExn) <- view ident
+      Right qu <- view ident
                         -> do
         p2 <- loop e2
-        return (paCon qu (Just p2) isExn)
+        return (paCon qu (Just p2))
     ExTApp e1 _         -> loop e1
     ExPack Nothing (dataOf -> TyVar tv) e2 -> do
       sawTyVar tv
@@ -440,13 +440,11 @@ patt2expr :: Id i => Patt i -> Expr i
 patt2expr p = case dataOf p of
   PaWild         -> exUnit
   PaVar l        -> exBVar l
-  PaCon u Nothing False
+  PaCon u Nothing
                  -> exCon u
-  PaCon u Nothing True
-                 -> exExn u
-  PaCon u (Just p2) exn
+  PaCon u (Just p2)
                  -> exApp e1 e2 where
-    e1 = patt2expr (paCon u Nothing exn)
+    e1 = patt2expr (paCon u Nothing)
     e2 = patt2expr p2
   PaPair p1 p2   -> exPair e1 e2 where
     e1 = patt2expr p1
@@ -465,9 +463,9 @@ flatpatt p0 = case loop p0 of
   loop p = case dataOf p of
     PaWild         -> []
     PaVar l        -> [paVar l]
-    PaCon _ Nothing _
+    PaCon _ Nothing
                    -> []
-    PaCon _ (Just p2) _
+    PaCon _ (Just p2)
                    -> loop p2
     PaPair p1 p2   -> loop p1 ++ loop p2
     PaLit _        -> []
@@ -516,5 +514,5 @@ exUnit :: Id i => Expr i
 exUnit  = exCon (quid "()")
 
 paUnit :: Id i => Patt i
-paUnit  = paCon (quid "()") Nothing False
+paUnit  = paCon (quid "()") Nothing
 

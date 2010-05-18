@@ -12,7 +12,7 @@ module Rename (
   -- * State between renaming steps
   RenameState, renameState0,
   -- ** Adding the basis
-  addVal, addType, addMod, addExn,
+  addVal, addType, addMod,
   -- * Renamers
   renameProg, renameDecls, renameDecl, renameType,
 ) where
@@ -42,7 +42,7 @@ data RenameState = RenameState {
 renameState0 :: RenameState
 renameState0  = RenameState {
   savedEnv      = mempty {
-    datacons = M.singleton (uid "()") (uid "()", False)
+    datacons = M.singleton (uid "()") (uid "()")
   },
   savedCounter  = renamed0
 }
@@ -73,7 +73,7 @@ instance MonadReader Env Renaming where
 -- | The renaming environment
 data Env = Env {
   tycons, vars    :: !(M.Map (Lid Raw) (Lid Renamed)),
-  datacons        :: !(M.Map (Uid Raw) (Uid Renamed, Bool)),
+  datacons        :: !(M.Map (Uid Raw) (Uid Renamed)),
   modules         :: !(M.Map (Uid Raw) (Uid Renamed, Env)),
   tyvars          :: !(M.Map TyVar Bool)
 } deriving Show
@@ -115,7 +115,7 @@ data Field k v = Field {
 }
 
 tyconsF, varsF :: Field (Lid Raw) (Lid Renamed)
-dataconsF      :: Field (Uid Raw) (Uid Renamed, Bool)
+dataconsF      :: Field (Uid Raw) (Uid Renamed)
 modulesF       :: Field (Uid Raw) (Uid Renamed, Env)
 tyvarsF        :: Field TyVar Bool
 
@@ -199,8 +199,8 @@ getVar :: QLid Raw -> R (QLid Renamed)
 getVar  = getGeneric "variable" vars
 
 -- | Look up a data constructor in the environment
-getDatacon :: QUid Raw -> R (QUid Renamed, Bool)
-getDatacon  = liftM jpull . getGeneric "data constructor" datacons
+getDatacon :: QUid Raw -> R (QUid Renamed)
+getDatacon  = getGeneric "data constructor" datacons
 
 -- | Look up a variable in the environment
 getTycon :: QLid Raw -> R (QLid Renamed)
@@ -238,12 +238,6 @@ bindGeneric ren field x = R $ do
       return (ren counter x)
     else do
       return (ren trivialId x)
-      {-
-      e <- M.R.asks env
-      case M.lookup x (get field e) of
-        Nothing -> return (ren trivialId x)
-        Just _  -> fail $ "BUG! Renamer cannot shadow: " ++ show x
-        -}
   tell (update field mempty (M.singleton x x'))
   return x'
 
@@ -257,13 +251,7 @@ bindTycon  = bindGeneric (\r -> Lid r . unLid) tyconsF
 
 -- | Get a new name for a data constructor binding
 bindDatacon :: Uid Raw -> R (Uid Renamed)
-bindDatacon =
-  liftM fst . bindGeneric (\r u -> (Uid r (unUid u), False)) dataconsF
-
--- | Get a new name for an exception binding
-bindExn :: Uid Raw -> R (Uid Renamed)
-bindExn =
-  liftM fst . bindGeneric (\r u -> (Uid r (unUid u), True)) dataconsF
+bindDatacon = bindGeneric (\r u -> (Uid r (unUid u))) dataconsF
 
 -- | Get a new name for a module, and bind it in the environment
 bindModule :: Uid Raw -> Env -> R (Uid Renamed)
@@ -342,6 +330,12 @@ renameDecl d0 = case d0 of
     tell (denv { datacons = M.empty })
     ds' <- withEnv (tenv `mappend` denv) $ renameDecls ds
     return [$dc|+ abstype $list:ats' with $list:ds' end |]
+  [$dc| module INTERNALS = $me1 |] ->
+    R $ local (\context -> context { allocate = False }) $ unR $ do
+      let u = uid "INTERNALS"
+      (me1', env') <- steal $ renameModExp me1
+      u' <- bindModule u env'
+      return [$dc|+ module $uid:u' = $me1' |]
   [$dc| module $uid:u = $me1 |] -> do
     (me1', env') <- steal $ renameModExp me1
     u' <- bindModule u env'
@@ -354,7 +348,7 @@ renameDecl d0 = case d0 of
     ds2' <- withEnv env' $ renameDecls ds2
     return [$dc| local $list:ds1' with $list:ds2' end |]
   [$dc| exception $uid:u of $opt:mt |] -> do
-    u'  <- bindExn u
+    u'  <- bindDatacon u
     mt' <- gmapM renameType mt
     return [$dc|+ exception $uid:u' of $opt:mt' |]
   [$dc| $anti:a |] -> $antifail
@@ -362,13 +356,13 @@ renameDecl d0 = case d0 of
 renameTyDec :: Maybe (QExp TyVar) -> TyDec Raw ->
                R (Maybe (QExp TyVar), TyDec Renamed)
 renameTyDec _   (N _ (TdAnti a)) = $antierror
-renameTyDec mqe (N note td)      = do
+renameTyDec mqe (N note td)      = withLoc note $ do
   J [] l' <- getTycon (J [] (tdName td))
   let tvs = tdParams td
   case unique id tvs of
     Nothing      -> return ()
     Just (tv, _) -> fail $
-      "Type variable " ++ show tv ++ " repeated in type parameters"
+      "type variable " ++ show tv ++ " repeated in type parameters"
   (tvs', envTvs) <- steal $ mapM bindTyvar tvs
   withEnv envTvs $ do
     mqe' <- gmapM renameQExp mqe
@@ -408,9 +402,9 @@ renameExpr e0 = withLoc e0 $ case e0 of
       ql' <- getVar ql
       let x' = fmap Var ql'
       return [$ex|+ $id:x' |]
-    Right (qu, _) -> do
-      (qu', isExn) <- getDatacon qu
-      let x' = fmap (if isExn then Exn else Con) qu'
+    Right qu -> do
+      qu' <- getDatacon qu
+      let x' = fmap Con qu'
       return [$ex|+ $id:x' |]
   [$ex| $lit:lit |] -> do
     lit' <- renameLit lit
@@ -555,21 +549,13 @@ renamePatt x00 =
     [$pa| $lid:l |] -> do
       l' <- var _loc l
       return [$pa|+ $lid:l' |]
-    N note (PaCon qu Nothing _) -> do
-      let _loc = getLoc note
-      (qu', isExn) <- M.S.lift $ getDatacon qu
-      return $
-        if isExn
-          then [$pa|+ $quid:qu' !!! |]
-          else [$pa|+ $quid:qu' |]
-    N note (PaCon qu (Just t) _) -> do
-      let _loc = getLoc note
-      (qu', isExn) <- M.S.lift $ getDatacon qu
-      t' <- loop t
-      return $
-        if isExn
-          then [$pa|+ $quid:qu' $t' !!! |]
-          else [$pa|+ $quid:qu' $t' |]
+    [$pa| $quid:qu |] -> do
+      qu' <- M.S.lift $ getDatacon qu
+      return [$pa|+ $quid:qu' |]
+    [$pa| $quid:qu $x |] -> do
+      qu' <- M.S.lift $ getDatacon qu
+      x' <- loop x
+      return [$pa|+ $quid:qu' $x' |]
     [$pa| ($x1, $x2) |] -> do
       x1' <- loop x1
       x2' <- loop x2
@@ -608,25 +594,16 @@ renamePatt x00 =
         M.S.put (M.insert (Right tv) loc1 seen)
         M.S.lift (bindTyvar tv)
 
-addVal  :: Lid Raw -> R (Lid Renamed)
-addType :: Lid Raw -> Int -> R (Lid Renamed)
-addExn  :: Uid Raw -> Int -> R (Uid Renamed)
-addMod  :: Uid Raw -> R a -> R (Uid Renamed, a)
+addVal     :: Lid Raw -> R (Lid Renamed)
+addType    :: Lid Raw -> Int -> R (Lid Renamed)
+addMod     :: Uid Raw -> R a -> R (Uid Renamed, a)
 
-addVal l = do
-  let l' = lid (unLid l)
-  tell (mempty { vars = M.singleton l l' })
-  return l'
+addVal = bindVar
 
 addType l z = do
   let l' = Lid (Ren_ z) (unLid l)
   tell (mempty { tycons = M.singleton l l' })
   return l'
-
-addExn u z = do
-  let u' = Uid (Ren_ z) (unUid u)
-  tell (mempty { datacons = M.singleton u (u', True) })
-  return u'
 
 addMod u body = do
   let u' = uid (unUid u)

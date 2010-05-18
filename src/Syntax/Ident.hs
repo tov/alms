@@ -50,7 +50,10 @@ data Raw = Raw_
   deriving (Data, Typeable, Show)
 
 newtype Renamed = Ren_ Int
-  deriving (Data, Typeable, Show, Enum)
+  deriving (Data, Typeable, Enum, Eq)
+
+instance Show Renamed where
+  showsPrec p (Ren_ z) = showsPrec p z
 
 instance Id Raw where
   trivialId     = Raw_
@@ -121,7 +124,6 @@ instance Id i => Ord (Uid i) where
 -- | bare (unqualified) identifers
 data BIdent i = Var { unVar :: !(Lid i) }
               | Con { unCon :: !(Uid i) }
-              | Exn { unExn :: !(Uid i) }
   deriving (Eq, Ord, Typeable, Data)
 
 -- | path-qualified uppercase identifiers
@@ -175,13 +177,20 @@ quid s = case reverse (splitBy (=='.') s) of
            x:xs -> J (map uid (reverse xs)) (uid x)
 
 instance Show (Lid i) where
-  showsPrec _ (Lid _ s) = case s of
-    '_':_             -> (s++)
-    c  :_ | isAlpha c -> (s++)
-    c  :_ | isDigit c -> (s++)
-    _  :_ | head s == '*' || last s == '*'
-                      -> ("( "++) . (s++) . (" )"++)
-    _                 -> ('(':) . (s++) . (')':)
+  showsPrec _ (Lid i s) =
+    case s of
+      '_':_             -> (s++)
+      c  :_ | isAlpha c -> (s++)
+      c  :_ | isDigit c -> (s++)
+      _  :_ | head s == '*' || last s == '*'
+                        -> ("( "++) . (s++) . (" )"++)
+      _                 -> ('(':) . (s++) . (')':)
+      {-
+    . let z = Unsafe.Coerce.unsafeCoerce i :: Renamed in
+         if z == Unsafe.Coerce.unsafeCoerce Raw_
+           then id
+           else showChar '[' . shows z . showChar ']'
+      -}
   showsPrec p (LidAnti a) = showsPrec p a
 
 instance Show (Uid i) where
@@ -191,7 +200,6 @@ instance Show (Uid i) where
 instance Show (BIdent i) where
   showsPrec p (Var x) = showsPrec p x
   showsPrec p (Con k) = showsPrec p k
-  showsPrec p (Exn e) = showsPrec p e
 
 instance Show TyVar where
   showsPrec _ (TV x Qu)  = showString "'" . shows x
@@ -199,10 +207,9 @@ instance Show TyVar where
   showsPrec _ (TVAnti a) = showChar '\'' . shows a
 
 instance Viewable (Path (Uid i) (BIdent i)) where
-  type View (Ident i) = Either (QLid i) (QUid i, Bool)
+  type View (Ident i) = Either (QLid i) (QUid i)
   view (J p (Var n)) = Left (J p n)
-  view (J p (Con n)) = Right (J p n, False)
-  view (J p (Exn n)) = Right (J p n, True)
+  view (J p (Con n)) = Right (J p n)
 
 -- | Simple keys embed into path keyspace
 instance (Ord p, (:>:) k k') =>

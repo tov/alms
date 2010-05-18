@@ -15,7 +15,7 @@ module Statics (
   -- * Static environments
   S, env0,
   -- ** Environment construction
-  addVal, addType, addExn, addMod,
+  addVal, addType, addMod,
   -- * Type checking
   tcProg, tcDecls,
   -- ** Type checking results for the REPL
@@ -385,11 +385,8 @@ tcExpr = tc where
     [$ex| $id:x |] -> do
       tx    <- getVar x
       x'    <- case view x of
-                 Left _        -> return x
-                 Right (qu, _) ->
-                   if findIsExn tx
-                     then return (fmap Exn qu)
-                     else return (fmap Con qu)
+                 Left _   -> return x
+                 Right qu -> return (fmap Con qu)
       return (tx, [$ex|+ $id:x' |])
     [$ex| $str:s |] -> return (tyString, [$ex|+ $str:s |])
     [$ex| $int:z |] -> return (tyInt,    [$ex|+ $int:z |])
@@ -571,7 +568,7 @@ tcPatt :: (?loc :: Loc, Monad m) =>
 tcPatt t x0 = case x0 of
   [$pa| _ |]      -> return (empty, empty, x0)
   [$pa| $lid:x |] -> return (empty, Var x =:= t, x0)
-  N _ (PaCon u mx _) -> do
+  [$pa| $quid:u $opt:mx |] -> do
     t' <- hnT t
     case t' of
       TyApp _ ts _ -> do
@@ -583,14 +580,13 @@ tcPatt t x0 = case x0 of
             -> return (params, Nothing, res)
         tassgot (t' <: tysubsts params ts res)
           "Pattern" t' ("constructor " ++ show u)
-        let isexn = findIsExn t'
         case (mt, mx) of
           (Nothing, Nothing) ->
-            return (empty, empty, paCon u Nothing isexn)
+            return (empty, empty, paCon u Nothing)
           (Just t1, Just x1) -> do
             let t1' = tysubsts params ts t1
             (dx1, gx1, x1') <- tcPatt t1' x1
-            return (dx1, gx1, paCon u (Just x1') isexn)
+            return (dx1, gx1, paCon u (Just x1'))
           _ -> tgot "Pattern" t "wrong arity"
       _ | isBotType t' -> case mx of
             Nothing -> return (empty, empty, x0)
@@ -658,7 +654,6 @@ withPatt :: (?loc :: Loc, Monad m) =>
 withPatt t x m = do
   (d, g, x') <- tcPatt t x
   (t', e')   <- withAny d $ withVars g $ m
-  -- tcType t'
   let escapees = S.fromList (range d) `S.intersection` ftv t'
   tassert (S.null escapees) $
     "Type variable escaped existential: " ++ show (S.findMin escapees)
@@ -672,57 +667,16 @@ tryUnify :: (?loc :: Loc, Monad m) =>
 tryUnify [] _ _        = return []
 tryUnify tvs t t'      = 
   case subtype 100 [] t' tvs t of
-    Left s         -> giveUp s
+    Left s         -> giveUp (s :: String)
     Right (_, ts)  -> return ts
   where
-  giveUp s = terr $
+  giveUp _ = terr $
     "\nCannot guess type" ++
     (if length tvs == 1 then " t1" else "s t1, .., t" ++ show (length tvs))
     ++ " such that\n  " ++ showsPrec 10 t "" ++
     concat [ "[t" ++ show i ++ "/" ++ show tv ++ "]"
            | tv <- tvs | i <- [ 1.. ] :: [Integer] ] ++
     "\n  >: " ++ show t'
-    ++ "\n(" ++ s ++ ")"
-
-{- -- deprecated?
--- Given a type variable tv, type t in which tv may be free,
--- and a second type t', finds a plausible candidate to substitute
--- for tv to make t and t' unify.  (The answer it finds doesn't
--- have to be correct.
-findSubst :: TyVar -> Type -> Type -> [Type]
-findSubst tv = chk [] where
-  chk, cmp :: [(AType, AType)] -> Type -> Type -> [Type]
-  chk seen t1 t2 =
-    let tw1 = AType t1; tw2 = AType t2
-     in if (tw1, tw2) `elem` seen
-          then []
-          else cmp ((tw1, tw2) : seen) t1 t2
-
-  cmp _    (TyVar tv') t'
-    | tv == tv'    = [t']
-  cmp seen [$ty|@! ($list:ts) $qlid:_ |] [$ty| ($list:ts') $qlid:_ |]
-                   = concat (zipWith (chk seen) ts ts')
-  cmp seen [$ty|@! $t1 -[$q]> $t2 |] [$ty| $t1' -[$q']> $t2' |]
-                   = chkQe q q' ++ chk seen t1 t1' ++ chk seen t2 t2'
-  cmp seen [$ty|@! $quant:_ '$tv0. $t |] [$ty| $quant:_ '$tv0'. $t' |]
-    | tv /= tv0    = [ tr | tr <- chk seen t t',
-                            not (tv0  `S.member` ftv tr),
-                            not (tv0' `S.member` ftv tr) ]
-  cmp seen [$ty| mu '$a. $t |] t'
-                   = chk seen (tysubst a (TyMu a t) t) t'
-  cmp seen t' [$ty| mu '$a. $t |]
-                   = chk seen t' (tysubst a (TyMu a t) t)
-  cmp _ _ _        = []
-
-  chkQe :: QExp TyVar -> QExp TyVar -> [Type]
-  chkQe (QeVar tv1) (QeVar tv2) | tv1 == tv = [TyVar tv2]
-                                | tv2 == tv = [TyVar tv1]
-  chkQe (QeVar tv1) (QeLit Qu)  | tv1 == tv = [tyUn]
-  chkQe (QeLit Qu)  (QeVar tv2) | tv2 == tv = [tyUn]
-  chkQe (QeVar tv1) (QeLit Qa)  | tv1 == tv = [tyAf]
-  chkQe (QeLit Qa)  (QeVar tv2) | tv2 == tv = [tyAf]
-  chkQe _           _                       = []
--}
 
 -- | Convert qualset representations from a list of all tyvars and
 --   list of qualifier-significant tyvars to a set of type parameter
@@ -969,13 +923,6 @@ withExn n mt k = do
   withVars (Con n =:= maybe tyExn (`tyArr` tyExn) mt') $
     k (fmap typeToStx mt')
 
--- Is the given type the type of an exception constructor?
--- INVARIANT: The type must be weak head-normal.
-findIsExn :: Type -> Bool
-findIsExn (TyFun _ _ (TyApp tc _ _)) = tc == tcExn
-findIsExn (TyApp tc _ _)             = tc == tcExn
-findIsExn _ = False
-
 -- | Run a computation in the context of a module
 withMod :: (?loc :: Loc, Monad m) =>
            Uid R -> ModExp R -> (ModExp R -> TC m a) -> TC m a
@@ -1200,15 +1147,6 @@ addVal gg x t = runTC gg $ do
 addType :: S -> Lid R -> TyCon -> S
 addType gg n td =
   gg { cEnv = cEnv gg =+= Level empty (n =:= td) }
-
--- | Add a new exception variant
-addExn :: Monad m =>
-          S -> Uid R -> Maybe (Syntax.Type R) -> m S
-addExn gg n mt =
-  runTC gg $ do
-    withExn n mt $ \_ ->
-      saveTC False
-  where ?loc = mkBogus "<addExn>"
 
 -- | Add a nested submodule
 addMod :: Monad m => S -> Uid R -> (S -> m S) -> m S

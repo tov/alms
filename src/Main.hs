@@ -266,7 +266,6 @@ interactive opt rs0 = do
         = text "exception" <+> ppr u
 
       pprValue (Con _, _)        = Ppr.empty
-      pprValue (Exn _, _)        = Ppr.empty
       pprValue (Var k, (mt, mv)) =
         addHang '=' (fmap ppr mv) $
           addHang ':' (fmap ppr mt) $

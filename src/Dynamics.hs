@@ -6,7 +6,7 @@
 -- | The dynamics of the interpreter
 module Dynamics (
   -- * Static API
-  E, addVal, addMod, addExn, NewValues,
+  E, addVal, addMod, NewValues,
   -- * Dynamic API
   eval, addDecls, Result,
   -- * Re-export to remove warning (!)
@@ -135,17 +135,7 @@ evalModExp [$me| $quid:n $list:_ |]      env = do
 evalModExp [$me| $anti:a |]              _   = $antifail
 
 evalExn :: Uid R -> Maybe (Type R) -> DDecl
-evalExn u mt env = 
-  let Ren_ ix = uidUnique u in
-  return (addExn env (ExnId ix u mt))
-  {-do
-  case env =..= (qlid "INTERNALS.Exn.exceptionIdCounter" :: QLid R) of
-    Just entry -> do
-      VaFun _ f <- entry
-      ix <- f vaUnit >>= vprjM
-      return (addExn env (ExnId ix u mt))
-    _ -> fail $ "BUG! Can't create new exception ID for: " ++ show u
-    -}
+evalExn u mt env = return (addExn env (ExnId u mt))
 
 eval :: E -> Prog R -> Result
 eval env0 [$prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
@@ -158,8 +148,7 @@ valOf e env = case e of
     Left x     -> case env =..= x of
       Just v     -> v
       Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
-    Right (c, True)  -> makeExn env c
-    Right (c, False) -> return (VaCon (jname c) Nothing)
+    Right c    -> return (VaCon (jname c) Nothing)
   [$ex| $str:s |]    -> return (vinj s)
   [$ex| $int:z |]    -> return (vinj z)
   [$ex| $flo:f |]    -> return (vinj f)
@@ -209,20 +198,6 @@ valOf e env = case e of
   [$ex| ( $e1 : $opt:_ :> $_ ) |] -> valOf e1 env
   [$ex| $anti:a |]                -> $antifail
 
-makeExn :: Monad m => E -> QUid R -> m Value
-makeExn env c = do
-  ei <- getExnId env c
-  return $ case ei of
-    ExnId { eiParam = Nothing }
-      -> vinj (VExn ei Nothing)
-    _ -> VaFun (FNAnonymous [ppr (eiName ei)]) $ \v ->
-           return (vinj (VExn ei (Just v)))
-
-getExnId :: Monad m => E -> QUid R -> m (ExnId R)
-getExnId env c = case env =..= ExnName `fmap` c of
-  Nothing -> fail $ "BUG! could not lookup exception: " ++ show c
-  Just ei -> return ei
-
 bindPatt :: Monad m => Patt R -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
   [$pa| _ |] 
@@ -235,13 +210,6 @@ bindPatt x0 v env = case x0 of
       (Nothing, VaCon u' Nothing)   | u == u' -> return env
       (Just x,  VaCon u' (Just v')) | u == u' -> bindPatt x v' env
       _                                             -> perr
-  [$pa| $quid:qu $opt:mx !!! |]
-    -> do
-      ei <- getExnId env qu
-      case (mx, vprjM v) of
-        (Nothing, Just (VExn ei' Nothing  )) | ei == ei' -> return env
-        (Just x,  Just (VExn ei' (Just v'))) | ei == ei' -> bindPatt x v' env
-        _                                                -> perr
   [$pa| ($x, $y) |]
     -> case vprjM v of
       Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
@@ -273,11 +241,9 @@ bindPatt x0 v env = case x0 of
                  " does not match " ++ show v
 
 throwPatternMatch :: Value -> [String] -> E -> IO a
-throwPatternMatch v ps env = do
-  ei <- getExnId env (quid "INTERNALS.Exn.PatternMatch")
+throwPatternMatch v ps _ =
   throw VExn {
-    exnId    = ei,
-    exnParam = Just (vinj (show v, ps))
+    exnValue = VaCon (uid "PatternMatch") (Just (vinj (show v, ps)))
   }
 
 ---

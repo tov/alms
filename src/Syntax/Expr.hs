@@ -20,7 +20,7 @@ module Syntax.Expr (
   caClause, caAnti,
   bnBind, bnAnti,
   -- ** Synthetic expression constructors
-  exVar, exCon, exExn, exBVar, exBCon, exBExn,
+  exVar, exCon, exBVar, exBCon,
   exStr, exInt, exFloat,
   exLet, exSeq,
   -- ** Optimizing expression constructors
@@ -222,17 +222,11 @@ exVar  = exId . fmap Var
 exCon :: Id i => QUid i -> Expr i
 exCon  = exId . fmap Con
 
-exExn :: Id i => QUid i -> Expr i
-exExn  = exId . fmap Exn
-
 exBVar :: Id i => Lid i -> Expr i
 exBVar  = exId . J [] . Var
 
 exBCon :: Id i => Uid i -> Expr i
 exBCon  = exId . J [] . Con
-
-exBExn :: Id i => Uid i -> Expr i
-exBExn  = exId . J [] . Exn
 
 exStr :: Id i => String -> Expr i
 exStr  = exLit . LtStr
@@ -300,7 +294,7 @@ exTAbs' tv e = case view e of
 p -==+ e = case (dataOf p, dataOf e) of
   (PaVar l,      ExId (J [] (Var l')))
     -> l == l'
-  (PaCon (J [] (Uid _ "()")) Nothing False,
+  (PaCon (J [] (Uid _ "()")) Nothing,
    ExId (J [] (Con (Uid _ "()"))))
     -> True
   (PaPair p1 p2, ExPair e1 e2)
