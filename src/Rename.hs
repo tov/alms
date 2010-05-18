@@ -47,9 +47,10 @@ renameState0  = RenameState {
   savedCounter  = renamed0
 }
 
--- | The renaming monad
+-- | The renaming monad: Reads a context, writes a module, and
+--   keeps track of a renaming counter state.
 newtype Renaming a = R {
-  unR :: RWST Context Env Renamed (Either String) a
+  unR :: RWST Context Module Renamed (Either String) a
 } deriving Functor
 
 instance Monad Renaming where
@@ -61,7 +62,7 @@ instance Monad Renaming where
       then s
       else show loc ++ ":\n" ++ s
 
-instance MonadWriter Env Renaming where
+instance MonadWriter Module Renaming where
   listen = R . listen . unR
   tell   = R . tell
   pass   = R . pass . unR
@@ -74,9 +75,22 @@ instance MonadReader Env Renaming where
 data Env = Env {
   tycons, vars    :: !(M.Map (Lid Raw) (Lid Renamed)),
   datacons        :: !(M.Map (Uid Raw) (Uid Renamed)),
-  modules         :: !(M.Map (Uid Raw) (Uid Renamed, Env)),
+  modules         :: !(M.Map (Uid Raw) (Uid Renamed, Module, Env)),
   tyvars          :: !(M.Map TyVar Bool)
 } deriving Show
+
+-- | A module item is one of 5 renaming entries.  Note that while
+--   type variables are not actual module items, they are exported from
+--   patterns, so it's useful to have them here.
+data Module
+  = MdNil
+  | MdApp     !Module !Module
+  | MdTycon   !(Lid Raw) !(Lid Renamed)
+  | MdVar     !(Lid Raw) !(Lid Renamed)
+  | MdDatacon !(Uid Raw) !(Uid Renamed)
+  | MdModule  !(Uid Raw) !(Uid Renamed) !Module
+  | MdTyvar   !TyVar
+  deriving Show
 
 -- | The renaming context, which includes the environment (which is
 --   persistant), and other information with is not
@@ -90,7 +104,7 @@ data Context = Context {
 runRenaming :: Bool -> RenameState -> Renaming a ->
                Either String (a, RenameState)
 runRenaming nonTrivial saved action = do
-  (result, counter, e) <-
+  (result, counter, md) <-
     runRWST (unR action)
       Context {
         env      = savedEnv saved,
@@ -98,7 +112,8 @@ runRenaming nonTrivial saved action = do
         location = bogus
       }
       (savedCounter saved)
-  return (result, RenameState (savedEnv saved `mappend` e) counter)
+  let env' = savedEnv saved `mappend` envify md
+  return (result, RenameState env' counter)
 
 -- | Run a renaming computation
 runRenamingM :: Monad m =>
@@ -116,7 +131,7 @@ data Field k v = Field {
 
 tyconsF, varsF :: Field (Lid Raw) (Lid Renamed)
 dataconsF      :: Field (Uid Raw) (Uid Renamed)
-modulesF       :: Field (Uid Raw) (Uid Renamed, Env)
+modulesF       :: Field (Uid Raw) (Uid Renamed, Module, Env)
 tyvarsF        :: Field TyVar Bool
 
 tyconsF   = Field tycons   (\e x -> e { tycons = x })
@@ -131,6 +146,21 @@ instance Monoid Env where
     Env (a1 & b1) (a2 & b2) (a3 & b3) (a4 & b4) (a5 & b5)
       where a & b = M.union b a
 
+instance Monoid Module where
+  mempty  = MdNil
+  mappend = MdApp
+
+-- | Open a module into an environment
+envify :: Module -> Env
+envify MdNil            = mempty
+envify (MdApp md1 md2)  = envify md1 `mappend` envify md2
+envify (MdTycon l l')   = mempty { tycons = M.singleton l l' }
+envify (MdVar l l')     = mempty { vars = M.singleton l l' }
+envify (MdDatacon u u') = mempty { datacons = M.singleton u u' }
+envify (MdModule u u' md)
+                        = mempty { modules = M.singleton u (u',md,envify md) }
+envify (MdTyvar tv)     = mempty { tyvars = M.singleton tv True }
+
 -- | Like 'asks', but in the 'R' monad
 withContext :: (Context -> R a) -> R a
 withContext  = R . (ask >>=) . fmap unR
@@ -139,17 +169,13 @@ withContext  = R . (ask >>=) . fmap unR
 withLoc :: Locatable loc => loc -> R a -> R a
 withLoc loc = R . local (\cxt -> cxt { location = getLoc loc }) .  unR
 
--- | Append an environment to the current environment
-withEnv :: Env -> R a -> R a
-withEnv e' = local (\e -> mappend e e')
+-- | Append a module to the current environment
+inModule :: Module -> R a -> R a
+inModule m = local (\e -> e `mappend` envify m)
 
 -- | Generate an unbound name error
 unbound :: Show a => String -> a -> R b
 unbound ns a = fail $ ns ++ " not in scope: `" ++ show a ++ "'"
-
--- | Pull some content out of the name in a 'Path'
-jpull  :: Path p (k, a) -> (Path p k, a)
-jpull   = (fmap fst *** snd . jname) . join (,)
 
 -- | Are all keys of the list unique?  If not, return a pair of
 --   values
@@ -162,20 +188,19 @@ unique getKey = loop M.empty where
           Nothing -> loop (M.insert k x seen) xs
           Just x' -> Just (x', x)
 
--- | Grab the environment produced by a computation, and
---   produce no environment
-steal :: R a -> R (a, Env)
+-- | Grab the module produced by a computation, and
+--   produce no module
+steal :: R a -> R (a, Module)
 steal = R . censor (const mempty) . listen . unR
 
--- | Get all the names, included qualified, bound in an environment
-getAllVariables :: Env -> [QLid Renamed]
+-- | Get all the names, included qualified, bound in a module
+getAllVariables :: Module -> [QLid Renamed]
 getAllVariables = S.toList . loop where
-  loop e =
-    S.fromList [ J [] l | l <- M.elems (vars e) ]
-      `S.union`
-    S.unions
-      [ S.mapMonotonic (\(J us l) -> J (u:us) l) (loop e')
-      | (u, e') <- M.elems (modules e) ]
+  loop (MdApp md1 md2)    = loop md1 `S.union` loop md2
+  loop (MdVar _ l')       = S.singleton (J [] l')
+  loop (MdModule _ u' md) = S.mapMonotonic (\(J us l) -> J (u':us) l)
+                                           (loop md)
+  loop _                  = S.empty
 
 -- | Temporarily hide the type variables in scope, and pass the
 --   continuation a function to bring them back
@@ -191,8 +216,8 @@ getGeneric what prj qx0 = withContext (loop [] qx0 . env) where
     Just x' -> return (J (reverse ms') x')
     Nothing -> unbound what qx0
   loop ms' (J (m:ms) x) e = case M.lookup m (modules e) of
-    Just (m', e') -> loop (m':ms') (J ms x) e'
-    Nothing       -> unbound "module" (J (reverse ms') m)
+    Just (m', _, e') -> loop (m':ms') (J ms x) e'
+    Nothing          -> unbound "module" (J (reverse ms') m)
 
 -- | Look up a variable in the environment
 getVar :: QLid Raw -> R (QLid Renamed)
@@ -207,8 +232,10 @@ getTycon :: QLid Raw -> R (QLid Renamed)
 getTycon  = getGeneric "type constructor" tycons
 
 -- | Look up a module in the environment
-getModule :: QUid Raw -> R (QUid Renamed, Env)
-getModule  = liftM jpull . getGeneric "module" modules
+getModule :: QUid Raw -> R (QUid Renamed, Module, Env)
+getModule  = liftM pull . getGeneric "module" modules
+  where
+    pull (J ps (qu, m, e)) = (J ps qu, m, e)
 
 -- | Look up a variable in the environment
 getTyvar :: TyVar -> R TyVar
@@ -224,9 +251,9 @@ getTyvar tv = do
 -- | Get a new name for a variable binding
 bindGeneric :: (Ord ident, Show ident, Antible ident) =>
                (Renamed -> ident -> ident') ->
-               Field ident ident' ->
+               (ident -> ident' -> Module) ->
                ident -> R ident'
-bindGeneric ren field x = R $ do
+bindGeneric ren build x = R $ do
   case prjAnti x of
     Just a  -> $antifail
     Nothing -> return ()
@@ -238,30 +265,30 @@ bindGeneric ren field x = R $ do
       return (ren counter x)
     else do
       return (ren trivialId x)
-  tell (update field mempty (M.singleton x x'))
+  tell (build x x')
   return x'
 
 -- | Get a new name for a variable binding
 bindVar :: Lid Raw -> R (Lid Renamed)
-bindVar  = bindGeneric (\r -> Lid r . unLid) varsF
+bindVar  = bindGeneric (\r -> Lid r . unLid) MdVar
 
 -- | Get a new name for a variable binding
 bindTycon :: Lid Raw -> R (Lid Renamed)
-bindTycon  = bindGeneric (\r -> Lid r . unLid) tyconsF
+bindTycon  = bindGeneric (\r -> Lid r . unLid) MdTycon
 
 -- | Get a new name for a data constructor binding
 bindDatacon :: Uid Raw -> R (Uid Renamed)
-bindDatacon = bindGeneric (\r u -> (Uid r (unUid u))) dataconsF
+bindDatacon = bindGeneric (\r u -> (Uid r (unUid u))) MdDatacon
 
 -- | Get a new name for a module, and bind it in the environment
-bindModule :: Uid Raw -> Env -> R (Uid Renamed)
-bindModule u0 env' =
-  liftM fst (bindGeneric (\r u -> (Uid r (unUid u), env')) modulesF u0)
+bindModule :: Uid Raw -> Module -> R (Uid Renamed)
+bindModule u0 md =
+  bindGeneric (\r u -> Uid r (unUid u)) (\u u' -> MdModule u u' md) u0
 
 -- | Add a type variable to the scope
 bindTyvar :: TyVar -> R TyVar
 bindTyvar tv = do
-  R $ tell mempty { tyvars = M.singleton tv True }
+  tell (MdTyvar tv)
   return tv
 
 -- | Map a function over a list, allowing the exports of each item
@@ -269,15 +296,15 @@ bindTyvar tv = do
 renameMapM :: (a -> R b) -> [a] -> R [b]
 renameMapM _ []     = return []
 renameMapM f (x:xs) = do
-  (x', env') <- listen (f x)
-  xs' <- withEnv env' $ renameMapM f xs
+  (x', md) <- listen (f x)
+  xs' <- inModule md $ renameMapM f xs
   return (x':xs')
 
 -- | Rename a program
 renameProg :: Prog Raw -> R (Prog Renamed)
 renameProg [$prQ| $list:ds in $opt:me1 |] = do
-  (ds', env') <- listen $ renameDecls ds
-  me1' <- withEnv env' $ gmapM renameExpr me1
+  (ds', md) <- listen $ renameDecls ds
+  me1' <- inModule md $ gmapM renameExpr me1
   return [$prQ|+ $list:ds' in $opt:me1' |]
 
 -- | Rename a list of declarations and return the environment
@@ -298,13 +325,13 @@ renameDecl d0 = case d0 of
         bindEach (N note td)       = do
           bindTycon (tdName td)
           return (tdName td, getLoc note)
-    (llocs, env') <- listen $ mapM bindEach tds
+    (llocs, md) <- listen $ mapM bindEach tds
     case unique fst llocs of
       Nothing -> return ()
       Just ((l, loc1), (_, loc2)) -> fail $
         "type `" ++ show l ++ "' declared twice in type group at " ++
         show loc1 ++ " and " ++ show loc2
-    tds' <- withEnv env' $ mapM (liftM snd . renameTyDec Nothing) tds
+    tds' <- inModule md $ mapM (liftM snd . renameTyDec Nothing) tds
     return [$dc|+ type $list:tds' |]
   [$dc| abstype $list:ats with $list:ds end |] -> do
     let bindEach [$atQ| $anti:a |] = $antifail
@@ -313,39 +340,39 @@ renameDecl d0 = case d0 of
           let l = (tdName (dataOf (atdecl at)))
           bindTycon l
           return (l, getLoc note)
-    (llocs, tenv) <- listen $ mapM bindEach ats
+    (llocs, mdT) <- listen $ mapM bindEach ats
     case unique fst llocs of
       Nothing -> return ()
       Just ((l, loc1), (_, loc2)) -> fail $
         "type `" ++ show l ++ "' declared twice in abstype group at " ++
         show loc1 ++ " and " ++ show loc2
-    (ats', denv) <-
+    (ats', mdD) <-
       steal $
-        withEnv tenv $
+        inModule mdT $
           forM ats $ \at -> withLoc at $ case dataOf at of
             AbsTy variances qe td -> do
               (Just qe', td') <- renameTyDec (Just qe) td
               return (absTy variances qe' td' <<@ at)
             AbsTyAnti a -> $antifail
-    tell (denv { datacons = M.empty })
-    ds' <- withEnv (tenv `mappend` denv) $ renameDecls ds
+    -- Don't tell mdD upward, since we're censoring the datacons
+    ds' <- inModule (mdT `mappend` mdD) $ renameDecls ds
     return [$dc|+ abstype $list:ats' with $list:ds' end |]
   [$dc| module INTERNALS = $me1 |] ->
     R $ local (\context -> context { allocate = False }) $ unR $ do
       let u = uid "INTERNALS"
-      (me1', env') <- steal $ renameModExp me1
-      u' <- bindModule u env'
+      (me1', md) <- steal $ renameModExp me1
+      u' <- bindModule u md
       return [$dc|+ module $uid:u' = $me1' |]
   [$dc| module $uid:u = $me1 |] -> do
-    (me1', env') <- steal $ renameModExp me1
-    u' <- bindModule u env'
+    (me1', md) <- steal $ renameModExp me1
+    u' <- bindModule u md
     return [$dc|+ module $uid:u' = $me1' |]
   [$dc| open $me1 |] -> do
     me1' <- renameModExp me1
     return [$dc|+ open $me1' |]
   [$dc| local $list:ds1 with $list:ds2 end |] -> do
-    (ds1', env') <- steal $ renameDecls ds1
-    ds2' <- withEnv env' $ renameDecls ds2
+    (ds1', md) <- steal $ renameDecls ds1
+    ds2' <- inModule md $ renameDecls ds2
     return [$dc| local $list:ds1' with $list:ds2' end |]
   [$dc| exception $uid:u of $opt:mt |] -> do
     u'  <- bindDatacon u
@@ -363,8 +390,8 @@ renameTyDec mqe (N note td)      = withLoc note $ do
     Nothing      -> return ()
     Just (tv, _) -> fail $
       "type variable " ++ show tv ++ " repeated in type parameters"
-  (tvs', envTvs) <- steal $ mapM bindTyvar tvs
-  withEnv envTvs $ do
+  (tvs', mdTvs) <- steal $ mapM bindTyvar tvs
+  inModule mdTvs $ do
     mqe' <- gmapM renameQExp mqe
     td'  <- case td of
       TdAbs _ _ variances qe -> do
@@ -388,9 +415,9 @@ renameModExp me0 = case me0 of
     ds' <- renameDecls ds
     return [$me|+ struct $list:ds' end |]
   [$me| $quid:qu $list:_ |] -> do
-    (qu', env') <- getModule qu
-    let qls = getAllVariables env'
-    tell env'
+    (qu', md, _) <- getModule qu
+    let qls = getAllVariables md
+    tell md
     return [$me|+ $quid:qu' $list:qls |]
   [$me| $anti:a |] -> $antifail
 
@@ -414,12 +441,12 @@ renameExpr e0 = withLoc e0 $ case e0 of
     cas' <- mapM renameCaseAlt cas
     return [$ex|+ match $e1' with $list:cas' |]
   [$ex| let rec $list:bns in $e |] -> do
-    (bns', env') <- renameBindings bns
-    e' <- withEnv env' $ renameExpr e
+    (bns', md) <- renameBindings bns
+    e' <- inModule md $ renameExpr e
     return [$ex|+ let rec $list:bns' in $e' |]
   [$ex| let $decl:d in $e |] -> do
-    (d', env') <- steal $ hideTyvars $ renameDecl d
-    e' <- withEnv env' (renameExpr e)
+    (d', md) <- steal $ hideTyvars $ renameDecl d
+    e' <- inModule md (renameExpr e)
     return [$ex|+ let $decl:d' in $e' |]
   [$ex| ($e1, $e2) |] -> do
     e1' <- renameExpr e1
@@ -427,16 +454,16 @@ renameExpr e0 = withLoc e0 $ case e0 of
     return [$ex|+ ($e1', $e2') |]
   [$ex| fun $x : $t -> $e |] -> do
     t' <- renameType t
-    (x', env') <- steal $ renamePatt x
-    e' <- withEnv env' $ renameExpr e
+    (x', md) <- steal $ renamePatt x
+    e' <- inModule md $ renameExpr e
     return [$ex|+ fun $x' : $t' -> $e' |]
   [$ex| $e1 $e2 |] -> do
     e1' <- renameExpr e1
     e2' <- renameExpr e2
     return [$ex|+ $e1' $e2' |]
   [$ex| fun '$tv -> $e |] -> do
-    (tv', env') <- steal $ bindTyvar tv
-    e' <- withEnv env' $ renameExpr e
+    (tv', md) <- steal $ bindTyvar tv
+    e' <- inModule md $ renameExpr e
     return [$ex|+ fun '$tv' -> $e' |]
   [$ex| $e [$t] |] -> do
     e' <- renameExpr e
@@ -464,13 +491,13 @@ renameLit lit0 = case lit0 of
 renameCaseAlt :: CaseAlt Raw -> R (CaseAlt Renamed)
 renameCaseAlt ca0 = withLoc ca0 $ case ca0 of
   [$caQ| $x -> $e |] -> do
-    (x', env') <- steal $ renamePatt x
-    e' <- withEnv env' $ renameExpr e
+    (x', md) <- steal $ renamePatt x
+    e' <- inModule md $ renameExpr e
     return [$caQ|+ $x' -> $e' |]
   [$caQ| $antiC:a |] -> $antifail
 
 -- | Rename a set of let rec bindings
-renameBindings :: [Binding Raw] -> R ([Binding Renamed], Env)
+renameBindings :: [Binding Raw] -> R ([Binding Renamed], Module)
 renameBindings bns = do
   lxtes <- forM bns $ \bn ->
     case bn of
@@ -484,14 +511,14 @@ renameBindings bns = do
   let bindEach (rest, env') (l,x,t,e) = do
         (x', env'') <- steal $ bindVar x
         return ((l,x',t,e):rest, env' `mappend` env'')
-  (lxtes', env') <- foldM bindEach ([], mempty) lxtes
-  bns' <- withEnv env' $
+  (lxtes', md) <- foldM bindEach ([], mempty) lxtes
+  bns' <- inModule md $
             forM (reverse lxtes') $ \(l,x',t,e) -> withLoc l $ do
               let _loc = l
               t'  <- renameType t
               e'  <- renameExpr e
               return [$bnQ|+ $lid:x' : $t' = $e' |]
-  return (bns', env')
+  return (bns', md)
 
 -- | Rename a type
 renameType :: Type Raw -> R (Type Renamed)
@@ -509,12 +536,12 @@ renameType t0 = case t0 of
     t2' <- renameType t2
     return [$ty|+ $t1' -[$qe']> $t2' |]
   [$ty| $quant:u '$tv. $t |] -> do
-    (tv', env') <- steal $ bindTyvar tv
-    t' <- withEnv env' $ renameType t
+    (tv', md) <- steal $ bindTyvar tv
+    t' <- inModule md $ renameType t
     return [$ty|+ $quant:u '$tv'. $t' |]
   [$ty| mu '$tv. $t |] -> do
-    (tv', env') <- steal $ bindTyvar tv
-    t' <- withEnv env' $ renameType t
+    (tv', md) <- steal $ bindTyvar tv
+    t' <- inModule md $ renameType t
     return [$ty|+ mu '$tv'. $t' |]
   [$ty| $anti:a |] -> $antifail
 
@@ -602,12 +629,12 @@ addVal = bindVar
 
 addType l z = do
   let l' = Lid (Ren_ z) (unLid l)
-  tell (mempty { tycons = M.singleton l l' })
+  tell (MdTycon l l')
   return l'
 
 addMod u body = do
   let u' = uid (unUid u)
-  (a, env') <- steal body
-  tell (mempty { modules = M.singleton u (u', env') })
+  (a, md) <- steal body
+  tell (MdModule u u' md)
   return (u', a)
 
