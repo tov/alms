@@ -10,6 +10,7 @@ module Parser (
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
     parseTyDec, parseAbsTy, parseType, parseQExp, parseExpr, parsePatt,
+    parseCaseAlt, parseBinding,
   -- * Convenience parsers (quick and dirty)
   pp, pds, pd, pme, ptd, pt, pqe, pe, px
 ) where
@@ -130,14 +131,17 @@ chainr1last each sep final = start where
 
 -- Antiquote
 antip :: AntiDict -> P Anti
-antip dict = (<?> "antiquote") . lexeme . try $ do
-  char '$'
-  (s1, s2) <- (,) <$> option "" (try (option "" identp_no_ws <* char ':'))
-                  <*> identp_no_ws
-  assertAnti
-  case M.lookup s1 dict of
-    Just _  -> return (Anti s1 s2)
-    Nothing -> unexpected $ "antiquote tag: `" ++ s1 ++ "'"
+antip dict = antilabels . lexeme . try $ do
+    char '$'
+    (s1, s2) <- (,) <$> option "" (try (option "" identp_no_ws <* char ':'))
+                    <*> identp_no_ws
+    assertAnti
+    case M.lookup s1 dict of
+      Just _  -> return (Anti s1 s2)
+      Nothing -> unexpected $ "antiquote tag: `" ++ s1 ++ "'"
+  where
+    antilabels p = labels p [ "antiquote `" ++ key ++ "'"
+                            | key <- M.keys dict, key /= "" ]
 
 identp_no_ws :: P String
 identp_no_ws = do
@@ -530,14 +534,7 @@ exprp = expr0 where
     [ do reserved "let"
          choice
            [ do reserved "rec"
-                bs <- antilist1p (reserved "and") $ addLoc $ do
-                  x    <- varp
-                  (sigma, ft, fe) <- afargsp
-                  colon
-                  t    <- typep
-                  reservedOp "="
-                  e    <- withSigma sigma expr0
-                  return (bnBind x (ft t) (fe e))
+                bs <- antilist1p (reserved "and") $ bindingp
                 reserved "in"
                 e2 <- expr0
                 return (exLetRec bs e2),
@@ -578,12 +575,7 @@ exprp = expr0 where
            exCase e1 <$> antiblep,
            do
              optional (reservedOp "|")
-             clauses <- flip sepBy1 (reservedOp "|") $ addLoc $
-               const <$> antiblep <|> do
-                 (xi, sigma, lift) <- pattbangp
-                 reservedOp "->"
-                 ei <- mapSigma (sigma ||) expr0
-                 return (\b -> lift b caClause xi ei)
+             clauses <- flip sepBy1 (reservedOp "|") preCasealtp
              return (exCase e1 (onlyOne clauses)) ],
       do reserved "try"
          e1 <- expr0
@@ -679,6 +671,26 @@ exprp = expr0 where
            es <- commaSep1 expr0
            return (foldl exPair e1 es),
         return e1 ]
+
+preCasealtp :: Id i => P (Bool -> CaseAlt i)
+preCasealtp = addLoc $ (const <$> antiblep) <|> do
+    (xi, sigma, lift) <- pattbangp
+    reservedOp "->"
+    ei <- mapSigma (sigma ||) exprp
+    return (\b -> lift b caClause xi ei)
+
+casealtp :: Id i => P (CaseAlt i)
+casealtp  = preCasealtp >>! ($ False)
+
+bindingp :: Id i => P (Binding i)
+bindingp = addLoc $ antiblep <|> do
+  x    <- varp
+  (sigma, ft, fe) <- afargsp
+  colon
+  t    <- typep
+  reservedOp "="
+  e    <- withSigma sigma exprp
+  return (bnBind x (ft t) (fe e))
 
 -- Parse an infix operator at given precedence
 opappp :: Id i => Prec -> P (Expr i -> Expr i -> Expr i)
@@ -913,6 +925,11 @@ parseQExp     :: P (QExp TyVar)
 parseExpr     :: Id i => P (Expr i)
 -- | Parse a pattern
 parsePatt     :: Id i => P (Patt i)
+-- | Parse a case alternative
+parseCaseAlt  :: Id i => P (CaseAlt i)
+-- | Parse a let rec binding
+parseBinding  :: Id i => P (Binding i)
+
 parseProg      = finish progp
 parseRepl      = finish replp
 parseDecls     = finish declsp
@@ -924,6 +941,8 @@ parseType      = finish typep
 parseQExp      = finish qExpp
 parseExpr      = finish exprp
 parsePatt      = finish pattp
+parseCaseAlt   = finish casealtp
+parseBinding   = finish bindingp
 
 -- Convenience functions for quick-and-dirty parsing:
 

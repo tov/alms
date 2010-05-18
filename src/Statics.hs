@@ -297,9 +297,9 @@ getModule  = getAny "Unbound module identifier"
 -- | Raise a type error, with the dynamically-bound source location
 terr :: (?loc :: Loc, Monad m) => String -> m a
 terr  = fail . (label ++)
-  where label = "Type error: " ++ if isBogus ?loc
-                                    then ""
-                                    else show ?loc ++ ": "
+  where label = if isBogus ?loc
+                  then "type error: "
+                  else show ?loc ++ ":\ntype error: "
 
 -- | A type checking "assertion" raises a type error if the
 --   asserted condition is false.

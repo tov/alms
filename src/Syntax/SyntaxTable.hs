@@ -39,10 +39,10 @@ exprAntis
   & "anti"   =:< 'ExAnti
 bindingAntis
   = "bind"   =:! Nothing
-  & "anti"   =:< 'BnAnti
+  & "antiB"  =:< 'BnAnti
 caseAltAntis
   = "case"   =:  Nothing
-  & "caseA"  =:< 'CaAnti
+  & "antiC"  =:< 'CaAnti
 typeAntis
   = "type"   =:! Nothing
   & "stx"    =:  appFun (TH.mkName "typeToStx'")

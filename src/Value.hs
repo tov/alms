@@ -303,9 +303,7 @@ instance Valuable VExn where
 instance Show VExn where
   showsPrec p e = (show (vpprPrec p e) ++)
 
-instance Exn.Exception VExn where
-  toException = Exn.SomeException
-  fromException (Exn.SomeException e) = cast e
+instance Exn.Exception VExn
 
 -- | Exception identity, generated dynamically
 data ExnId = ExnId {

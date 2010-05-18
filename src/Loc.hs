@@ -193,13 +193,22 @@ scrub a = everywhere (mkT bogosify) a where
 
 instance Show Loc where
   showsPrec _ loc
-    | isBogus loc = showString (file loc)
+    | isBogus loc = shows (file loc)
     | otherwise   =
-        showString (file loc) . showChar ':' .
-        spn (line1 loc) (line2 loc) . showChar ':' .
-        spn (col1 loc) (col2 loc)
+        shows (file loc) . showString " (" .
+        showCoords . showString ")"
     where
-    spn n1 n2 = if n1 == n2
-                  then shows n1
-                  else shows n1 . showChar '-' . shows n2
+    showCoords =
+      if line1 loc == line2 loc || col2 loc == 1 then
+        showString "line " . shows (line1 loc) . showString ", " .
+        if col1 loc == col2 loc || col2 loc == 1 then
+          showString "column " . shows (col1 loc)
+        else
+          showString "columns " . shows (col1 loc) .
+          showString "-" . shows (col2 loc)
+      else
+        showString "line " . shows (line1 loc) .
+        showString ", col. " . shows (col1 loc) .
+        showString " to line " . shows (line2 loc) .
+        showString ", col. " . shows (col2 loc)
 

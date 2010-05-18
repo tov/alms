@@ -24,7 +24,7 @@ import Env (empty, unionProduct, toList)
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
-import IO (hPutStr, hPutStrLn, stderr)
+import IO (hPutStrLn, stderr)
 import qualified Control.Exception as Exn
 
 #ifdef USE_READLINE
@@ -71,7 +71,7 @@ loadFile st name = readFile name >>= loadString st name
 loadString :: ReplState -> String -> String -> IO ReplState
 loadString st name src = do
   case parse parseProg name src of
-    Left e     -> fail (show e)
+    Left e     -> fail $ show e
     Right ast0 -> do
       (st1, ast1)    <- renaming (st, prog2decls (ast0 :: Prog Raw))
       (st2, _, ast2) <- statics False (st1, ast1)
@@ -83,7 +83,7 @@ batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
 batch filename msrc opt st0 = do
       src <- msrc
       case parse parseProg filename src of
-        Left e    -> fail $ "syntax error: " ++ show e
+        Left e    -> fail $ show e
         Right ast -> rename ast where
           rename  :: Prog Raw     -> IO ()
           check   :: Prog Renamed -> IO ()
@@ -162,7 +162,7 @@ handleExns body handler =
         handler)
     `Exn.catch`
       \err -> do
-        carp (errorString err)
+        hPutStrLn stderr (errorString err)
         handler
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
@@ -226,7 +226,7 @@ interactive opt rs0 = do
             (Nothing, [])        -> return Nothing
             (Nothing, (_,err):_) -> do
               addHistory (unlines (reverse (map fst acc)))
-              hPutStr stderr "\rsyntax error: "
+              hPutStrLn stderr ""
               hPutStrLn stderr (show err)
               reader
             (Just "", _)         -> loop acc
