@@ -177,7 +177,7 @@ quid s = case reverse (splitBy (=='.') s) of
            x:xs -> J (map uid (reverse xs)) (uid x)
 
 instance Show (Lid i) where
-  showsPrec _ (Lid i s) =
+  showsPrec _ (Lid _ s) =
     case s of
       '_':_             -> (s++)
       c  :_ | isAlpha c -> (s++)
@@ -185,10 +185,12 @@ instance Show (Lid i) where
       _  :_ | head s == '*' || last s == '*'
                         -> ("( "++) . (s++) . (" )"++)
       _                 -> ('(':) . (s++) . (')':)
+    {-
     . let z = Unsafe.Coerce.unsafeCoerce i :: Renamed in
          if z == Unsafe.Coerce.unsafeCoerce Raw_
            then id
            else showChar '[' . shows z . showChar ']'
+  -}
   showsPrec p (LidAnti a) = showsPrec p a
 
 instance Show (Uid i) where
