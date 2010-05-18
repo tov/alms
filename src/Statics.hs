@@ -47,11 +47,11 @@ import qualified Control.Monad.Reader as M.R
 import qualified Control.Monad.State  as M.S
 import qualified Control.Monad.RWS    as RWS
 
-import System.IO.Unsafe (unsafePerformIO)
-p :: Show a => a -> b -> b
-p a b = unsafePerformIO (print a) `seq` b
-pM :: (Show a, Monad m) => a -> m ()
-pM a = if p a True then return () else fail "wibble"
+-- import System.IO.Unsafe (unsafePerformIO)
+-- p :: Show a => a -> b -> b
+-- p a b = unsafePerformIO (print a) `seq` b
+-- pM :: (Show a, Monad m) => a -> m ()
+-- pM a = if p a True then return () else fail "wibble"
 -- p = const
 
 -- Get the usage (sharing) of a variable in an expression:
@@ -62,9 +62,6 @@ usage x e = case M.lookup x (fv e) of
 
 -- The kind of names we're using.  Should change to 'Renamed'
 type R = Renamed
-
--- Type environments
-type D = Env TyVarR TyVarR   -- tyvars in scope, with idempot. renaming
 
 -- | Mapping from identifiers to value types (includes datacons)
 type V       = Env (BIdent R) Type
@@ -102,7 +99,7 @@ instance GenLookup Level (Lid R) TyCon where
 -- | The packaged-up state of the type-checker, which needs to be
 --   threaded from one interaction to the next by the REPL
 data S   = S {
-             -- | The environment, from language C's perspective
+             -- | The environment
              cEnv    :: E,
              -- | Index for gensyms
              currIx  :: !Int
@@ -115,31 +112,27 @@ newtype TC m a =
   TC { unTC :: M.R.ReaderT TCEnv (M.S.StateT Int m) a }
 -- | The environment contains type mappings and type variable
 --   environments.
-data TCEnv = TCEnv E D
+data TCEnv = TCEnv E
 
 instance GenLookup TCEnv (QUid R) Scope where
-  TCEnv env _ =..= k = env =..= k
+  TCEnv env =..= k = env =..= k
 instance GenLookup TCEnv (QLid R) TyCon where
-  TCEnv env _ =..= k = env =..= k
+  TCEnv env =..= k = env =..= k
 instance GenLookup TCEnv (Ident R) Type where
-  TCEnv env _ =..= k = env =..= k
-instance GenLookup TCEnv TyVarR TyVarR where
-  TCEnv _ d =..= k = d =..= k
+  TCEnv env =..= k = env =..= k
 
 instance GenExtend TCEnv Scope where
-  TCEnv env dd =+= scope = TCEnv (env =+= scope) dd
+  TCEnv env =+= scope = TCEnv (env =+= scope)
 instance GenExtend TCEnv Level where
-  TCEnv env dd =+= level = TCEnv (env =+= level) dd
+  TCEnv env =+= level = TCEnv (env =+= level)
 instance GenExtend TCEnv (Env (Ident R) Type) where
-  TCEnv env dd =+= venv = TCEnv (env =+= venv) dd
+  TCEnv env =+= venv = TCEnv (env =+= venv)
 instance GenExtend TCEnv (Env (Uid R) Scope) where
-  TCEnv env dd =+= menv = TCEnv (env =+= menv) dd
+  TCEnv env =+= menv = TCEnv (env =+= menv)
 instance GenExtend TCEnv T where
-  TCEnv env dd =+= tenv = TCEnv (env =+= tenv) dd
+  TCEnv env =+= tenv = TCEnv (env =+= tenv)
 instance GenExtend TCEnv V where
-  TCEnv env dd =+= venv = TCEnv (env =+= venv) dd
-instance GenExtend TCEnv D where
-  TCEnv env d =+= tvs  = TCEnv env (d =+= tvs)
+  TCEnv env =+= venv = TCEnv (env =+= venv)
 
 instance Monad m => Monad (TC m) where
   m >>= k = TC (unTC m >>= unTC . k)
@@ -159,7 +152,7 @@ asksM  = (M.R.ask >>=)
 -- | Pack up the type-checking state as an 'S', to give to the REPL.
 saveTC :: Monad m => Bool -> TC m S
 saveTC interactive = do
-  TCEnv env _ <- TC M.R.ask
+  TCEnv env   <- TC M.R.ask
   index       <- TC M.S.get
   let env' = if interactive
                then requalifyTypes [] env
@@ -171,31 +164,9 @@ saveTC interactive = do
 
 runTC :: Monad m => S -> TC m a -> m a
 runTC s (TC m) = do
-  let tc = TCEnv (cEnv s) empty
+  let tc = TCEnv (cEnv s)
       ix = currIx s
   M.S.evalStateT (M.R.runReaderT m tc) ix
-
--- | Gensym
-newIndex :: Monad m => TC m Int
-newIndex  = TC $ do
-  M.S.modify (+ 1)
-  M.S.get
-
--- | Run a computation with some type variables added to the
--- type variable environment
-withTVs :: Monad m => [TyVarR] -> ([TyVarR] -> TC m a) -> TC m a
-withTVs tvs m = TC $ do
-  TCEnv env d <- M.R.ask
-  let (d', tvs') = foldr rename (d, []) tvs
-      r'         = TCEnv env d'
-  M.R.local (const r') (unTC (m tvs'))
-    where
-      rename :: TyVarR -> (D, [TyVarR]) -> (D, [TyVarR])
-      rename tv (d, tvs') =
-        let tv' = case d =..= tv of
-                    Nothing -> tv
-                    Just _  -> tv `freshTyVar` M.keysSet (unEnv d)
-        in (d =+= tv =:+= tv', tv':tvs')
 
 -- | Run a computation with some extension to the environment
 withAny :: (Monad m, GenExtend TCEnv e') =>
@@ -216,19 +187,19 @@ withTypes = withAny
 --   be captures as a module)
 pushScope :: Monad m => TC m a -> TC m a
 pushScope = TC . M.R.local push . unTC where
-  push (TCEnv env dd) = TCEnv (genEmpty : env) dd
+  push (TCEnv env) = TCEnv (genEmpty : env)
 
 -- | Collapse the top two scopes (as in opening a module or leaving a
 --   local block)
 squishScope :: Monad m => TC m a -> TC m a
 squishScope = TC . M.R.local squish . unTC where
-  squish (TCEnv (e0:e1:es) dd) = TCEnv ((e1=+=e0):es) dd
-  squish (TCEnv env        dd) = TCEnv env dd
+  squish (TCEnv (e0:e1:es)) = TCEnv ((e1=+=e0):es)
+  squish (TCEnv env       ) = TCEnv env
 
 -- | Get the top scope
 askScope :: Monad m => TC m Scope
 askScope  = do
-  TCEnv env _ <- TC M.R.ask
+  TCEnv env <- TC M.R.ask
   case env of
     scope:_ -> return scope
     []      -> return genEmpty
@@ -238,7 +209,7 @@ withoutConstructors :: Monad m =>
                        TyCon -> TC m a -> TC m a
 withoutConstructors tc = TC . M.R.local clean . unTC where
   -- Note: only filters immediate scope -- should be right.
-  clean (TCEnv env dd) = TCEnv (map eachScope env) dd
+  clean (TCEnv env) = TCEnv (map eachScope env)
   eachScope      :: Scope -> Scope 
   eachScope scope = genModify scope emptyPath flevel
   flevel         :: Level -> Level
@@ -256,7 +227,7 @@ withReplacedTyCons :: Monad m =>
                       TyCon -> TC m a -> TC m a
 withReplacedTyCons tc = TC . M.R.local reptc . unTC
   where
-    reptc (TCEnv env dd) = TCEnv (map (fmap replevel) env) dd
+    reptc (TCEnv env) = TCEnv (map (fmap replevel) env)
     replevel a = replaceTyCon tc a
 
 -- | Try to look up any environment binding (value, tycon, ...)
@@ -270,10 +241,6 @@ getAny :: (?loc :: Loc, Monad m, GenLookup TCEnv k v, Show k) =>
 getAny msg k = do
   t <- tryGetAny k
   t |! msg ++ ": " ++ show k
-
--- | Make sure the given tyvar is in scope
-getTV :: (?loc :: Loc, Monad m) => TyVarR -> TC m TyVarR
-getTV  = getAny "Free type variable"
 
 -- | Get the type of a variable, or fail
 getVar :: (?loc :: Loc, Monad m) =>
@@ -338,7 +305,7 @@ tcType :: (?loc :: Loc, Monad m) =>
 tcType = tc where
   tc :: Monad m => Syntax.Type R -> TC m Type
   tc [$ty| '$tv |] = do
-    TyVar <$> getTV tv
+    return (TyVar tv)
   tc [$ty| $t1 -[$q]> $t2 |] = do
     TyFun <$> qInterpretM q
           <*> tcType t1
@@ -361,14 +328,13 @@ tcType = tc where
           " used at " ++ show (map (qRepresent . qualifier) ts') ++
           " where at most " ++ show quals ++ " is permitted"
   tc [$ty| $quant:u '$tv . $t |] =
-    withTVs [tv] $ \[tv'] -> TyQu u tv' <$> tc t
-  -- XXX need to handle mu 'a. forall 'b. ... 'a ... case
-  tc [$ty| mu '$tv . $t |] = withTVs [tv] $ \[tv'] -> do
+    TyQu u tv <$> tc t
+  tc [$ty| mu '$tv . $t |] = do
     t' <- tc t
     tassert (qualConst t' == tvqual tv) $
       "Recursive type " ++ show (Syntax.tyMu tv t) ++ " qualifier " ++
       "does not match its own type variable."
-    return (TyMu tv' t')
+    return (TyMu tv t')
   tc [$ty| $anti:a |] = $antifail
 
 -- | Remove all instances of t2 from t1, replacing with
@@ -446,12 +412,11 @@ tcExpr = tc where
       return (TyFun q t' te, [$ex|+ fun ($x' : $stx:t') -> $e' |])
     [$ex| $_ $_ |] -> do
       tcExApp tc e0
-    [$ex| fun '$tv -> $e |] ->
-      withTVs [tv] $ \[tv'] -> do
-        tassert (syntacticValue e) $
-          "Not a syntactic value under type abstraction: " ++ show e0
-        (t, e') <- tc e
-        return (tyAll tv' t, [$ex|+ fun '$tv' -> $e' |])
+    [$ex| fun '$tv -> $e |] -> do
+      tassert (syntacticValue e) $
+        "Not a syntactic value under type abstraction: " ++ show e0
+      (t, e') <- tc e
+      return (tyAll tv t, [$ex|+ fun '$tv -> $e' |])
     [$ex| $e1 [$t2] |] -> do
       (t1, e1') <- tc e1
       t2'       <- tcType t2
@@ -565,10 +530,10 @@ tapply t1 _ = tgot "type application" t1 "(for)all type"
 -- Given the type of thing to match and a pattern, return
 -- the type environment bound by that pattern.
 tcPatt :: (?loc :: Loc, Monad m) =>
-          Type -> Patt R -> TC m (D, V, Patt R)
+          Type -> Patt R -> TC m (V, Patt R)
 tcPatt t x0 = case x0 of
-  [$pa| _ |]      -> return (empty, empty, x0)
-  [$pa| $lid:x |] -> return (empty, Var x =:= t, x0)
+  [$pa| _ |]      -> return (empty, x0)
+  [$pa| $lid:x |] -> return (Var x =:= t, x0)
   [$pa| $quid:u $opt:mx |] -> do
     t' <- hnT t
     case t' of
@@ -583,46 +548,44 @@ tcPatt t x0 = case x0 of
           "Pattern" t' ("constructor " ++ show u)
         case (mt, mx) of
           (Nothing, Nothing) ->
-            return (empty, empty, paCon u Nothing)
+            return (empty, paCon u Nothing)
           (Just t1, Just x1) -> do
             let t1' = tysubsts params ts t1
-            (dx1, gx1, x1') <- tcPatt t1' x1
-            return (dx1, gx1, paCon u (Just x1'))
+            (gx1, x1') <- tcPatt t1' x1
+            return (gx1, paCon u (Just x1'))
           _ -> tgot "Pattern" t "wrong arity"
       _ | isBotType t' -> case mx of
-            Nothing -> return (empty, empty, x0)
+            Nothing -> return (empty, x0)
             Just x  -> tcPatt tyBot x
         | otherwise -> tgot "Pattern" t' ("constructor " ++ show u)
   [$pa| ($x, $y) |] -> do
     t' <- hnT t >>! mapBottom (tyApp tcTuple . replicate 2)
     case t' of
       TyApp tc [xt, yt] _ | tc == tcTuple -> do
-        (dx, gx, x') <- tcPatt xt x
-        (dy, gy, y') <- tcPatt yt y
+        (gx, x') <- tcPatt xt x
+        (gy, y') <- tcPatt yt y
         tassert (isEmpty (gx -|- gy)) $
           "Pattern " ++ show x0 ++ " binds variable twice"
-        tassert (isEmpty (dx -|- dy)) $
-          "Pattern " ++ show x0 ++ " binds type variable twice"
-        return (dx =+= dy, gx =+= gy, [$pa| ($x', $y') |])
+        return (gx =+= gy, [$pa| ($x', $y') |])
       _ -> tgot "Pattern " t' "pair type"
   [$pa| $str:s |] -> do
       tassgot (t <: tyString)
         "Pattern" t "string"
-      return (empty, empty, [$pa| $str:s |])
+      return (empty, [$pa| $str:s |])
   [$pa| $int:z |] -> do
       tassgot (t <: tyInt)
         "Pattern" t "int"
-      return (empty, empty, [$pa| $int:z |])
+      return (empty, [$pa| $int:z |])
   [$pa| $flo:f |] -> do
       tassgot (t <: tyFloat)
         "Pattern" t "float"
-      return (empty, empty, [$pa| $flo:f |])
+      return (empty, [$pa| $flo:f |])
   [$pa| $x as $lid:y |] -> do
-    (dx, gx, x') <- tcPatt t x
+    (gx, x') <- tcPatt t x
     let gy        = y =:= t
     tassert (isEmpty (gx -|- gy)) $
       "Pattern " ++ show x0 ++ " binds " ++ show y ++ " twice"
-    return (dx, gx =+= gy, [$pa| $x' as $lid:y |])
+    return (gx =+= gy, [$pa| $x' as $lid:y |])
   [$pa| Pack('$tv, $x) |] -> do
     t' <- hnT t >>! mapBottom (tyEx tv)
     case t' of
@@ -630,12 +593,9 @@ tcPatt t x0 = case x0 of
         tassert (tvqual tve <: tvqual tv) $
           "Cannot bind existential tyvar " ++ show tv ++
           " to " ++ show tve
-        withTVs [tv] $ \[tv'] -> do
-          let te' = tysubst tve (TyVar tv') te
-          (dx, gx, x') <- tcPatt te' x
-          tassert (dx =..= tv == Nothing) $
-            "Pattern " ++ show x0 ++ " binds " ++ show tv ++ " twice"
-          return (dx =+= tv =:+= tv', gx, [$pa| Pack('$tv', $x') |])
+        let te' = tysubst tve (TyVar tv) te
+        (gx, x') <- tcPatt te' x
+        return (gx, [$pa| Pack('$tv, $x') |])
       _ -> tgot "Pattern" t' "existential type"
   [$pa| $antiL:a |] -> $antifail
   [$pa| $anti:a |]  -> $antifail
@@ -653,8 +613,8 @@ withPatt :: (?loc :: Loc, Monad m) =>
             Type -> Patt R -> TC m (Type, e) ->
             TC m (V, Patt R, Type, e)
 withPatt t x m = do
-  (d, g, x') <- tcPatt t x
-  (t', e')   <- withAny d $ withVars g $ m
+  (g, x')  <- tcPatt t x
+  (t', e') <- withVars g $ m
   let escapees = dtv x' `S.intersection` ftv t'
   tassert (S.null escapees) $
     "Type variable escaped existential: " ++ show (S.findMin escapees)
@@ -696,8 +656,6 @@ indexQuals name tvs qexp = do
 withTyDecs :: (?loc :: Loc, Monad m) =>
               [TyDec R] -> ([TyDec R] -> TC m a) -> TC m a
 withTyDecs tds0 k0 = do
-  tassert (unique (map (tdName . dataOf) tds0)) $
-    "Duplicate type(s) in recursive type declaration"
   let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
   stds <- topSort getEdge stds0
   mapCont_ withStub (dtds ++ stds) $
@@ -715,9 +673,7 @@ withTyDecs tds0 k0 = do
       _                   -> k
     --
     allocStub name params k = do
-      tassert (unique params) "Repeated type parameter"
-      index <- newIndex
-      let tc = mkTC index (unLid name)
+      let tc = mkTC (J [] name)
                     [ (tvqual tv, Omnivariant) | tv <- params ]
       withTypes (name =:= tc) k
     --
@@ -743,18 +699,16 @@ withTyDec :: (?loc :: Loc, Monad m) =>
              TyDec R -> ((TyDec R, Bool) -> TC m a) -> TC m a
 withTyDec td0 k = case dataOf td0 of
   TdAbs name params variances quals -> do
-    tassert (unique params) "Repeated type parameter"
-    index  <- newIndex
     quals' <- indexQuals name params quals
     withTypes
-      (name =:= mkTC index (unLid name) quals'
+      (name =:= mkTC (J [] name) quals'
                 [ (tvqual parm, var) | var <- variances | parm <- params ])
       (k (tdAbs name params variances quals, False))
   TdSyn name params rhs -> do
     tc <- getType (J [] name)
-    (params', rhs') <- withTVs params $ \params' -> do
+    (params', rhs') <- do
       rhs' <- tcType rhs
-      return (params', rhs')
+      return (params, rhs')
     let qual    = numberQDen params' (qualifier rhs')
         arity   = typeVariances params' rhs'
         changed = arity /= tcArity tc
@@ -765,33 +719,24 @@ withTyDec td0 k = case dataOf td0 of
       (k (tdSyn name params rhs, changed))
   TdDat name params alts -> do
     tc <- getType (J [] name)
-    (params', alts') <-
-      withTVs params $ \params' -> do
-        alts' <- sequence
-          [ case mt of
-              Nothing -> return (cons, Nothing)
-              Just t  -> do
-                t' <- tcType t
-                return (cons, Just t')
-          | (cons, mt) <- alts ]
-        return (params', alts')
+    alts' <- sequence
+      [ case mt of
+          Nothing -> return (cons, Nothing)
+          Just t  -> do
+            t' <- tcType t
+            return (cons, Just t')
+      | (cons, mt) <- alts ]
     let t'      = foldl tyTuple tyUnit [ t | (_, Just t) <- alts' ]
-        qual    = numberQDen params' (qualifier t')
-        arity   = typeVariances params' t'
+        qual    = numberQDen params (qualifier t')
+        arity   = typeVariances params t'
         changed = arity /= tcArity tc
                || qual  /= tcQual tc
         tc'     = tc { tcArity = arity, tcQual = qual,
-                       tcCons = (params', fromList alts') }
+                       tcCons = (params, fromList alts') }
     withTypes (name =:= tc') $
-      withVars (alts2env params' tc' alts') $
+      withVars (alts2env params tc' alts') $
         (k (tdDat name params alts, changed))
   TdAnti a -> $antifail
-
--- | Are all elements of the list unique?
-unique :: Ord a => [a] -> Bool
-unique  = loop S.empty where
-  loop _    []     = True
-  loop seen (x:xs) = x `S.notMember` seen && loop (S.insert x seen) xs
 
 -- | Build an environment of datacon types from a datatype's
 --   alternatives
@@ -883,7 +828,7 @@ withLet x mt e k = do
       tassert (qualConst te == Qu) $
         "Type of top-level binding `" ++ show x ++ "' is not unlimited"
       return te
-  (d, g, x') <- tcPatt t' x
+  (g, x') <- tcPatt t' x
   tassert (S.null (dtv x)) $
     "Cannot unpack existential in top-level binding"
   withVars g $

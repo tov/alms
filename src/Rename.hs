@@ -605,13 +605,13 @@ renamePatt x00 =
         M.S.lift (bindTyvar tv)
 
 addVal     :: Lid Raw -> R (Lid Renamed)
-addType    :: Lid Raw -> Int -> R (Lid Renamed)
+addType    :: Lid Raw -> Renamed -> R (Lid Renamed)
 addMod     :: Uid Raw -> R a -> R (Uid Renamed, a)
 
 addVal = bindVar
 
-addType l z = do
-  let l' = Lid (Ren_ z) (unLid l)
+addType l i = do
+  let l' = Lid i (unLid l)
   tell (MdTycon l l')
   return l'
 

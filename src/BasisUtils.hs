@@ -39,7 +39,7 @@ import Statics (S, env0, tcDecls, addVal, addType, addMod)
 import Syntax
 import qualified Syntax.Notable
 import qualified Syntax.Decl
-import Type (TyCon, tcId)
+import Type (TyCon, tcName)
 import Loc (Loc(Loc), mkBogus, setLoc)
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
@@ -168,7 +168,7 @@ basis2renv =
     d' <- renameDecl d
     return DecEn { enSrc = d' }
   each TypEn { enName = l, enTyCon = tc } = do
-    l' <- Rename.addType l (tcId tc)
+    l' <- Rename.addType l (lidUnique (jname (tcName tc)))
     return TypEn { enName = l', enTyCon = tc }
   each ModEn { enModName = u, enEnts = es } = do
     (u', es') <- Rename.addMod u $ renameMapM each es

@@ -93,8 +93,6 @@ data Type
 -- | Information about a type constructor
 data TyCon
   = TyCon {
-      -- | Unique identifier used for equality
-      tcId        :: Int,
       -- | Printable name
       tcName      :: QLid Renamed,
       -- | Variances for parameters, and correct length
@@ -120,10 +118,10 @@ data TyPat
   deriving (Typeable, Data)
 
 instance Eq TyCon where
-  tc == tc'  =  tcId tc == tcId tc'
+  tc == tc'  =  tcName tc == tcName tc'
 
 instance Ord TyCon where
-  compare tc tc'  = compare (tcId tc) (tcId tc')
+  compare tc tc'  = compare (tcName tc) (tcName tc')
 
 instance Ppr Type   where pprPrec p = pprPrec p . typeToStx
 instance Show Type  where showsPrec = showFromPpr
@@ -528,9 +526,18 @@ instance ExtTC r => ExtTC ([([TyPat], Type)] -> r) where
 instance ExtTC r => ExtTC (Maybe [([TyPat], Type)] -> r) where
   extTC tc x = extTC (tc { tcNext = x })
 
-mkTC :: ExtTC r => Int -> String -> r
-mkTC i s = extTC TyCon {
-  tcId     = i,
+mkTC :: ExtTC r => QLid Renamed -> r
+mkTC ql = extTC TyCon {
+  tcName   = ql,
+  tcArity  = [],
+  tcBounds = [],
+  tcQual   = minBound,
+  tcCons   = ([], Env.empty),
+  tcNext   = Nothing
+}
+
+internalTC :: ExtTC r => Int -> String -> r
+internalTC i s = extTC TyCon {
   tcName   = J [] (Lid (Ren_ i) s),
   tcArity  = [],
   tcBounds = [],
@@ -542,31 +549,31 @@ mkTC i s = extTC TyCon {
 tcBot, tcUnit, tcInt, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcTuple, tcIdent, tcConst :: TyCon
 
-tcBot        = mkTC (-1) "any"
-tcUnit       = mkTC (-2) "unit" ([], Env.fromList [(uid "()", Nothing)])
-tcInt        = mkTC (-3) "int"
-tcFloat      = mkTC (-4) "float"
-tcString     = mkTC (-5) "string"
-tcExn        = mkTC (-6) "exn" (maxBound :: QDen Int)
-tcUn         = mkTC (-7) "U"
-tcAf         = mkTC (-8) "A"   (maxBound :: QDen Int)
-tcTuple      = mkTC (-9) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
+tcBot        = internalTC (-1) "any"
+tcUnit       = internalTC (-2) "unit" ([], Env.fromList [(uid "()", Nothing)])
+tcInt        = internalTC (-3) "int"
+tcFloat      = internalTC (-4) "float"
+tcString     = internalTC (-5) "string"
+tcExn        = internalTC (-6) "exn" (maxBound :: QDen Int)
+tcUn         = internalTC (-7) "U"
+tcAf         = internalTC (-8) "A"   (maxBound :: QDen Int)
+tcTuple      = internalTC (-9) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
   [ ([TpVar (tvAf "a")], TyVar (tvAf "a")) ]
-tcIdent      = mkTC (-10) "id"    (0 :: QDen Int) [(Qa, 1)]
+tcIdent      = internalTC (-10) "id"    (0 :: QDen Int) [(Qa, 1)]
     [([TpVar (tvAf "a")], TyVar (tvAf "a"))]
-tcConst      = mkTC (-11) "const" (0 :: QDen Int) [(Qa, 1)]
+tcConst      = internalTC (-11) "const" (0 :: QDen Int) [(Qa, 1)]
     [([TpVar (tvAf "a")], tyUnit)]
 
 -- For session types:
 
 tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual :: TyCon
 
-tcSend       = mkTC (-31) "send"   [(Qa, 1)]
-tcRecv       = mkTC (-32) "recv"   [(Qa, -1)]
-tcSelect     = mkTC (-33) "select" [(Qu, 1), (Qu, 1)]
-tcFollow     = mkTC (-34) "follow" [(Qu, 1), (Qu, 1)]
-tcSemi       = mkTC (-35) ";"      [(Qu, -1), (Qu, 1)]
-tcDual       = mkTC (-36) "dual"   [(Qu, -1)]
+tcSend       = internalTC (-31) "send"   [(Qa, 1)]
+tcRecv       = internalTC (-32) "recv"   [(Qa, -1)]
+tcSelect     = internalTC (-33) "select" [(Qu, 1), (Qu, 1)]
+tcFollow     = internalTC (-34) "follow" [(Qu, 1), (Qu, 1)]
+tcSemi       = internalTC (-35) ";"      [(Qu, -1), (Qu, 1)]
+tcDual       = internalTC (-36) "dual"   [(Qu, -1)]
   [ ([TpApp tcSemi   [TpApp tcSend [pa], pb]],
               (tyApp tcSemi [tyApp tcRecv [ta], dual tb]))
   , ([TpApp tcSemi   [TpApp tcRecv [pa], pb]],
@@ -751,7 +758,7 @@ g = tyApp tcInfiniteLoop [tyUnit] where
 
 tcInfiniteLoop :: TyCon
 
-tcInfiniteLoop = mkTC (-100) "loop"
+tcInfiniteLoop = internalTC (-100) "loop"
   [([TpVar (TV (Lid "a") Qu)],
        tyApp tcInfiniteLoop [TyVar (TV (Lid "a") Qu)])]
 -}
@@ -797,7 +804,9 @@ dumpType = CMW.execWriter . loop 0 where
     CMW.tell (replicate i ' ')
     case t0 of
       TyApp tc ts _ -> do
-        CMW.tell $ show (tcName tc) ++ "[" ++ show (tcId tc) ++ "] {\n"
+        CMW.tell $
+          show (tcName tc) ++ "[" ++
+          show (lidUnique (jname (tcName tc))) ++ "] {\n"
         mapM_ (loop (i + 2)) ts
         CMW.tell (replicate i ' ' ++ "}\n")
       TyFun q dom cod -> do
