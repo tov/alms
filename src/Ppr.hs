@@ -27,7 +27,6 @@ import qualified Loc
 
 import Text.PrettyPrint
 import Data.List (intersperse)
-import Data.Typeable (Typeable, cast)
 
 -- | Class for pretty-printing at different types
 --
@@ -111,11 +110,9 @@ instance Ppr (Type i) where
                                 >+> pprPrec precDot t
   pprPrec p [$ty| $anti:a |] = pprPrec p a
 
-instance (Typeable a, Ppr a) => Ppr (QExp a) where
+instance Ppr (QExp i) where
   pprPrec p [$qeQ| $qlit:qu |] = pprPrec p qu
-  pprPrec p [$qeQ| $qvar:v |] = case cast v of
-    Just (TV l Qa)  -> pprPrec p l
-    _               -> pprPrec p v
+  pprPrec p [$qeQ| $qvar:v |]  = pprPrec p (tvname v)
   pprPrec p [$qeQ| $qdisj:qes |] = case qes of
     []    -> pprPrec p Qu
     [qe]  -> pprPrec p qe
@@ -204,12 +201,12 @@ pprAbsTy at = case view at of
   AbsTy _ _ td -> ppr td -- shouldn't happen (yet)
   AbsTyAnti a -> ppr a
 
-pprProto     :: Lid i -> [TyVar] -> Doc
+pprProto     :: Lid i -> [TyVar i] -> Doc
 pprProto n [tv1, tv2]
   | isOperator n = ppr tv1 <+> text (unLid n) <+> ppr tv2
 pprProto n tvs   = pprParams tvs <?> ppr n
 
-pprProtoV     :: Lid i -> [Variance] -> [TyVar] -> Doc
+pprProtoV     :: Lid i -> [Variance] -> [TyVar i] -> Doc
 pprProtoV n [v1, v2] [tv1, tv2]
   | isOperator n   = ppr v1 <> ppr tv1 <+>
                      text (unLid n)    <+>
@@ -218,16 +215,16 @@ pprProtoV n vs tvs = pprParamsV vs tvs <?> ppr n
 
 -- | Print a list of type variables as printed as the parameters
 --   to a type.
-pprParams    :: [TyVar] -> Doc
+pprParams    :: [TyVar i] -> Doc
 pprParams tvs = delimList parens comma (map ppr tvs)
 
-pprParamsV       :: [Variance] -> [TyVar] -> Doc
+pprParamsV       :: [Variance] -> [TyVar i] -> Doc
 pprParamsV vs tvs = delimList parens comma (zipWith pprParam vs tvs)
   where
     pprParam Invariant tv = ppr tv
     pprParam v         tv = ppr v <> ppr tv
 
-pprQuals :: (Typeable a, Ppr a) => QExp a -> Doc
+pprQuals :: QExp i -> Doc
 pprQuals [$qeQ| U |] = empty
 pprQuals qs          = text "qualifier" <+> pprPrec precApp qs
 
@@ -362,7 +359,7 @@ pprAbs p e = parensIf (p > precDot) $
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
-pprArgList :: [Either (Patt i, Type i) TyVar] -> Doc
+pprArgList :: [Either (Patt i, Type i) (TyVar i)] -> Doc
 pprArgList = fsep . map eachArg . combine where
   eachArg (Left ([$pa| _ |], [$ty|@! unit |]))
                           = parens empty
@@ -413,8 +410,7 @@ instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show (Patt i)   where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
-instance (Typeable a, Ppr a) =>
-         Show (QExp a)   where showsPrec = showFromPpr
+instance Show (QExp i)   where showsPrec = showFromPpr
 
 instance Ppr QLit      where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
@@ -422,7 +418,7 @@ instance Ppr Quant     where pprPrec = pprFromShow
 instance Ppr (Lid i)   where pprPrec = pprFromShow
 instance Ppr (Uid i)   where pprPrec = pprFromShow
 instance Ppr (BIdent i)where pprPrec = pprFromShow
-instance Ppr TyVar     where pprPrec = pprFromShow
+instance Ppr (TyVar i) where pprPrec = pprFromShow
 instance Ppr Anti      where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 

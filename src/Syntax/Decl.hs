@@ -85,22 +85,22 @@ data TyDec' i
   -- | An abstract (empty) type
   = TdAbs {
       tdName      :: Lid i,
-      tdParams    :: [TyVar],
+      tdParams    :: [TyVar i],
       -- | The variance of each parameter
       tdVariances :: [Variance],
       -- | Whether each parameter contributes to the qualifier
-      tdQual      :: QExp TyVar
+      tdQual      :: QExp i
     }
   -- | A type synonym
   | TdSyn {
       tdName      :: Lid i,
-      tdParams    :: [TyVar],
+      tdParams    :: [TyVar i],
       tdRHS       :: Type i
     }
   -- | An algebraic datatype
   | TdDat {
       tdName      :: Lid i,
-      tdParams    :: [TyVar],
+      tdParams    :: [TyVar i],
       tdAlts      :: [(Uid i, Maybe (Type i))]
     }
   | TdAnti Anti
@@ -110,7 +110,7 @@ data TyDec' i
 data AbsTy' i
   = AbsTy {
       atvariance :: [Variance],
-      atquals    :: QExp TyVar,
+      atquals    :: QExp i,
       atdecl     :: TyDec i
     }
   | AbsTyAnti Anti

@@ -76,7 +76,7 @@ data Env = Env {
   tycons, vars    :: !(M.Map (Lid Raw) (Lid Renamed)),
   datacons        :: !(M.Map (Uid Raw) (Uid Renamed)),
   modules         :: !(M.Map (Uid Raw) (Uid Renamed, Module, Env)),
-  tyvars          :: !(M.Map TyVar Bool)
+  tyvars          :: !(M.Map (TyVar Raw) (TyVar Renamed, Bool))
 } deriving Show
 
 -- | A module item is one of 5 renaming entries.  Note that while
@@ -84,12 +84,12 @@ data Env = Env {
 --   patterns, so it's useful to have them here.
 data Module
   = MdNil
-  | MdApp     !Module    !Module
-  | MdTycon   !(Lid Raw) !(Lid Renamed)
-  | MdVar     !(Lid Raw) !(Lid Renamed)
-  | MdDatacon !(Uid Raw) !(Uid Renamed)
-  | MdModule  !(Uid Raw) !(Uid Renamed) !Module
-  | MdTyvar   !TyVar
+  | MdApp     !Module      !Module
+  | MdTycon   !(Lid Raw)   !(Lid Renamed)
+  | MdVar     !(Lid Raw)   !(Lid Renamed)
+  | MdDatacon !(Uid Raw)   !(Uid Renamed)
+  | MdModule  !(Uid Raw)   !(Uid Renamed) !Module
+  | MdTyvar   !(TyVar Raw) !(TyVar Renamed)
   deriving Show
 
 -- | The renaming context, which includes the environment (which is
@@ -123,23 +123,6 @@ runRenamingM  = either fail return <$$$> runRenaming
 -- | Alias
 type R a  = Renaming a
 
--- | "First class" fields
-data Field k v = Field {
-  get    :: Env -> M.Map k v,
-  update :: Env -> M.Map k v -> Env
-}
-
-tyconsF, varsF :: Field (Lid Raw) (Lid Renamed)
-dataconsF      :: Field (Uid Raw) (Uid Renamed)
-modulesF       :: Field (Uid Raw) (Uid Renamed, Module, Env)
-tyvarsF        :: Field TyVar Bool
-
-tyconsF   = Field tycons   (\e x -> e { tycons = x })
-varsF     = Field vars     (\e x -> e { vars = x })
-dataconsF = Field datacons (\e x -> e { datacons = x })
-modulesF  = Field modules  (\e x -> e { modules = x })
-tyvarsF   = Field tyvars   (\e x -> e { tyvars = x })
-
 instance Monoid Env where
   mempty = Env M.empty M.empty M.empty M.empty M.empty
   mappend (Env a1 a2 a3 a4 a5) (Env b1 b2 b3 b4 b5) =
@@ -159,7 +142,7 @@ envify (MdVar l l')     = mempty { vars = M.singleton l l' }
 envify (MdDatacon u u') = mempty { datacons = M.singleton u u' }
 envify (MdModule u u' md)
                         = mempty { modules = M.singleton u (u',md,envify md) }
-envify (MdTyvar tv)     = mempty { tyvars = M.singleton tv True }
+envify (MdTyvar tv tv') = mempty { tyvars = M.singleton tv (tv', True) }
 
 -- | Like 'asks', but in the 'R' monad
 withContext :: (Context -> R a) -> R a
@@ -205,7 +188,8 @@ getAllVariables = S.toList . loop where
 -- | Temporarily hide the type variables in scope, and pass the
 --   continuation a function to bring them back
 hideTyvars :: R a -> R a
-hideTyvars  = local (\e -> e { tyvars = M.map (const False) (tyvars e) })
+hideTyvars  =
+  local (\e -> e { tyvars = M.map (second (const False)) (tyvars e) })
 
 -- | Look up something in the environment
 getGeneric :: (Ord k, Show k) =>
@@ -238,14 +222,14 @@ getModule  = liftM pull . getGeneric "module" modules
     pull (J ps (qu, m, e)) = (J ps qu, m, e)
 
 -- | Look up a variable in the environment
-getTyvar :: TyVar -> R TyVar
+getTyvar :: TyVar Raw -> R (TyVar Renamed)
 getTyvar tv = do
   e <- asks tyvars
   case M.lookup tv e of
-    Nothing    -> unbound "type variable" tv
-    Just True  -> return tv
-    Just False -> fail $
-      "type variable not in scope: `" ++ show tv ++ "'\n" ++
+    Nothing           -> fail $ "type variable not in scope: " ++ show tv
+    Just (tv', True)  -> return tv'
+    Just (_,   False) -> fail $
+      "type variable not in scope: " ++ show tv ++ "\n" ++
       "NB: Nested declarations cannot see tyvars from their parent expression."
 
 -- | Get a new name for a variable binding
@@ -286,10 +270,8 @@ bindModule u0 md =
   bindGeneric (\r u -> Uid r (unUid u)) (\u u' -> MdModule u u' md) u0
 
 -- | Add a type variable to the scope
-bindTyvar :: TyVar -> R TyVar
-bindTyvar tv = do
-  tell (MdTyvar tv)
-  return tv
+bindTyvar :: TyVar Raw -> R (TyVar Renamed)
+bindTyvar = bindGeneric (\r (TV l q) -> TV (Lid r (unLid l)) q) MdTyvar
 
 -- | Map a function over a list, allowing the exports of each item
 --   to be in scope for the rest
@@ -380,8 +362,8 @@ renameDecl d0 = case d0 of
     return [$dc|+ exception $uid:u' of $opt:mt' |]
   [$dc| $anti:a |] -> $antifail
 
-renameTyDec :: Maybe (QExp TyVar) -> TyDec Raw ->
-               R (Maybe (QExp TyVar), TyDec Renamed)
+renameTyDec :: Maybe (QExp Raw) -> TyDec Raw ->
+               R (Maybe (QExp Renamed), TyDec Renamed)
 renameTyDec _   (N _ (TdAnti a)) = $antierror
 renameTyDec mqe (N note td)      = withLoc note $ do
   J [] l' <- getTycon (J [] (tdName td))
@@ -546,7 +528,7 @@ renameType t0 = case t0 of
   [$ty| $anti:a |] -> $antifail
 
 -- | Rename a qualifier expression
-renameQExp :: QExp TyVar -> R (QExp TyVar)
+renameQExp :: QExp Raw -> R (QExp Renamed)
 renameQExp qe0 = case qe0 of
   [$qeQ| $qlit:qlit |] -> do
     return [$qeQ|+ $qlit:qlit |]
@@ -568,7 +550,7 @@ renamePatt x00 =
   withLoc x00 $
     M.S.evalStateT (loop x00) M.empty where
   loop :: Patt Raw ->
-          M.S.StateT (M.Map (Either (Lid Raw) TyVar) Loc)
+          M.S.StateT (M.Map (Either (Lid Raw) (TyVar Raw)) Loc)
             Renaming (Patt Renamed)
   loop x0 = case x0 of
     [$pa| _ |] ->

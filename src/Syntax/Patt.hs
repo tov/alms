@@ -9,7 +9,7 @@
 module Syntax.Patt (
   Patt'(..), Patt,
   paWild, paVar, paCon, paPair, paLit, paAs, paPack, paAnti,
-  ptv
+  dtv
 ) where
 
 import Meta.DeriveNotable
@@ -36,7 +36,7 @@ data Patt' i
   -- | bind an identifer and a pattern (@as@)
   | PaAs (Patt i) (Lid i)
   -- | existential opening
-  | PaPack TyVar (Patt i)
+  | PaPack (TyVar i) (Patt i)
   -- | antiquote
   | PaAnti Anti
   deriving (Typeable, Data)
@@ -59,5 +59,5 @@ instance Id i => Dv (Patt' i) i where
 instance Id i => Dv (N note (Patt' i)) i where
   dv = dv . dataOf
 
-ptv :: Id i => Patt i -> S.Set TyVar
-ptv = everything S.union $ mkQ S.empty S.singleton
+dtv :: Id i => Patt i -> S.Set (TyVar i)
+dtv = everything S.union $ mkQ S.empty S.singleton

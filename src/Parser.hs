@@ -236,7 +236,7 @@ identp = antiblep
       <|> pathp (flip J <$> (Var <$> varp <|> Con <$> uidp))
 
 -- Type variables
-tyvarp :: P TyVar
+tyvarp :: Id i => P (TyVar i)
 tyvarp  = do
   char '\''
   choice [ antiblep
@@ -417,7 +417,7 @@ tyDecp = addLoc $ antiblep <|> do
       quals <- qualsp
       return (tdAbs name tvs arity quals) ]
 
-tyProtp :: Id i => P ([Variance], [TyVar], Lid i)
+tyProtp :: Id i => P ([Variance], [TyVar i], Lid i)
 tyProtp  = choice [
   try $ do
     (v1, tv1) <- paramVp
@@ -479,10 +479,10 @@ absTyp  = addLoc $ antiblep <|> do
   alts         <- altsp
   return (absTy arity quals (tdDat name tvs alts))
 
-paramsVp :: P ([Variance], [TyVar])
+paramsVp :: Id i => P ([Variance], [TyVar i])
 paramsVp  = delimList punit parens comma paramVp >>! unzip
 
-paramVp :: P (Variance, TyVar)
+paramVp :: Id i => P (Variance, TyVar i)
 paramVp = do
   v  <- variancep
   tv <- tyvarp
@@ -497,10 +497,10 @@ variancep =
       char '=' >> return Invariant,
       return Invariant ]
 
-qualsp   :: P (QExp TyVar)
+qualsp   :: Id i => P (QExp i)
 qualsp    = option minBound $ reserved "qualifier" *> qExpp
 
-qExpp :: P (QExp TyVar)
+qExpp :: Id i => P (QExp i)
 qExpp  = qexp where
   qexp  = addLoc $ qeDisj <$> sepBy1 qterm (reservedOp "\\/")
   qterm = addLoc $ qeConj <$> sepBy1 qfact (reservedOp "/\\")
@@ -912,7 +912,7 @@ parseAbsTy    :: Id i => P (AbsTy i)
 -- | Parse a type
 parseType     :: Id i => P (Type i)
 -- | Parse a qualifier expression
-parseQExp     :: P (QExp TyVar)
+parseQExp     :: Id i => P (QExp i)
 -- | Parse an expression
 parseExpr     :: Id i => P (Expr i)
 -- | Parse a pattern
@@ -962,7 +962,7 @@ pt  :: String -> Type Renamed
 pt   = makeQaD parseType
 
 -- | Parse a qualifier expression
-pqe :: String -> QExp TyVar
+pqe :: String -> QExp Renamed
 pqe  = makeQaD parseQExp
 
 -- | Parse an expression

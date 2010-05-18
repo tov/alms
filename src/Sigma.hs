@@ -396,7 +396,8 @@ disjoint s1 s2 = S.null (s1 `S.intersection` s2)
 
 -- | Transform an expression into a pattern, if possible, using only
 --   the specified variables and type variables
-expr2patt :: Id i => S.Set (Lid i) -> S.Set TyVar -> Expr i -> Maybe (Patt i)
+expr2patt :: Id i =>
+             S.Set (Lid i) -> S.Set (TyVar i) -> Expr i -> Maybe (Patt i)
 expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
   loop e = case view e of
     ExId ident -> case view ident of

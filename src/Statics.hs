@@ -63,7 +63,7 @@ usage x e = case M.lookup x (fv e) of
 type R = Renamed
 
 -- Type environments
-type D = Env TyVar TyVar       -- tyvars in scope, with idempot. renaming
+type D = Env TyVarR TyVarR   -- tyvars in scope, with idempot. renaming
 
 -- | Mapping from identifiers to value types (includes datacons)
 type V       = Env (BIdent R) Type
@@ -122,7 +122,7 @@ instance GenLookup TCEnv (QLid R) TyCon where
   TCEnv env _ =..= k = env =..= k
 instance GenLookup TCEnv (Ident R) Type where
   TCEnv env _ =..= k = env =..= k
-instance GenLookup TCEnv TyVar TyVar where
+instance GenLookup TCEnv TyVarR TyVarR where
   TCEnv _ d =..= k = d =..= k
 
 instance GenExtend TCEnv Scope where
@@ -182,14 +182,14 @@ newIndex  = TC $ do
 
 -- | Run a computation with some type variables added to the
 -- type variable environment
-withTVs :: Monad m => [TyVar] -> ([TyVar] -> TC m a) -> TC m a
+withTVs :: Monad m => [TyVarR] -> ([TyVarR] -> TC m a) -> TC m a
 withTVs tvs m = TC $ do
   TCEnv env d <- M.R.ask
   let (d', tvs') = foldr rename (d, []) tvs
       r'         = TCEnv env d'
   M.R.local (const r') (unTC (m tvs'))
     where
-      rename :: TyVar -> (D, [TyVar]) -> (D, [TyVar])
+      rename :: TyVarR -> (D, [TyVarR]) -> (D, [TyVarR])
       rename tv (d, tvs') =
         let tv' = case d =..= tv of
                     Nothing -> tv
@@ -271,7 +271,7 @@ getAny msg k = do
   t |! msg ++ ": " ++ show k
 
 -- | Make sure the given tyvar is in scope
-getTV :: (?loc :: Loc, Monad m) => TyVar -> TC m TyVar
+getTV :: (?loc :: Loc, Monad m) => TyVarR -> TC m TyVarR
 getTV  = getAny "Free type variable"
 
 -- | Get the type of a variable, or fail
@@ -663,7 +663,7 @@ withPatt t x m = do
 -- may be free, and a type t', tries to substitute for tvs in t
 -- to produce a type that *might* unify with t'
 tryUnify :: (?loc :: Loc, Monad m) =>
-            [TyVar] -> Type -> Type -> m [Type]
+            [TyVarR] -> Type -> Type -> m [Type]
 tryUnify [] _ _        = return []
 tryUnify tvs t t'      = 
   case subtype 100 [] t' tvs t of
@@ -682,7 +682,7 @@ tryUnify tvs t t'      =
 --   list of qualifier-significant tyvars to a set of type parameter
 --   indices
 indexQuals :: (?loc :: Loc, Monad m) =>
-              Lid R -> [TyVar] -> QExp TyVar -> TC m (QDen Int)
+              Lid R -> [TyVarR] -> QExp R -> TC m (QDen Int)
 indexQuals name tvs qexp = do
   qden <- qInterpretM qexp
   numberQDenM unbound tvs qden where
@@ -794,7 +794,7 @@ unique  = loop S.empty where
 
 -- | Build an environment of datacon types from a datatype's
 --   alternatives
-alts2env :: [TyVar] -> TyCon -> [(Uid R, Maybe Type)] -> V
+alts2env :: [TyVarR] -> TyCon -> [(Uid R, Maybe Type)] -> V
 alts2env params tc = fromList . map each where
   each (u, Nothing) = (Con u, alls result)
   each (u, Just t)  = (Con u, alls (t .->. result))
@@ -803,7 +803,7 @@ alts2env params tc = fromList . map each where
 
 -- | Compute the variances at which some type variables occur
 --   in an open type expression
-typeVariances :: [TyVar] -> Type -> [Variance]
+typeVariances :: [TyVarR] -> Type -> [Variance]
 typeVariances d0 = finish . ftvVs where
   finish m = [ maybe 0 id (M.lookup tv m)
              | tv <- d0 ]

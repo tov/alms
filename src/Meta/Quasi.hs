@@ -44,8 +44,6 @@ antiPat  = antiGen
 
 antiGen :: forall a b. (Data a, ToSyntax b) => a -> Maybe (TH.Q b)
 antiGen  = $(expandAntibles [''Raw, ''Renamed] 'toAstQ syntaxTable)
-         . $(expandAntibleType 'toAstQ (Just 'newN) [t| QExp Int |])
-         . $(expandAntibleType 'toAstQ (Just 'newN) [t| QExp TyVar |])
          $ const Nothing
 
 antiLocPat :: Loc -> Maybe TH.PatQ
@@ -72,7 +70,7 @@ mkvarP n   = TH.varP (TH.mkName n)
 --- Quasiquoters
 ---
 
-pa, ty, ex, dc, me, prQ, tdQ, atQ, caQ, bnQ :: QuasiQuoter
+pa, ty, ex, dc, me, prQ, tdQ, atQ, caQ, bnQ, qeQ :: QuasiQuoter
 
 ex  = mkQuasi parseExpr
 dc  = mkQuasi parseDecl
@@ -84,6 +82,7 @@ tdQ = mkQuasi parseTyDec
 atQ = mkQuasi parseAbsTy
 caQ = mkQuasi parseCaseAlt
 bnQ = mkQuasi parseBinding
+qeQ = mkQuasi parseQExp
 
 mkQuasi :: forall stx note.
            (Data (note Raw), Data (stx Raw),
@@ -104,14 +103,6 @@ mkQuasi parser = QuasiQuoter qast qast where
             stx <- parser :: P (N (note Raw) (stx Raw))
             convert lflag stx
   convert flag stx = return $ maybe toAstQ toLocAstQ flag (scrub stx)
-
-qeQ :: QuasiQuoter
-qeQ  = QuasiQuoter qast qast where
-  qast s = do
-    (stx, lflag) <- parseQuasi s $ \_ lflag -> do
-      stx <- parseQExp
-      return (stx, lflag)
-    maybe toAstQ toLocAstQ lflag stx
 
 deriveLocAsts 'toAstQ syntaxTable
 

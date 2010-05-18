@@ -11,7 +11,7 @@
       TypeFamilies #-}
 module Type (
   -- * Representation of types
-  Type(..), TyCon(..), TyPat(..), tyApp,
+  Type(..), TyCon(..), TyVarR, TyPat(..), tyApp,
   -- * Type reduction
   ReductionState(..),
   -- ** Head reduction
@@ -68,10 +68,13 @@ import Data.Generics (Typeable, Data, everything, mkQ)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+-- | All tyvars are renamed by this point
+type TyVarR = TyVar Renamed
+
 -- | The internal representation of a type
 data Type
   -- | A type variable
-  = TyVar TyVar
+  = TyVar TyVarR
   -- | The application of a type constructor (possibly nullary); the
   --   third field caches the next head-reduction step if the type
   --   is not head-normal -- note that substitution invalidates this
@@ -79,11 +82,11 @@ data Type
   --   (re)initializes the cache.
   | TyApp TyCon [Type] (ReductionState Type)
   -- | An arrow type, including qualifier expression
-  | TyFun (QDen TyVar) Type Type
+  | TyFun (QDen TyVarR) Type Type
   -- | A quantified (all or ex) type
-  | TyQu  Stx.Quant TyVar Type
+  | TyQu  Stx.Quant TyVarR Type
   -- | A recursive (mu) type
-  | TyMu  TyVar Type
+  | TyMu  TyVarR Type
   deriving (Typeable, Data)
 
 -- | Information about a type constructor
@@ -100,7 +103,7 @@ data TyCon
       -- | Qualifier as a function of parameters
       tcQual      :: QDen Int,
       -- | For pattern-matchable types, the data constructors
-      tcCons      :: ([TyVar], Env.Env (Uid Renamed) (Maybe Type)),
+      tcCons      :: ([TyVarR], Env.Env (Uid Renamed) (Maybe Type)),
       -- | For type operators, the next head reduction
       tcNext      :: Maybe [([TyPat], Type)]
     }
@@ -109,7 +112,7 @@ data TyCon
 -- | A type pattern, for defining type operators
 data TyPat
   -- | A type variable, matching any type and binding
-  = TpVar TyVar
+  = TpVar TyVarR
   -- | A type application node, matching the given constructor
   --   and its parameters
   | TpApp TyCon [TyPat]
@@ -127,7 +130,7 @@ instance Ppr TyPat  where pprPrec p = pprPrec p . tyPatToStx
 instance Show TyPat where showsPrec = showFromPpr
 
 -- | Find the qualifier of a type
-qualifier     :: Type -> QDen TyVar
+qualifier     :: Type -> QDen TyVarR
 qualifier (TyApp tc ts _) = denumberQDen (map qualifier ts) (tcQual tc)
 qualifier (TyFun q _ _)   = q
 qualifier (TyVar tv)
@@ -143,10 +146,10 @@ qualifier (TyMu tv t)     = qSubst tv minBound (qualifier t)
 -- | Class for getting free type variables (from types, expressions,
 -- lists thereof, pairs thereof, etc.)
 class Ftv a where
-  ftvVs :: a -> M.Map TyVar Variance
-  ftv   :: a -> S.Set TyVar
+  ftvVs :: a -> M.Map TyVarR Variance
+  ftv   :: a -> S.Set TyVarR
   ftv    = M.keysSet . ftvVs
-  alltv :: a -> S.Set TyVar
+  alltv :: a -> S.Set TyVarR
 
 instance Ftv Type where
   ftv (TyApp _ ts _)  = S.unions (map ftv ts)
@@ -172,17 +175,17 @@ instance Ftv Type where
   alltv (TyMu tv t)     = tv `S.insert` alltv t
 
 instance (Data a, Ord a, Ftv a) => Ftv (QDen a) where
-  ftv   = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVar))
+  ftv   = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVarR))
   ftvVs = everything M.union
-            (mkQ M.empty (ftvVs :: a -> M.Map TyVar Variance))
-  alltv = everything S.union (mkQ S.empty (alltv :: a -> S.Set TyVar))
+            (mkQ M.empty (ftvVs :: a -> M.Map TyVarR Variance))
+  alltv = everything S.union (mkQ S.empty (alltv :: a -> S.Set TyVarR))
 
 instance Ftv a => Ftv [a] where
   ftv   = S.unions . map ftv
   ftvVs = M.unionsWith (+) . map ftvVs
   alltv = S.unions . map alltv
 
-instance Ftv TyVar where
+instance (i ~ Renamed) => Ftv (TyVar i) where
   ftv      = S.singleton
   ftvVs tv = M.singleton tv 1
   alltv    = S.singleton
@@ -194,7 +197,7 @@ instance (Ftv a, Ftv b) => Ftv (a, b) where
 
 -- | Given a type variable, rename it (if necessary) to make it
 --   fresh for a set of type variables.
-freshTyVar :: TyVar -> S.Set TyVar -> TyVar
+freshTyVar :: TyVarR -> S.Set TyVarR -> TyVarR
 freshTyVar (TV l q) set = TV l' q where
   l'       = if l `S.member` names
                then loop count
@@ -216,13 +219,13 @@ freshTyVar (TVAnti a) _ = Stx.antierror "Type.freshTyVar" a
 -- | Given a list of type variables, rename them (if necessary) to make
 --   each of them fresh for both the set of type variables and each
 --   other.
-freshTyVars :: [TyVar] -> S.Set TyVar -> [TyVar]
+freshTyVars :: [TyVarR] -> S.Set TyVarR -> [TyVarR]
 freshTyVars []       _   = []
 freshTyVars (tv:tvs) set = tv' : freshTyVars tvs (S.insert tv' set)
   where tv' = freshTyVar tv (set `S.union` S.fromList tvs)
 
 -- | Type substitution
-tysubst :: TyVar -> Type -> Type -> Type
+tysubst :: TyVarR -> Type -> Type -> Type
 tysubst a t = loop where
   loop (TyVar a')
     | a' == a   = t
@@ -247,7 +250,7 @@ tysubst a t = loop where
 
 -- | Given a list of type variables and types, perform all the
 --   substitutions, avoiding capture between them.
-tysubsts :: [TyVar] -> [Type] -> Type -> Type
+tysubsts :: [TyVarR] -> [Type] -> Type -> Type
 tysubsts ps ts t =
   let ps' = freshTyVars ps (ftv (t:ts))
       substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
@@ -256,7 +259,7 @@ tysubsts ps ts t =
       t
 
 -- | Rename a type variable
-tyrename :: TyVar -> TyVar -> Type -> Type
+tyrename :: TyVarR -> TyVarR -> Type -> Type
 tyrename tv = tysubst tv . TyVar
 
 ---
@@ -279,7 +282,7 @@ data ReductionState t
   deriving (Eq, Ord, Show, Functor, Typeable, Data)
 
 -- | Helper type for 'tyApp'
-type MatchResult t = Either (ReductionState t) ([TyVar], [Type])
+type MatchResult t = Either (ReductionState t) ([TyVarR], [Type])
 
 -- | Creates a type application, initializing the head-reduction cache
 tyApp :: TyCon -> [Type] -> Type
@@ -489,7 +492,7 @@ instance (v ~ Variance, ExtTC r) => ExtTC ([(QLit, v)] -> r) where
   extTC tc x = extTC (tc { tcArity = map snd x, tcBounds = map fst x })
 instance ExtTC r => ExtTC (QDen Int -> r) where
   extTC tc x = extTC (tc { tcQual = x })
-instance (v ~ TyVar, a ~ Type, i ~ Renamed, ExtTC r) =>
+instance (v ~ TyVarR, a ~ Type, i ~ Renamed, ExtTC r) =>
          ExtTC (([v], Env.Env (Uid i) (Maybe a)) -> r) where
   extTC tc x = extTC (tc { tcCons = x })
 instance ExtTC r => ExtTC ([([TyPat], Type)] -> r) where
@@ -577,11 +580,11 @@ tyLol :: Type -> Type -> Type
 tyLol   = TyFun maxBound
 
 -- | Construct a universal type
-tyAll :: TyVar -> Type -> Type
+tyAll :: TyVarR -> Type -> Type
 tyAll  = TyQu Stx.Forall
 
 -- | Construct a existential type
-tyEx  :: TyVar -> Type -> Type
+tyEx  :: TyVarR -> Type -> Type
 tyEx   = TyQu Stx.Exists
 
 -- | Preconstructed types
@@ -740,7 +743,7 @@ vtFuns t = case view t of
 
 -- | Unfold the parameters of a quantified type, normalizing as
 --   necessary
-vtQus  :: Stx.Quant -> Type -> ([TyVar], Type)
+vtQus  :: Stx.Quant -> Type -> ([TyVarR], Type)
 vtQus u t = case view t of
   TyQu u' x t' | u == u' -> first (x:) (vtQus u t')
   _ -> ([], t)

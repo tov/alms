@@ -47,16 +47,16 @@ translateDecls tenv decls = (tenv, decls)
 coerceExpression :: Monad m =>
                     Expr Renamed -> Type -> Type -> m (Expr Renamed)
 coerceExpression e tfrom tto = do
-  prj <- CMS.evalStateT (build M.empty tfrom tto) 0
+  prj <- CMS.evalStateT (build True M.empty tfrom tto) 0
   return $ exApp (exApp prj (exPair (exStr neg) (exStr pos))) e
   where
   neg = "context at " ++ show (getLoc e)
   pos = "value at " ++ show (getLoc e)
 
 build :: Monad m =>
-         M.Map (TyVar, TyVar) (Maybe (Lid Renamed)) -> Type -> Type ->
-         CMS.StateT Integer m (Expr Renamed)
-build recs tfrom tto
+         Bool -> M.Map (TyVarR, TyVarR) (Maybe (Lid Renamed)) ->
+         Type -> Type -> CMS.StateT Integer m (Expr Renamed)
+build b recs tfrom tto
   | (tvs,  TyFun qd  t1  t2)  <- vtQus Forall tfrom,
     (tvs', TyFun qd' t1' t2') <- vtQus Forall tto,
     length tvs == length tvs'
@@ -70,8 +70,8 @@ build recs tfrom tto
                       (shadow tvs tvs' recs)
                       (zip tvs tvs')
                       (repeat Nothing)
-        dom <- build recs' t1' t1
-        cod <- build recs' t2 t2'
+        dom <- build (not b) recs' t1' t1
+        cod <- build b recs' t2 t2'
         let body = [$ex|+ $which $dom $cod |]
         return $ if null tvs
           then body
@@ -83,18 +83,18 @@ build recs tfrom tto
                foldl (\acc tv0 -> exTApp acc (Syntax.tyVar tv0))
                      (exBVar (lid "f")) tvs `exApp`
                exBVar (lid "x")
-build recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
+build b recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
-  body <- build recs' t t' >>! instContract
+  body <- build b recs' t t' >>! instContract
   let tv''  = freshTyVar tv (ftv (tv, tv'))
   return $
     absContract $
       [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $stx:t) ->
                Pack[ex '$tv'. $stx:t']('$tv'', $body e) |]
-build recs (view -> TyMu tv t) (view -> TyMu tv' t') = do
+build b recs (view -> TyMu tv t) (view -> TyMu tv' t') = do
   l    <- freshLid
   let recs' = M.insert (tv, tv') (Just l) (shadow [tv] [tv'] recs)
-  body <- build recs' t t'
+  body <- build b recs' t t'
   return $
     [$ex|+
       let rec $lid:l
@@ -103,18 +103,19 @@ build recs (view -> TyMu tv t) (view -> TyMu tv' t') = do
           = $body parties
        in $lid:l
     |]
-build recs (view -> TyVar tv) (view -> TyVar tv')
-  | Just (Just l) <- M.lookup (tv, tv') recs
+build b recs (view -> TyVar tv) (view -> TyVar tv')
+  | Just (Just l) <- M.lookup (if b then (tv, tv') else (tv', tv)) recs
     = return [$ex|+ $lid:l |]
-  | Just Nothing <- M.lookup (tv, tv') recs
+  | Just Nothing <- M.lookup (if b then (tv, tv') else (tv', tv)) recs
     = return [$ex|+ INTERNALS.Contract.any ['$tv'] |]
-build _ t t' =
+build _ recs t t' =
   if t <: t'
     then return [$ex|+ INTERNALS.Contract.any [$stx:t'] |]
     else fail $ "No coercion from " ++ show t ++ " to " ++ show t'
+      ++ "\n" ++ show recs
 
-shadow :: [TyVar] -> [TyVar] ->
-          M.Map (TyVar, TyVar) a -> M.Map (TyVar, TyVar) a
+shadow :: [TyVarR] -> [TyVarR] ->
+          M.Map (TyVarR, TyVarR) a -> M.Map (TyVarR, TyVarR) a
 shadow tvs tvs' = M.filterWithKey
                     (\(tv, tv') _ -> tv `notElem` tvs && tv' `notElem` tvs')
 

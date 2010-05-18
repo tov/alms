@@ -37,10 +37,10 @@ data Quant = Forall | Exists | QuantAnti Anti
 --   associated with each tycon
 data Type' i
   = TyApp  (QLid i) [Type i]
-  | TyVar  TyVar
-  | TyFun  (QExp TyVar) (Type i) (Type i)
-  | TyQu   Quant TyVar (Type i)
-  | TyMu   TyVar (Type i)
+  | TyVar  (TyVar i)
+  | TyFun  (QExp i) (Type i) (Type i)
+  | TyQu   Quant (TyVar i) (Type i)
+  | TyMu   (TyVar i) (Type i)
   | TyAnti Anti
   deriving (Typeable, Data)
 
@@ -49,7 +49,7 @@ type Type i = Located Type' i
 deriveNotable ''Type
 
 -- | Convenience constructors for qualified types
-tyAll, tyEx :: TyVar -> Type i -> Type i
+tyAll, tyEx :: TyVar i -> Type i -> Type i
 tyAll = tyQu Forall
 tyEx  = tyQu Exists
 
@@ -94,7 +94,7 @@ tyLol          = tyFun maxBound
 infixr 8 `tyArr`, `tyLol`
 
 -- | Noisy type printer for debugging
-dumpType :: Int -> Type i -> IO ()
+dumpType :: Id i => Int -> Type i -> IO ()
 dumpType i (N _ t0) = do
   putStr (replicate i ' ')
   case t0 of

@@ -134,9 +134,9 @@ type QLid i = Path (Uid i) (Lid i)
 type Ident i = Path (Uid i) (BIdent i)
 
 -- | Type variables include qualifiers
-data TyVar
+data TyVar i
   = TV {
-      tvname :: !(Lid Raw),
+      tvname :: !(Lid i),
       tvqual :: !QLit
     }
   | TVAnti Anti
@@ -148,11 +148,11 @@ lid = Lid trivialId
 uid :: Id i => String -> Uid i
 uid = Uid trivialId
 
-tvUn, tvAf :: String -> TyVar
+tvUn, tvAf :: Id i => String -> TyVar i
 tvUn s = TV (lid s) Qu
 tvAf s = TV (lid s) Qa
 
-tvalphabet :: [QLit -> TyVar]
+tvalphabet :: Id i => [QLit -> TyVar i]
 tvalphabet  = map (TV . lid) alphabet
   where
     alphabet = map return ['a' .. 'z'] ++
@@ -185,12 +185,10 @@ instance Show (Lid i) where
       _  :_ | head s == '*' || last s == '*'
                         -> ("( "++) . (s++) . (" )"++)
       _                 -> ('(':) . (s++) . (')':)
-      {-
     . let z = Unsafe.Coerce.unsafeCoerce i :: Renamed in
          if z == Unsafe.Coerce.unsafeCoerce Raw_
            then id
            else showChar '[' . shows z . showChar ']'
-      -}
   showsPrec p (LidAnti a) = showsPrec p a
 
 instance Show (Uid i) where
@@ -201,7 +199,7 @@ instance Show (BIdent i) where
   showsPrec p (Var x) = showsPrec p x
   showsPrec p (Con k) = showsPrec p k
 
-instance Show TyVar where
+instance Show (TyVar i) where
   showsPrec _ (TV x Qu)  = showString "'" . shows x
   showsPrec _ (TV x Qa)  = showString "'<" . shows x
   showsPrec _ (TVAnti a) = showChar '\'' . shows a

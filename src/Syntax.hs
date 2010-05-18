@@ -78,7 +78,7 @@ instance Antible (QUid i) where
 
 -- | Get the list of formal parameters and body of a
 --   lambda/typelambda expression
-unfoldExAbs :: Expr i -> ([Either (Patt i, Type i) TyVar], Expr i)
+unfoldExAbs :: Expr i -> ([Either (Patt i, Type i) (TyVar i)], Expr i)
 unfoldExAbs  = unscanr each where
   each e = case view e of
     ExAbs x t e' -> Just (Left (x, t), e')
@@ -86,7 +86,7 @@ unfoldExAbs  = unscanr each where
     _            -> Nothing
 
 -- | Get the list of formal parameters and body of a qualified type
-unfoldTyQu  :: Quant -> Type i -> ([TyVar], Type i)
+unfoldTyQu  :: Quant -> Type i -> ([TyVar i], Type i)
 unfoldTyQu u = unscanr each where
   each (N _ (TyQu u' x t)) | u == u' = Just (x, t)
   each _                             = Nothing

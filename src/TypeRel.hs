@@ -93,7 +93,7 @@ type UT s t a = CMR.ReaderT (TCS s t) (ST t String) a
 -- | An environment mapping mu-bound type variables to their
 --   definition for unrolling ('Left') or forall-bound variables
 --   to a pair of lower and upper bounds, for instantiation ('Right')
-type UEnv t = M.Map TyVar (UVar t)
+type UEnv t = M.Map TyVarR (UVar t)
 type UVar t = (Int, STRef t (Type, Type))
 
 data TCS s t = TCS {
@@ -103,7 +103,7 @@ data TCS s t = TCS {
   -- | Should key pairs for 'tcsSeen' be flipped?
   tcsFlip    :: Bool,
   -- | A supply of fresh type variables
-  tcsSupply  :: STRef t [QLit -> TyVar],
+  tcsSupply  :: STRef t [QLit -> TyVarR],
   -- | The number of instantiated foralls we are currently under
   tcsLevel   :: Int,
   -- | The environment for the left side of the relation
@@ -125,7 +125,7 @@ lift :: (CMR.MonadTrans t, Monad m) => m a -> t m a
 lift  = CMR.lift
 
 runUT  :: forall s a m. Monad m =>
-          (forall t. UT s t a) -> S.Set TyVar -> m a
+          (forall t. UT s t a) -> S.Set TyVarR -> m a
 runUT m set =
   either fail return $
     runST $ do
@@ -142,7 +142,7 @@ runUT m set =
         tcsEnv2   = M.empty
       }
 
-getVar :: TyVar -> Field s t -> UT s t (Maybe (UVar t))
+getVar :: TyVarR -> Field s t -> UT s t (Maybe (UVar t))
 getVar tv field = CMR.asks (M.lookup tv . get field)
 
 -- | To add some unification variables to the scope, run the body,
@@ -151,7 +151,7 @@ getVar tv field = CMR.asks (M.lookup tv . get field)
 --   existing variables.  In particular, the initial set of unification
 --   variables precedes any other bindings, and all subsequent foralls
 --   are renamed using fresh type variables.
-withUVars :: [TyVar] -> Field s t -> UT s t a -> UT s t (a, [Type])
+withUVars :: [TyVarR] -> Field s t -> UT s t a -> UT s t (a, [Type])
 withUVars tvs field body = do
   level <- CMR.asks tcsLevel
   refs  <- lift $ sequence
@@ -200,8 +200,8 @@ lowerBoundUVar ref t = do
     lift $ writeSTRef ref (lower', upper)
 
 -- | Get maps of the left and right uvars
-getUVars :: UT s t (TyVar -> Maybe (Int, STRef t (Type, Type)),
-                    TyVar -> Maybe (Int, STRef t (Type, Type)))
+getUVars :: UT s t (TyVarR -> Maybe (Int, STRef t (Type, Type)),
+                    TyVarR -> Maybe (Int, STRef t (Type, Type)))
 getUVars = do
   st <- CMR.ask
   return (flip M.lookup (tcsEnv1 st), flip M.lookup (tcsEnv2 st))
@@ -233,7 +233,7 @@ flipU body = CMR.local flipSt body where
     TCS seen (not flipFlag) level supply e2 e1
 
 -- | Get a fresh type variable from the supply.
-freshU :: QLit -> UT s t TyVar
+freshU :: QLit -> UT s t TyVarR
 freshU qlit = do
   ref <- CMR.ask >>! tcsSupply
   f:supply <- lift $ readSTRef ref
@@ -246,7 +246,7 @@ freshU qlit = do
 -- deubg = const $ return ()
 
 subtype :: Monad m =>
-           Int -> [TyVar] -> Type -> [TyVar] -> Type ->
+           Int -> [TyVarR] -> Type -> [TyVarR] -> Type ->
            m ([Type], [Type])
 subtype limit uvars1 t1i uvars2 t2i =
   runUT start (S.fromList uvars1 `S.union`

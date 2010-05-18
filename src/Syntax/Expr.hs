@@ -68,7 +68,7 @@ data Expr' i
   -- | application
   | ExApp (Expr i) (Expr i)
   -- | type abstraction
-  | ExTAbs TyVar (Expr i)
+  | ExTAbs (TyVar i) (Expr i)
   -- | type application
   | ExTApp (Expr i) (Type i)
   -- | existential construction
@@ -279,7 +279,7 @@ exAbsVar'  = exAbs' . paVar
 --   @exTAbs' tv (exTApp (exVar f) tv)  ==  exVar f@
 --
 -- This should always be safe, because f has no effect
-exTAbs' :: Id i => TyVar -> Expr i -> Expr i
+exTAbs' :: Id i => TyVar i -> Expr i -> Expr i
 exTAbs' tv e = case view e of
   ExTApp e1 t2 -> case (view e1, dataOf t2) of
     (ExId (J p (Var f)), TyVar tv') |

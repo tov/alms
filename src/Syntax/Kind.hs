@@ -21,6 +21,7 @@ import qualified PDNF
 import Syntax.Anti
 import Syntax.Notable
 import Syntax.POClass
+import {-# SOURCE #-} Syntax.Ident
 import Util
 
 import Control.Monad.Identity (runIdentity)
@@ -39,28 +40,28 @@ data QLit
 
 -- | The syntactic version of qualifier expressions, which are
 --   positive logical formulae over literals and type variables
-data QExp' a
+data QExp' i
   = QeLit QLit
-  | QeVar a
-  | QeDisj [QExp a]
-  | QeConj [QExp a]
+  | QeVar (TyVar i)
+  | QeDisj [QExp i]
+  | QeConj [QExp i]
   | QeAnti Anti
   deriving (Typeable, Data)
 
-type QExp a = Located QExp' a
+type QExp i = Located QExp' i
 
 deriveNotable ['QeDisj, 'QeConj] ''QExp
 
 -- | Synthetic constructor to avoid constructing nullary or unary
 --   disjunctions
-qeDisj :: [QExp a] -> QExp a
+qeDisj :: [QExp i] -> QExp i
 qeDisj []   = newN (QeLit Qu)
 qeDisj [qe] = qe
 qeDisj qes  = newN (QeDisj qes)
 
 -- | Synthetic constructor to avoid constructing nullary or unary
 --   conjunctions
-qeConj :: [QExp a] -> QExp a
+qeConj :: [QExp i] -> QExp i
 qeConj []   = newN (QeLit Qa)
 qeConj [qe] = qe
 qeConj qes  = newN (QeConj qes)
@@ -94,7 +95,7 @@ elimQLit u _ Qu = u
 elimQLit _ a Qa = a
 
 -- | Find the meaning of a qualifier expression
-qInterpretM :: (Monad m, Ord a) => QExp a -> m (QDen a)
+qInterpretM :: (Monad m, Id i) => QExp i -> m (QDen (TyVar i))
 qInterpretM (N note qe0) = case qe0 of
   QeLit Qu  -> return minBound
   QeLit Qa  -> return maxBound
@@ -104,12 +105,12 @@ qInterpretM (N note qe0) = case qe0 of
   QeAnti a  -> antifail ("Syntax.Kind.qInterpret: " ++ show (getLoc note)) a
 
 -- | Find the meaning of a qualifier expression
-qInterpret :: Ord a => QExp a -> QDen a
+qInterpret :: Id i => QExp i -> QDen (TyVar i)
 qInterpret  = runIdentity . qInterpretM
 
 -- | Convert a canonical representation back to a denotation.
 --   (Unsafe if the representation is not actually canonical)
-qInterpretCanonical :: Ord a => QExp a -> QDen a
+qInterpretCanonical :: Id i => QExp i -> QDen (TyVar i)
 qInterpretCanonical (N _ (QeDisj clauses)) = QDen $
   PDNF.fromListsUnsafe $
     [ [ v ] | N _ (QeVar v) <- clauses ] ++
@@ -118,7 +119,7 @@ qInterpretCanonical e = qInterpret e
 
 -- | Return the canonical representation of the meaning of a
 --   qualifier expression
-qRepresent :: Ord a => QDen a -> QExp a
+qRepresent :: Id i => QDen (TyVar i) -> QExp i
 qRepresent (QDen pdnf)
   | PDNF.isUnsat pdnf = newN (QeLit Qu)
   | PDNF.isValid pdnf = newN (QeLit Qa)
