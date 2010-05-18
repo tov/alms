@@ -84,7 +84,7 @@ data Env = Env {
 --   patterns, so it's useful to have them here.
 data Module
   = MdNil
-  | MdApp     !Module !Module
+  | MdApp     !Module    !Module
   | MdTycon   !(Lid Raw) !(Lid Renamed)
   | MdVar     !(Lid Raw) !(Lid Renamed)
   | MdDatacon !(Uid Raw) !(Uid Renamed)
