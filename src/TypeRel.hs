@@ -74,11 +74,11 @@ instance Ord AType where
         = u `compare` u'
            `thenCmp` tvqual x `compare` tvqual x'
            `thenCmp` tysubst x a t =?= tysubst x' a t'
-              where a = TyVar (freshTyVar x (ftv (t, t')))
+              where a = TyVar (fastFreshTyVar x (maxtv (t, t')))
       TyMu x t    =?= TyMu x' t'
         = tvqual x `compare` tvqual x'
            `thenCmp` tysubst x a t =?= tysubst x' a t'
-              where a = TyVar (freshTyVar x (ftv (t, t')))
+              where a = TyVar (fastFreshTyVar x (maxtv (t, t')))
       TyApp _ _ _   =?= _           = LT
       _             =?= TyApp _ _ _ = GT
       TyVar _       =?= _           = LT

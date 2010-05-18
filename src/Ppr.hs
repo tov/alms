@@ -20,9 +20,10 @@ import Meta.Quasi
 import Prec
 import Syntax
 
-import qualified Syntax.Notable
-import qualified Syntax.Expr
 import qualified Syntax.Decl
+import qualified Syntax.Expr
+import qualified Syntax.Notable
+import qualified Syntax.Patt
 import qualified Loc
 
 import Text.PrettyPrint

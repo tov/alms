@@ -25,9 +25,10 @@ module Statics (
 import Meta.Quasi
 import Util
 import qualified Syntax
-import qualified Syntax.Notable
-import qualified Syntax.Expr
 import qualified Syntax.Decl
+import qualified Syntax.Expr
+import qualified Syntax.Notable
+import qualified Syntax.Patt
 import Syntax hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
                       tyTuple, tyUnit, tyArr, tyApp)
 import Loc
@@ -374,7 +375,7 @@ tcType = tc where
 --   a new type variable 
 makeExType :: Type -> Type -> Type
 makeExType t1 t2 = TyQu Exists tv $ everywhere (mkT erase) t1 where
-  tv       = freshTyVar (TV (lid "a") (qualConst t2)) (ftv [t1, t2])
+  tv       = fastFreshTyVar (TV (lid "a") (qualConst t2)) (maxtv (t1, t2))
   erase t' = if t' == t2 then TyVar tv else t'
 
 -- | Type check an A expression
@@ -654,7 +655,7 @@ withPatt :: (?loc :: Loc, Monad m) =>
 withPatt t x m = do
   (d, g, x') <- tcPatt t x
   (t', e')   <- withAny d $ withVars g $ m
-  let escapees = S.fromList (range d) `S.intersection` ftv t'
+  let escapees = dtv x' `S.intersection` ftv t'
   tassert (S.null escapees) $
     "Type variable escaped existential: " ++ show (S.findMin escapees)
   return (g, x', t', e')
@@ -883,7 +884,7 @@ withLet x mt e k = do
         "Type of top-level binding `" ++ show x ++ "' is not unlimited"
       return te
   (d, g, x') <- tcPatt t' x
-  tassert (isEmpty d) $
+  tassert (S.null (dtv x)) $
     "Cannot unpack existential in top-level binding"
   withVars g $
     k x' (Just (typeToStx t')) e'

@@ -100,7 +100,7 @@ syntaxTable :: SyntaxTable
 syntaxTable =
   [ ''Prog    =:: 'Prog                       !: 'newN       >: (''Id, [0])
   , ''Lit     =:: 'LtAnti    $: 'litAntis
-  , ''Patt    =:: 'PaAnti    $: 'pattAntis    !: 'newN
+  , ''Patt    =:: 'PaAnti    $: 'pattAntis    !: 'newPatt    >: (''Id, [0])
   , ''Expr    =:: 'ExAnti    $: 'exprAntis    !: 'newExpr    >: (''Id, [0])
   , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding >: (''Id, [0])
   , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt >: (''Id, [0])

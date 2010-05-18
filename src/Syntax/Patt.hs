@@ -7,7 +7,7 @@
       TypeFamilies,
       TypeSynonymInstances #-}
 module Syntax.Patt (
-  Patt'(..), Patt,
+  Patt'(..), Patt, PattNote(..), newPatt,
   paWild, paVar, paCon, paPair, paLit, paAs, paPack, paAnti,
   dtv
 ) where
@@ -19,7 +19,9 @@ import Syntax.Ident
 import Syntax.Lit
 
 import qualified Data.Set as S
-import Data.Generics (Typeable, Data, everything, mkQ)
+import Data.Generics (Typeable, Data)
+
+type Patt i = N (PattNote i) (Patt' i)
 
 -- | Patterns
 data Patt' i
@@ -41,23 +43,79 @@ data Patt' i
   | PaAnti Anti
   deriving (Typeable, Data)
 
-type Patt i = Located Patt' i
+data PattNote i
+  = PattNote {
+      -- | source location
+      ploc_  :: !Loc,
+      -- | defined variables
+      pdv_   :: S.Set (Lid i),
+      -- | defined type variables
+      pdtv_  :: S.Set (TyVar i)
+    }
+  deriving (Typeable, Data)
 
-deriveNotable ''Patt
+instance Locatable (PattNote i) where
+  getLoc = ploc_
 
-instance Id i => Dv (Patt' i) i where
-  dv PaWild               = S.empty
-  dv (PaVar x)            = S.singleton x
-  dv (PaCon _ Nothing)    = S.empty
-  dv (PaCon _ (Just x))   = dv x
-  dv (PaPair x y)         = dv x `S.union` dv y
-  dv (PaLit _)            = S.empty
-  dv (PaAs x y)           = dv x `S.union` S.singleton y
-  dv (PaPack _ x)         = dv x
-  dv (PaAnti a)           = antierror "dv" a
+instance Relocatable (PattNote i) where
+  setLoc note loc = note { ploc_ = loc }
 
-instance Id i => Dv (N note (Patt' i)) i where
-  dv = dv . dataOf
+instance Notable (PattNote i) where
+  newNote = PattNote bogus S.empty S.empty
+
+newPatt :: Id i => Patt' i -> Patt i
+newPatt p0 = flip N p0 $ case p0 of
+  PaWild           ->
+    newNote {
+      pdv_    = S.empty,
+      pdtv_   = S.empty
+    }
+  PaVar x          ->
+    newNote {
+      pdv_    = S.singleton x,
+      pdtv_   = S.empty
+    }
+  PaCon _ Nothing  ->
+    newNote {
+      pdv_    = S.empty,
+      pdtv_   = S.empty
+    }
+  PaCon _ (Just x) ->
+    newNote {
+      pdv_    = dv x,
+      pdtv_   = dtv x
+    }
+  PaPair x y       ->
+    newNote {
+      pdv_    = dv x `S.union` dv y,
+      pdtv_   = dtv x `S.union` dtv y
+    }
+  PaLit _          ->
+    newNote {
+      pdv_    = S.empty,
+      pdtv_   = S.empty
+    }
+  PaAs x y         ->
+    newNote {
+      pdv_    = S.insert y (dv x),
+      pdtv_   = dtv x
+    }
+  PaPack tv x       ->
+    newNote {
+      pdv_    = dv x,
+      pdtv_   = S.insert tv (dtv x)
+    }
+  PaAnti a         ->
+    newNote {
+      pdv_    = antierror "dv" a,
+      pdtv_   = antierror "dtv" a
+    }
+
+instance Id i => Dv (N (PattNote i) a) i where
+  dv = pdv_ . noteOf
 
 dtv :: Id i => Patt i -> S.Set (TyVar i)
-dtv = everything S.union $ mkQ S.empty S.singleton
+dtv = pdtv_ . noteOf
+
+deriveNotable 'newPatt (''Id, [0]) ''Patt
+

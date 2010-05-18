@@ -19,9 +19,10 @@ import Meta.Quasi
 import Value
 import Util
 import Syntax
-import qualified Syntax.Notable
-import qualified Syntax.Expr
 import qualified Syntax.Decl
+import qualified Syntax.Expr
+import qualified Syntax.Notable
+import qualified Syntax.Patt
 import Env
 import Ppr (Ppr(..), Doc, text, precApp)
 

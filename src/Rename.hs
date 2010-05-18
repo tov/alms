@@ -23,6 +23,7 @@ import qualified Loc
 import qualified Syntax.Decl
 import qualified Syntax.Expr
 import qualified Syntax.Notable
+import qualified Syntax.Patt
 import Util
 
 import Data.Monoid

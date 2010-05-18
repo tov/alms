@@ -357,10 +357,10 @@ transform env = loop where
 (+::)   :: Id i => Expr i -> [Lid i] -> Expr i
 e +:: vs = e +:+ map exBVar vs
 
-(-:-)   :: Patt i -> [Patt i] -> Patt i
+(-:-)   :: Id i => Patt i -> [Patt i] -> Patt i
 (-:-)    = foldl paPair
 
-(-::)   :: Patt i -> [Lid i] -> Patt i
+(-::)   :: Id i => Patt i -> [Lid i] -> Patt i
 p -:: vs = p -:- map paVar vs
 
 r1, r2 :: Id i => Lid i

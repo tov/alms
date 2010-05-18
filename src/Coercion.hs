@@ -14,6 +14,7 @@ import Ppr ()
 import qualified Syntax
 import qualified Syntax.Expr
 import qualified Syntax.Notable
+import qualified Syntax.Patt
 import Syntax hiding (Type, Type'(..))
 import Type
 import TypeRel ()

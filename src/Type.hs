@@ -22,6 +22,7 @@ module Type (
   isNormalType, normalizeTypeK, normalizeType,
   -- ** Freshness
   Ftv(..), freshTyVar, freshTyVars,
+  fastFreshTyVar, fastFreshTyVars,
   -- ** Substitutions
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
@@ -150,6 +151,7 @@ class Ftv a where
   ftv   :: a -> S.Set TyVarR
   ftv    = M.keysSet . ftvVs
   alltv :: a -> S.Set TyVarR
+  maxtv :: a -> Renamed
 
 instance Ftv Type where
   ftv (TyApp _ ts _)  = S.unions (map ftv ts)
@@ -157,6 +159,7 @@ instance Ftv Type where
   ftv (TyFun q t1 t2) = S.unions [ftv t1, ftv t2, ftv q]
   ftv (TyQu _ tv t)   = S.delete tv (ftv t)
   ftv (TyMu tv t)     = S.delete tv (ftv t)
+  --
   ftvVs (TyApp tc ts _) = M.unionsWith (+)
                           [ M.map (* var) m
                           | var   <- tcArity tc
@@ -168,43 +171,73 @@ instance Ftv Type where
   ftvVs (TyVar tv)      = M.singleton tv 1
   ftvVs (TyQu _ tv t)   = M.delete tv (ftvVs t)
   ftvVs (TyMu tv t)     = M.delete tv (ftvVs t)
+  --
   alltv (TyApp _ ts _)  = alltv ts
   alltv (TyVar tv)      = alltv tv
   alltv (TyFun q t1 t2) = alltv q `S.union` alltv t1 `S.union` alltv t2
   alltv (TyQu _ tv t)   = tv `S.insert` alltv t
   alltv (TyMu tv t)     = tv `S.insert` alltv t
+  --
+  maxtv (TyApp _ ts _)  = maxtv ts
+  maxtv (TyVar tv)      = maxtv tv
+  maxtv (TyFun q t1 t2) = maxtv q `max` maxtv t1 `max` maxtv t2
+  maxtv (TyQu _ tv t)   = maxtv tv `max` maxtv t
+  maxtv (TyMu tv t)     = maxtv tv `max` maxtv t
 
 instance (Data a, Ord a, Ftv a) => Ftv (QDen a) where
   ftv   = everything S.union (mkQ S.empty (ftv :: a -> S.Set TyVarR))
   ftvVs = everything M.union
             (mkQ M.empty (ftvVs :: a -> M.Map TyVarR Variance))
   alltv = everything S.union (mkQ S.empty (alltv :: a -> S.Set TyVarR))
+  maxtv = everything max (mkQ trivialId (maxtv :: a -> Renamed))
 
 instance Ftv a => Ftv [a] where
   ftv   = S.unions . map ftv
   ftvVs = M.unionsWith (+) . map ftvVs
   alltv = S.unions . map alltv
+  maxtv [] = trivialId
+  maxtv xs = maximum (map maxtv xs)
 
 instance (i ~ Renamed) => Ftv (TyVar i) where
   ftv      = S.singleton
   ftvVs tv = M.singleton tv 1
   alltv    = S.singleton
+  maxtv    = lidUnique . tvname
 
 instance (Ftv a, Ftv b) => Ftv (a, b) where
   ftv (a, b)   = ftv a `S.union` ftv b
   ftvVs (a, b) = M.unionWith (+) (ftvVs a) (ftvVs b)
   alltv (a, b) = alltv a `S.union` alltv b
+  maxtv (a, b) = maxtv a `max` maxtv b
+
+-- Rename a type variable, if necessary, to make its unique tag higher
+-- than the one given
+fastFreshTyVar :: TyVarR -> Renamed -> TyVarR
+fastFreshTyVar tv@(TV (Lid i n) q) imax =
+  if i > imax
+    then tv
+    else TV (Lid (succ imax) n) q
+fastFreshTyVar (TVAnti a)         _ = Stx.antierror "Type.fastFreshTyVar" a
+fastFreshTyVar (TV (LidAnti a) _) _ = Stx.antierror "Type.fastFreshTyVar" a
+
+-- Rename a list of type variables, if necessary, to make each unique tag
+-- higher than the one given and mutually unique
+fastFreshTyVars :: [TyVarR] -> Renamed -> [TyVarR]
+fastFreshTyVars []       _    = []
+fastFreshTyVars (tv:tvs) imax =
+  let tv' = fastFreshTyVar tv imax in
+  tv' : fastFreshTyVars tvs (imax `max` maxtv tv')
 
 -- | Given a type variable, rename it (if necessary) to make it
 --   fresh for a set of type variables.
 freshTyVar :: TyVarR -> S.Set TyVarR -> TyVarR
 freshTyVar (TV l q) set = TV l' q where
-  l'       = if l `S.member` names
-               then loop count
+  l'       = if unLid l `S.member` names
+               then lid (loop count)
                else l
-  names    = S.map tvname set
+  names    = S.map (unLid . tvname) set
   loop n   =
-    let tv' = attach n
+    let tv' = prefix ++ show n
     in if tv' `S.member` names
          then loop (n + 1)
          else tv'
@@ -213,7 +246,6 @@ freshTyVar (TV l q) set = TV l' q where
   count    = case reads suffix of
                ((n, ""):_) -> n
                _           -> 1::Integer
-  attach n = lid (prefix ++ show n)
 freshTyVar (TVAnti a) _ = Stx.antierror "Type.freshTyVar" a
 
 -- | Given a list of type variables, rename them (if necessary) to make
@@ -236,23 +268,19 @@ tysubst a t = loop where
                 = tyApp tc (map loop ts)
   loop (TyQu u a' t')
     | a' == a   = TyQu u a' t'
-    | a' `S.member` set,
-      a'' <- freshTyVar a' set
+    | a'' <- fastFreshTyVar a' imax
                 = TyQu u a'' (loop (tysubst a' (TyVar a'') t'))
-    | otherwise = TyQu u a' (loop t')
   loop (TyMu a' t')
     | a' == a   = TyMu a' t'
-    | a' `S.member` set,
-      a'' <- freshTyVar a' set
+    | a'' <- fastFreshTyVar a' imax
                 = TyMu a'' (loop (tysubst a' (TyVar a'') t'))
-    | otherwise = TyMu a' (loop t')
-  set = a `S.insert` ftv t
+  imax = maxtv (a, t)
 
 -- | Given a list of type variables and types, perform all the
 --   substitutions, avoiding capture between them.
 tysubsts :: [TyVarR] -> [Type] -> Type -> Type
 tysubsts ps ts t =
-  let ps' = freshTyVars ps (ftv (t:ts))
+  let ps' = fastFreshTyVars ps (maxtv (t:ts))
       substs tvs ts0 t0 = foldr2 tysubst t0 tvs ts0 in
   substs ps' ts .
     substs ps (map TyVar ps') $
@@ -631,14 +659,27 @@ infixr 8 .:., `tySemi`
 typeToStx' :: Type -> Stx.Type' Renamed
 typeToStx'  = view . typeToStx
 
--- | Represent a type value as a syntactic type, for printing
+-- | Represent a type value as a syntactic type, for printing; renames
+--   so that scope is apparent, since internal renaming may result int
+--   different identifiers that print the same
 typeToStx :: Type -> Stx.Type Renamed
-typeToStx t0 = case t0 of
-  TyVar tv      -> Stx.tyVar tv
-  TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (typeToStx t1) (typeToStx t2)
-  TyApp tc ts _ -> Stx.tyApp (tcName tc) (map typeToStx ts)
-  TyQu qu tv t1 -> Stx.tyQu qu tv (typeToStx t1)
-  TyMu tv t1    -> Stx.tyMu tv (typeToStx t1)
+typeToStx = loop (S.empty, M.empty) where
+  loop ren t0 = case t0 of
+    TyVar tv      -> Stx.tyVar (maybe tv id (M.lookup tv (snd ren)))
+    TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (loop ren t1) (loop ren t2)
+    TyApp tc ts _ -> Stx.tyApp (tcName tc) (map (loop ren) ts)
+    TyQu qu tv t1 -> Stx.tyQu qu tv' (loop ren' t1)
+      where (tv', ren') = fresh tv ren
+    TyMu tv t1    -> Stx.tyMu tv' (loop ren' t1)
+      where (tv', ren') = fresh tv ren
+  fresh tv (seen, remap) = 
+    let tv' = if S.member (unLid (tvname tv)) seen
+                then freshTyVar tv $
+                       M.keysSet remap `S.union`
+                         S.fromList (M.elems remap)
+                else tv
+     in (tv', (S.insert (unLid (tvname tv')) seen,
+               M.insert tv tv' remap))
 
 -- | Represent a type pattern as a syntactic type, for printing
 tyPatToStx :: TyPat -> Stx.Type Renamed

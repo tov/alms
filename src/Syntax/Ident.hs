@@ -50,7 +50,7 @@ data Raw = Raw_
   deriving (Data, Typeable, Show)
 
 newtype Renamed = Ren_ Int
-  deriving (Data, Typeable, Enum, Eq)
+  deriving (Data, Typeable, Enum, Eq, Ord)
 
 instance Show Renamed where
   showsPrec p (Ren_ z) = showsPrec p z
