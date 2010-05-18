@@ -264,7 +264,7 @@ instance Ppr (Expr i) where
       parensIf (p > precSemi) $
         sep [ pprPrec (precSemi + 1) e1 <> semi,
               ppr e2 ]
-    [$ex| let $lid:x = $e1 in $e2 |] ->
+    [$ex| let $x = $e1 in $e2 |] ->
       pprLet p (ppr x) e1 e2
     [$ex| match $e1 with $list:clauses |] ->
       parensIf (p > precDot) $
