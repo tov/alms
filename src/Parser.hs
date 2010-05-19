@@ -640,7 +640,7 @@ altsp  = sepBy1 altp (reservedOp "|")
 
 altp  :: Id i => P (Uid i, Maybe (Type i))
 altp   = do
-  k <- uidp
+  k <- try $ uidp <* try (dot *> pzero <|> punit)
   t <- optionMaybe $ do
     reserved "of"
     typep

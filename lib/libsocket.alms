@@ -14,7 +14,7 @@ module Socket = struct
       | Cons (S.AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
       | _ -> failwith ("Could not resolve address "^host^":"^port)
 
-    type socket = (S.socket)
+    type socket = S.socket
 
     let socket (): socket =
       S.socket S.AF_INET S.Stream S.defaultProtocol
