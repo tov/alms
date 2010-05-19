@@ -188,15 +188,7 @@ primBasis  = [
 
     submod "Prim" [
       submod "Socket" Basis.Socket.entries,
-      submod "Exn"    Basis.Exn.entries,
-      submod "SessionType" [
-        "dual"   `primtype` tcDual,
-        ";"      `primtype` tcSemi,
-        "send"   `primtype` tcSend,
-        "recv"   `primtype` tcRecv,
-        "select" `primtype` tcSelect,
-        "follow" `primtype` tcFollow
-      ]
+      submod "Exn"    Basis.Exn.entries
     ]
   ]
 

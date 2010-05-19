@@ -32,16 +32,15 @@ module Type (
   -- ** Type constructors
   mkTC,
   tcBot, tcUnit, tcInt, tcFloat, tcString, tcExn, tcTuple, tcUn, tcAf,
-  tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual,
   -- ** Types
   tyNulOp, tyUnOp, tyBinOp,
   tyArr, tyLol,
   tyAll, tyEx,
   -- *** Convenience
   tyBot, tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf, tyTop,
-  tyIdent, tyConst, tySend, tyRecv, tyDual,
-  tyTuple, tySelect, tyFollow, tySemi,
-  (.*.), (.->.), (.-*.), (.:.),
+  tyIdent, tyConst,
+  tyTuple,
+  (.*.), (.->.), (.-*.),
   -- * Views
   vtAppTc, isBotType,
   -- ** Unfolds
@@ -51,8 +50,10 @@ module Type (
   module Syntax.Kind,
   module Syntax.POClass,
   Stx.Quant(..),
-  -- * Debugging
+  -- * Debugging and testing
   dumpType,
+  tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual,
+  tySend, tyRecv, tyDual, tySelect, tyFollow, tySemi, (.:.),
 ) where
 
 import qualified Env
@@ -565,32 +566,6 @@ tcIdent      = internalTC (-10) "id"    (0 :: QDen Int) [(Qa, 1)]
 tcConst      = internalTC (-11) "const" (0 :: QDen Int) [(Qa, 1)]
     [([TpVar (tvAf "a")], tyUnit)]
 
--- For session types:
-
-tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual :: TyCon
-
-tcSend       = internalTC (-31) "send"   [(Qa, 1)]
-tcRecv       = internalTC (-32) "recv"   [(Qa, -1)]
-tcSelect     = internalTC (-33) "select" [(Qu, 1), (Qu, 1)]
-tcFollow     = internalTC (-34) "follow" [(Qu, 1), (Qu, 1)]
-tcSemi       = internalTC (-35) ";"      [(Qu, -1), (Qu, 1)]
-tcDual       = internalTC (-36) "dual"   [(Qu, -1)]
-  [ ([TpApp tcSemi   [TpApp tcSend [pa], pb]],
-              (tyApp tcSemi [tyApp tcRecv [ta], dual tb]))
-  , ([TpApp tcSemi   [TpApp tcRecv [pa], pb]],
-              (tyApp tcSemi [tyApp tcSend [ta], dual tb]))
-  , ([TpApp tcSelect [pa, pb]], (tyApp tcFollow [dual ta, dual tb]))
-  , ([TpApp tcFollow [pa, pb]], (tyApp tcSelect [dual ta, dual tb]))
-  , ([TpApp tcUnit   []],       (tyApp tcUnit []))
-  ]
-  where a = tvAf "a"
-        b = tvAf "b"
-        pa = TpVar a
-        pb = TpVar b
-        ta = TyVar a
-        tb = TyVar b
-        dual t = tyApp tcDual [t]
-
 ---
 --- Convenience type constructors
 ---
@@ -625,8 +600,8 @@ tyEx   = TyQu Stx.Exists
 
 -- | Preconstructed types
 tyBot, tyUnit, tyInt, tyFloat, tyString, tyExn, tyUn, tyAf :: Type
-tyIdent, tyConst, tySend, tyRecv, tyDual :: Type -> Type
-tyTuple, tySelect, tyFollow, tySemi :: Type -> Type -> Type
+tyIdent, tyConst :: Type -> Type
+tyTuple :: Type -> Type -> Type
 tyTop :: QLit -> Type
 
 tyBot    = tyNulOp tcBot
@@ -642,18 +617,10 @@ tyTuple  = tyBinOp tcTuple
 tyIdent  = tyUnOp tcIdent
 tyConst  = tyUnOp tcConst
 
-tySend   = tyUnOp tcSend
-tyRecv   = tyUnOp tcRecv
-tySelect = tyBinOp tcSelect
-tyFollow = tyBinOp tcFollow
-tySemi   = tyBinOp tcSemi
-tyDual   = tyUnOp tcDual
-
-(.*.), (.->.), (.-*.), (.:.) :: Type -> Type -> Type
+(.*.), (.->.), (.-*.) :: Type -> Type -> Type
 (.*.)    = tyTuple
 (.->.)   = tyArr
 (.-*.)   = tyLol
-(.:.)    = tySemi
 
 infixr 6 .->., .-*., `tyArr`, `tyLol`
 infixl 7 .*., `tyTuple`
@@ -805,6 +772,44 @@ vtQus  :: Stx.Quant -> Type -> ([TyVarR], Type)
 vtQus u t = case view t of
   TyQu u' x t' | u == u' -> first (x:) (vtQus u t')
   _ -> ([], t)
+
+-- For session types:
+
+tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual :: TyCon
+
+tcSend       = internalTC (-31) "send"   [(Qa, 1)]
+tcRecv       = internalTC (-32) "recv"   [(Qa, -1)]
+tcSelect     = internalTC (-33) "select" [(Qu, 1), (Qu, 1)]
+tcFollow     = internalTC (-34) "follow" [(Qu, 1), (Qu, 1)]
+tcSemi       = internalTC (-35) ";"      [(Qu, -1), (Qu, 1)]
+tcDual       = internalTC (-36) "dual"   [(Qu, -1)]
+  [ ([TpApp tcSemi   [TpApp tcSend [pa], pb]],
+              (tyApp tcSemi [tyApp tcRecv [ta], dual tb]))
+  , ([TpApp tcSemi   [TpApp tcRecv [pa], pb]],
+              (tyApp tcSemi [tyApp tcSend [ta], dual tb]))
+  , ([TpApp tcSelect [pa, pb]], (tyApp tcFollow [dual ta, dual tb]))
+  , ([TpApp tcFollow [pa, pb]], (tyApp tcSelect [dual ta, dual tb]))
+  , ([TpApp tcUnit   []],       (tyApp tcUnit []))
+  ]
+  where a = tvAf "a"
+        b = tvAf "b"
+        pa = TpVar a
+        pb = TpVar b
+        ta = TyVar a
+        tb = TyVar b
+        dual t = tyApp tcDual [t]
+
+tySend, tyRecv, tyDual :: Type -> Type
+tySelect, tyFollow, tySemi :: Type -> Type -> Type
+(.:.) :: Type -> Type -> Type
+
+tySend   = tyUnOp tcSend
+tyRecv   = tyUnOp tcRecv
+tySelect = tyBinOp tcSelect
+tyFollow = tyBinOp tcFollow
+tySemi   = tyBinOp tcSemi
+tyDual   = tyUnOp tcDual
+(.:.)    = tySemi
 
 -- | Noisy type printer for debugging (includes type tags that aren't
 --   normally pretty-printed)

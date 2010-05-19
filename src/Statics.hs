@@ -52,11 +52,11 @@ import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-import System.IO.Unsafe (unsafePerformIO)
-p :: Show a => a -> b -> b
-p a b = unsafePerformIO (print a) `seq` b
-pM :: (Show a, Monad m) => a -> m ()
-pM a = if p a True then return () else fail "wibble"
+-- import System.IO.Unsafe (unsafePerformIO)
+-- p :: Show a => a -> b -> b
+-- p a b = unsafePerformIO (print a) `seq` b
+-- pM :: (Show a, Monad m) => a -> m ()
+-- pM a = if p a True then return () else fail "wibble"
 -- p = const
 
 -- The kind of names we're using.  Should change to 'Renamed'
@@ -1026,7 +1026,11 @@ tcAbsTy atds ds = do
         "abstract-with-end: declared qualifier for type " ++ show name ++
         ", " ++ show qualSet ++
         ", is more general than actual qualifier " ++ show (tcQual tc)
-      return (abstractTyCon tc)
+      return $ abstractTyCon tc {
+        tcQual  = qualSet,
+        tcArity = arity,
+        tcCons  = ([], empty)
+      }
     _ -> terr "(BUG) Can't abstract non-datatypes"
   tell (replaceTyCons tcs (md1 `mappend` md2))
   return (atds, ds')
