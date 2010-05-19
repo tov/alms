@@ -1,13 +1,13 @@
-(* An example with session types, including choice. *)
+(* An example with session types, including choice. (type error) *)
 
 #load "libthread"
 #load "libsessiontype"
 
 open SessionType
 
-type 'a protocol = ('a send; 'a send; 'a recv; unit
-                       +
-                       'a send; 'a recv; unit) select
+type 'a protocol = !'a; !'a; ?'a; 1
+                       |+|
+                   !'a; ?'a; 1
 
 let server =
   fun c : int protocol dual channel ->

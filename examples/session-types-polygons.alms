@@ -114,7 +114,7 @@ let maybeC['a,'r] (some: 'a -> 'r) (none: 'r) (opt: 'a option): 'r =
 -- sequence of points:
 --
 
-type 'a stream = mu 'x. (unit, 'a recv; 'x) follow
+type 'a stream = mu 'x. 1 |&| ?'a; 'x
 
 --
 -- Each transducer takes a plane to clip by, and two rendezvous objects,
@@ -166,7 +166,7 @@ let printer : point stream channel -> unit =
 
 -- The main protocol for the program, which lets us split our parser
 -- from our main loop.
-type main_prot = mu 'x. (point stream, plane recv; 'x) follow
+type main_prot = mu 'x. point stream |&| ?plane; 'x
 
 let parser : main_prot dual channel -> unit =
   let rec plane_loop (oc: main_prot dual channel): unit =

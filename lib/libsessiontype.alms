@@ -12,11 +12,6 @@ module SessionType = struct
   type +'a |+| +'b
   type +'a |&| +'b
 
-  type '<a send = !'<a
-  type '<a recv = ?'<a
-  type ('a, 'b) select = 'a |+| 'b
-  type ('a, 'b) follow = 'a |&| 'b
-
   type 1           dual = 1
      | (!'<a ; 's) dual = ?'<a ; 's dual
      | (?'<a ; 's) dual = !'<a ; 's dual
