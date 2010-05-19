@@ -6,21 +6,20 @@ module Main (
 ) where
 
 import Util
-import Ppr (Ppr(..), (<+>), (<>), text, char, hang)
+import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest)
 import qualified Ppr
 import Parser (parse, parseRepl, parseProg)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg)
-import Statics (tcProg, tcDecls, S,
-                NewDefs(..), emptyNewDefs, tyConToDec)
+import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..), tyConToDec)
 import Coercion (translate, translateDecls, TEnv, tenv0)
-import Value (VExn(..), vppr, ExnId(..))
+import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv, basis2renv)
 import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
                Raw, Renamed)
-import Env (empty, unionProduct, toList)
+import Env (empty, (=..=))
 
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
@@ -35,8 +34,8 @@ import IO (hFlush, stdout)
 #endif
 
 data Option = Don'tExecute
-            | Don'tType
             | Don'tCoerce
+            | NoBasis
             | Verbose
             | Quiet
             | LoadFile String
@@ -54,7 +53,9 @@ main  = do
     Nothing | Quiet `notElem` opts -> hPutStrLn stderr versionString
     _ -> return ()
   let st0 = RS r0 g0 tenv0 e0
-  st1 <- findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
+  st1 <- if NoBasis `elem` opts
+           then return st0
+           else findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
   st2 <- foldM (\st n -> findAlmsLibRel n "-" >>= tryLoadFile st n)
                st1 (reverse [ name | LoadFile name <- opts ])
   maybe interactive (batch filename) mmsrc (`elem` opts) st2
@@ -96,14 +97,11 @@ batch filename msrc opt st0 = do
             (ast1, _) <- runRenamingM True (rsRenaming st0) (renameProg ast0)
             check ast1
 
-          check ast0 =
-            if opt Don'tType
-              then execute ast0
-              else do
-                (t, ast1) <- tcProg (rsStatics st0) ast0
-                when (opt Verbose) $
-                  mumble "TYPE" t
-                coerce ast1
+          check ast0 = do
+            ((t, ast1), _) <- runTC (rsStatics st0) (tcProg ast0)
+            when (opt Verbose) $
+              mumble "TYPE" t
+            coerce ast1
 
           coerce ast1 =
             if opt Don'tCoerce
@@ -129,17 +127,17 @@ data ReplState = RS {
 
 renaming    :: (ReplState, [Decl Raw]) -> IO (ReplState, [Decl Renamed])
 statics     :: Bool -> (ReplState, [Decl Renamed]) ->
-               IO (ReplState, NewDefs, [Decl Renamed])
-translation :: (ReplState, [Decl Renamed])   -> IO (ReplState, [Decl Renamed])
-dynamics    :: (ReplState, [Decl Renamed])  -> IO (ReplState, NewValues)
+               IO (ReplState, Module, [Decl Renamed])
+translation :: (ReplState, [Decl Renamed]) -> IO (ReplState, [Decl Renamed])
+dynamics    :: (ReplState, [Decl Renamed]) -> IO (ReplState, NewValues)
 
 renaming (st, ast) = do
   (ast', r') <- runRenamingM True (rsRenaming st) (renameDecls ast)
   return (st { rsRenaming = r' }, ast')
 
-statics slow (rs, ast) = do
-  (g', new, ast') <- tcDecls slow (rsStatics rs) ast
-  return (rs { rsStatics = g' }, new, ast')
+statics _ (rs, ast) = do
+  (ast', new, s') <- runTCNew (rsStatics rs) (tcDecls ast)
+  return (rs { rsStatics = s' }, new, ast')
 
 translation (rs, ast) = do
   let (menv', ast') = translateDecls (rsTranslation rs) ast
@@ -187,18 +185,16 @@ interactive opt rs0 = do
     doLine st ast = let
       rename  :: (ReplState, [Decl Raw]) -> IO ReplState
       check   :: (ReplState, [Decl Renamed]) -> IO ReplState
-      coerce  :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
-      execute :: NewDefs -> (ReplState, [Decl Renamed]) -> IO ReplState
-      display :: NewDefs -> NewValues -> ReplState -> IO ReplState
+      coerce  :: Module -> (ReplState, [Decl Renamed]) -> IO ReplState
+      execute :: Module -> (ReplState, [Decl Renamed]) -> IO ReplState
+      display :: Module -> NewValues -> ReplState -> IO ReplState
 
       rename (st0, ast0) = do
         renaming (st0, ast0) >>= check
 
-      check stast0   = if opt Don'tType
-                         then execute emptyNewDefs stast0
-                         else do
-                           (st1, newDefs, ast1) <- statics True stast0
-                           coerce newDefs (st1, ast1)
+      check stast0   = do
+                         (st1, newDefs, ast1) <- statics True stast0
+                         coerce newDefs (st1, ast1)
 
       coerce newDefs stast1
                      = if opt Don'tCoerce
@@ -244,36 +240,32 @@ interactive opt rs0 = do
                     return (Just ast)
                   Left derr ->
                     loop ((line, derr) : acc)
-    printResult :: NewDefs -> NewValues -> IO ()
-    printResult defs (values, exns) = do
-      let vals = unionProduct
-                   (newValues defs)
-                   values
-      say $ Ppr.vcat $
-        map pprMod (newModules defs) ++
-        map pprType (toList (newTypes defs)) ++
-        map pprExn exns ++
-        map pprValue (toList vals)
-
-      where
-      pprMod uid      = text "module" <+> ppr uid
-
-      pprType (_, tc) = text "type" <+> ppr (tyConToDec tc :: TyDec Renamed)
-
+    printResult :: Module -> NewValues -> IO ()
+    printResult md00 (values, _exns) = say (loop True md00) where
+      loop tl md0 = case md0 of
+        MdNil               -> Ppr.empty
+        MdApp md1 md2       -> loop tl md1 $$ loop tl md2
+        MdValue (Var l) t   -> pprValue tl l t (values =..= l)
+        MdValue (Con _u) _t -> Ppr.empty -- exception?
+        MdTycon _ tc        ->
+          text "type" <+> ppr (tyConToDec tc :: TyDec Renamed)
+        MdModule u md1      ->
+          text "module" <+> ppr u <+> char ':' <+> text "sig"
+          $$ nest 2 (loop False md1)
+          $$ text "end"
+      pprValue tl x t mv =
+        addHang '=' (if tl then fmap ppr mv else Nothing) $
+          addHang ':' (Just (ppr t)) $
+            (if tl then ppr x else text "val" <+> ppr x)
+      addHang c m d = case m of
+        Nothing -> d
+        Just t  -> hang (d <+> char c) 2 t
+    {-
       pprExn (ExnId { eiName = u, eiParam = Just t })
         = text "exception" <+> ppr u <+> text "of" <+> ppr t
       pprExn (ExnId { eiName = u})
         = text "exception" <+> ppr u
-
-      pprValue (Con _, _)        = Ppr.empty
-      pprValue (Var k, (mt, mv)) =
-        addHang '=' (fmap ppr mv) $
-          addHang ':' (fmap ppr mt) $
-            ppr k
-
-      addHang c m d = case m of
-        Nothing -> d
-        Just t  -> hang (d <+> char c) 2 t
+    -}
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)
@@ -298,7 +290,7 @@ processArgs opts0 args0 k = loop opts0 args0 where
                         = loop (LoadFile name:opts) r
   loop opts (('-':'l':name):r)
                         = loop (LoadFile name:opts) r
-  loop opts ("-t":r)    = loop (Don'tType:opts) r
+  loop opts ("-b":r)    = loop (NoBasis:opts) r
   loop opts ("-x":r)    = loop (Don'tExecute:opts) r
   loop opts ("-c":r)    = loop (Don'tCoerce:opts) r
   loop opts ("-v":r)    = loop (Verbose:opts) r
@@ -322,7 +314,7 @@ usage  = do
   hPutStrLn stderr "  -q       Don't print prompt, greeting, responses"
   hPutStrLn stderr ""
   hPutStrLn stderr "Debugging options:"
-  hPutStrLn stderr "  -t       Don't type check (implies -c)"
+  hPutStrLn stderr "  -b       Don't load libbasis.alms"
   hPutStrLn stderr "  -c       Don't add contracts"
   hPutStrLn stderr "  -x       Don't execute"
   hPutStrLn stderr "  -v       Verbose (show translation, results, types)"

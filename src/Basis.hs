@@ -68,7 +68,7 @@ primBasis  = [
     fun "~" -: [$ty| int -> int |]
       -= (negate :: Integer -> Integer),
     fun "abs" -: [$ty| int -> int |]
-      -= (abs :: Integer -> Integer),
+      -= (abs :: Integer -> Integer) ,
     fun "<=" -: [$ty| int -> int -> bool |]
       -= ((<=) :: Integer -> Integer -> Bool),
     fun "string_of_int" -: [$ty| int -> string |]
@@ -198,7 +198,6 @@ primBasis  = [
         "follow" `primtype` tcFollow
       ]
     ]
-{-  -}
   ]
 
 newtype Ref = Ref { unRef :: IORef Value }

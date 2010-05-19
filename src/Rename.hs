@@ -80,9 +80,10 @@ data Env = Env {
   tyvars          :: !(M.Map (TyVar Raw) (TyVar Renamed, Bool))
 } deriving Show
 
--- | A module item is one of 5 renaming entries.  Note that while
---   type variables are not actual module items, they are exported from
---   patterns, so it's useful to have them here.
+-- | A module item is one of 5 renaming entries, an empty module, r
+--   a pair of modules.  Note that while type variables are not actual
+--   module items, they are exported from patterns, so it's useful to
+--   have them here.
 data Module
   = MdNil
   | MdApp     !Module      !Module

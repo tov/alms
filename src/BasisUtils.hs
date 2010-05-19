@@ -35,7 +35,7 @@ import Meta.Quasi
 import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
 import Rename
-import Statics (S, env0, tcDecls, addVal, addType, addMod)
+import Statics (S, env0, runTC, tcMapM, addVal, addDecl, addType, addMod)
 import Syntax
 import qualified Syntax.Notable
 import qualified Syntax.Decl
@@ -186,14 +186,13 @@ basis2venv es = foldM add genEmpty es where
 
 -- | Build the static environment
 basis2tenv :: Monad m => [Entry Renamed] -> m S
-basis2tenv  = foldM each env0 where
-  each gg0 (ValEn { enName = n, enType = t }) = do
-    Statics.addVal gg0 n t
-  each gg0 (DecEn { enSrc = decl }) = do
-    (gg1, _, _) <- tcDecls False gg0 [decl]
-    return gg1
-  each gg0 (TypEn { enName = n, enTyCon = i }) =
-    return (Statics.addType gg0 n i)
-  each gg0 (ModEn { enModName = n, enEnts = es }) =
-    Statics.addMod gg0 n $ \gg' -> foldM each gg' es
+basis2tenv  = liftM snd . runTC env0 . tcMapM each where
+  each ValEn { enName = n, enType = t }
+    = Statics.addVal n t
+  each DecEn { enSrc = decl }
+    = Statics.addDecl decl
+  each TypEn { enName = n, enTyCon = i }
+    = Statics.addType n i
+  each ModEn { enModName = n, enEnts = es }
+    = Statics.addMod n $ tcMapM each es
 
