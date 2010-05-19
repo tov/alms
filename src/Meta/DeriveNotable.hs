@@ -32,7 +32,7 @@ instance ExtDN a r => ExtDN Name (a -> r) where
 instance ExtDN a r => ExtDN [Name] (a -> r) where
   extDN dn ns = extDN (dn { dnExcept = ns })
 instance (ExtDN a r, ix ~ Int) => ExtDN (Name, [ix]) (a -> r) where
-  extDN dn cxt = extDN (dn { dnContext = cxt : dnContext dn })
+  extDN dn context = extDN (dn { dnContext = context : dnContext dn })
 
 deriveNotable :: ExtDN a r => a -> r
 deriveNotable = extDN DeriveNotableRec {

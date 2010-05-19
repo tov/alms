@@ -4,7 +4,9 @@
 GHC      = ghc
 EXE      = alms
 EXAMPLES = ../examples
-SRC      = *.hs Basis/*.hs Syntax/*.hs Meta/*.hs
+SRC      = $(HS_SRC) $(HSBOOT_SRC)
+HS_SRC      = *.hs Basis/*.hs Basis/Channel/*.hs Syntax/*.hs Meta/*.hs
+HSBOOT_SRC  = Syntax/*.hs-boot
 
 HCOPTS  = -W -Wall -O0 $(EDITING) $(NOWARN)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
@@ -17,10 +19,9 @@ $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 
 clean:
-	$(RM) Basis/*.hi Basis/*.o
-	$(RM) Meta/*.hi Meta/*.o
-	$(RM) Syntax/*.hi Syntax/*.o
-	$(RM) *.hi *.o $(EXE) $(EXE)-6.*
+	$(RM) $(HS_SRC:.hs=.hi) $(HS_SRC:.hs=.o)
+	$(RM) $(HSBOOT_SRC:.hs-boot=.hi-boot) $(HSBOOT_SRC:.hs-boot=.o-boot)
+	$(RM) $(EXE) $(EXE)-6.*
 
 wc.%:
 	find .. -name \*."$*" | xargs wc -l

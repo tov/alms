@@ -131,16 +131,16 @@ deriveAntibles  = concatMapM each where
   each SyntaxClass { scDict = Nothing } = return []
   each sc@SyntaxClass { scDict = Just dict } = do
     TH.TyConI tc <- reify (scName sc)
-    (cxt, tvs) <- case tc of
-      TH.DataD cxt _ tvs _ _    -> return (cxt, tvs)
-      TH.NewtypeD cxt _ tvs _ _ -> return (cxt, tvs)
-      TH.TySynD _ tvs _         -> return ([], tvs)
+    tvs <- case tc of
+      TH.DataD _ _ tvs _ _    -> return tvs
+      TH.NewtypeD _ _ tvs _ _ -> return tvs
+      TH.TySynD _ tvs _       -> return tvs
       _ -> fail "deriveAntibles requires type"
     a <- TH.newName "a"
     let wrapper p = case scWrap sc of
           Nothing -> p
           Just _  -> TH.conP 'N [TH.wildP, p]
-    [InstanceD context head decs] <-
+    [InstanceD context hd decs] <-
       [d| instance Antible $(foldl TH.appT (TH.conT (scName sc))
                                    (map typeOfTyVarBndr tvs)) where
             injAnti     = $(varE (maybe 'id id (scWrap sc)))
@@ -160,7 +160,7 @@ deriveAntibles  = concatMapM each where
             dictOfList      = const listAntis
         |]
     context' <- buildContext tvs (scCxt sc)
-    return [InstanceD (context' ++ context) head decs]
+    return [InstanceD (context' ++ context) hd decs]
 
 --
 -- Location expanders
@@ -171,7 +171,7 @@ class LocAst stx where
 
 deriveLocAst :: Name -> SyntaxClass -> TH.Q [TH.Dec]
 deriveLocAst _     SyntaxClass { scWrap = Nothing } = return []
-deriveLocAst build SyntaxClass { scName = name, scCxt = cxt } = do
+deriveLocAst build SyntaxClass { scName = name, scCxt = context } = do
   info <- reify name
   case info of
     -- Located t i
@@ -199,7 +199,7 @@ deriveLocAst build SyntaxClass { scName = name, scCxt = cxt } = do
   thenDCon dcon ts
     | Just ix <- elemIndex (ConT ''Loc.Loc) ts = do
       i <- newName "i"
-      [InstanceD [] head decls] <-
+      [InstanceD [] hd decls] <-
         [d| instance LocAst ($(conT name) $(varT i)) where
               toLocAstQ loc stx =
                 do
@@ -214,10 +214,10 @@ deriveLocAst build SyntaxClass { scName = name, scCxt = cxt } = do
                   let pat preAstQ =
                         conS $(stringE (show 'N))
                             [ conS $(stringE (show dcon))
-                                   $(listE [ if i == ix
+                                   $(listE [ if j == ix
                                                then [| varS loc [] |]
                                                else [| wildS |]
-                                           | i <- [0 .. length ts - 1] ])
+                                           | j <- [0 .. length ts - 1] ])
                             , preAstQ ]
                   ast <- $(varE build) stx
                   case ast of
@@ -227,8 +227,8 @@ deriveLocAst build SyntaxClass { scName = name, scCxt = cxt } = do
                       "BUG! toLocAstQ did not recognize " ++
                       "expanded code: " ++ show ast
           |]
-      context' <- buildContext [PlainTV i] ((''Data, [0]) : cxt)
-      return [InstanceD context' head decls]
+      context' <- buildContext [PlainTV i] ((''Data, [0]) : context)
+      return [InstanceD context' hd decls]
     | otherwise = return []
 
 deriveLocAsts :: Name -> SyntaxTable -> TH.Q [TH.Dec]
@@ -350,7 +350,7 @@ tab $: dict = tab { scDict = Just dict }
 
 -- | Extend a syntax class with a context
 (>:) :: SyntaxClass -> (Name, [Int]) -> SyntaxClass
-tab >: cxt  = tab { scCxt = cxt : scCxt tab }
+tab >: context = tab { scCxt = context : scCxt tab }
 
 infixl 2 =::, !:, $:, >:
 

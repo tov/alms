@@ -1,7 +1,10 @@
 EXE      = alms
 GHC      = ghc
 EXAMPLES = examples
-SRC      = src/*.hs src/Basis/*.hs src/Syntax/*.hs src/Meta/*.hs
+SRC      = $(HS_SRC) $(HSBOOT_SRC)
+HS_SRC      = src/*.hs src/Basis/*.hs src/Basis/Channel/*.hs \
+              src/Syntax/*.hs src/Meta/*.hs
+HSBOOT_SRC  = src/Syntax/*.hs-boot
 
 DOC      = dist/doc/html/alms/alms/
 
