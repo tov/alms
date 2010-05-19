@@ -52,11 +52,11 @@ import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
--- import System.IO.Unsafe (unsafePerformIO)
--- p :: Show a => a -> b -> b
--- p a b = unsafePerformIO (print a) `seq` b
--- pM :: (Show a, Monad m) => a -> m ()
--- pM a = if p a True then return () else fail "wibble"
+import System.IO.Unsafe (unsafePerformIO)
+p :: Show a => a -> b -> b
+p a b = unsafePerformIO (print a) `seq` b
+pM :: (Show a, Monad m) => a -> m ()
+pM a = if p a True then return () else fail "wibble"
 -- p = const
 
 -- The kind of names we're using.  Should change to 'Renamed'
@@ -671,19 +671,22 @@ indexQuals name tvs qexp = do
 tcTyDecs :: (?loc :: Loc, Monad m) =>
             [TyDec R] -> TC m [TyDec R]
 tcTyDecs tds0 = do
-  let (atds, stds0, dtds) = foldr partition ([], [], []) tds0
-  stds <- topSort getEdge stds0
+  let (atds, stds, dtds) = foldr partition ([], [], []) tds0
+  -- stds <- topSort getEdge stds0
   (_, stub) <- steal $ forM (dtds ++ stds) $ \td0 ->
     case dataOf td0 of
       TdDat name params _   -> allocStub name (map tvqual params)
       TdSyn name ((ps,_):_) -> allocStub name (map (const Qa) ps)
       _                     -> return ()
   let loop md = do
-        (changed, md') <-
-          steal $ inModule md $ mapM tcTyDec (atds ++ dtds ++ stds)
+        ((changed, tcs), md') <-
+          steal $
+            inModule md $
+              liftM unzip $
+                mapM tcTyDec (atds ++ dtds ++ stds)
         if or changed
           then loop md'
-          else tds0 <$ tell md'
+          else tds0 <$ tell (replaceTyCons tcs md')
    in loop stub
   where
     allocStub name params = do
@@ -711,23 +714,21 @@ tcTyDecs tds0 = do
 -- whether the type metadata has changed, which allows for iterating
 -- to a fixpoint.
 tcTyDec :: (?loc :: Loc, Monad m) =>
-           TyDec R -> TC m Bool
+           TyDec R -> TC m (Bool, TyCon)
 tcTyDec td0 = case dataOf td0 of
   TdAbs name params variances quals -> do
     quals' <- indexQuals name params quals
     us     <- currentModulePath
-    bindTycon name $
-      mkTC (J us name) quals'
-           [ (tvqual parm, var) | var <- variances | parm <- params ]
-    return False
-  TdSyn _    []     -> do
-    return False
-  TdSyn name (c:cs) -> do
+    let tc' = mkTC (J us name) quals'
+                   [ (tvqual parm, var) | var <- variances | parm <- params ]
+    bindTycon name tc'
+    return (False, tc')
+  TdSyn name cs -> do
     tc   <- find (J [] name :: QLid R)
-    let nparams = length (fst c)
+    let nparams = length (fst (head cs))
     tassert (all ((==) nparams . length . fst) cs) $
       "all type operator clauses have the same number of parameters"
-    (cs', quals, vqs) <- liftM unzip3 $ forM (c:cs) $ \(tps, rhs) -> do
+    (cs', quals, vqs) <- liftM unzip3 $ forM cs $ \(tps, rhs) -> do
       rhs' <- tcType rhs
       let vs1 = ftvVs rhs'
       (tps', tvses, vqs) <- liftM unzip3 $ forM tps $ \tp -> do
@@ -752,7 +753,7 @@ tcTyDec td0 = case dataOf td0 of
         tc'     = tc { tcArity = arity,    tcQual = qual,
                        tcNext  = Just cs', tcBounds = bounds }
     bindTycon name tc'
-    return changed
+    return (changed, tc')
   TdDat name params alts -> do
     tc <- find (J [] name :: QLid R)
     alts' <- sequence
@@ -771,7 +772,7 @@ tcTyDec td0 = case dataOf td0 of
                        tcCons = (params, fromList alts') }
     bindTycon name tc'
     bindAlts params tc' alts'
-    return changed
+    return (changed, tc')
   TdAnti a -> $antifail
 
 -- | Build a module of datacon types from a datatype's
@@ -1027,7 +1028,7 @@ tcAbsTy atds ds = do
         ", is more general than actual qualifier " ++ show (tcQual tc)
       return (abstractTyCon tc)
     _ -> terr "(BUG) Can't abstract non-datatypes"
-  tell (foldr replaceTyCon (md1 `mappend` md2) tcs)
+  tell (replaceTyCons tcs (md1 `mappend` md2))
   return (atds, ds')
 
 -- | Type check a declaration

@@ -3,14 +3,25 @@
 *)
 
 module SessionType = struct
-  (* Unfortunately, we need several types to be primitive in order to
-   * compute duals. *)
-  open Prim.SessionType
-
   module C = Channel
 
-  -- type -'<a ; +'<s
-  type ('a, 's) semi = 'a; 's
+  type 1
+  type +'a ; +'s
+  type ! -'<a
+  type ? +'<a
+  type +'a |+| +'b
+  type +'a |&| +'b
+
+  type '<a send = !'<a
+  type '<a recv = ?'<a
+  type ('a, 'b) select = 'a |+| 'b
+  type ('a, 'b) follow = 'a |&| 'b
+
+  type 1           dual = 1
+     | (!'<a ; 's) dual = ?'<a ; 's dual
+     | (?'<a ; 's) dual = !'<a ; 's dual
+     | ('a |+| 'b) dual = 'a dual |&| 'b dual
+     | ('a |&| 'b) dual = 'a dual |+| 'b dual
 
   abstype 's rendezvous = Rendezvous of ('s channel C.channel)
       and +'s channel qualifier A = Chan of bool C.channel
@@ -26,26 +37,26 @@ module SessionType = struct
         C.send r (Chan['s] c);
         Chan['s dual] c
 
-    let send['<a, 's] (Chan c: ('<a send; 's) channel)|
+    let send['<a, 's] (Chan c: (!'<a; 's) channel)|
                       (a: '<a) : 's channel =
       C.send c (Unsafe.unsafeCoerce[bool] a);
       Chan['s] c
 
-    let recv['<a, 's] (Chan c: ('<a recv; 's) channel)
+    let recv['<a, 's] (Chan c: (?'<a; 's) channel)
                       : '<a * 's channel =
       (Unsafe.unsafeCoerce['<a] (C.recv c), Chan['s] c)
 
-    let sel1['s1, 's2] (Chan c: ('s1, 's2) select channel)
+    let sel1['s1, 's2] (Chan c: ('s1 |+| 's2) channel)
                        : 's1 channel =
       C.send c true;
       Chan['s1] c
 
-    let sel2['s1, 's2] (Chan c: ('s1, 's2) select channel)
+    let sel2['s1, 's2] (Chan c: ('s1 |+| 's2) channel)
                        : 's2 channel =
       C.send c false;
       Chan['s2] c
 
-    let follow['s1, 's2] (Chan c: ('s1, 's2) follow channel)
+    let follow['s1, 's2] (Chan c: ('s1 |&| 's2) channel)
                          : 's1 channel + 's2 channel =
       if C.recv c
         then Left ['s1 channel, 's2 channel] (Chan['s1] c)

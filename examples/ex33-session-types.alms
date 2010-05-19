@@ -5,7 +5,7 @@
 
 open SessionType
 
-type protocol = int send; int send; int recv; unit
+type protocol = !int; !int; ?int; 1
 
 let server =
   fun c : protocol dual channel ->

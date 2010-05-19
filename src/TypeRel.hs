@@ -1,13 +1,14 @@
 {-# LANGUAGE
       ParallelListComp,
       PatternGuards,
-      RankNTypes #-}
+      RankNTypes,
+      RelaxedPolyRec #-}
 module TypeRel (
   -- * Type operations
   -- ** Equality and subtyping
   AType(..), subtype, jointype,
   -- ** Queries and conversions
-  qualConst, abstractTyCon, replaceTyCon,
+  qualConst, abstractTyCon, replaceTyCon, replaceTyCons,
   -- * Tests
   tests,
 ) where
@@ -29,19 +30,34 @@ import qualified Test.HUnit as T
 abstractTyCon :: TyCon -> TyCon
 abstractTyCon tc = tc { tcCons = ([], empty), tcNext = Nothing }
 
--- | Given a type constructor and something traversable, find all
---   constructors with the same identity as the given type one, and
+-- | Given a list of type constructors and something traversable,
+--   find all constructors with the same identity as the given type one, and
 --   replace them.  We can use this for type abstraction by redacting
---   data constructor or synonym expansions.
-replaceTyCon :: Data a => TyCon -> a -> a
-replaceTyCon tc' = everywhere (mkT tycon `extT` tyapp) where
+--   data constructor or synonym expansions.  It also replaces within
+--   the list of type constructors themselves, which ties the not for
+--   recursive type constructors.
+replaceTyCons :: Data a => [TyCon] -> a -> a
+replaceTyCons tcs0 = loop where
+  tcs  :: M.Map (QLid Renamed) TyCon
+  tcs   = M.fromList [ (tcName tc, tc) | tc <- tcs0 ]
+  --
+  loop :: Data a => a -> a
+  loop  = everywhere (mkT tycon `extT` tyapp)
+  --
   tycon :: TyCon -> TyCon
-  tycon tc | tc == tc' = tc'
-           | otherwise = tc
+  tycon tc
+    | Just tc' <- M.lookup (tcName tc) tcs
+                = tc' {
+                    tcNext = loop (tcNext tc'),
+                    tcCons = loop (tcCons tc')
+                  }
+    | otherwise = tc
   tyapp :: Type -> Type
-  tyapp (TyApp tc ts _)
-    | tc == tc' = tyApp tc' ts
-  tyapp t       = t
+  tyapp (TyApp tc ts _) = tyApp tc ts
+  tyapp t               = t
+
+replaceTyCon :: Data a => TyCon -> a -> a
+replaceTyCon tc = replaceTyCons [tc]
 
 -- | The constant bound on the qualifier of a type
 qualConst :: Type -> QLit
