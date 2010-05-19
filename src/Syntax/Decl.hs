@@ -91,12 +91,11 @@ data TyDec' i
       -- | Whether each parameter contributes to the qualifier
       tdQual      :: QExp i
     }
-  -- | A type synonym
+  -- | A type operator or synonym
   | TdSyn {
       tdName      :: Lid i,
-      tdParams    :: [TyVar i],
-      tdRHS       :: Type i
-    }
+      tdClauses   :: [([TyPat i], Type i)]
+  }
   -- | An algebraic datatype
   | TdDat {
       tdName      :: Lid i,

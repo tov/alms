@@ -80,3 +80,7 @@ instance PO a => PO (Maybe a) where
   Nothing <:  _         = True
   _       <:  Nothing   = False
 
+instance (PO a, PO b) => PO (a, b) where
+  ifMJ d (a, b) (a', b') = liftM2 (,) (ifMJ d a a') (ifMJ d b b')
+  (a, b) <: (a', b') = a <: a' && b <: b'
+

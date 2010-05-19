@@ -3,7 +3,7 @@
 -- We use operator precedences from Ocaml.  The precence and
 -- associativity of an operator is determined by its first character.
 module Prec (
-  Prec, precOp,
+  Prec, precOp, fixities,
   -- * Precedences for reserved operators needed by the parser
   precMin, precStart, precMax,
   precCast, precCom, precDot, precSemi, precEq, precAt, precArr,
@@ -49,3 +49,16 @@ precApp   =  9 -- f x
 precBang  = 10 -- ! ~ ? (prefix)
 precTApp  = 11 -- f[t]
 precMax   = 11
+
+-- To find out the fixity of a precedence level
+fixities :: Int -> Maybe Prec
+fixities n
+  | n == precArr  = Just $ Right precArr
+  | n == precEq   = Just $ Left precEq
+  | n == precAt   = Just $ Right precAt
+  | n == precPlus = Just $ Left precPlus
+  | n == precStar = Just $ Left precStar
+  | n == precSemi = Just $ Right precSemi
+  | n == precExp  = Just $ Right precExp
+  | n == precBang = Just $ Right precBang
+  | otherwise     = Nothing

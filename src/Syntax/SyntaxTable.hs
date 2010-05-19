@@ -19,7 +19,7 @@ import qualified Language.Haskell.TH as TH
 
 litAntis, pattAntis,
   exprAntis, bindingAntis, caseAltAntis,
-  typeAntis, quantAntis, qExpAntis, tyVarAntis,
+  typeAntis, tyPatAntis, quantAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   lidAntis, uidAntis, qlidAntis, quidAntis, idAntis, noAntis
     :: AntiDict
@@ -47,6 +47,9 @@ typeAntis
   = "type"   =:! Nothing
   & "stx"    =:  appFun (TH.mkName "typeToStx'")
   & "anti"   =:< 'TyAnti
+tyPatAntis
+  = "typat"  =:  Nothing
+  & "antiP"  =:< 'TpAnti
 quantAntis
   = "quant"  =:  Nothing
   & "antiQ"  =:< 'QuantAnti
@@ -105,6 +108,7 @@ syntaxTable =
   , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding >: (''Id, [0])
   , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt >: (''Id, [0])
   , ''Type    =:: 'TyAnti    $: 'typeAntis    !: 'newN
+  , ''TyPat   =:: 'TpAnti    $: 'tyPatAntis   !: 'newN
   , ''Quant   =:: 'QuantAnti $: 'quantAntis
   , ''QExp    =:: 'QeAnti    $: 'qExpAntis    !: 'newN
   , ''TyVar   =:: 'TVAnti    $: 'tyVarAntis

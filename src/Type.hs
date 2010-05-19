@@ -26,7 +26,8 @@ module Type (
   -- ** Substitutions
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
-  castableType, typeToStx, typeToStx', qualifier,
+  castableType, typeToStx, typeToStx', tyPatToStx, tyPatToStx',
+  tyPatToType, qualifier,
   -- * Built-in types
   -- ** Type constructors
   mkTC,
@@ -688,11 +689,20 @@ typeToStx = loop (S.empty, M.empty) where
      in (tv', (S.insert (unLid (tvname tv')) seen,
                M.insert tv tv' remap))
 
--- | Represent a type pattern as a syntactic type, for printing
-tyPatToStx :: TyPat -> Stx.Type Renamed
+tyPatToStx' :: TyPat -> Stx.TyPat' Renamed
+tyPatToStx'  = view . tyPatToStx
+
+-- | Represent a type pattern as a syntactic type pattern, for printing
+tyPatToStx :: TyPat -> Stx.TyPat Renamed
 tyPatToStx tp0 = case tp0 of
-  TpVar tv      -> Stx.tyVar tv
-  TpApp tc tps  -> Stx.tyApp (tcName tc) (map tyPatToStx tps)
+  TpVar tv      -> Stx.tpVar tv Invariant
+  TpApp tc tps  -> Stx.tpApp (tcName tc) (map tyPatToStx tps)
+
+-- | Convert a type pattern to a type; useful for quqlifier and variance
+--   analysis
+tyPatToType :: TyPat -> Type
+tyPatToType (TpVar tv)     = TyVar tv
+tyPatToType (TpApp tc tps) = tyApp tc (map tyPatToType tps)
 
 castableType :: Type -> Bool
 castableType t = case headNormalizeType t of

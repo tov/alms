@@ -56,9 +56,25 @@ class Separator a where
 instance Separator (Type i) where
   separator _ = comma
 
+instance Separator (TyPat i) where
+  separator _ = comma
+
 instance (Ppr a, Separator a) => Ppr [a] where
   ppr xs = hcat (intersperse (separator (head xs))
                              (map (pprPrec precCom) xs))
+
+class Ppr a => IsInfix a where
+  isInfix  :: a -> Bool
+  pprRight :: Int -> a -> Doc
+  pprRight p a =
+    if isInfix a
+      then pprPrec p a
+      else ppr a
+
+instance IsInfix (Type i) where
+  isInfix [$ty| ($_, $_) $lid:n |] = isOperator n
+  isInfix [$ty| $_ -[$_]> $_ |]    = True
+  isInfix _                        = False
 
 instance Ppr (Type i) where
   -- Print sugar for infix type constructors:
@@ -70,10 +86,14 @@ instance Ppr (Type i) where
   pprPrec p [$ty| $t1 -[$q]> $t2 |]
                   = parensIf (p > precArr) $
                     sep [ pprPrec (precArr + 1) t1,
-                          pprArr (view q) <+> pprPrec precArr t2 ]
+                          pprArr (view q) <+> pprRight precArr t2 ]
     where pprArr (QeLit Qu) = text "->"
           pprArr (QeLit Qa) = text "-o"
           pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
+  pprPrec p [$ty| $t1 $lid:n |]
+    | isOperator n && precOp (unLid n) == Right precBang =
+        parensIf (p > precBang) $
+          text (unLid n) <> pprPrec (precBang + 1) t1
   pprPrec p [$ty| ($t1, $t2) $lid:n |]
     | isOperator n
                   = case precOp (unLid n) of
@@ -110,6 +130,32 @@ instance Ppr (Type i) where
                               char '.'
                                 >+> pprPrec precDot t
   pprPrec p [$ty| $anti:a |] = pprPrec p a
+
+instance Ppr (TyPat i) where
+  pprPrec p tp0 = case tp0 of
+    N _ (TpVar tv var)   -> pprParamV var tv
+    [$tpQ| $typat:tp1 $lid:n |]
+      | isOperator n && precOp (unLid n) == Right precBang ->
+        let sp = if p > precBang then " " else "" in
+        text (sp ++ unLid n) <> pprPrec (precBang + 1) tp1
+    [$tpQ| ($typat:tp1, $typat:tp2) $lid:n |]
+      | isOperator n -> case precOp (unLid n) of
+        Left prec  -> parensIf (p > prec) $
+                      sep [ pprPrec prec tp1,
+                            text (unLid n) <+> pprPrec (prec + 1) tp2 ]
+        Right prec -> parensIf (p > prec) $
+                      sep [ pprPrec (prec + 1) tp1,
+                            text (unLid n) <+> pprPrec prec tp2 ]
+    [$tpQ| $qlid:ql |] -> ppr ql
+    [$tpQ| $typat:tp $qlid:ql |] 
+                       -> parensIf (p > precApp) $
+                            sep [ pprPrec precApp tp,
+                                  ppr ql ]
+    [$tpQ| ($list:tps) $qlid:ql |] 
+                       -> parensIf (p > precApp) $
+                            sep [ parens (ppr tps),
+                                  ppr ql ]
+    [$tpQ| $antiP:a |] -> ppr a
 
 instance Ppr (QExp i) where
   pprPrec p [$qeQ| $qlit:qu |] = pprPrec p qu
@@ -188,10 +234,15 @@ instance Ppr (Decl i) where
 
 instance Ppr (TyDec i) where
   ppr td = case view td of
-    TdAbs n ps vs qs -> pprProtoV n vs ps >?> pprQuals qs
-    TdSyn n ps rhs   -> pprProto n ps >?> equals <+> ppr rhs
-    TdDat n ps alts  -> pprProto n ps >?> pprAlternatives alts
-    TdAnti a         -> ppr a
+    TdAbs n ps vs qs  -> pprProtoV n vs ps >?> pprQuals qs
+    TdSyn n [(ps,t)]  -> pprProto n ps >+> equals <+> ppr t
+    TdSyn n cs        -> vcat [ char '|' <+> each ci | ci <- cs ]
+      where
+        each (ps, rhs) = pprProto n ps
+                           >+> char '=' <+> ppr rhs
+    TdDat n ps alts   -> pprProtoV n (repeat Invariant) ps
+                           >?> pprAlternatives alts
+    TdAnti a          -> ppr a
 
 pprAbsTy :: AbsTy i -> Doc
 pprAbsTy at = case view at of
@@ -202,28 +253,15 @@ pprAbsTy at = case view at of
   AbsTy _ _ td -> ppr td -- shouldn't happen (yet)
   AbsTyAnti a -> ppr a
 
-pprProto     :: Lid i -> [TyVar i] -> Doc
-pprProto n [tv1, tv2]
-  | isOperator n = ppr tv1 <+> text (unLid n) <+> ppr tv2
-pprProto n tvs   = pprParams tvs <?> ppr n
+pprProto  :: Lid i -> [TyPat i] -> Doc
+pprProto n ps = ppr (tpApp (J [] n) ps)
 
-pprProtoV     :: Lid i -> [Variance] -> [TyVar i] -> Doc
-pprProtoV n [v1, v2] [tv1, tv2]
-  | isOperator n   = ppr v1 <> ppr tv1 <+>
-                     text (unLid n)    <+>
-                     ppr v2 <> ppr tv2
-pprProtoV n vs tvs = pprParamsV vs tvs <?> ppr n
+pprProtoV :: Lid i -> [Variance] -> [TyVar i] -> Doc
+pprProtoV n vs tvs = pprProto n (zipWith tpVar tvs vs)
 
--- | Print a list of type variables as printed as the parameters
---   to a type.
-pprParams    :: [TyVar i] -> Doc
-pprParams tvs = delimList parens comma (map ppr tvs)
-
-pprParamsV       :: [Variance] -> [TyVar i] -> Doc
-pprParamsV vs tvs = delimList parens comma (zipWith pprParam vs tvs)
-  where
-    pprParam Invariant tv = ppr tv
-    pprParam v         tv = ppr v <> ppr tv
+pprParamV :: Variance -> TyVar i -> Doc
+pprParamV Invariant tv = ppr tv
+pprParamV v         tv = ppr v <> ppr tv
 
 pprQuals :: QExp i -> Doc
 pprQuals [$qeQ| U |] = empty
@@ -411,6 +449,7 @@ instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show (Patt i)   where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
+instance Show (TyPat i)  where showsPrec = showFromPpr
 instance Show (QExp i)   where showsPrec = showFromPpr
 
 instance Ppr QLit      where pprPrec = pprFromShow
@@ -429,20 +468,11 @@ showFromPpr p t = shows (pprPrec p t)
 pprFromShow :: Show a => Int -> a -> Doc
 pprFromShow p t = text (showsPrec p t "")
 
-delimList :: (Doc -> Doc) -> Doc -> [Doc] -> Doc
-delimList around delim ds = case ds of
-  []  -> empty
-  [d] -> d
-  _   -> around . fsep . punctuate delim $ ds
-
 liftEmpty :: (Doc -> Doc -> Doc) -> Doc -> Doc -> Doc
 liftEmpty joiner d1 d2
   | isEmpty d1 = d2
   | isEmpty d2 = d1
   | otherwise  = joiner d1 d2
-
-(<?>) :: Doc -> Doc -> Doc
-(<?>)  = liftEmpty (<+>)
 
 (>+>) :: Doc -> Doc -> Doc
 (>+>) = flip hang 2
@@ -450,6 +480,5 @@ liftEmpty joiner d1 d2
 (>?>) :: Doc -> Doc -> Doc
 (>?>)  = liftEmpty (>+>)
 
-infixr 6 <?>
 infixr 5 >+>, >?>
 

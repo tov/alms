@@ -6,8 +6,8 @@
 
 module AArray = struct
   type '<a / '<b
-  type () 1
-  type () 2
+  type 1
+  type 2
   local
     module A = Array
   with

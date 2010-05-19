@@ -6,9 +6,10 @@
       TypeFamilies #-}
 module Syntax.Type (
   -- * Types
-  Quant(..), Type'(..), Type,
+  Quant(..), Type'(..), Type, TyPat'(..), TyPat,
   -- ** Constructors
   tyApp, tyVar, tyFun, tyQu, tyMu, tyAnti,
+  tpVar, tpApp, tpAnti,
 
   -- * Built-in types
   tyNulOp, tyUnOp, tyBinOp,
@@ -33,6 +34,9 @@ import Data.Generics (Typeable, Data)
 data Quant = Forall | Exists | QuantAnti Anti
   deriving (Typeable, Data, Eq, Ord)
 
+type Type i  = Located Type' i
+type TyPat i = Located TyPat' i
+
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon
 data Type' i
@@ -44,9 +48,18 @@ data Type' i
   | TyAnti Anti
   deriving (Typeable, Data)
 
-type Type i = Located Type' i
+-- | Type patterns for defining type operators
+data TyPat' i
+  -- | type variables
+  = TpVar (TyVar i) Variance
+  -- | type constructor applications
+  | TpApp (QLid i) [TyPat i]
+  -- | antiquotes
+  | TpAnti Anti
+  deriving (Typeable, Data)
 
 deriveNotable ''Type
+deriveNotable ''TyPat
 
 -- | Convenience constructors for qualified types
 tyAll, tyEx :: TyVar i -> Type i -> Type i

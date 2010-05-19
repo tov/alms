@@ -18,7 +18,7 @@ module Util (
 
   -- * More convenience
   -- ** Maybe functions
-  fromJust, (?:),
+  (?:),
   -- ** Either funtions
   isLeft, isRight,
   -- ** List functions
@@ -32,13 +32,14 @@ module Util (
   (<$$>), (<$$$>), (<$$$$>), (<$$$$$>),
 
   -- * Re-exports
+  module Data.Maybe,
   module Control.Arrow,
   module Control.Monad,
   module Control.Applicative
 ) where
 
 import Data.Char (chr, ord)
-import Data.Maybe (fromJust)
+import Data.Maybe
 import Control.Arrow hiding (loop, (<+>))
 import Control.Monad
 import Control.Applicative (Applicative(..), (<$>), (<$), (<**>))

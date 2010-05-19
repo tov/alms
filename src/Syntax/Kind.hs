@@ -11,8 +11,10 @@ module Syntax.Kind (
   Variance(..),
   -- ** Qualifier operations
   qConstBound, elimQLit,
-  qDenToLit, qInterpretM, qInterpret, qInterpretCanonical, qRepresent,
-  qSubst, numberQDenM, numberQDen, denumberQDen
+  qDenToLit, qDenFtv,
+  qInterpretM, qInterpret, qInterpretCanonical, qRepresent,
+  qSubst,
+  numberQDenM, numberQDen, numberQDenMap, denumberQDen
 ) where
 
 import Meta.DeriveNotable
@@ -27,6 +29,8 @@ import Util
 import Control.Monad.Identity (runIdentity)
 import Data.List (elemIndex)
 import Data.Generics (Typeable, Data)
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- QUALIFIERS, VARIANCES
 
@@ -133,6 +137,9 @@ qDenToLit (QDen pdnf)
   | PDNF.isValid pdnf = Just Qa
   | otherwise         = Nothing
 
+qDenFtv :: Ord a => QDen a -> S.Set a
+qDenFtv (QDen pdnf) = PDNF.support pdnf
+
 qSubst :: Ord tv => tv -> QDen tv -> QDen tv -> QDen tv
 qSubst v (QDen pdnf1) (QDen pdnf2) = QDen (PDNF.replace v pdnf1 pdnf2)
 
@@ -147,6 +154,15 @@ numberQDenM unbound tvs (QDen pdnf) =
 
 numberQDen  :: Ord tv => [tv] -> QDen tv -> QDen Int
 numberQDen = runIdentity <$$> numberQDenM (const (return minBound))
+
+numberQDenMap :: Ord tv =>
+                 (tv -> QLit) ->
+                 M.Map tv Int ->
+                 QDen tv -> QDen Int
+numberQDenMap lit m = runIdentity . numberQDenM get [] where
+  get tv = case M.lookup tv m of
+    Just i  -> return (QDen (PDNF.variable i))
+    Nothing -> return (elimQLit minBound maxBound (lit tv))
 
 -- | Given a qualifier set of indices into a list of qualifier
 --   expressions, build the qualifier set over the qexps.

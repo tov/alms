@@ -35,7 +35,8 @@ import qualified Syntax.Expr
 import qualified Syntax.Notable
 import qualified Syntax.Patt
 import Syntax hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
-                      tyTuple, tyUnit, tyArr, tyApp)
+                      tyTuple, tyUnit, tyArr, tyApp,
+                      TyPat, TyPat'(..))
 import Loc
 import Env as Env
 import Ppr ()
@@ -46,6 +47,7 @@ import Coercion (coerceExpression)
 import Control.Monad.RWS    as RWS
 import Data.Data (Typeable, Data)
 import Data.Generics (everywhere, mkT)
+import Data.List (transpose)
 import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -673,9 +675,9 @@ tcTyDecs tds0 = do
   stds <- topSort getEdge stds0
   (_, stub) <- steal $ forM (dtds ++ stds) $ \td0 ->
     case dataOf td0 of
-      TdDat name params _ -> allocStub name params
-      TdSyn name params _ -> allocStub name params
-      _                   -> return ()
+      TdDat name params _   -> allocStub name (map tvqual params)
+      TdSyn name ((ps,_):_) -> allocStub name (map (const Qa) ps)
+      _                     -> return ()
   let loop md = do
         (changed, md') <-
           steal $ inModule md $ mapM tcTyDec (atds ++ dtds ++ stds)
@@ -687,11 +689,11 @@ tcTyDecs tds0 = do
     allocStub name params = do
       us <- currentModulePath
       let tc = mkTC (J us name)
-                    [ (tvqual tv, Omnivariant) | tv <- params ]
+                    [ (q, Omnivariant) | q <- params ]
       bindTycon name tc
     --
     getEdge td0 = case dataOf td0 of
-      TdSyn name _ t    -> (name, tyConsOfType t)
+      TdSyn name cs     -> (name, S.unions (map (tyConsOfType . snd) cs))
       TdAbs name _ _ _  -> (name, S.empty)
       TdDat name _ alts -> (name, names) where
         names = S.unions [ tyConsOfType t | (_, Just t) <- alts ]
@@ -700,7 +702,7 @@ tcTyDecs tds0 = do
     partition td (atds, stds, dtds) =
       case dataOf td of
         TdAbs _ _ _ _ -> (td : atds, stds, dtds)
-        TdSyn _ _ _   -> (atds, td : stds, dtds)
+        TdSyn _ _     -> (atds, td : stds, dtds)
         TdDat _ _ _   -> (atds, stds, td : dtds)
         TdAnti a      -> $antierror
 
@@ -718,15 +720,37 @@ tcTyDec td0 = case dataOf td0 of
       mkTC (J us name) quals'
            [ (tvqual parm, var) | var <- variances | parm <- params ]
     return False
-  TdSyn name params rhs -> do
+  TdSyn _    []     -> do
+    return False
+  TdSyn name (c:cs) -> do
     tc   <- find (J [] name :: QLid R)
-    rhs' <- tcType rhs
-    let qual    = numberQDen params (qualifier rhs')
-        arity   = typeVariances params rhs'
+    let nparams = length (fst c)
+    tassert (all ((==) nparams . length . fst) cs) $
+      "all type operator clauses have the same number of parameters"
+    (cs', quals, vqs) <- liftM unzip3 $ forM (c:cs) $ \(tps, rhs) -> do
+      rhs' <- tcType rhs
+      let vs1 = ftvVs rhs'
+      (tps', tvses, vqs) <- liftM unzip3 $ forM tps $ \tp -> do
+        tp' <- tcTyPat tp
+        let tpt  = tyPatToType tp'
+            vs2  = ftvVs tpt
+            vs'  = M.intersectionWith (*) vs1 vs2
+            var  = bigVee (M.elems vs')
+            qp   = qualConst tpt
+            tvs  = qDenFtv (qualifier tpt)
+        return (tp', tvs, (var, qp))
+      let tvmap = M.unions [ M.fromDistinctAscList
+                               [ (tv, i) | tv <- S.toAscList tvs ]
+                           | tvs <- tvses
+                           | i <- [ 0 .. ] ]
+          qual  = numberQDenMap tvqual tvmap (qualifier rhs')
+      return ((tps', rhs'), qual, vqs)
+    let (arity, bounds) = unzip (map bigVee (transpose vqs))
+        qual    = bigVee quals
         changed = arity /= tcArity tc
                || qual  /= tcQual tc
-        tc'     = tc { tcArity = arity, tcQual = qual,
-                       tcNext  = Just [(map TpVar params, rhs')] }
+        tc'     = tc { tcArity = arity,    tcQual = qual,
+                       tcNext  = Just cs', tcBounds = bounds }
     bindTycon name tc'
     return changed
   TdDat name params alts -> do
@@ -817,6 +841,22 @@ tyConsOfType [$ty| $t1 -[$_]> $t2 |]   =
 tyConsOfType [$ty| $quant:_ '$_. $t |] = tyConsOfType t
 tyConsOfType [$ty| mu '$_. $t |]       = tyConsOfType t
 tyConsOfType [$ty| $anti:a |]          = $antierror
+
+tcTyPat :: Monad m => Syntax.TyPat R -> TC m TyPat
+tcTyPat (N note (Syntax.TpVar tv var))    = do
+  let ?loc = getLoc note
+  tassert (var == Invariant) $
+    "type pattern variable " ++ show tv ++
+    " cannot have a variance annotation"
+  return (TpVar tv)
+tcTyPat tp@[$tpQ| ($list:tps) $qlid:qu |] = do
+  let ?loc = _loc
+  tc <- find qu
+  tassert (isNothing (tcNext tc)) $
+    "type operator pattern `" ++ show tp ++
+    "' cannot also be a type operator"
+  TpApp tc <$> mapM tcTyPat tps
+tcTyPat [$tpQ| $antiP:a |]             = $antifail
 
 -- END type decl checking
 
@@ -1063,8 +1103,9 @@ tyConToDec :: TyCon -> TyDec R
 tyConToDec tc = case tc of
   _ | tc == tcExn
     -> tdAbs (lid "exn") [] [] maxBound
-  TyCon { tcName = n, tcNext = Just [(tp, rhs)] }
-    -> tdSyn (jname n) [ tv | TpVar tv <- tp ] (typeToStx rhs)
+  TyCon { tcName = n, tcNext = Just clauses }
+    -> tdSyn (jname n) [ (map tyPatToStx ps, typeToStx rhs)
+                       | (ps, rhs) <- clauses ]
   TyCon { tcName = n, tcCons = (ps, alts) }
     | not (isEmpty alts)
     -> tdDat (jname n) ps [ (u, fmap typeToStx mt)

@@ -367,6 +367,16 @@ renameDecl d0 = case d0 of
 renameTyDec :: Maybe (QExp Raw) -> TyDec Raw ->
                R (Maybe (QExp Renamed), TyDec Renamed)
 renameTyDec _   (N _ (TdAnti a)) = $antierror
+renameTyDec mqe (N note (TdSyn l clauses)) = do
+  case mqe of
+    Nothing -> return ()
+    Just _  -> fail "BUG! can't rename QExp in context of type synonym"
+  J [] l' <- getTycon (J [] l)
+  clauses' <- forM clauses $ \(ps, rhs) -> do
+    (ps', md) <- steal $ renameTyPats ps
+    rhs' <- inModule md $ renameType rhs
+    return (ps', rhs')
+  return (Nothing, tdSyn l' clauses' <<@ note)
 renameTyDec mqe (N note td)      = withLoc note $ do
   J [] l' <- getTycon (J [] (tdName td))
   let tvs = tdParams td
@@ -381,9 +391,7 @@ renameTyDec mqe (N note td)      = withLoc note $ do
       TdAbs _ _ variances qe -> do
         qe' <- renameQExp qe
         return (tdAbs l' tvs' variances qe')
-      TdSyn _ _ t -> do
-        t' <- renameType t
-        return (tdSyn l' tvs' t')
+      TdSyn _ _ -> fail "BUG! can't happen in Rename.renameTyDec"
       TdDat _ _ cons -> do
         cons' <- forM cons $ \(u, mt) -> do
           u'    <- bindDatacon u
@@ -529,6 +537,35 @@ renameType t0 = case t0 of
     return [$ty|+ mu '$tv'. $t' |]
   [$ty| $anti:a |] -> $antifail
 
+-- | Rename a type pattern
+renameTyPats :: [TyPat Raw] -> R [TyPat Renamed]
+renameTyPats x00 =
+  withLoc x00 $
+    M.S.evalStateT (mapM loop x00) M.empty where
+  loop :: TyPat Raw ->
+          M.S.StateT (M.Map (TyVar Raw) Loc) Renaming (TyPat Renamed)
+  loop x0 = case x0 of
+    [$tpQ| $antiP:a |] -> $antifail
+    N note (TpVar tv var) -> do
+      tv' <- tyvar (getLoc note) tv
+      return (tpVar tv' var <<@ note)
+    [$tpQ| ($list:tps) $qlid:ql |] -> do
+      ql'  <- lift (withLoc _loc (getTycon ql))
+      tps' <- mapM loop tps
+      return [$tpQ|+ ($list:tps') $qlid:ql' |]
+  --
+  tyvar :: Loc -> TyVar Raw ->
+           M.S.StateT (M.Map (TyVar Raw) Loc) Renaming (TyVar Renamed)
+  tyvar loc1 tv = do
+    seen <- M.S.get
+    case M.lookup tv seen of
+      Just loc2 -> fail $
+        "type variable " ++ show tv ++ " bound twice in type pattern at " ++
+        show loc1 ++ " and " ++ show loc2
+      Nothing   -> do
+        M.S.put (M.insert tv loc1 seen)
+        lift (bindTyvar tv)
+
 -- | Rename a qualifier expression
 renameQExp :: QExp Raw -> R (QExp Renamed)
 renameQExp qe0 = case qe0 of
@@ -546,7 +583,7 @@ renameQExp qe0 = case qe0 of
   [$qeQ| $anti:a |] -> do
     $antifail
 
--- | Rename a pattern and run a continuation in its context
+-- | Rename a pattern
 renamePatt :: Patt Raw -> R (Patt Renamed)
 renamePatt x00 =
   withLoc x00 $

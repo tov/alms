@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      PatternGuards,
       ScopedTypeVariables,
       TypeFamilies #-}
 -- | Parser
@@ -9,10 +10,11 @@ module Parser (
   parseQuasi,
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
-    parseTyDec, parseAbsTy, parseType, parseQExp, parseExpr, parsePatt,
+    parseTyDec, parseAbsTy, parseType, parseTyPat,
+    parseQExp, parseExpr, parsePatt,
     parseCaseAlt, parseBinding,
   -- * Convenience parsers (quick and dirty)
-  pp, pds, pd, pme, ptd, pt, pqe, pe, px
+  pp, pds, pd, pme, ptd, pt, ptp, pqe, pe, px
 ) where
 
 import Util
@@ -188,6 +190,8 @@ lidp  = Syntax.lid <$> Lexer.lid
 --  - tycon declarations
 lidnatp :: Id i => P (Lid i)
 lidnatp = Syntax.lid <$> (Lexer.lid <|> show <$> natural)
+      <|> operatorp
+      <|> Syntax.lid <$> try (parens semi)
       <|> antiblep
 
 -- Just operators
@@ -266,52 +270,63 @@ typepP p = addLoc $ case () of
                return (foldr tc t tvs)
              <|> typepP (p + 1)
     | p == precArr
-          -> chainr1last (typepP (p + 1))
+          -> chainr1last
+               (typepP (p + 1))
                (choice
                 [ tyArr <$ arrow,
                   tyLol <$ lolli,
-                  funbraces (tyFun <$> qExpp) ])
+                  funbraces (tyFun <$> qExpp),
+                  tybinopp (Right precArr) ])
                (typepP precStart)
-    | p == precPlus
-          -> chainl1last (typepP (p + 1))
-               (tybinopp [plus]) (typepP precStart) 
-    | p == precStar
-          -> chainl1last (typepP (p + 1))
-               (tybinopp [star, slash]) (typepP precStart)
     | p == precSemi
           -> chainr1last (typepP (p + 1))
-               (tybinopp [semi]) (typepP precStart)
+                         (tyBinOp <$> semi)
+                         (typepP precStart)
+    | Just (Left _) <- fixities p
+          -> chainl1last (typepP (p + 1))
+                         (tybinopp (Left p))
+                         (typepP precStart)
+    | Just (Right _) <- fixities p
+          -> chainr1last (typepP (p + 1))
+                         (tybinopp (Right p))
+                         (typepP precStart)
     | p == precApp -- this case ensures termination
           -> tyarg >>= tyapp'
-    | p <= precMax
+    | p <  precApp
           -> typepP (p + 1)
     | otherwise
           -> typepP precStart
   where
   tyarg :: Id i => P [Type i]
   tyarg  = choice
-           [ parens $ antiblep <|> commaSep1 (typepP precStart),
-             (:[]) <$> tyatom ]
-
+           [ (:[]) <$> tyatom,
+             parens $ antiblep <|> commaSep1 (typepP precStart) ]
+  --
   tyatom :: Id i => P (Type i)
   tyatom  = tyVar <$> tyvarp
         <|> tyApp <$> qlidnatp <*> pure []
         <|> antiblep
         <|> tyUn <$ qualU
         <|> tyAf <$ qualA
-
+        <|> do
+              ops <- many1 $ addLoc $
+                oplevelp (Right precBang) >>! tyApp . J []
+              arg <- tyatom <|> parens (typepP precStart)
+              return (foldr (\op t -> op [t]) arg ops)
+  --
   tyapp' :: Id i => [Type i] -> P (Type i)
   tyapp' [t] = option t $ do
     tc <- qlidnatp
     tyapp' [tyApp tc [t]]
   tyapp' ts  = do
-                 tc <- qlidnatp
-                 tyapp' [tyApp tc ts]
+    tc <- qlidnatp
+    tyapp' [tyApp tc ts]
 
-tybinopp :: Id i => [P String] -> P (Type i -> Type i -> Type i)
-tybinopp ops = do
-  op <- choice ops
-  return (tyBinOp op)
+tybinopp :: Id i => Prec -> P (Type i -> Type i -> Type i)
+tybinopp p = try $ do
+  op <- oplevelp p
+  when (unLid op == "-") pzero
+  return (\t1 t2 -> tyApp (J [] op) [t1, t2])
 
 progp :: Id i => P (Prog i)
 progp  = choice [
@@ -404,31 +419,136 @@ modexpp  = addLoc $ choice [
            ]
 
 tyDecp :: Id i => P (TyDec i)
-tyDecp = addLoc $ antiblep <|> do
-  (arity, tvs, name) <- tyProtp
-  choice [
-    do
-      unless (all (== Invariant) arity) pzero
+tyDecp = addLoc $ choice
+  [ antiblep
+  , do
+      optional (reservedOp "|")
+      tp    <- typatp
+      (name, ps) <- checkHead tp
+      case checkTVs ps of
+        Just (True, tvs, arity) ->
+          reservedOp "=" *>
+             (tdDat name tvs <$> altsp
+              <|> tryTySyn name ps)
+          <|> tdAbs name tvs arity <$> qualsp
+        Just (_, tvs, arity) ->
+          reservedOp "=" *> tryTySyn name ps
+          <|> tdAbs name tvs arity <$> qualsp
+        Nothing ->
+          reservedOp "=" *> tryTySyn name ps
+        ]
+  where
+  tryTySyn name ps = do
+    t    <- typep
+    alts <- many $ do
+      reservedOp "|"
+      tp <- typatp
+      (name', ps') <- checkHead tp
+      unless (name == name') $
+        unexpected $
+          "non-matching type operators `" ++ show name' ++
+          "' and `" ++ show name ++ "' in type pattern"
       reservedOp "="
+      ti <- typep
+      return (ps', ti)
+    return (tdSyn name ((ps,t):alts))
+  --
+  checkHead tp = case dataOf tp of
+    TpApp (J [] name) ps -> return (name, ps)
+    TpApp _ _            -> unexpected "qualified identifier"
+    TpVar _ _            -> unexpected "type variable"
+    TpAnti _             -> unexpected "antiquote"
+  --
+  checkTVs [] = return (True, [], [])
+  checkTVs (N _ (TpVar tv var):rest) = do
+    (b, tvs, vars) <- checkTVs rest
+    return (b && var == Invariant, tv:tvs, var:vars)
+  checkTVs _ = Nothing
+
+  {-
+  , do
+      (arity, tvs, name) <- tyProtp
       choice [
-        typep >>! tdSyn name tvs,
-        altsp >>! tdDat name tvs ],
-    do
-      quals <- qualsp
-      return (tdAbs name tvs arity quals) ]
+        do
+          unless (all (== Invariant) arity) pzero
+          reservedOp "="
+          choice [
+            typep >>! \rhs ->
+              tdSyn name [(map (flip tpVar Invariant) tvs, rhs)],
+            altsp >>! tdDat name tvs ],
+        do
+          quals <- qualsp
+          return (tdAbs name tvs arity quals) ]
+          ]
+          -}
 
 tyProtp :: Id i => P ([Variance], [TyVar i], Lid i)
 tyProtp  = choice [
   try $ do
     (v1, tv1) <- paramVp
-    con <- choice [ semi, star, slash, plus ] >>! Syntax.lid
+    n <- choice [ semi, operator ]
+    when (n == "-" || precOp n == Right precBang) pzero
     (v2, tv2) <- paramVp
-    return ([v1, v2], [tv1, tv2], con),
-  do
+    return ([v1, v2], [tv1, tv2], Syntax.lid n),
+  try $ do
+    l <- oplevelp (Right precBang)
+    (v1, tv1) <- paramVp
+    return ([v1], [tv1], l),
+  try $ do
     (arity, tvs) <- paramsVp
     name         <- lidnatp
     return (arity, tvs, name)
   ]
+
+typatp  :: Id i => P (TyPat i)
+typatp   = typatpP precStart
+
+typatpP :: Id i => Int -> P (TyPat i)
+typatpP p = addLoc $ case () of
+  _ | p == precSemi
+          -> chainr1last (typatpP (p + 1))
+                         (tpBinOp (qlid ";") <$ semi)
+                         (typatpP precStart)
+    | Just (Left _) <- fixities p
+          -> chainl1last (typatpP (p + 1))
+                         (tpBinOp . J [] <$> oplevelp (Left p))
+                         (typatpP precStart)
+    | Just (Right _) <- fixities p
+          -> chainr1last (typatpP (p + 1))
+                         (tpBinOp . J [] <$> oplevelp (Right p))
+                         (typatpP precStart)
+    | p == precApp -- this case ensures termination
+          -> tparg >>= tpapp'
+    | p <  precApp
+          -> typatpP (p + 1)
+    | otherwise
+          -> typatpP precStart
+  where
+  tpBinOp ql tp1 tp2 = tpApp ql [tp1, tp2]
+  --
+  tparg :: Id i => P [TyPat i]
+  tparg  = choice
+           [ (:[]) <$> tpatom,
+             parens $ antiblep <|> commaSep1 (typatpP precStart) ]
+  --
+  tpatom :: Id i => P (TyPat i)
+  tpatom  = uncurry (flip tpVar) <$> paramVp
+        <|> tpApp <$> qlidnatp <*> pure []
+        <|> antiblep
+        <|> tpApp (qlid "U") [] <$ qualU
+        <|> tpApp (qlid "A") [] <$ qualA
+        <|> do
+              ops <- many1 $ addLoc $
+                oplevelp (Right precBang) >>! tpApp . J []
+              arg <- tpatom <|> parens (typatpP precStart)
+              return (foldr (\op t -> op [t]) arg ops)
+  tpapp' :: Id i => [TyPat i] -> P (TyPat i)
+  tpapp' [t] = option t $ do
+    tc <- qlidnatp
+    tpapp' [tpApp tc [t]]
+  tpapp' ts  = do
+    tc <- qlidnatp
+    tpapp' [tpApp tc ts]
 
 letp :: Id i => P (Decl i)
 letp  = do
@@ -911,6 +1031,8 @@ parseTyDec    :: Id i => P (TyDec i)
 parseAbsTy    :: Id i => P (AbsTy i)
 -- | Parse a type
 parseType     :: Id i => P (Type i)
+-- | Parse a type pattern
+parseTyPat    :: Id i => P (TyPat i)
 -- | Parse a qualifier expression
 parseQExp     :: Id i => P (QExp i)
 -- | Parse an expression
@@ -930,6 +1052,7 @@ parseModExp    = finish modexpp
 parseTyDec     = finish tyDecp
 parseAbsTy     = finish absTyp
 parseType      = finish typep
+parseTyPat     = finish typatp
 parseQExp      = finish qExpp
 parseExpr      = finish exprp
 parsePatt      = finish pattp
@@ -960,6 +1083,10 @@ ptd  = makeQaD parseTyDec
 -- | Parse a type
 pt  :: String -> Type Renamed
 pt   = makeQaD parseType
+
+-- | Parse a type pattern
+ptp :: String -> TyPat Renamed
+ptp  = makeQaD parseTyPat
 
 -- | Parse a qualifier expression
 pqe :: String -> QExp Renamed
