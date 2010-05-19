@@ -3,14 +3,16 @@
 *)
 
 module SessionType = struct
-  (* Unfortunately, we need several types to be primitive in order to
-   * compute duals. *)
-  open Prim.SessionType
-
   module C = Channel
 
-  type -'<a ; +'<s
-  type ('<a, '<s) semi = '<a; '<s
+  type 1
+  type +'a ; +'s
+  type ! -'<a
+  type ? +'<a
+
+  type 1           dual = 1
+     | (!'<a ; 's) dual = ?'<a ; 's dual
+     | (?'<a ; 's) dual = !'<a ; 's dual
 
   abstype 's rendezvous = Rendezvous of ('s channel C.channel)
       and +'s channel qualifier A = Chan of bool C.channel
@@ -22,32 +24,32 @@ module SessionType = struct
       C.recv r
 
     let accept['s] (Rendezvous r: 's rendezvous) : 's dual channel =
-      let c = Chan['s] (C.new[bool] ()) in
-        C.send r c;
-        c
+      let c = C.new[bool] () in
+        C.send r (Chan['s] c);
+        Chan['s dual] c
 
     let newPair['s] () : 's channel * 's dual channel =
       let c = C.new[bool] () in
         (Chan['s] c, Chan['s dual] c)
 
     let send['<a] (a: '<a)
-            ['s] |(Chan c: ('<a send; 's) channel) : unit * 's channel =
+            ['s] |(Chan c: (!'<a; 's) channel) : unit * 's channel =
       C.send c (Unsafe.unsafeCoerce[bool] a);
       ((), Chan['s] c)
 
-    let recv['<a, 's] (Chan c: ('<a recv; 's) channel)
+    let recv['<a, 's] (Chan c: (?'<a; 's) channel)
                       : '<a * 's channel =
       (Unsafe.unsafeCoerce['<a] (C.recv c), Chan['s] c)
 
-    type '<c follow = '<c recv; unit
+    type ?-> '<c = ?'<c; 1
 
-    let follow['<c] (c: '<c follow channel) =
-      let (c', _) = recv['<c, unit] c in ((), c')
+    let follow['<c] (c: ?-> '<c channel) =
+      let (c', _) = recv c in ((), c')
 
-    type '<c choose = '<c send; unit
+    type !-> '<c = !'<c; 1
 
     let choose['s,'<c] (ctor: 's channel -> '<c)
-                    (c: '<c choose channel): unit * 's dual channel =
+                    (c: !-> '<c channel): unit * 's dual channel =
       let (theirs, mine) = newPair['s] () in
         send (ctor theirs) c;
         ((), mine)
@@ -57,17 +59,17 @@ end
 module SessionType2Test = struct
   open SessionType
 
-  type state1 = int send; state2 follow
-   and state2 = Done of (int recv; unit) channel
-              | More of (int send; state2 follow) channel
-              | Again of (int recv; state1) channel
+  type state1 = !int; ?->state2
+   and state2 = Done of (?int; 1) channel
+              | More of (!int; ?->state2) channel
+              | Again of (?int; state1) channel
 
   let client (c: state1 channel) =
-    let rec s1 !(c: state1 channel) : int * unit channel =
+    let rec s1 !(c: state1 channel) : int * 1 channel =
               send 1 c;
               follow c;
               s2 c
-        and s2 !(c: state2) : int * unit channel =
+        and s2 !(c: state2) : int * 1 channel =
           match c with
           | Done c  -> recv c
           | More c  -> send 2 c;
@@ -78,7 +80,7 @@ module SessionType2Test = struct
      in fst (s1 c)
 
   let server (c: state1 dual channel) =
-    let rec s1 !(c : state1 dual channel) : unit * unit channel =
+    let rec s1 !(c : state1 dual channel) : unit * 1 channel =
       match recv c with
         | 0 -> choose More c;
                let z' = recv c in
