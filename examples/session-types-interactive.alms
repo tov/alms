@@ -7,8 +7,7 @@
 
 open SessionType
 
-type protocol =
-  mu 'r. (int recv; unit + int send; 'r) select
+type protocol = ?int; 1 |+| !int; protocol
 
 let server =
   let rec loop (acc : int)
