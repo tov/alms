@@ -316,7 +316,7 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
                 >?> rhs Ppr.>?>
                   if isBogus loc
                     then text "  -- built-in"
-                    else text "  -- defined at" >+> text (show loc)
+                    else text "  -- defined at" <+> text (show loc)
       where (>?>) = if Ppr.isEmpty who then (<+>) else (Ppr.>?>)
 
 mumble ::  Ppr a => String -> a -> IO ()

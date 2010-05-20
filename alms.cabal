@@ -25,7 +25,7 @@ Flag readline
 Executable alms
   Main-Is:              Main.hs
   Hs-Source-Dirs:       src
-  GHC-Options:          -O2
+  GHC-Options:          -O3
   CPP-Options:          -DALMS_CABAL_BUILD
   Build-Depends:        haskell98,
                         base >= 4,
