@@ -2,6 +2,8 @@
 {-# LANGUAGE FlexibleContexts #-}
 module Util (
   -- * List combinators
+  -- ** Shallow mapping
+  mapCons, mapHead, mapTail,
   -- ** Two-list versions
   foldl2, foldr2, all2, any2,
   -- ** Monadic version
@@ -77,6 +79,20 @@ concatMapM f xs = concat `liftM` mapM f xs
 mapA         :: Applicative t => (a -> t b) -> [a] -> t [b]
 mapA _ []     = pure []
 mapA f (x:xs) = (:) <$> f x <*> mapA f xs
+
+-- | Apply one function to the head of a list and another to the
+--   tail
+mapCons :: (a -> b) -> ([a] -> [b]) -> [a] -> [b]
+mapCons fh ft []     = []
+mapCons fh ft (x:xs) = fh x : ft xs
+
+-- | Map a function over only the first element of a list
+mapHead  :: (a -> a) -> [a] -> [a]
+mapHead f = mapCons f id
+
+-- | Map a function over all but the first element of a list
+mapTail  :: (a -> a) -> [a] -> [a]
+mapTail   = mapCons id . map
 
 -- | Left-associative fold over two lists
 foldl2 :: (c -> a -> b -> c) -> c -> [a] -> [b] -> c

@@ -95,8 +95,8 @@ mkBogus s = Loc s (-1) (-1) (-1) (-1)
 
 -- | Is the location bogus?
 isBogus :: Loc -> Bool
-isBogus (Loc _ (-1) (-1) (-1) (-1)) = True
-isBogus _                           = False
+isBogus (Loc _ (-1) _ _ _) = True
+isBogus _                  = False
 
 -- | A value with a location attached
 {-
@@ -140,7 +140,9 @@ instance Locatable Loc where
   getLoc   = id
 
 instance Relocatable Loc where
-  setLoc _ = id
+  setLoc a b
+    | isBogus b = a
+    | otherwise = b
 
 instance Locatable a => Locatable (Maybe a) where
   getLoc Nothing    = bogus
@@ -148,7 +150,7 @@ instance Locatable a => Locatable (Maybe a) where
 
 instance Relocatable a => Relocatable (Maybe a) where
   setLoc Nothing _  = Nothing
-  setLoc (Just a) l = Just (setLoc a l)
+  setLoc (Just a) l = l `seq` a `seq` Just (setLoc a l)
 
 instance Locatable a => Locatable [a] where
   getLoc = foldr spanLocs bogus . map getLoc

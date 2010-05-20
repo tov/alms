@@ -4,8 +4,8 @@ module Lexer (
   isUpperIdentifier, lid, uid,
 
   -- * Special, unreserved operators
-  sharpLoad,
-  bang, star, slash, plus,
+  sharpLoad, sharpInfo,
+  semis, bang, star, slash, plus,
   lolli, arrow, funbraces, funbraceLeft, funbraceRight,
   qualU, qualA,
   opP,
@@ -127,7 +127,11 @@ commaSep1        = T.commaSep1 tok
 
 -- | The @#load@ pragma
 sharpLoad       :: CharParser st ()
-sharpLoad        = reserved "#load"
+sharpLoad        = reserved "#l" <|> reserved "#load"
+
+-- | The @#info@ pragma
+sharpInfo       :: CharParser st ()
+sharpInfo        = reserved "#i" <|> reserved "#info"
 
 -- | @!@, which has special meaning in let patterns
 bang            :: CharParser st String
@@ -151,6 +155,10 @@ funbraceRight    = try (symbol "]>") >> return ()
 
 funbraces       :: CharParser st a -> CharParser st a
 funbraces        = between funbraceLeft funbraceRight
+
+-- | @;@, @;;@, ...
+semis           :: CharParser st String
+semis            = lexeme (many1 (char ';'))
 
 -- | @*@, which is reserved in types but not in expressions
 star            :: CharParser st String
@@ -176,6 +184,7 @@ qualA     = reserved "A"
 isUpperIdentifier :: String -> Bool
 isUpperIdentifier "true"  = True
 isUpperIdentifier "false" = True
+isUpperIdentifier "()"    = True
 isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 
@@ -189,7 +198,7 @@ lid              = try $ do
 -- | Lex an uppercase identifer
 uid        :: CharParser st String
 uid              = try $ do
-  s <- identifier
+  s <- identifier <|> symbol "()"
   if isUpperIdentifier s
     then return s
     else pzero <?> "uppercase identifier"

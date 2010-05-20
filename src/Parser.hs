@@ -1,13 +1,16 @@
 {-# LANGUAGE
       PatternGuards,
       ScopedTypeVariables,
-      TypeFamilies #-}
+      TypeFamilies,
+      TypeSynonymInstances #-}
 -- | Parser
 module Parser (
   -- * The parsing monad
   P, parse,
   -- ** Quasiquote parsing
   parseQuasi,
+  -- ** REPL command parsing
+  parseGetInfo, parseInteractive,
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
     parseTyDec, parseAbsTy, parseType, parseTyPat,
@@ -62,11 +65,30 @@ parseQuasi str p = do
                    return (Just "_loc")
                  ]
         p iflag (fmap TH.mkName lflag)
-  case runParser parser state0 { stAnti = True } "-" str of
+  case runParser parser state0 { stAnti = True } "<quasi>" str of
     Left e  -> fail (show e)
     Right a -> return a
   where
   mkSetter = setPosition . toSourcePos . fromTHLoc
+
+parseGetInfo :: String -> Maybe [Ident Raw]
+parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
+  where
+    parser = finish $
+      sharpInfo *>
+        many1 (identp
+               <|> fmap Var <$> qlidnatp
+               <|> J [] . Var . Syntax.lid <$> (operator <|> semis))
+
+parseInteractive :: Id i => Int -> String -> Either ParseError [Decl i]
+parseInteractive line src = parse p "-" src where
+  p = do
+    pos <- getPosition
+    setPosition (pos `setSourceLine` line)
+    optional whiteSpace
+    r <- replp
+    eof
+    return r
 
 withSigma :: Bool -> P a -> P a
 withSigma = mapSigma . const
@@ -91,6 +113,17 @@ addLoc p = do
   a      <- p
   after  <- getPosition
   return (a <<@ fromSourcePosSpan before after)
+
+class Nameable a where
+  (@@) :: String -> a -> a
+
+infixr 0 @@
+
+instance Relocatable a => Nameable (P a) where
+  s @@ p  = addLoc p <?> s
+
+instance Nameable r => Nameable (a -> r) where
+  s @@ p  = \x -> s @@ p x
 
 punit :: P ()
 punit  = pure ()
@@ -134,7 +167,7 @@ chainr1last each sep final = start where
 -- Antiquote
 antip :: AntiDict -> P Anti
 antip dict = antilabels . lexeme . try $ do
-    char '$'
+    char '$' <?> ""
     (s1, s2) <- (,) <$> option "" (try (option "" identp_no_ws <* char ':'))
                     <*> identp_no_ws
     assertAnti
@@ -142,8 +175,12 @@ antip dict = antilabels . lexeme . try $ do
       Just _  -> return (Anti s1 s2)
       Nothing -> unexpected $ "antiquote tag: `" ++ s1 ++ "'"
   where
-    antilabels p = labels p [ "antiquote `" ++ key ++ "'"
-                            | key <- M.keys dict, key /= "" ]
+    antilabels p = do
+      st <- getState
+      if (stAnti st)
+        then labels p [ "antiquote `" ++ key ++ "'"
+                      | key <- M.keys dict, key /= "" ]
+        else p
 
 identp_no_ws :: P String
 identp_no_ws = do
@@ -180,23 +217,27 @@ antilist1p sep p  = antiblep
 uidp :: Id i => P (Uid i)
 uidp  = Syntax.uid <$> Lexer.uid
     <|> antiblep
+  <?> "uppercase identifier"
 
 -- Just lowercase identifiers
 lidp :: Id i => P (Lid i)
 lidp  = Syntax.lid <$> Lexer.lid
     <|> antiblep
+  <?> "lowercase identifier"
 
 -- Lowercase identifiers or naturals
 --  - tycon declarations
 lidnatp :: Id i => P (Lid i)
 lidnatp = Syntax.lid <$> (Lexer.lid <|> show <$> natural)
       <|> operatorp
-      <|> Syntax.lid <$> try (parens semi)
+      <|> Syntax.lid <$> try (parens semis)
       <|> antiblep
+  <?> "type name"
 
 -- Just operators
 operatorp :: Id i => P (Lid i)
 operatorp  = try (parens operator) >>! Syntax.lid
+  <?> "operator name"
 
 -- Add a path before something
 pathp :: Id i => P ([Uid i] -> b) -> P b
@@ -211,23 +252,27 @@ pathp p = try $ do
 quidp :: Id i => P (QUid i)
 quidp  = pathp (uidp >>! flip J)
      <|> antiblep
+  <?> "uppercase identifier"
 
 -- Qualified lowercase identifiers:
 --  - module name identifier lists
 qlidp :: Id i => P (QLid i)
 qlidp  = pathp (lidp >>! flip J)
      <|> antiblep
+  <?> "lowercase identifier"
 
 -- Qualified lowercase identifiers or naturals:
 --  - tycon occurences
 qlidnatp :: Id i => P (QLid i)
 qlidnatp  = pathp (lidnatp >>! flip J)
         <|> antiblep
+  <?> "type name"
 
 -- Lowercase identifiers and operators
 --  - variable bindings
 varp :: Id i => P (Lid i)
 varp  = lidp <|> operatorp
+  <?> "variable name"
 
 -- Qualified lowercase identifers and operators
 --  - variable occurences
@@ -238,28 +283,31 @@ varp  = lidp <|> operatorp
 identp :: Id i => P (Ident i)
 identp = antiblep
       <|> pathp (flip J <$> (Var <$> varp <|> Con <$> uidp))
+  <?> "identifier"
 
 -- Type variables
 tyvarp :: Id i => P (TyVar i)
 tyvarp  = do
-  char '\''
-  choice [ antiblep
-         , flip TV <$> (Qa <$ char '<' <|> pure Qu)
-                   <*> lidp ]
+    char '\''
+    choice [ antiblep
+           , flip TV <$> (Qa <$ char '<' <|> pure Qu)
+                     <*> lidp ]
+  <?> "type variable"
 
 oplevelp :: Id i => Prec -> P (Lid i)
-oplevelp  = liftM Syntax.lid . opP
+oplevelp  = (<?> "operator") . liftM Syntax.lid . opP
 
 quantp :: P Quant
 quantp  = Forall <$ reserved "all"
       <|> Exists <$ reserved "ex"
       <|> antiblep
+  <?> "quantifier"
 
 typep  :: Id i => P (Type i)
 typep   = typepP precStart
 
 typepP :: Id i => Int -> P (Type i)
-typepP p = addLoc $ case () of
+typepP p = "type" @@ case () of
   _ | p == precStart
           -> do
                tc <- tyQu <$> quantp
@@ -280,7 +328,7 @@ typepP p = addLoc $ case () of
                (typepP precStart)
     | p == precSemi
           -> chainr1last (typepP (p + 1))
-                         (tyBinOp <$> semi)
+                         (tyBinOp <$> semis)
                          (typepP precStart)
     | Just (Left _) <- fixities p
           -> chainl1last (typepP (p + 1))
@@ -355,7 +403,7 @@ declsp  = antiblep <|> loop
               d  <- declp
               ds <- loop
               return (d : ds),
-            do
+            (<?> "#load") $ do
               sharpLoad
               name <- stringLiteral
               rel  <- sourceName `liftM` getPosition
@@ -374,7 +422,7 @@ declsp  = antiblep <|> loop
           ]
 
 declp :: Id i => P (Decl i)
-declp  = addLoc $ choice [
+declp  = "declaration" @@ choice [
            do
              reserved "type"
              antilist1p (reserved "and") tyDecp >>! dcTyp,
@@ -411,7 +459,7 @@ declp  = addLoc $ choice [
          ]
 
 modexpp :: Id i => P (ModExp i)
-modexpp  = addLoc $ choice [
+modexpp  = "module" @@ choice [
              meStr  <$> between (reserved "struct") (reserved "end") declsp,
              meName <$> quidp
                     <*> option [] (antilist1p comma qlidp),
@@ -419,7 +467,7 @@ modexpp  = addLoc $ choice [
            ]
 
 tyDecp :: Id i => P (TyDec i)
-tyDecp = addLoc $ choice
+tyDecp = "type declaration" @@ addLoc $ choice
   [ antiblep
   , do
       optional (reservedOp "|")
@@ -465,28 +513,11 @@ tyDecp = addLoc $ choice
     return (b && var == Invariant, tv:tvs, var:vars)
   checkTVs _ = Nothing
 
-  {-
-  , do
-      (arity, tvs, name) <- tyProtp
-      choice [
-        do
-          unless (all (== Invariant) arity) pzero
-          reservedOp "="
-          choice [
-            typep >>! \rhs ->
-              tdSyn name [(map (flip tpVar Invariant) tvs, rhs)],
-            altsp >>! tdDat name tvs ],
-        do
-          quals <- qualsp
-          return (tdAbs name tvs arity quals) ]
-          ]
-          -}
-
 tyProtp :: Id i => P ([Variance], [TyVar i], Lid i)
 tyProtp  = choice [
   try $ do
     (v1, tv1) <- paramVp
-    n <- choice [ semi, operator ]
+    n <- choice [ semis, operator ]
     when (n == "-" || precOp n == Right precBang) pzero
     (v2, tv2) <- paramVp
     return ([v1, v2], [tv1, tv2], Syntax.lid n),
@@ -504,10 +535,10 @@ typatp  :: Id i => P (TyPat i)
 typatp   = typatpP precStart
 
 typatpP :: Id i => Int -> P (TyPat i)
-typatpP p = addLoc $ case () of
+typatpP p = "type pattern" @@ case () of
   _ | p == precSemi
           -> chainr1last (typatpP (p + 1))
-                         (tpBinOp (qlid ";") <$ semi)
+                         (tpBinOp . J [] . Syntax.lid <$> semis)
                          (typatpP precStart)
     | Just (Left _) <- fixities p
           -> chainl1last (typatpP (p + 1))
@@ -621,7 +652,7 @@ qualsp   :: Id i => P (QExp i)
 qualsp    = option minBound $ reserved "qualifier" *> qExpp
 
 qExpp :: Id i => P (QExp i)
-qExpp  = qexp where
+qExpp  = "qualifier expression" @@ qexp where
   qexp  = addLoc $ qeDisj <$> sepBy1 qterm (reservedOp "\\/")
   qterm = addLoc $ qeConj <$> sepBy1 qfact (reservedOp "/\\")
   qfact = addLoc $ parens qexp <|> qatom
@@ -650,7 +681,8 @@ exprp :: Id i => P (Expr i)
 exprp = expr0 where
   onlyOne [x] = [x True]
   onlyOne xs  = map ($ False) xs
-  expr0 = addLoc $ choice
+  mark  = ("expression" @@)
+  expr0 = mark $ choice
     [ do reserved "let"
          choice
            [ do reserved "rec"
@@ -742,20 +774,20 @@ exprp = expr0 where
          arrow
          withSigma sigma expr0 >>! build,
       expr1 ]
-  expr1 = addLoc $ do
+  expr1 = mark $ do
             e1 <- expr3
             choice
               [ do semi
                    e2 <- expr0
                    return (exSeq e1 e2),
                 return e1 ]
-  expr3 = addLoc $ chainl1last expr4 (opappp (Left 3))  expr0
-  expr4 = addLoc $ chainr1last expr5 (opappp (Right 4)) expr0
-  expr5 = addLoc $ chainl1last expr6 (opappp (Left 5))  expr0
-  expr6 = addLoc $ chainl1last expr7 (opappp (Left 6))  expr0
+  expr3 = mark $ chainl1last expr4 (opappp (Left 3))  expr0
+  expr4 = mark $ chainr1last expr5 (opappp (Right 4)) expr0
+  expr5 = mark $ chainl1last expr6 (opappp (Left 5))  expr0
+  expr6 = mark $ chainl1last expr7 (opappp (Left 6))  expr0
   expr7 = expr8
-  expr8 = addLoc $ chainr1last expr9 (opappp (Right 8)) expr0
-  expr9 = addLoc $ choice
+  expr8 = mark $ chainr1last expr9 (opappp (Right 8)) expr0
+  expr9 = mark $ choice
             [ chainl1 expr10 (addLoc (return exApp)),
               do
                 reserved "Pack"
@@ -766,21 +798,21 @@ exprp = expr0 where
                   e  <- exprN1
                   return (exPack t1 t2 e)
                 ]
-  expr10 = addLoc $ do
+  expr10 = mark $ do
     ops <- many $ addLoc $ oplevelp (Right 10) >>! exBVar
     arg <- expr11
     return (foldr exApp arg ops)
-  expr11 = addLoc $ do
+  expr11 = mark $ do
              e  <- exprA
              ts <- many . brackets $ commaSep1 typep
              return (foldl exTApp e (concat ts))
-  exprA = addLoc $ choice
+  exprA = mark $ choice
     [ identp          >>! exId,
       litp            >>! exLit,
       antiblep,
       parens (exprN1 <|> return (exBCon (Syntax.uid "()")))
     ]
-  exprN1 = addLoc $ do
+  exprN1 = mark $ do
     e1 <- expr0
     choice
       [ do t1 <- antioptaroundp (colon `between` punit) typep
@@ -793,7 +825,7 @@ exprp = expr0 where
         return e1 ]
 
 preCasealtp :: Id i => P (Bool -> CaseAlt i)
-preCasealtp = addLoc $ (const <$> antiblep) <|> do
+preCasealtp = "match clause" @@ (const <$> antiblep) <|> do
     (xi, sigma, lift) <- pattbangp
     reservedOp "->"
     ei <- mapSigma (sigma ||) exprp
@@ -803,7 +835,7 @@ casealtp :: Id i => P (CaseAlt i)
 casealtp  = preCasealtp >>! ($ False)
 
 bindingp :: Id i => P (Binding i)
-bindingp = addLoc $ antiblep <|> do
+bindingp = "let rec binding" @@ antiblep <|> do
   x    <- varp
   (sigma, ft, fe) <- afargsp
   colon
@@ -965,7 +997,8 @@ bangp  = (bang >> return True) <|> return False
 
 pattp :: Id i => P (Patt i)
 pattp  = patt0 where
-  patt0 = addLoc $ do
+  mark  = ("pattern" @@)
+  patt0 = mark $ do
     x <- patt9
     choice
       [ do
@@ -974,7 +1007,7 @@ pattp  = patt0 where
           return (paAs x y),
         return x
       ]
-  patt9 = addLoc $ choice
+  patt9 = mark $ choice
     [ do
         reserved "Pack"
         parens $ do
@@ -985,7 +1018,7 @@ pattp  = patt0 where
       paCon <$> quidp
             <*> antioptp (try pattA),
       pattA ]
-  pattA = addLoc $ choice
+  pattA = mark $ choice
     [ paWild <$  reserved "_",
       paVar  <$> varp,
       paLit  <$> litp,
@@ -994,14 +1027,14 @@ pattp  = patt0 where
       antiblep,
       parens pattN1
     ]
-  pattN1 = addLoc $ do
+  pattN1 = mark $ do
     xs <- commaSep patt0
     case xs of
       []    -> return (paCon (quid "()") Nothing)
       x:xs' -> return (foldl paPair x xs')
 
 litp :: P Lit
-litp = choice [
+litp = (<?> "literal") $ choice [
          integerOrFloat >>! either LtInt LtFloat,
          charLiteral    >>! (LtInt . fromIntegral . fromEnum),
          stringLiteral  >>! LtStr,

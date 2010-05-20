@@ -8,9 +8,10 @@ module Main (
 import Util
 import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest)
 import qualified Ppr
-import Parser (parse, parseRepl, parseProg)
+import Parser (parse, parseInteractive, parseProg, parseGetInfo)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
-import Rename (RenameState, runRenamingM, renameDecls, renameProg)
+import Rename (RenameState, runRenamingM, renameDecls, renameProg,
+               getRenamingInfo, RenamingInfo(..))
 import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..), tyConToDec)
 import Coercion (translate, translateDecls, TEnv, tenv0)
 import Value (VExn(..), vppr)
@@ -18,8 +19,9 @@ import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv, basis2renv)
 import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
-               Raw, Renamed)
+               Ident, Raw, Renamed)
 import Env (empty, (=..=))
+import Loc (isBogus, initial)
 
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
@@ -56,7 +58,7 @@ main  = do
   st1 <- if NoBasis `elem` opts
            then return st0
            else findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
-  st2 <- foldM (\st n -> findAlmsLibRel n "-" >>= tryLoadFile st n)
+  st2 <- foldM (\st n -> findAlmsLibRel n "." >>= tryLoadFile st n)
                st1 (reverse [ name | LoadFile name <- opts ])
   maybe interactive (batch filename) mmsrc (`elem` opts) st2
     `handleExns` exitFailure
@@ -94,7 +96,8 @@ batch filename msrc opt st0 = do
           execute :: Prog Renamed -> IO ()
 
           rename ast0 = do
-            (ast1, _) <- runRenamingM True (rsRenaming st0) (renameProg ast0)
+            (ast1, _) <- runRenamingM True (initial filename)
+                                      (rsRenaming st0) (renameProg ast0)
             check ast1
 
           check ast0 = do
@@ -132,7 +135,8 @@ translation :: (ReplState, [Decl Renamed]) -> IO (ReplState, [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed]) -> IO (ReplState, NewValues)
 
 renaming (st, ast) = do
-  (ast', r') <- runRenamingM True (rsRenaming st) (renameDecls ast)
+  (ast', r') <- runRenamingM True (initial "-")
+                             (rsRenaming st) (renameDecls ast)
   return (st { rsRenaming = r' }, ast')
 
 statics _ (rs, ast) = do
@@ -172,16 +176,16 @@ handleExns body handler =
 interactive :: (Option -> Bool) -> ReplState -> IO ()
 interactive opt rs0 = do
   initialize
-  repl rs0
+  repl 1 rs0
   where
-    repl st = do
-      mast <- reader
-      case mast of
+    repl row st = do
+      mres <- reader row st
+      case mres of
         Nothing  -> return ()
-        Just ast -> do
+        Just (row', ast) -> do
           st' <- doLine st ast
                    `handleExns` return st
-          repl st'
+          repl row' st'
     doLine st ast = let
       rename  :: (ReplState, [Decl Raw]) -> IO ReplState
       check   :: (ReplState, [Decl Renamed]) -> IO ReplState
@@ -220,26 +224,33 @@ interactive opt rs0 = do
     quiet  = opt Quiet
     say    = if quiet then const (return ()) else print
     get    = if quiet then const (readline "") else readline
-    reader = loop []
+    reader :: Int -> ReplState -> IO (Maybe (Int, [Decl Raw]))
+    reader row st = loop 1 []
       where
-        loop acc = do
+        fixup = unlines . mapTail ("   " ++) . reverse
+        loop count acc = do
           mline <- get (if null acc then "#- " else "#= ")
           case (mline, acc) of
             (Nothing, [])        -> return Nothing
             (Nothing, (_,err):_) -> do
-              addHistory (unlines (reverse (map fst acc)))
+              addHistory (fixup (map fst acc))
               hPutStrLn stderr ""
               hPutStrLn stderr (show err)
-              reader
-            (Just "", _)         -> loop acc
+              reader (row + count) st
             (Just line, _)       ->
-              let cmd = unlines (reverse (line : map fst acc)) in
-                case parse parseRepl "-" cmd of
-                  Right ast -> do
-                    addHistory cmd
-                    return (Just ast)
-                  Left derr ->
-                    loop ((line, derr) : acc)
+              case parseGetInfo line of
+                Nothing ->
+                  let cmd = fixup (line : map fst acc) in
+                    case parseInteractive row cmd of
+                      Right ast -> do
+                        addHistory cmd
+                        return (Just (row + count, ast))
+                      Left derr ->
+                        loop (count + 1) ((line, derr) : acc)
+                Just ids -> do
+                  mapM_ (printInfo st) ids
+                  addHistory line
+                  loop (count + 1) acc
     printResult :: Module -> NewValues -> IO ()
     printResult md00 (values, _exns) = say (loop True md00) where
       loop tl md0 = case md0 of
@@ -266,6 +277,22 @@ interactive opt rs0 = do
       pprExn (ExnId { eiName = u})
         = text "exception" <+> ppr u
     -}
+
+printInfo :: ReplState -> Ident Raw -> IO ()
+printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
+    []  -> putStrLn $ "Not bound: `" ++ show ident ++ "'"
+    ris -> mapM_ each ris
+  where
+    each (ModuleAt   loc x') = mention "module" x' loc
+    each (VariableAt loc x') = mention "val" x' loc
+    each (TyconAt    loc x') = mention "type" x' loc
+    each (DataconAt  loc x') = mention "data constructor" x' loc
+    --
+    mention what who loc = do
+      putStrLn $ what ++ " " ++ show who ++
+        if isBogus loc
+          then "  -- built-in"
+          else "  -- defined at " ++ show loc
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)

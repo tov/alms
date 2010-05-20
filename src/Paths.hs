@@ -77,6 +77,7 @@ findAlmsLibRel :: FilePath -> FilePath -> IO (Maybe FilePath)
 findAlmsLibRel name rel = do
   path <- almsLibPath
   let rel' = case rel of
+               "."  -> "."
                "-"  -> "."
                _    -> dropFileName rel
   findFirstInPath [ name, name <.> "alms" ] (rel' : path)

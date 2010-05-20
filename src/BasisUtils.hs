@@ -159,7 +159,7 @@ infixr 0 `vapp`
 basis2renv :: Monad m => [Entry Raw] ->
               m ([Entry Renamed], RenameState)
 basis2renv =
-  runRenamingM False renameState0 . renameMapM each where
+  runRenamingM False _loc renameState0 . renameMapM each where
   each ValEn { enName = u, enType = t, enValue = v } = do
     u' <- Rename.addVal u
     t' <- renameType t
