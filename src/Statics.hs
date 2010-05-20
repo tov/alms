@@ -25,6 +25,7 @@ module Statics (
   tcProg, tcDecls,
   -- * Type checking results for the REPL
   runTCNew, Module(..), getExnParam, tyConToDec,
+  getVarInfo, getTypeInfo, getConInfo,
 ) where
 
 import Meta.Quasi
@@ -1134,3 +1135,23 @@ tyConToDec tc = case tc of
                   (map (qInterpret . qeVar) tyvars)
                   (tcQual tc)))
 
+getVarInfo :: QLid R -> S -> Maybe Type
+getVarInfo ql (S e _) = e =..= fmap Var ql
+
+getTypeInfo :: QLid R -> S -> Maybe TyCon
+getTypeInfo ql (S e _) = e =..= ql
+
+-- Find out about a type constructor.  If it's an exception constructor,
+-- return 'Left' with its paramter, otherwise return the type construtor
+-- of the result type
+getConInfo :: QUid R -> S -> Maybe (Either (Maybe Type) TyCon)
+getConInfo qu (S e _) = do
+  t <- e =..= fmap Con qu
+  case getExnParam t of
+    Just mt -> Just (Left mt)
+    Nothing ->
+      let loop (TyFun _ _ t2) = loop t2
+          loop (TyQu _ _ t1)  = loop t1
+          loop (TyApp tc _ _) = Just (Right tc)
+          loop _              = Nothing
+       in loop t

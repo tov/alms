@@ -9,11 +9,12 @@ import Util
 import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest)
 import qualified Ppr
 import Parser (parse, parseInteractive, parseProg, parseGetInfo)
-import Paths (findAlmsLib, findAlmsLibRel, versionString)
+import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg,
                getRenamingInfo, RenamingInfo(..))
 import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..),
-                getExnParam, tyConToDec)
+                getExnParam, tyConToDec, getVarInfo, getTypeInfo,
+                getConInfo)
 import Coercion (translate, translateDecls, TEnv, tenv0)
 import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
@@ -72,7 +73,10 @@ tryLoadFile st name mfile = case mfile of
   Just file -> loadFile st file
 
 loadFile :: ReplState -> String -> IO ReplState
-loadFile st name = readFile name >>= loadString st name
+loadFile st name = do
+    src   <- readFile name
+    name' <- shortenPath name
+    loadString st name' src
 
 loadString :: ReplState -> String -> String -> IO ReplState
 loadString st name src = do
@@ -281,16 +285,39 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
     []  -> putStrLn $ "Not bound: `" ++ show ident ++ "'"
     ris -> mapM_ each ris
   where
-    each (ModuleAt   loc x') = mention "module" x' loc
-    each (VariableAt loc x') = mention "val" x' loc
-    each (TyconAt    loc x') = mention "type" x' loc
-    each (DataconAt  loc x') = mention "data constructor" x' loc
+    each (ModuleAt   loc x') =
+      mention "module" (ppr x') Ppr.empty loc
+    each (VariableAt loc x') =
+      case getVarInfo x' s of
+        Nothing  -> mention "val" (ppr x') Ppr.empty loc
+        Just t   -> mention "val" (ppr x') (char ':' <+> ppr t) loc
+    each (TyconAt    loc x') =
+      case getTypeInfo x' s of
+        Nothing  -> mention "type" (ppr x') Ppr.empty loc
+        Just tc  -> mention "type" Ppr.empty (ppr tc) loc
+    each (DataconAt  loc x') =
+      case getConInfo x' s of
+        Nothing -> mention "val" (ppr x') Ppr.empty loc
+        Just (Left mt) ->
+          mention "type" (text "exn")
+                  (Ppr.sep [ text "= ...",
+                             char '|' <+> ppr x' <+>
+                             case mt of
+                               Nothing -> Ppr.empty
+                               Just t  -> text "of" <+> ppr t ])
+                  loc
+        Just (Right tc) ->
+          mention "type" Ppr.empty (ppr tc) loc
     --
-    mention what who loc = do
-      putStrLn $ what ++ " " ++ show who ++
-        if isBogus loc
-          then "  -- built-in"
-          else "  -- defined at " ++ show loc
+    s = rsStatics st
+    --
+    mention what who rhs loc = do
+      print $ text what <+> ppr who
+                >?> rhs Ppr.>?>
+                  if isBogus loc
+                    then text "  -- built-in"
+                    else text "  -- defined at" >+> text (show loc)
+      where (>?>) = if Ppr.isEmpty who then (<+>) else (Ppr.>?>)
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = print $ hang (text s <> char ':') 2 (ppr a)

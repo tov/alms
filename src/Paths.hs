@@ -4,6 +4,7 @@
 module Paths (
   findFirstInPath, findInPath,
   almsLibPath, findAlmsLib, findAlmsLibRel,
+  shortenPath,
   version, versionString
 ) where
 
@@ -81,6 +82,22 @@ findAlmsLibRel name rel = do
                "-"  -> "."
                _    -> dropFileName rel
   findFirstInPath [ name, name <.> "alms" ] (rel' : path)
+
+shortenPath :: FilePath -> IO FilePath
+shortenPath fp = do
+  cwd <- getCurrentDirectory
+  let fp' = makeRelativeTo cwd fp
+  return $ if length fp' < length fp then fp' else fp
+
+makeRelativeTo :: FilePath -> FilePath -> FilePath
+makeRelativeTo fp1 fp2 = loop (splitDirectories fp1) (splitDirectories fp2)
+  where
+    loop []     []     = "."
+    loop []     ts     = joinPath ts
+    loop fs     []     = joinPath [ ".." | _ <- fs ]
+    loop (f:fs) (t:ts)
+      | f == t         = loop fs ts
+      | otherwise      = loop (f:fs) [] </> loop [] (t:ts)
 
 versionString :: String
 versionString  = "Alms, version " ++ showVersion version

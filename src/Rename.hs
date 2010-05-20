@@ -424,6 +424,10 @@ renameTyDec mqe (N note td)      = withLoc note $ do
         return (tdAbs l' tvs' variances qe')
       TdSyn _ _ -> fail "BUG! can't happen in Rename.renameTyDec"
       TdDat _ _ cons -> do
+        case unique fst cons of
+          Nothing -> return ()
+          Just ((u, _), (_, _)) -> fail $
+            "repeated constructor `" ++ show u ++ "' in type declaration"
         cons' <- forM cons $ \(u, mt) -> withLoc mt $ do
           u'    <- bindDatacon u
           mt'   <- gmapM renameType mt

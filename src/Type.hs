@@ -57,7 +57,7 @@ module Type (
 ) where
 
 import qualified Env
-import Ppr (Ppr(..), showFromPpr)
+import Ppr
 import Syntax.Ident
 import Syntax.Kind
 import Syntax.POClass
@@ -108,7 +108,7 @@ data TyCon
       -- | For type operators, the next head reduction
       tcNext      :: Maybe [([TyPat], Type)]
     }
-  deriving (Typeable, Data, Show)
+  deriving (Typeable, Data)
 
 -- | A type pattern, for defining type operators
 data TyPat
@@ -560,10 +560,9 @@ tcExn        = internalTC (-6) "exn" (maxBound :: QDen Int)
 tcUn         = internalTC (-7) "U"
 tcAf         = internalTC (-8) "A"   (maxBound :: QDen Int)
 tcTuple      = internalTC (-9) "*"   (0 \/ 1 :: QDen Int)   [(Qa, 1), (Qa, 1)]
-  [ ([TpVar (tvAf "a")], TyVar (tvAf "a")) ]
 tcIdent      = internalTC (-10) "id"    (0 :: QDen Int) [(Qa, 1)]
     [([TpVar (tvAf "a")], TyVar (tvAf "a"))]
-tcConst      = internalTC (-11) "const" (0 :: QDen Int) [(Qa, 1)]
+tcConst      = internalTC (-11) "const" (0 :: QDen Int) [(Qa, Invariant)]
     [([TpVar (tvAf "a")], tyUnit)]
 
 ---
@@ -839,3 +838,54 @@ dumpType = CMW.execWriter . loop 0 where
         loop (i + 2) t
         CMW.tell (replicate i ' ' ++ "}\n")
 
+instance Ppr TyCon where
+  ppr tc =
+    case tcNext tc of
+      Just [(tps,t)] -> ps tvs <+> ppr (tcName tc)
+                          >?> qe tvs
+                            >?> char '=' <+> ppr t
+        where
+          tvs  = [ case tp of
+                     TpVar tv -> tv
+                     _        -> TV (lid (show i)) qlit
+                 | tp   <- tps
+                 | qlit <- tcBounds tc
+                 | i <- [ 1 .. ] :: [Int] ]
+      --
+      Just next -> ps tvs <+> ppr (tcName tc)
+                     >?> (qe tvs <+> text "with"
+                          $$ vcat (map alt next))
+        where
+          tvs  = [ TV (lid (show i)) qlit
+                 | qlit <- tcBounds tc
+                 | i <- [ 1 .. ] :: [Int] ]
+          alt (tps,t) = char '|' <+> pprPrec precApp tps <+> ppr (tcName tc)
+                          >?> char '=' <+> ppr t
+      --
+      Nothing -> ps tvs <+> ppr (tcName tc)
+                   >?> qe tvs
+                     >?> alts
+        where
+          tvs  = case fst (tcCons tc) of
+            []   -> [ mk qlit | qlit <- tcBounds tc | mk <- tvalphabet ]
+            tvs' -> tvs'
+          alts = sep $
+                 mapHead (text "=" <+>) $
+                 mapTail (text "|" <+>) $
+                 map alt (Env.toList (snd (tcCons tc)))
+          alt (u, Nothing) = ppr u
+          alt (u, Just t)  = ppr u <+> text "of" <+> ppr t
+    where
+      qe :: [TyVarR] -> Doc
+      qe tvs = case qDenToLit (tcQual tc) of
+                 Just Qu -> empty
+                 _       -> text "qualifier" <+>
+                            ppr (qRepresent
+                                 (denumberQDen
+                                  (map qDenOfTyVar tvs) (tcQual tc)))
+      ps tvs = ppr
+                 [ ppr var <> pprPrec precApp tv
+                 | tv <- tvs
+                 | var <- tcArity tc ]
+
+instance Show TyCon where showsPrec = showFromPpr

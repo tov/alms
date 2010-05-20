@@ -8,7 +8,7 @@ module Ppr (
   -- * Pretty-printing class
   Ppr(..),
   -- * Pretty-printing combinators
-  parensIf,
+  parensIf, (>+>), (>?>),
   -- * Instance helpers
   showFromPpr, pprFromShow,
   -- * Re-exports
@@ -41,27 +41,58 @@ class Ppr p where
   pprPrec :: Int -> p -> Doc
   -- | Print at top-level precedence
   ppr     :: p -> Doc
+  -- | Print a list at the specified enclosing precedence with
+  --   the specified style
+  pprPrecStyleList :: Int -> ListStyle -> [p] -> Doc
+  -- | Print a list at the specified enclosing precedence
+  pprPrecList :: Int -> [p] -> Doc
+  -- | Print a list at top-level precedence
+  pprList     :: [p] -> Doc
+  -- | Style for printing lists
+  listStyle   :: [p] -> ListStyle
+  --
+  ppr         = pprPrec precDot
+  pprPrec _   = ppr
+  pprPrecStyleList _ st [] =
+    if listStyleDelimitEmpty st
+      then listStyleBegin st <> listStyleEnd st
+      else empty
+  pprPrecStyleList p st [x] =
+    if listStyleDelimitSingleton st
+      then listStyleBegin st <> ppr x <> listStyleEnd st
+      else pprPrec p x
+  pprPrecStyleList _ st xs  =
+    listStyleBegin st <>
+      listStyleJoiner st (punctuate (listStylePunct st) (map ppr xs))
+    <> listStyleEnd st
+  pprPrecList p xs = pprPrecStyleList p (listStyle xs) xs
+  pprList          = pprPrecList 0
+  listStyle _ = ListStyle {
+    listStyleBegin            = lparen,
+    listStyleEnd              = rparen,
+    listStylePunct            = comma,
+    listStyleDelimitEmpty     = False,
+    listStyleDelimitSingleton = False,
+    listStyleJoiner           = fsep
+  }
 
-  ppr       = pprPrec precDot
-  pprPrec _ = ppr
+data ListStyle = ListStyle {
+  listStyleBegin, listStyleEnd, listStylePunct :: Doc,
+  listStyleDelimitEmpty, listStyleDelimitSingleton :: Bool,
+  listStyleJoiner :: [Doc] -> Doc
+}
 
 -- | Conditionally add parens around the given 'Doc'
 parensIf :: Bool -> Doc -> Doc
 parensIf True  doc = parens doc
 parensIf False doc = doc
 
-class Separator a where
-  separator :: a -> Doc
+instance Ppr a => Ppr [a] where
+  pprPrec = pprPrecList
 
-instance Separator (Type i) where
-  separator _ = comma
-
-instance Separator (TyPat i) where
-  separator _ = comma
-
-instance (Ppr a, Separator a) => Ppr [a] where
-  ppr xs = hcat (intersperse (separator (head xs))
-                             (map (pprPrec precCom) xs))
+instance Ppr a => Ppr (Maybe a) where
+  pprPrec _ Nothing  = empty
+  pprPrec p (Just a) = pprPrec p a
 
 class Ppr a => IsInfix a where
   isInfix  :: a -> Bool
@@ -70,6 +101,9 @@ class Ppr a => IsInfix a where
     if isInfix a
       then pprPrec p a
       else ppr a
+
+instance Ppr Doc where
+  ppr = id
 
 instance IsInfix (Type i) where
   isInfix [$ty| ($_, $_) $lid:n |] = isOperator n
@@ -105,13 +139,9 @@ instance Ppr (Type i) where
                             text (unLid n) <+> pprPrec prec t2]
   pprPrec _ [$ty| $qlid:n |]  = ppr n
     -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
-  pprPrec p [$ty| $t $qlid:n |]
-                              = parensIf (p > precApp) $
-                                sep [ pprPrec precApp t,
-                                      ppr n ]
   pprPrec p [$ty| ($list:ts) $qlid:n |]
                           = parensIf (p > precApp) $
-                                sep [ parens (ppr ts),
+                                sep [ pprPrec precApp ts,
                                       ppr n ]
     -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   pprPrec p [$ty| '$x |]  = pprPrec p x
@@ -147,13 +177,9 @@ instance Ppr (TyPat i) where
                       sep [ pprPrec (prec + 1) tp1,
                             text (unLid n) <+> pprPrec prec tp2 ]
     [$tpQ| $qlid:ql |] -> ppr ql
-    [$tpQ| $typat:tp $qlid:ql |] 
-                       -> parensIf (p > precApp) $
-                            sep [ pprPrec precApp tp,
-                                  ppr ql ]
     [$tpQ| ($list:tps) $qlid:ql |] 
                        -> parensIf (p > precApp) $
-                            sep [ parens (ppr tps),
+                            sep [ pprPrec precApp tps,
                                   ppr ql ]
     [$tpQ| $antiP:a |] -> ppr a
 
@@ -463,7 +489,12 @@ instance Ppr Anti      where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 
 showFromPpr :: Ppr a => Int -> a -> ShowS
-showFromPpr p t = shows (pprPrec p t)
+showFromPpr p t rest =
+  fullRender PageMode 75 (ribbonsPerLine style)
+             each rest (pprPrec p t)
+  where each (Chr c) s'  = c:s'
+        each (Str s) s'  = s++s'
+        each (PStr s) s' = s++s'
 
 pprFromShow :: Show a => Int -> a -> Doc
 pprFromShow p t = text (showsPrec p t "")

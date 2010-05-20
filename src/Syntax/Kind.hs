@@ -11,7 +11,7 @@ module Syntax.Kind (
   Variance(..),
   -- ** Qualifier operations
   qConstBound, elimQLit,
-  qDenToLit, qDenFtv,
+  qDenToLit, qDenOfTyVar, qDenFtv,
   qInterpretM, qInterpret, qInterpretCanonical, qRepresent,
   qSubst,
   numberQDenM, numberQDen, numberQDenMap, denumberQDen
@@ -136,6 +136,9 @@ qDenToLit (QDen pdnf)
   | PDNF.isUnsat pdnf = Just Qu
   | PDNF.isValid pdnf = Just Qa
   | otherwise         = Nothing
+
+qDenOfTyVar :: Ord a => a -> QDen a
+qDenOfTyVar = QDen . PDNF.variable
 
 qDenFtv :: Ord a => QDen a -> S.Set a
 qDenFtv (QDen pdnf) = PDNF.support pdnf
