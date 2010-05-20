@@ -6,7 +6,7 @@ module Main (
 ) where
 
 import Util
-import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest)
+import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest, printDoc)
 import qualified Ppr
 import Parser (parse, parseInteractive, parseProg, parseGetInfo)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
@@ -227,7 +227,7 @@ interactive opt rs0 = do
 
       in rename (st, ast)
     quiet  = opt Quiet
-    say    = if quiet then const (return ()) else print
+    say    = if quiet then const (return ()) else printDoc
     get    = if quiet then const (readline "") else readline
     reader :: Int -> ReplState -> IO (Maybe (Int, [Decl Raw]))
     reader row st = loop 1 []
@@ -282,7 +282,7 @@ interactive opt rs0 = do
 
 printInfo :: ReplState -> Ident Raw -> IO ()
 printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
-    []  -> putStrLn $ "Not bound: `" ++ show ident ++ "'"
+    []  -> putStrLn $ "not bound: `" ++ show ident ++ "'"
     ris -> mapM_ each ris
   where
     each (ModuleAt   loc x') =
@@ -312,18 +312,18 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
     s = rsStatics st
     --
     mention what who rhs loc = do
-      print $ text what <+> ppr who
-                >?> rhs Ppr.>?>
-                  if isBogus loc
-                    then text "  -- built-in"
-                    else text "  -- defined at" <+> text (show loc)
+      printDoc $ text what <+> ppr who
+                   >?> rhs Ppr.>?>
+                     if isBogus loc
+                       then text "  -- built-in"
+                       else text "  -- defined at" <+> text (show loc)
       where (>?>) = if Ppr.isEmpty who then (<+>) else (Ppr.>?>)
 
 mumble ::  Ppr a => String -> a -> IO ()
-mumble s a = print $ hang (text s <> char ':') 2 (ppr a)
+mumble s a = printDoc $ hang (text s <> char ':') 2 (ppr a)
 
 mumbles :: Ppr a => String -> [a] -> IO ()
-mumbles s as = print $ hang (text s <> char ':') 2 (Ppr.vcat (map ppr as))
+mumbles s as = printDoc $ hang (text s <> char ':') 2 (Ppr.vcat (map ppr as))
 
 errorString :: IOError -> String
 errorString e | isUserError e = ioeGetErrorString e

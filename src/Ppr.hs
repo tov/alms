@@ -9,7 +9,9 @@ module Ppr (
   Ppr(..),
   -- * Pretty-printing combinators
   parensIf, (>+>), (>?>),
-  -- * Instance helpers
+  -- * Renderers
+  render, renderS, printDoc, printPpr,
+  -- ** Instance helpers
   showFromPpr, pprFromShow,
   -- * Re-exports
   module Text.PrettyPrint,
@@ -26,7 +28,7 @@ import qualified Syntax.Notable
 import qualified Syntax.Patt
 import qualified Loc
 
-import Text.PrettyPrint
+import Text.PrettyPrint hiding (render)
 import Data.List (intersperse)
 
 -- | Class for pretty-printing at different types
@@ -488,13 +490,30 @@ instance Ppr (TyVar i) where pprPrec = pprFromShow
 instance Ppr Anti      where pprPrec = pprFromShow
 instance (Show p, Show k) => Ppr (Path p k) where pprPrec = pprFromShow
 
-showFromPpr :: Ppr a => Int -> a -> ShowS
-showFromPpr p t rest =
-  fullRender PageMode 75 (ribbonsPerLine style)
-             each rest (pprPrec p t)
+-- Render a document in the preferred style, given a string continuation
+renderS :: Doc -> ShowS
+renderS doc rest = fullRender PageMode 80 1.5 each rest doc
   where each (Chr c) s'  = c:s'
         each (Str s) s'  = s++s'
         each (PStr s) s' = s++s'
+
+-- Render a document in the preferred style
+render :: Doc -> String
+render doc = renderS doc ""
+
+-- Render and display a document in the preferred style
+printDoc :: Doc -> IO ()
+printDoc = fullRender PageMode 80 1.5 each (putChar '\n')
+  where each (Chr c) io  = putChar c >> io
+        each (Str s) io  = putStr s >> io
+        each (PStr s) io = putStr s >> io
+
+-- Pretty-print, render and display in the preferred style
+printPpr :: Ppr a => a -> IO ()
+printPpr = printDoc . ppr
+
+showFromPpr :: Ppr a => Int -> a -> ShowS
+showFromPpr p t = renderS (pprPrec p t)
 
 pprFromShow :: Show a => Int -> a -> Doc
 pprFromShow p t = text (showsPrec p t "")
