@@ -8,7 +8,7 @@ module Ppr (
   -- * Pretty-printing class
   Ppr(..),
   -- * Pretty-printing combinators
-  parensIf, (>+>), (>?>),
+  parensIf, (>+>), (>?>), pprTyApp,
   -- * Renderers
   render, renderS, printDoc, printPpr,
   -- ** Instance helpers
@@ -112,6 +112,27 @@ instance IsInfix (Type i) where
   isInfix [$ty| $_ -[$_]> $_ |]    = True
   isInfix _                        = False
 
+-- | To pretty print the application of a type constructor to
+--   generic parameters
+pprTyApp :: (Ppr a) => Int -> QLid i -> [a] -> Doc
+pprTyApp _ ql       []   = ppr ql
+pprTyApp p (J [] l) [t1]
+  | isOperator l, precOp (unLid l) == Right precBang
+    = parensIf (p > precBang) $
+        text (unLid l) <> pprPrec (precBang + 1) t1
+pprTyApp p (J [] l) [t1, t2]
+  | isOperator l, Left prec <- precOp (unLid l)
+    = parensIf (p > prec) $
+        sep [ pprPrec prec t1,
+              text (unLid l) <+> pprPrec (prec + 1) t2 ]
+  | isOperator l, Right prec <- precOp (unLid l)
+    = parensIf (p > prec) $
+        sep [ pprPrec (prec + 1) t1,
+              text (unLid l) <+> pprPrec prec t2]
+pprTyApp p ql ts = parensIf (p > precApp) $
+                     sep [ pprPrec precApp ts,
+                           ppr ql ]
+
 instance Ppr (Type i) where
   -- Print sugar for infix type constructors:
   pprPrec p [$ty| $t1 ; $t2 |]
@@ -126,25 +147,8 @@ instance Ppr (Type i) where
     where pprArr (QeLit Qu) = text "->"
           pprArr (QeLit Qa) = text "-o"
           pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
-  pprPrec p [$ty| $t1 $lid:n |]
-    | isOperator n && precOp (unLid n) == Right precBang =
-        parensIf (p > precBang) $
-          text (unLid n) <> pprPrec (precBang + 1) t1
-  pprPrec p [$ty| ($t1, $t2) $lid:n |]
-    | isOperator n
-                  = case precOp (unLid n) of
-        Left prec  -> parensIf (p > prec) $
-                      sep [ pprPrec prec t1,
-                            text (unLid n) <+> pprPrec (prec + 1) t2 ]
-        Right prec -> parensIf (p > prec) $
-                      sep [ pprPrec (prec + 1) t1,
-                            text (unLid n) <+> pprPrec prec t2]
-  pprPrec _ [$ty| $qlid:n |]  = ppr n
-    -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   pprPrec p [$ty| ($list:ts) $qlid:n |]
-                          = parensIf (p > precApp) $
-                                sep [ pprPrec precApp ts,
-                                      ppr n ]
+                          = pprTyApp p n ts
     -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   pprPrec p [$ty| '$x |]  = pprPrec p x
   pprPrec p [$ty| $quant:qu '$x. $t |]
@@ -165,24 +169,9 @@ instance Ppr (Type i) where
 
 instance Ppr (TyPat i) where
   pprPrec p tp0 = case tp0 of
-    N _ (TpVar tv var)   -> pprParamV var tv
-    [$tpQ| $typat:tp1 $lid:n |]
-      | isOperator n && precOp (unLid n) == Right precBang ->
-        let sp = if p > precBang then " " else "" in
-        text (sp ++ unLid n) <> pprPrec (precBang + 1) tp1
-    [$tpQ| ($typat:tp1, $typat:tp2) $lid:n |]
-      | isOperator n -> case precOp (unLid n) of
-        Left prec  -> parensIf (p > prec) $
-                      sep [ pprPrec prec tp1,
-                            text (unLid n) <+> pprPrec (prec + 1) tp2 ]
-        Right prec -> parensIf (p > prec) $
-                      sep [ pprPrec (prec + 1) tp1,
-                            text (unLid n) <+> pprPrec prec tp2 ]
-    [$tpQ| $qlid:ql |] -> ppr ql
-    [$tpQ| ($list:tps) $qlid:ql |] 
-                       -> parensIf (p > precApp) $
-                            sep [ pprPrec precApp tps,
-                                  ppr ql ]
+    N _ (TpVar tv var) -> pprParamV var tv
+    [$tpQ| ($list:tps) $qlid:ql |]
+                       -> pprTyApp p ql tps
     [$tpQ| $antiP:a |] -> ppr a
 
 instance Ppr (QExp i) where

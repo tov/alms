@@ -95,14 +95,16 @@ data Type
 -- | Information about a type constructor
 data TyCon
   = TyCon {
+      -- | Unique ID
+      tcId        :: Int,
       -- | Printable name
-      tcName      :: QLid Renamed,
+      tcName      :: (QLid Renamed),
       -- | Variances for parameters, and correct length
       tcArity     :: [Variance],
       -- | Bounds for parameters (may be infinite)
       tcBounds    :: [QLit],
       -- | Qualifier as a function of parameters
-      tcQual      :: QDen Int,
+      tcQual      :: (QDen Int),
       -- | For pattern-matchable types, the data constructors
       tcCons      :: ([TyVarR], Env.Env (Uid Renamed) (Maybe Type)),
       -- | For type operators, the next head reduction
@@ -120,7 +122,7 @@ data TyPat
   deriving (Typeable, Data)
 
 instance Eq TyCon where
-  tc == tc'  =  tcName tc == tcName tc'
+  tc == tc'  =  tcId tc == tcId tc'
 
 instance Ord TyCon where
   compare tc tc'  = compare (tcName tc) (tcName tc')
@@ -528,8 +530,9 @@ instance ExtTC r => ExtTC ([([TyPat], Type)] -> r) where
 instance ExtTC r => ExtTC (Maybe [([TyPat], Type)] -> r) where
   extTC tc x = extTC (tc { tcNext = x })
 
-mkTC :: ExtTC r => QLid Renamed -> r
-mkTC ql = extTC TyCon {
+mkTC :: ExtTC r => Int -> QLid Renamed -> r
+mkTC i ql = extTC TyCon {
+  tcId     = i,
   tcName   = ql,
   tcArity  = [],
   tcBounds = [],
@@ -540,6 +543,7 @@ mkTC ql = extTC TyCon {
 
 internalTC :: ExtTC r => Int -> String -> r
 internalTC i s = extTC TyCon {
+  tcId     = i,
   tcName   = J [] (Lid (Ren_ i) s),
   tcArity  = [],
   tcBounds = [],
@@ -841,7 +845,7 @@ dumpType = CMW.execWriter . loop 0 where
 instance Ppr TyCon where
   ppr tc =
     case tcNext tc of
-      Just [(tps,t)] -> ps tvs <+> ppr (tcName tc)
+      Just [(tps,t)] -> pprTyApp 0 (tcName tc) (ps tvs)
                           >?> qe tvs
                             >?> char '=' <+> ppr t
         where
@@ -852,7 +856,7 @@ instance Ppr TyCon where
                  | qlit <- tcBounds tc
                  | i <- [ 1 .. ] :: [Int] ]
       --
-      Just next -> ps tvs <+> ppr (tcName tc)
+      Just next -> pprTyApp 0 (tcName tc) (ps tvs)
                      >?> (qe tvs <+> text "with"
                           $$ vcat (map alt next))
         where
@@ -862,7 +866,7 @@ instance Ppr TyCon where
           alt (tps,t) = char '|' <+> pprPrec precApp tps <+> ppr (tcName tc)
                           >?> char '=' <+> ppr t
       --
-      Nothing -> ps tvs <+> ppr (tcName tc)
+      Nothing -> pprTyApp 0 (tcName tc) (ps tvs)
                    >?> qe tvs
                      >?> alts
         where
@@ -883,9 +887,8 @@ instance Ppr TyCon where
                             ppr (qRepresent
                                  (denumberQDen
                                   (map qDenOfTyVar tvs) (tcQual tc)))
-      ps tvs = ppr
-                 [ ppr var <> pprPrec precApp tv
-                 | tv <- tvs
-                 | var <- tcArity tc ]
+      ps tvs = [ ppr var <> pprPrec precApp tv
+               | tv <- tvs
+               | var <- tcArity tc ]
 
 instance Show TyCon where showsPrec = showFromPpr

@@ -212,6 +212,13 @@ runTCNew s action = do
   let e'  = sEnv s =+= envify md
   return (a, md, S e' ix')
 
+-- | Generate a fresh integer for use as a 'TyCon' id
+newIndex :: Monad m => TC m Int
+newIndex = TC $ do
+  i <- get
+  put (i + 1)
+  return i
+
 -- | Add a module to the current module path
 enterModule :: Monad m => Uid R -> TC m a -> TC m a
 enterModule u = local $ \cxt ->
@@ -691,8 +698,9 @@ tcTyDecs tds0 = do
    in loop stub
   where
     allocStub name params = do
-      us <- currentModulePath
-      let tc = mkTC (J us name)
+      ix <- newIndex
+      -- us <- currentModulePath
+      let tc = mkTC ix (J [] name)
                     [ (q, Omnivariant) | q <- params ]
       bindTycon name tc
     --
@@ -719,8 +727,9 @@ tcTyDec :: (?loc :: Loc, Monad m) =>
 tcTyDec td0 = case dataOf td0 of
   TdAbs name params variances quals -> do
     quals' <- indexQuals name params quals
-    us     <- currentModulePath
-    let tc' = mkTC (J us name) quals'
+    ix     <- newIndex
+    -- us     <- currentModulePath
+    let tc' = mkTC ix (J [] name) quals'
                    [ (tvqual parm, var) | var <- variances | parm <- params ]
     bindTycon name tc'
     return (False, tc')
