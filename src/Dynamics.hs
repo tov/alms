@@ -48,32 +48,24 @@ type E        = [Scope]
 type Scope    = PEnv (Uid R) Level
 -- | A level binds values and exceptions
 data Level    = Level {
-                  vlevel :: VE,
-                  xlevel :: XE
+                  vlevel :: !VE
                 }
 -- | We bind 'IO' 'Value's rather than values, so that we can use
 -- 'IORef' to set up recursion
 type VE       = Env (Lid R) (IO Value)
--- | We associate exception names with their identity, since new
---   kinds of exceptions may be generated at run time.
-type XE       = Env ExnName (ExnId R)
 
 -- | To distinguish exn names from path components.
 newtype ExnName = ExnName (Uid R)
   deriving (Eq, Ord)
 
 instance GenEmpty Level where
-  genEmpty = Level empty empty
+  genEmpty = Level empty
 instance GenLookup Level (Lid R) (IO Value) where
   level =..= k = vlevel level =..= k
-instance GenLookup Level ExnName (ExnId R) where
-  level =..= k = xlevel level =..= k
 instance GenExtend Level Level where
-  Level ve xe =+= Level ve' xe' = Level (ve =+= ve') (xe =+= xe')
+  Level ve =+= Level ve' = Level (ve =+= ve')
 instance GenExtend Level (Env (Lid R) (IO Value)) where
-  level =+= ve' = level =+= Level ve' empty
-instance GenExtend Level (Env ExnName (ExnId R)) where
-  level =+= xe' = level =+= Level empty xe'
+  level =+= ve' = level =+= Level ve'
 
 -- | Domain for the meaning of an expression:
 type D        = E -> Result
@@ -136,7 +128,7 @@ evalModExp [$me| $quid:n $list:_ |]      env = do
 evalModExp [$me| $anti:a |]              _   = $antifail
 
 evalExn :: Uid R -> Maybe (Type R) -> DDecl
-evalExn u mt env = return (addExn env (ExnId u mt))
+evalExn _ _ env = return env
 
 eval :: E -> Prog R -> Result
 eval env0 [$prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
@@ -270,7 +262,7 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- | For printing in the REPL, 'addDecls' returns an environment
 --   mapping any newly bound names to their values
-type NewValues = (Env (Lid R) Value, [ExnId R])
+type NewValues = Env (Lid R) Value
 
 -- | Interpret declarations by adding to the environment, potentially
 --   with side effects
@@ -279,7 +271,7 @@ addDecls env decls = do
   env' <- evalDecls decls (genEmpty : [collapse env])
   let PEnv _ level : _ = env'
   vl' <- mapValsM id (vlevel level)
-  return (env', (vl', range (xlevel level)))
+  return (env', vl')
 
 -- | Bind a name to a value
 addVal :: E -> Lid R -> Value -> E
@@ -289,8 +281,4 @@ addVal e n v     = e =+= n =:= (return v :: IO Value)
 --   environment
 addMod :: E -> Uid R -> E -> E
 addMod e n e' = e =+= n =:= collapse e'
-
--- | To register an exception ID.
-addExn :: E -> ExnId R -> E
-addExn env exnid = env =+= ExnName (eiName exnid) =:= exnid
 

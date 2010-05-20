@@ -12,7 +12,8 @@ import Parser (parse, parseInteractive, parseProg, parseGetInfo)
 import Paths (findAlmsLib, findAlmsLibRel, versionString)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg,
                getRenamingInfo, RenamingInfo(..))
-import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..), tyConToDec)
+import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..),
+                getExnParam, tyConToDec)
 import Coercion (translate, translateDecls, TEnv, tenv0)
 import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
@@ -211,7 +212,7 @@ interactive opt rs0 = do
 
       execute newDefs stast2
                           = if opt Don'tExecute
-                              then display newDefs (empty, []) (fst stast2)
+                              then display newDefs empty (fst stast2)
                               else do
                                 (st3, newVals) <- dynamics stast2
                                 display newDefs newVals st3
@@ -252,12 +253,15 @@ interactive opt rs0 = do
                   addHistory line
                   loop (count + 1) acc
     printResult :: Module -> NewValues -> IO ()
-    printResult md00 (values, _exns) = say (loop True md00) where
+    printResult md00 values = say (loop True md00) where
       loop tl md0 = case md0 of
         MdNil               -> Ppr.empty
         MdApp md1 md2       -> loop tl md1 $$ loop tl md2
         MdValue (Var l) t   -> pprValue tl l t (values =..= l)
-        MdValue (Con _u) _t -> Ppr.empty -- exception?
+        MdValue (Con u) t   -> case getExnParam t of
+          Nothing        -> Ppr.empty
+          Just Nothing   -> text "exception"<+>ppr u
+          Just (Just t') -> text "exception"<+>ppr u<+>text "of"<+>ppr t'
         MdTycon _ tc        ->
           text "type" <+> ppr (tyConToDec tc :: TyDec Renamed)
         MdModule u md1      ->
@@ -271,12 +275,6 @@ interactive opt rs0 = do
       addHang c m d = case m of
         Nothing -> d
         Just t  -> hang (d <+> char c) 2 t
-    {-
-      pprExn (ExnId { eiName = u, eiParam = Just t })
-        = text "exception" <+> ppr u <+> text "of" <+> ppr t
-      pprExn (ExnId { eiName = u})
-        = text "exception" <+> ppr u
-    -}
 
 printInfo :: ReplState -> Ident Raw -> IO ()
 printInfo st ident = case getRenamingInfo ident (rsRenaming st) of

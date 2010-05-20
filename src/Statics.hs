@@ -24,7 +24,7 @@ module Statics (
   -- * Type checking
   tcProg, tcDecls,
   -- * Type checking results for the REPL
-  runTCNew, Module(..), tyConToDec,
+  runTCNew, Module(..), getExnParam, tyConToDec,
 ) where
 
 import Meta.Quasi
@@ -1102,6 +1102,14 @@ env0 :: S
 env0  = S e0 0 where
   e0 :: E
   e0  = genEmpty =+= (Con (uid "()") -:- tyUnit :: VE)
+
+-- | Find out the parameter type of an exception
+getExnParam :: Type -> Maybe (Maybe Type)
+getExnParam (TyApp tc _ _)
+  | tc == tcExn             = Just Nothing
+getExnParam (TyFun _ t1 (TyApp tc _ _))
+  | tc == tcExn             = Just (Just t1)
+getExnParam _               = Nothing
 
 -- | Reconstruct the declaration from a tycon binding, for printing
 tyConToDec :: TyCon -> TyDec R
