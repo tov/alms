@@ -845,16 +845,20 @@ dumpType = CMW.execWriter . loop 0 where
 instance Ppr TyCon where
   ppr tc =
     case tcNext tc of
-      Just [(tps,t)] -> pprTyApp 0 (tcName tc) (ps tvs)
-                          >?> qe tvs
+      Just [(tps,t)] -> pprTyApp 0 (tcName tc) (ps (map snd tvs))
+                          >?> qe (map fst tvs)
                             >?> char '=' <+> ppr t
         where
           tvs  = [ case tp of
-                     TpVar tv -> tv
-                     _        -> TV (lid (show i)) qlit
+                     TpVar tv -> (tv, ppr tv)
+                     _        -> let tv  = TV (lid (show i)) qlit
+                                     tv' = case qlit of
+                                       Qa -> ppr tv <> char '='
+                                       Qu -> empty
+                                  in (tv, tv' <> pprPrec precEq tp)
                  | tp   <- tps
                  | qlit <- tcBounds tc
-                 | i <- [ 1 .. ] :: [Int] ]
+                 | i <- [ 1 .. ] ]
       --
       Just next -> pprTyApp 0 (tcName tc) (ps tvs)
                      >?> (qe tvs <+> text "with"
