@@ -1,10 +1,10 @@
 (* Polymorphic version: An Ill-Typed Module (type error) *)
 
 let ap =
-  fun '<a ->
-    fun '<b ->
-      fun f: ('<a -o '<b) ->
-        fun x: '<a ->
+  fun `a ->
+    fun `b ->
+      fun f: (`a -o `b) ->
+        fun x: `a ->
           f x
 
 let inc2 =

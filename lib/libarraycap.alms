@@ -5,7 +5,7 @@
 #load "libarray"
 
 module AArray = struct
-  type '<a / '<b
+  type `a / `b
   type 1
   type 2
   local
@@ -44,22 +44,22 @@ module AArray = struct
     end
   end
 
-  let par ['t,'c,'<r1,'<r2]
-          (left:  all 'd. ('t, 'd) readcap -> '<r1 * ('t, 'd) readcap)
-          (right: all 'd. ('t, 'd) readcap -> '<r2 * ('t, 'd) readcap)
+  let par ['t,'c,`r1,`r2]
+          (left:  all 'd. ('t, 'd) readcap -> `r1 * ('t, 'd) readcap)
+          (right: all 'd. ('t, 'd) readcap -> `r2 * ('t, 'd) readcap)
           (c: ('t, 'c) readcap)
-          : '<r1 * '<r2 * ('t, 'c) readcap =
+          : `r1 * `r2 * ('t, 'c) readcap =
     let (c1, c2) = split c in
     let future   = Future.new (fun () -> left c1) in
     let (r2, c2) = right c2 in
     let (r1, c1) = Future.get future in
       (r1, r2, join (c1, c2))
 
-  let fold ['a,'t,'c,'<r]
-           (f: 'a -> '<r -> '<r) (z: '<r)
+  let fold ['a,'t,'c,`r]
+           (f: 'a -> `r -> `r) (z: `r)
            (a: ('a, 't) array) (c: ('t, 'c) readcap) =
-    let rec loop (i: int) (z: '<r)| (c: ('t, 'c) readcap)
-                 : '<r * ('t, 'c) readcap =
+    let rec loop (i: int) (z: `r)| (c: ('t, 'c) readcap)
+                 : `r * ('t, 'c) readcap =
       if i < size a
         then let (elt, c) = at a i c in
                loop (i + 1) (f elt z) c

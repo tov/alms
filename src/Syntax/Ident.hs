@@ -202,8 +202,8 @@ instance Show (BIdent i) where
   showsPrec p (Con k) = showsPrec p k
 
 instance Show (TyVar i) where
-  showsPrec _ (TV x Qu)  = showString "'" . shows x
-  showsPrec _ (TV x Qa)  = showString "'<" . shows x
+  showsPrec _ (TV x Qu)  = showChar '\''  . shows x
+  showsPrec _ (TV x Qa)  = showChar '`' . shows x
   showsPrec _ (TVAnti a) = showChar '\'' . shows a
 
 instance Viewable (Path (Uid i) (BIdent i)) where

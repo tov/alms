@@ -17,7 +17,7 @@ entries = [
       -= \exn -> throw (VExn exn :: VExn)
                  :: IO Value,
     fun "tryfun_string"
-                -: [$ty| all '<a. (unit -o '<a) -> (exn + string) + '<a |]
+                -: [$ty| all `a. (unit -o `a) -> (exn + string) + `a |]
       -= \(VaFun _ f) -> do
            fmap Right (f vaUnit) `catches`
              [ Handler $ \(VExn v) -> return (Left (Left v))

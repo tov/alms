@@ -1,7 +1,7 @@
 (* Polymorphic version: A Type-Correct, Blame-Free Program *)
 
 let ap =
-  fun '<a '<b (f: '<a -o '<b) (x: '<a) ->
+  fun `a `b (f: `a -o `b) (x: `a) ->
     f x
 
 let inc =

@@ -80,7 +80,7 @@ module SkewnessExample = struct
           else c in
         Pack[ex 't. (float, 't) array * 't writecap]('t, a ,loop 0 c)
   
-  let (^:) '<a (t: '<a) (ts: '<a list) = Cons(t, ts)
+  let (^:) `a (t: `a) (ts: `a list) = Cons(t, ts)
   
   let functions (n: int) =
     T("1",         fun (ix: float) -> 1.0) ^:

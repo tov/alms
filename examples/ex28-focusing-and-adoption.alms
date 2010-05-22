@@ -2,22 +2,22 @@
 
 (*
   type variables:
-    '<a '<b             stored value
+    `a `b             stored value
     't 's               capability name
 *)
 
-let length['<a] (xs: '<a list) : int * '<a list =
-  foldr (fun (x: '<a) (n: int, xs: '<a list) ->
+let length[`a] (xs: `a list) : int * `a list =
+  foldr (fun (x: `a) (n: int, xs: `a list) ->
            (n + 1, Cons (x, xs)))
-        (0, Nil['<a]) xs
+        (0, Nil[`a]) xs
 
-let snoc['<a] (x: '<a) | (xs: '<a list) : '<a list =
-  foldr (fun (x: '<a) (xs: '<a list) -> Cons (x, xs))
-        (Cons (x, Nil['<a])) xs
+let snoc[`a] (x: `a) | (xs: `a list) : `a list =
+  foldr (fun (x: `a) (xs: `a list) -> Cons (x, xs))
+        (Cons (x, Nil[`a])) xs
 
 let revAppN =
-  let rec loop['<a] (n: int) (xs: '<a list) | (acc: '<a list)
-                    : '<a list * '<a list =
+  let rec loop[`a] (n: int) (xs: `a list) | (acc: `a list)
+                    : `a list * `a list =
         match n with
         | 0 -> (acc, xs)
         | _ -> match xs with
@@ -25,52 +25,52 @@ let revAppN =
                | xs          -> (acc, xs)
   in loop
 
-let swapN['<a] (ix: int) (y: '<a) | (xs: '<a list)
-       : '<a * '<a list =
-  let (Cons(x, xs), acc) = revAppN ix xs Nil['<a] in
+let swapN[`a] (ix: int) (y: `a) | (xs: `a list)
+       : `a * `a list =
+  let (Cons(x, xs), acc) = revAppN ix xs Nil[`a] in
   let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
     (x, xs)
 
 abstype 't tr qualifier U = Tr
-    and ('t, '<a) cap qualifier A = Cap of '<a * (unit -o unit) list
-    and ('t, '<a) guarded qualifier U =
-                    Guarded of ('<a * (unit -o unit) list) option ref
+    and ('t, `a) cap qualifier A = Cap of `a * (unit -o unit) list
+    and ('t, `a) guarded qualifier U =
+                    Guarded of (`a * (unit -o unit) list) option ref
 with
-  let new['<a] (x: '<a) : ex 't. ('t, '<a) cap * 't tr =
-        Pack[ex 't. ('t, '<a) cap * 't tr]
-            (unit, Cap[unit, '<a] (x, Nil[unit -o unit]), Tr[unit])
-  let swap['<a,'<b,'t] ((Cap (x, fs), _) : ('t, '<a) cap * 't tr) |
-                       (y                : '<b)
-                       : ('t, '<b) cap * '<a =
+  let new[`a] (x: `a) : ex 't. ('t, `a) cap * 't tr =
+        Pack[ex 't. ('t, `a) cap * 't tr]
+            (unit, Cap[unit, `a] (x, Nil[unit -o unit]), Tr[unit])
+  let swap[`a,`b,'t] ((Cap (x, fs), _) : ('t, `a) cap * 't tr) |
+                       (y                : `b)
+                       : ('t, `b) cap * `a =
     (Cap['t] (y, fs), x)
-  let free['<a, 't] (Cap (_, fs): ('t, '<a) cap) =
+  let free[`a, 't] (Cap (_, fs): ('t, `a) cap) =
     let rec loop (fs : (unit -o unit) list) : unit =
       match fs with
       | Nil         -> ()
       | Cons(f, fs) -> f (); loop fs
     in loop fs
 
-  let adoptByThen['<a,'ta,'<b,'tb]
-      ((Cap adoptee, _)                : ('ta, '<a) cap * 'ta tr) |
-      ((Cap (adoptor, destructors), _) : ('tb, '<b) cap * 'tb tr)
-      (destroy                         : ('ta, '<a) cap -o unit)
-      : ('tb, '<b) cap * ('tb, '<a) guarded =
+  let adoptByThen[`a,'ta,`b,'tb]
+      ((Cap adoptee, _)                : ('ta, `a) cap * 'ta tr) |
+      ((Cap (adoptor, destructors), _) : ('tb, `b) cap * 'tb tr)
+      (destroy                         : ('ta, `a) cap -o unit)
+      : ('tb, `b) cap * ('tb, `a) guarded =
     let r    = ref (Some adoptee) in
     let g () = match r <- None with
                | None   -> failwith "Can't happen"
                | Some c -> destroy (Cap['ta] c) in
       (Cap['tb] (adoptor, Cons(g, destructors)), Guarded['tb] r)
-  let adoptBy['<a,'ta,'<b,'tb]
-      (adoptee : ('ta, '<a) cap * 'ta tr) |
-      (adoptor : ('tb, '<b) cap * 'tb tr)
-      : ('tb, '<b) cap * ('tb, '<a) guarded
-      = adoptByThen adoptee adoptor (fun (_: ('ta, '<a) cap) -> ())
+  let adoptBy[`a,'ta,`b,'tb]
+      (adoptee : ('ta, `a) cap * 'ta tr) |
+      (adoptor : ('tb, `b) cap * 'tb tr)
+      : ('tb, `b) cap * ('tb, `a) guarded
+      = adoptByThen adoptee adoptor (fun (_: ('ta, `a) cap) -> ())
 
-  let focusIn['<a,'t,'<b,'<r]
-      ((guard, Guarded r) : ('t, '<a) cap * ('t, '<b) guarded) |
-      (body               : (all 's. ('s, '<b) cap * 's tr -o
-                                     ('s, '<b) cap * '<r))
-      : ('t, '<a) cap * '<r =
+  let focusIn[`a,'t,`b,`r]
+      ((guard, Guarded r) : ('t, `a) cap * ('t, `b) guarded) |
+      (body               : (all 's. ('s, `b) cap * 's tr -o
+                                     ('s, `b) cap * `r))
+      : ('t, `a) cap * `r =
       match r <- None with
       | None   -> failwith "Can't happen"
       | Some c ->

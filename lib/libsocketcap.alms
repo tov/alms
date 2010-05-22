@@ -141,32 +141,32 @@ module ASocket = struct
 
   (* Convenience functions for catching and thawing frozen socket
    * capabilities. *)
-  let catchInitial['t,'<a] (sock: 't socket) (body: unit -o '<a)
-                           (handler: 't initial -o '<a) =
+  let catchInitial['t,`a] (sock: 't socket) (body: unit -o `a)
+                           (handler: 't initial -o `a) =
     try body () with
     | StillInitial (frz, msg) ->
         match thawInitial sock frz with
         | Left frz  -> raise (StillInitial (frz, msg))
         | Right cap -> handler cap
 
-  let catchBound['t,'<a] (sock: 't socket) (body: unit -o '<a)
-                           (handler: 't bound -o '<a) =
+  let catchBound['t,`a] (sock: 't socket) (body: unit -o `a)
+                           (handler: 't bound -o `a) =
     try body () with
     | StillBound (frz, msg) ->
         match thawBound sock frz with
         | Left frz  -> raise (StillBound (frz, msg))
         | Right cap -> handler cap
 
-  let catchListening['t,'<a] (sock: 't socket) (body: unit -o '<a)
-                           (handler: 't listening -o '<a) =
+  let catchListening['t,`a] (sock: 't socket) (body: unit -o `a)
+                           (handler: 't listening -o `a) =
     try body () with
     | StillListening (frz, msg) ->
         match thawListening sock frz with
         | Left frz  -> raise (StillListening (frz, msg))
         | Right cap -> handler cap
 
-  let catchConnected['t,'<a] (sock: 't socket) (body: unit -o '<a)
-                           (handler: 't connected -o '<a) =
+  let catchConnected['t,`a] (sock: 't socket) (body: unit -o `a)
+                           (handler: 't connected -o `a) =
     try body () with
     | StillConnected (frz, msg) ->
         match thawConnected sock frz with

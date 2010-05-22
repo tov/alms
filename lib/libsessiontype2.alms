@@ -7,12 +7,12 @@ module SessionType = struct
 
   type 1
   type +'a ; +'s
-  type ! -'<a
-  type ? +'<a
+  type ! -`a
+  type ? +`a
 
   type 1           dual = 1
-     | (!'<a ; 's) dual = ?'<a ; 's dual
-     | (?'<a ; 's) dual = !'<a ; 's dual
+     | (!`a ; 's) dual = ?`a ; 's dual
+     | (?`a ; 's) dual = !`a ; 's dual
 
   abstype 's rendezvous = Rendezvous of ('s channel C.channel)
       and +'s channel qualifier A = Chan of bool C.channel
@@ -32,24 +32,24 @@ module SessionType = struct
       let c = C.new[bool] () in
         (Chan['s] c, Chan['s dual] c)
 
-    let send['<a] (a: '<a)
-            ['s] |(Chan c: (!'<a; 's) channel) : unit * 's channel =
+    let send[`a] (a: `a)
+            ['s] |(Chan c: (!`a; 's) channel) : unit * 's channel =
       C.send c (Unsafe.unsafeCoerce[bool] a);
       ((), Chan['s] c)
 
-    let recv['<a, 's] (Chan c: (?'<a; 's) channel)
-                      : '<a * 's channel =
-      (Unsafe.unsafeCoerce['<a] (C.recv c), Chan['s] c)
+    let recv[`a, 's] (Chan c: (?`a; 's) channel)
+                      : `a * 's channel =
+      (Unsafe.unsafeCoerce[`a] (C.recv c), Chan['s] c)
 
-    type ?-> '<c = ?'<c; 1
+    type ?-> `c = ?`c; 1
 
-    let follow['<c] (c: ?-> '<c channel) =
+    let follow[`c] (c: ?-> `c channel) =
       let (c', _) = recv c in ((), c')
 
-    type !-> '<c = !'<c; 1
+    type !-> `c = !`c; 1
 
-    let choose['s,'<c] (ctor: 's channel -> '<c)
-                    (c: !-> '<c channel): unit * 's dual channel =
+    let choose['s,`c] (ctor: 's channel -> `c)
+                    (c: !-> `c channel): unit * 's dual channel =
       let (theirs, mine) = newPair['s] () in
         send (ctor theirs) c;
         ((), mine)

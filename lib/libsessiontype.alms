@@ -7,14 +7,14 @@ module SessionType = struct
 
   type 1
   type +'a ; +'s
-  type ! -'<a
-  type ? +'<a
+  type ! -`a
+  type ? +`a
   type +'a |+| +'b
   type +'a |&| +'b
 
   type 1           dual = 1
-     | (!'<a ; 's) dual = ?'<a ; 's dual
-     | (?'<a ; 's) dual = !'<a ; 's dual
+     | (!`a ; 's) dual = ?`a ; 's dual
+     | (?`a ; 's) dual = !`a ; 's dual
      | ('a |+| 'b) dual = 'a dual |&| 'b dual
      | ('a |&| 'b) dual = 'a dual |+| 'b dual
 
@@ -32,14 +32,14 @@ module SessionType = struct
         C.send r (Chan['s] c);
         Chan['s dual] c
 
-    let send['<a, 's] (Chan c: (!'<a; 's) channel)|
-                      (a: '<a) : 's channel =
+    let send[`a, 's] (Chan c: (!`a; 's) channel)|
+                      (a: `a) : 's channel =
       C.send c (Unsafe.unsafeCoerce[bool] a);
       Chan['s] c
 
-    let recv['<a, 's] (Chan c: (?'<a; 's) channel)
-                      : '<a * 's channel =
-      (Unsafe.unsafeCoerce['<a] (C.recv c), Chan['s] c)
+    let recv[`a, 's] (Chan c: (?`a; 's) channel)
+                      : `a * 's channel =
+      (Unsafe.unsafeCoerce[`a] (C.recv c), Chan['s] c)
 
     let sel1['s1, 's2] (Chan c: ('s1 |+| 's2) channel)
                        : 's1 channel =

@@ -53,11 +53,11 @@ primBasis  = [
     "*"      `primtype` tcTuple,
 
     -- Sums
-    dec [$dc| type '<a option = None | Some of '<a |],
-    dec [$dc| type '<a + '<b = Left of '<a | Right of '<b |],
+    dec [$dc| type `a option = None | Some of `a |],
+    dec [$dc| type `a + `b = Left of `a | Right of `b |],
 
     -- Lists
-    dec [$dc| type '<a list = Nil | Cons of '<a * '<a list |],
+    dec [$dc| type `a list = Nil | Cons of `a * `a list |],
 
     -- Arithmetic
     binArith "+" (+),
@@ -151,11 +151,11 @@ primBasis  = [
       -= \() -> Env.getEnvironment,
 
     -- References
-    dec [$dc| type '<a ref qualifier U |],
-    dec [$dc| type '<a aref qualifier A |],
-    fun "ref" -: [$ty| all '<a. '<a -> '<a ref |]
+    dec [$dc| type `a ref qualifier U |],
+    dec [$dc| type `a aref qualifier A |],
+    fun "ref" -: [$ty| all `a. `a -> `a ref |]
       -= (\v -> Ref `fmap` newIORef v),
-    fun "aref" -: [$ty| all '<a. '<a -> '<a aref |]
+    fun "aref" -: [$ty| all `a. `a -> `a aref |]
       -= (\v -> Ref `fmap` newIORef v),
 
     fun "!" -: [$ty| all 'a. 'a ref -> 'a |]
@@ -164,19 +164,19 @@ primBasis  = [
       -= (\r -> do
            v <- readIORef (unRef r)
            return (r, v)),
-    fun "<-" -: [$ty| all '<a. '<a ref -> '<a -o '<a |]
+    fun "<-" -: [$ty| all `a. `a ref -> `a -o `a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, v'))),
-    fun "<-!" -: [$ty| all '<a '<b. '<a aref ->
-                            '<b -o '<b aref * '<a |]
+    fun "<-!" -: [$ty| all `a `b. `a aref ->
+                            `b -o `b aref * `a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
     submod "Unsafe" [
       -- Unsafe coercions
-      fun "unsafeCoerce" -: [$ty| all '<b '<a. '<a -> '<b |]
+      fun "unsafeCoerce" -: [$ty| all `b `a. `a -> `b |]
         -= (id :: Value -> Value),
-      fun "unsafeDup" -: [$ty| all '<a. '<a -> '<a * '<a |]
+      fun "unsafeDup" -: [$ty| all `a. `a -> `a * `a |]
         -= ((\v -> (v, v)) :: Value -> (Value, Value))
     ],
 

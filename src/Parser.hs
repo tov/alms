@@ -287,11 +287,8 @@ identp = antiblep
 
 -- Type variables
 tyvarp :: Id i => P (TyVar i)
-tyvarp  = do
-    char '\''
-    choice [ antiblep
-           , flip TV <$> (Qa <$ char '<' <|> pure Qu)
-                     <*> lidp ]
+tyvarp  = char '\'' *> (antiblep <|> TV <$> lidp <*> pure Qu)
+      <|> char '`'  *> (antiblep <|> TV <$> lidp <*> pure Qa)
   <?> "type variable"
 
 oplevelp :: Id i => Prec -> P (Lid i)

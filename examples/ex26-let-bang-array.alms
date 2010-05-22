@@ -27,9 +27,9 @@ with
     (* Given a capability, create a temporary, unlimited read capability
        and pass that to a call-back.  Return the result of the callback
        and the restored capability. *)
-    let letBang['t, 'c, '<a] (c: ('t, 'c) readcap)|
-                                (k: ('t, 'c) ureadcap -o '<a)
-                                : '<a * ('t, 'c) readcap =
+    let letBang['t, 'c, `a] (c: ('t, 'c) readcap)|
+                                (k: ('t, 'c) ureadcap -o `a)
+                                : `a * ('t, 'c) readcap =
       let r  = ref (Available c) in
       let uc = MkCap r in
       let a  = k uc in
@@ -37,19 +37,19 @@ with
         r <- Defunct;
         (a, c)
 
-    let applyBang['t,'c,'<r]
-             (k: ('t, 'c) readcap -o '<r * ('t, 'c) readcap)
+    let applyBang['t,'c,`r]
+             (k: ('t, 'c) readcap -o `r * ('t, 'c) readcap)
              |
              (MkCap r: ('t, 'c) ureadcap)
-             : '<r =
+             : `r =
       let (result, c) = k (acquireBang r) in
         r <- Available c;
         result
 
-    let liftBang['t,'c,'<r]
-             (k: ('t, 'c) readcap -> '<r * ('t, 'c) readcap)
+    let liftBang['t,'c,`r]
+             (k: ('t, 'c) readcap -> `r * ('t, 'c) readcap)
              (MkCap r: ('t, 'c) ureadcap)
-             : '<r =
+             : `r =
       let (result, c) = k (acquireBang r) in
         r <- Available c;
         result
