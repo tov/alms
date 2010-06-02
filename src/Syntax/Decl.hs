@@ -13,12 +13,17 @@ module Syntax.Decl (
   TyDec'(..), TyDec, AbsTy'(..), AbsTy,
   -- ** Modules
   ModExp'(..), ModExp, newModExp,
+  -- ** Signature
+  SigExp'(..), SigExp, newSigExp,
+  SigItem'(..), SigItem, newSigItem,
   -- ** Synthetic constructors
   -- | These fill in the source location fields with a bogus location
-  dcLet, dcTyp, dcAbs, dcMod, dcOpn, dcLoc, dcExn, dcAnti,
+  dcLet, dcTyp, dcAbs, dcMod, dcSig, dcOpn, dcLoc, dcExn, dcAnti,
   absTy, absTyAnti,
   tdAbs, tdSyn, tdDat, tdAnti,
-  meStr, meName, meAnti,
+  meStr, meName, meAsc, meAnti,
+  sgVal, sgTyp, sgMod, sgSig, sgInc, sgExn, sgAnti,
+  seSig, seName, seWith, seAnti,
   prog,
 
   -- * Programs
@@ -39,11 +44,13 @@ import Data.Generics (Typeable(..), Data(..))
 import qualified Data.Set as S
 import qualified Data.Map as M
 
-type Decl i   = N (DeclNote i) (Decl' i)
-type ModExp i = N (DeclNote i) (ModExp' i)
-type Prog i   = Located Prog' i
-type AbsTy i  = Located AbsTy' i
-type TyDec i  = Located TyDec' i
+type Decl i    = N (DeclNote i) (Decl' i)
+type ModExp i  = N (DeclNote i) (ModExp' i)
+type SigItem i = N (DeclNote i) (SigItem' i)
+type SigExp i  = N (DeclNote i) (SigExp' i)
+type Prog i    = Located Prog' i
+type AbsTy i   = Located AbsTy' i
+type TyDec i   = Located TyDec' i
 
 -- | A program is a sequence of declarations, maybe followed by an
 -- expression
@@ -60,6 +67,8 @@ data Decl' i
   | DcAbs [AbsTy i] [Decl i]
   -- | Module declaration
   | DcMod (Uid i) (ModExp i)
+  -- | Signature declaration
+  | DcSig (Uid i) (SigExp i)
   -- | Module open
   | DcOpn (ModExp i)
   -- | Local block
@@ -76,8 +85,40 @@ data ModExp' i
   = MeStr [Decl i]
   -- | A module variable
   | MeName (QUid i) [QLid i]
+  -- | A signature ascription
+  | MeAsc (ModExp i) (SigExp i)
   -- | An antiquote
   | MeAnti Anti
+  deriving (Typeable, Data)
+
+-- | A signature item
+data SigItem' i
+  -- | A value
+  = SgVal (Lid i) (Type i)
+  -- | A type
+  | SgTyp [TyDec i]
+  -- | A module
+  | SgMod (Uid i) (SigExp i)
+  -- | A signature
+  | SgSig (Uid i) (SigExp i)
+  -- | Signature inclusion
+  | SgInc (SigExp i)
+  -- | An exception
+  | SgExn (Uid i) (Maybe (Type i))
+  -- | An antiquote
+  | SgAnti Anti
+  deriving (Typeable, Data)
+
+-- | A module type expression
+data SigExp' i
+  -- | A signature literal
+  = SeSig [SigItem i]
+  -- | A signature variable
+  | SeName (QUid i) [QLid i]
+  -- | Type-level fibration
+  | SeWith (SigExp i) (QLid i) [TyVar i] (Type i)
+  -- | An antiquote
+  | SeAnti Anti
   deriving (Typeable, Data)
 
 -- | Affine language type declarations
@@ -138,7 +179,7 @@ instance Notable (DeclNote i) where
 newDecl :: Id i => Decl' i -> Decl i
 newDecl d0 = flip N d0 $ case d0 of
   DcLet p1 t2 e3 ->
-    DeclNote {
+    newNote {
       dloc_  = getLoc (p1, t2, e3),
       dfv_   = fv e3,
       ddv_   = qdv p1
@@ -154,19 +195,23 @@ newDecl d0 = flip N d0 $ case d0 of
       ddv_   = S.unions (map qdv ds2)
     }
   DcMod u1 me2 ->
-    DeclNote {
+    newNote {
       dloc_  = getLoc me2,
       dfv_   = fv me2,
       ddv_   = S.mapMonotonic (\(J p n) -> J (u1:p) n) (qdv me2)
     }
+  DcSig _ se2 ->
+    newNote {
+      dloc_  = getLoc se2
+    }
   DcOpn me1 ->
-    DeclNote {
+    newNote {
       dloc_  = getLoc me1,
       dfv_   = fv me1,
       ddv_   = qdv me1
     }
   DcLoc ds1 ds2 ->
-    DeclNote {
+    newNote {
       dloc_  = getLoc (ds1, ds2),
       dfv_   = fv ds1 |+| (fv ds2 |--| qdv ds1),
       ddv_   = qdv ds2
@@ -184,7 +229,7 @@ newDecl d0 = flip N d0 $ case d0 of
 newModExp :: Id i => ModExp' i -> ModExp i
 newModExp me0 = flip N me0 $ case me0 of
   MeStr ds ->
-    DeclNote {
+    newNote {
       dloc_  = getLoc ds,
       dfv_   = fv ds,
       ddv_   = qdv ds
@@ -193,7 +238,70 @@ newModExp me0 = flip N me0 $ case me0 of
     newNote {
       ddv_  = S.fromList qls
     }
+  MeAsc me se ->
+    newNote {
+      dloc_  = getLoc (me, se),
+      dfv_   = fv me,
+      ddv_   = qdv se
+    }
   MeAnti a ->
+    newNote {
+      dfv_  = antierror "fv" a,
+      ddv_  = antierror "dv" a
+    }
+
+newSigItem :: Id i => SigItem' i -> SigItem i
+newSigItem d0 = flip N d0 $ case d0 of
+  SgVal l1 t2 ->
+    newNote {
+      dloc_  = getLoc t2,
+      ddv_   = S.singleton (J [] l1)
+    }
+  SgTyp tds ->
+    newNote {
+      dloc_  = getLoc tds
+    }
+  SgMod u1 se2 ->
+    newNote {
+      dloc_  = getLoc se2,
+      ddv_   = S.mapMonotonic (\(J p n) -> J (u1:p) n) (qdv se2)
+    }
+  SgSig _ se2 ->
+    newNote {
+      dloc_  = getLoc se2
+    }
+  SgInc se1 ->
+    newNote {
+      dloc_  = getLoc se1,
+      ddv_   = qdv se1
+    }
+  SgExn _ t2 ->
+    newNote {
+      dloc_  = getLoc t2
+    }
+  SgAnti a ->
+    newNote {
+      dfv_  = antierror "fv" a,
+      ddv_  = antierror "dv" a
+    }
+
+newSigExp :: Id i => SigExp' i -> SigExp i
+newSigExp se0 = flip N se0 $ case se0 of
+  SeSig sis ->
+    newNote {
+      dloc_  = getLoc sis,
+      ddv_   = qdv sis
+    }
+  SeName _ qls ->
+    newNote {
+      ddv_  = S.fromList qls
+    }
+  SeWith se1 _ _ t3 ->
+    newNote {
+      dloc_ = getLoc (se1, t3),
+      ddv_  = qdv se1
+    }
+  SeAnti a ->
     newNote {
       dfv_  = antierror "fv" a,
       ddv_  = antierror "dv" a
@@ -202,8 +310,10 @@ newModExp me0 = flip N me0 $ case me0 of
 instance Id i => Fv (N (DeclNote i) a) i where fv  = dfv_ . noteOf
 instance Id i => Dv (N (DeclNote i) a) i where qdv = ddv_ . noteOf
 
-deriveNotable 'newDecl   (''Id, [0]) ''Decl
-deriveNotable 'newModExp (''Id, [0]) ''ModExp
+deriveNotable 'newDecl    (''Id, [0]) ''Decl
+deriveNotable 'newModExp  (''Id, [0]) ''ModExp
+deriveNotable 'newSigItem (''Id, [0]) ''SigItem
+deriveNotable 'newSigExp  (''Id, [0]) ''SigExp
 deriveNotable ''AbsTy
 deriveNotable ''TyDec
 deriveNotable ''Prog

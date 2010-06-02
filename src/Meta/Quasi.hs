@@ -8,7 +8,7 @@
       TypeSynonymInstances #-}
 module Meta.Quasi (
   pa, ty, ex, dc, me,
-  prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ,
+  prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ,
 ) where
 
 import Meta.QuoteData
@@ -70,7 +70,8 @@ mkvarP n   = TH.varP (TH.mkName n)
 --- Quasiquoters
 ---
 
-pa, ty, ex, dc, me, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ :: QuasiQuoter
+pa, ty, ex, dc, me, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ
+  :: QuasiQuoter
 
 ex  = mkQuasi parseExpr
 dc  = mkQuasi parseDecl
@@ -84,6 +85,8 @@ caQ = mkQuasi parseCaseAlt
 bnQ = mkQuasi parseBinding
 qeQ = mkQuasi parseQExp
 tpQ = mkQuasi parseTyPat
+seQ = mkQuasi parseSigExp
+sgQ = mkQuasi parseSigItem
 
 mkQuasi :: forall stx note.
            (Data (note Raw), Data (stx Raw),

@@ -21,6 +21,7 @@ litAntis, pattAntis,
   exprAntis, bindingAntis, caseAltAntis,
   typeAntis, tyPatAntis, quantAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
+  sigExpAntis, sigItemAntis,
   lidAntis, uidAntis, qlidAntis, quidAntis, idAntis, noAntis
     :: AntiDict
 
@@ -75,6 +76,12 @@ absTyAntis
 modExpAntis
   = "mod"    =:! Nothing
   & "anti"   =:< 'MeAnti
+sigExpAntis
+  = "sig"    =:! Nothing
+  & "anti"   =:< 'SeAnti
+sigItemAntis
+  = "sgitem" =:! Nothing
+  & "anti"   =:< 'SgAnti
 lidAntis
   = "lid"    =:  Nothing
   & "name"   =:  Just (\v -> varS 'lid [varS v []]
@@ -116,6 +123,8 @@ syntaxTable =
   , ''TyDec   =:: 'TdAnti    $: 'tyDecAntis   !: 'newN
   , ''AbsTy   =:: 'AbsTyAnti $: 'absTyAntis   !: 'newN
   , ''ModExp  =:: 'MeAnti    $: 'modExpAntis  !: 'newModExp  >: (''Id, [0])
+  , ''SigExp  =:: 'SeAnti    $: 'sigExpAntis  !: 'newSigExp  >: (''Id, [0])
+  , ''SigItem =:: 'SgAnti    $: 'sigItemAntis !: 'newSigItem >: (''Id, [0])
   , ''Lid     =:: 'LidAnti   $: 'lidAntis
   , ''Uid     =:: 'UidAnti   $: 'uidAntis
   , ''QLid    =:: '()

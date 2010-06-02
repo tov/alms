@@ -16,6 +16,7 @@ module Parser (
     parseTyDec, parseAbsTy, parseType, parseTyPat,
     parseQExp, parseExpr, parsePatt,
     parseCaseAlt, parseBinding,
+    parseSigExp, parseSigItem,
   -- * Convenience parsers (quick and dirty)
   pp, pds, pd, pme, ptd, pt, ptp, pqe, pe, px
 ) where
@@ -163,6 +164,9 @@ chainr1last each sep final = start where
                    do
                      b       <- final
                      return (\a -> a `build` b) ]
+
+foldlp :: (a -> b -> a) -> P a -> P b -> P a
+foldlp make start follow = foldl make <$> start <*> many follow
 
 -- Antiquote
 antip :: AntiDict -> P Anti
@@ -422,17 +426,29 @@ declp :: Id i => P (Decl i)
 declp  = "declaration" @@ choice [
            do
              reserved "type"
-             antilist1p (reserved "and") tyDecp >>! dcTyp,
+             tyDecsp >>! dcTyp,
            letp,
            do
              reserved "open"
              modexpp >>! dcOpn,
            do
              reserved "module"
-             n <- uidp
-             reservedOp "="
-             b <- modexpp
-             return (dcMod n b),
+             choice [
+                 do
+                   reserved "type"
+                   n <- uidp
+                   reservedOp "="
+                   s <- sigexpp
+                   return (dcSig n s),
+                 do
+                   n   <- uidp
+                   asc <- option id $ do
+                     colon
+                     sigexpp >>! flip meAsc
+                   reservedOp "="
+                   b   <- modexpp >>! asc
+                   return (dcMod n b)
+               ],
            do
              reserved "local"
              ds0 <- declsp
@@ -456,12 +472,73 @@ declp  = "declaration" @@ choice [
          ]
 
 modexpp :: Id i => P (ModExp i)
-modexpp  = "module" @@ choice [
-             meStr  <$> between (reserved "struct") (reserved "end") declsp,
-             meName <$> quidp
-                    <*> option [] (antilist1p comma qlidp),
-             antiblep
-           ]
+modexpp  = "structure" @@ foldlp meAsc body ascription where
+  body = choice [
+           meStr  <$> between (reserved "struct") (reserved "end") declsp,
+           meName <$> quidp
+                  <*> option [] (antilist1p comma qlidp),
+           antiblep
+         ]
+  ascription = colon *> sigexpp
+
+sigexpp :: Id i => P (SigExp i)
+sigexpp  = "signature" @@ do
+  se <- choice [
+          seSig  <$> between (reserved "sig") (reserved "end")
+                             (antiblep <|> many sigitemp),
+          seName <$> quidp
+                 <*> option [] (antilist1p comma qlidp),
+          antiblep
+        ]
+  specs <- many $ do
+    reserved "with"
+    reserved "type"
+    flip sepBy1 (reserved "and") $ "signature specialization" @@ do
+      (tvs, tc) <- tyAppp (antiblep <|>) tyvarp (J []) qlidnatp
+      reservedOp "="
+      t         <- typep
+      return (\sig -> seWith sig tc tvs t)
+  return (foldl (flip ($)) se (concat specs))
+
+sigitemp :: Id i => P (SigItem i)
+sigitemp = "signature item" @@ choice [
+    do
+      reserved "val"
+      n <- lidp
+      colon
+      t <- typep
+      return (sgVal n t),
+    do
+      reserved "type"
+      sgTyp <$> tyDecsp,
+    do
+      reserved "module"
+      choice [
+          do
+            reserved "type"
+            n <- uidp
+            reservedOp "="
+            s <- sigexpp
+            return (sgSig n s),
+          do
+            n <- uidp
+            colon
+            s <- sigexpp
+            return (sgMod n s)
+        ],
+    do
+      reserved "include"
+      sgInc <$> sigexpp,
+    do
+      reserved "exception"
+      n  <- uidp
+      t  <- antioptaroundp (reserved "of" `between` punit) typep
+      return (sgExn n t),
+    antiblep
+  ]
+
+tyDecsp :: Id i => P [TyDec i]
+tyDecsp  = antilist1p (reserved "and") tyDecp
 
 tyDecp :: Id i => P (TyDec i)
 tyDecp = "type declaration" @@ addLoc $ choice
@@ -510,23 +587,26 @@ tyDecp = "type declaration" @@ addLoc $ choice
     return (b && var == Invariant, tv:tvs, var:vars)
   checkTVs _ = Nothing
 
-tyProtp :: Id i => P ([Variance], [TyVar i], Lid i)
-tyProtp  = choice [
+tyAppp :: Id i => (P [a] -> P [a]) -> P a -> (Lid i -> b) -> P b -> P ([a], b)
+tyAppp wrap param oper suffix = choice [
+  do
+    l  <- oplevelp (Right precBang)
+    p1 <- param
+    return ([p1], oper l),
   try $ do
-    (v1, tv1) <- paramVp
+    p1 <- param
     n <- choice [ semis, operator ]
     when (n == "-" || precOp n == Right precBang) pzero
-    (v2, tv2) <- paramVp
-    return ([v1, v2], [tv1, tv2], Syntax.lid n),
-  try $ do
-    l <- oplevelp (Right precBang)
-    (v1, tv1) <- paramVp
-    return ([v1], [tv1], l),
-  try $ do
-    (arity, tvs) <- paramsVp
-    name         <- lidnatp
-    return (arity, tvs, name)
+    p2 <- param
+    return ([p1, p2], oper (Syntax.lid n)),
+  do
+    ps   <- wrap (delimList punit parens comma param)
+    name <- suffix
+    return (ps, name)
   ]
+
+tyProtp :: Id i => P ([(Variance, TyVar i)], Lid i)
+tyProtp  = tyAppp id paramVp id lidnatp
 
 typatp  :: Id i => P (TyPat i)
 typatp   = typatpP precStart
@@ -621,14 +701,11 @@ absTysp = antilist1p (reserved "and") $ absTyp
 
 absTyp :: Id i => P (AbsTy i)
 absTyp  = addLoc $ antiblep <|> do
-  (arity, tvs, name) <- tyProtp
+  ((arity, tvs), name) <- tyProtp >>! first unzip
   quals        <- qualsp
   reservedOp "="
   alts         <- altsp
   return (absTy arity quals (tdDat name tvs alts))
-
-paramsVp :: Id i => P ([Variance], [TyVar i])
-paramsVp  = delimList punit parens comma paramVp >>! unzip
 
 paramVp :: Id i => P (Variance, TyVar i)
 paramVp = do
@@ -1073,6 +1150,10 @@ parsePatt     :: Id i => P (Patt i)
 parseCaseAlt  :: Id i => P (CaseAlt i)
 -- | Parse a let rec binding
 parseBinding  :: Id i => P (Binding i)
+-- | Parse a signature
+parseSigExp   :: Id i => P (SigExp i)
+-- | Parse a signature item
+parseSigItem  :: Id i => P (SigItem i)
 
 parseProg      = finish progp
 parseRepl      = finish replp
@@ -1088,6 +1169,8 @@ parseExpr      = finish exprp
 parsePatt      = finish pattp
 parseCaseAlt   = finish casealtp
 parseBinding   = finish bindingp
+parseSigExp    = finish sigexpp
+parseSigItem   = finish sigitemp
 
 -- Convenience functions for quick-and-dirty parsing:
 

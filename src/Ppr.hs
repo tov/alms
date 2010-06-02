@@ -21,6 +21,7 @@ module Ppr (
 import Meta.Quasi
 import Prec
 import Syntax
+import Util
 
 import qualified Syntax.Decl
 import qualified Syntax.Expr
@@ -210,12 +211,7 @@ instance Ppr (Decl i) where
     [ text "let" <+> ppr x,
       nest 2 $ colon <+> ppr t,
       nest 4 $ equals <+> ppr e ]
-  ppr [$dc| type $list:tds0 |]
-    | td:tds <- tds0 =
-    vcat $
-      text "type" <+> ppr td :
-      [ nest 1 $ text "and" <+> ppr td' | td' <- tds ]
-    | otherwise      = empty
+  ppr [$dc| type $list:tds |] = pprTyDecs tds
   ppr [$dc| abstype $list:ats0 with $list:ds end |] =
     case ats0 of
       []     ->
@@ -233,8 +229,13 @@ instance Ppr (Decl i) where
           text "end"
         ]
   ppr [$dc| open $b |] = pprModExp (text "open" <+>) b
+  ppr [$dc| module $uid:n : $s = $b |] = pprModExp add1 b where
+    add1 body = pprSigExp add2 s <+> equals <+> body
+    add2 body = text "module" <+> ppr n <+> colon <+> body
   ppr [$dc| module $uid:n = $b |] = pprModExp add b where
     add body = text "module" <+> ppr n <+> equals <+> body
+  ppr [$dc| module type $uid:n = $s |] = pprSigExp add s where
+    add body = text "module type" <+> ppr n <+> equals <+> body
   ppr [$dc| local $list:d0 with $list:d1 end |] =
     vcat [
       text "local",
@@ -243,11 +244,22 @@ instance Ppr (Decl i) where
       nest 2 (vcat (map ppr d1)),
       text "end"
     ]
-  ppr [$dc| exception $uid:n |] =
-    text "exception" <+> ppr n
-  ppr [$dc| exception $uid:n of $t |] =
-    text "exception" <+> ppr n <+> text "of" <+> ppr t
+  ppr [$dc| exception $uid:n of $opt:mt |] =
+    pprExcDec n mt
   ppr [$dc| $anti:a |] = ppr a
+
+pprTyDecs :: [TyDec i] -> Doc
+pprTyDecs tds =
+  vcat $
+    mapHead (text "type" <+>) $
+      mapTail ((nest 1) . (text "and" <+>)) $
+        map ppr tds
+
+pprExcDec :: Uid i -> Maybe (Type i) -> Doc
+pprExcDec u Nothing  =
+  text "exception" <+> ppr u
+pprExcDec u (Just t) =
+  text "exception" <+> ppr u <+> text "of" <+> ppr t
 
 instance Ppr (TyDec i) where
   ppr td = case view td of
@@ -302,7 +314,50 @@ pprModExp add modexp = case modexp of
     add (text "struct")
     $$ nest 2 (vcat (map ppr ds))
     $$ text "end"
+  [$me| $me1 : $se2 |] ->
+    pprSigExp (pprModExp add me1 <+> colon <+>) se2
   [$me| $anti:a |] -> add (ppr a)
+
+pprSigExp :: (Doc -> Doc) -> SigExp i -> Doc
+pprSigExp add se0 = body >+> withs where
+  (wts, se1) = unfoldSeWith se0
+  body       = case se1 of
+    [$seQ| $quid:n |] -> add (ppr n)
+    [$seQ| $quid:n $list:qls |] ->
+      add (ppr n) <+>
+      brackets (fsep (punctuate comma (map ppr qls)))
+    [$seQ| sig $list:sgs end |] ->
+      add (text "sig")
+      $$ nest 2 (vcat (map ppr sgs))
+      $$ text "end"
+    [$seQ| $_ with type $list:_ $qlid:_ = $_ |] ->
+      error "BUG! can't happen in pprSigExp"
+    [$seQ| $anti:a |] -> add (ppr a)
+  withs      =
+    sep $
+      mapHead (text "with type" <+>) $
+        mapTail ((nest 6) . (text "and" <+>)) $
+          [ pprTyApp 0 tc tvs <+> equals <+> ppr t
+          | (tc, tvs, t) <- wts ]
+
+instance Ppr (SigItem i) where
+  ppr sg0 = case sg0 of
+    [$sgQ| val $lid:n : $t |] ->
+      text "val" <+> ppr n >+> colon <+> ppr t
+    [$sgQ| type $list:tds |] ->
+      pprTyDecs tds
+    [$sgQ| module $uid:u : $s |] ->
+      pprSigExp add s where
+        add body = text "module" <+> ppr u <+> colon <+> body
+    [$sgQ| module type $uid:u = $s |] ->
+      pprSigExp add s where
+        add body = text "module type" <+> ppr u <+> equals <+> body
+    [$sgQ| include $s |] ->
+      pprSigExp (text "include" <+>) s
+    [$sgQ| exception $uid:u of $opt:mt |] ->
+      pprExcDec u mt
+    [$sgQ| $anti:a |] ->
+      ppr a
 
 instance Ppr (Expr i) where
   pprPrec p e0 = case e0 of
@@ -468,6 +523,8 @@ instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
 instance Show (TyPat i)  where showsPrec = showFromPpr
 instance Show (QExp i)   where showsPrec = showFromPpr
+instance Show (SigExp i) where showsPrec = showFromPpr
+instance Show (SigItem i)where showsPrec = showFromPpr
 
 instance Ppr QLit      where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow

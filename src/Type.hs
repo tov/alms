@@ -858,7 +858,7 @@ instance Ppr TyCon where
                                   in (tv, tv' <> pprPrec precEq tp)
                  | tp   <- tps
                  | qlit <- tcBounds tc
-                 | i <- [ 1 .. ] ]
+                 | i <- [ 1 :: Integer .. ] ]
       --
       Just next -> pprTyApp 0 (tcName tc) (ps tvs)
                      >?> (qe tvs <+> text "with"

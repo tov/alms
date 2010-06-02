@@ -27,7 +27,7 @@ module Syntax (
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
-  unfoldTupleExpr, unfoldTuplePatt,
+  unfoldTupleExpr, unfoldTuplePatt, unfoldSeWith,
 
   -- * Miscellany
   module Viewable
@@ -111,14 +111,23 @@ unfoldTyFun  = unscanr each where
   each (N _ (TyFun _ ta tr)) = Just (ta, tr)
   each _                     = Nothing
 
+-- | Get the elements of a tuple as a list
 unfoldTupleExpr :: Expr i -> ([Expr i], Expr i)
 unfoldTupleExpr  = unscanl each where
   each e = case view e of
     ExPair e1 e2 -> Just (e2, e1)
     _            -> Nothing
 
+-- | Get the elements of a tuple pattere as a list
 unfoldTuplePatt :: Patt i -> ([Patt i], Patt i)
 unfoldTuplePatt  = unscanl each where
   each p = case view p of
     PaPair p1 p2 -> Just (p2, p1)
     _            -> Nothing
+
+-- | Get all the "with type" clauses on a signature expression
+unfoldSeWith :: SigExp i -> ([(QLid i, [TyVar i], Type i)], SigExp i)
+unfoldSeWith  = unscanl each where
+  each p = case view p of
+    SeWith se ql tvs t -> Just ((ql, tvs, t), se)
+    _                  -> Nothing
