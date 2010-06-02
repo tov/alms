@@ -1010,6 +1010,8 @@ tcModExp [$me| $quid:n $list:qls |] = do
   (md, _) <- find n
   tell md
   return [$me| $quid:n $list:qls |]
+tcModExp [$me| $me1 : $se2 |] = do
+  tcModExp me1 -- XXX signature
 tcModExp [$me| $anti:a |] = $antifail
 
 -- | Run a computation in the context of an abstype block
@@ -1062,6 +1064,8 @@ tcDecl decl =
       [$dc| module $uid:x = $b |] -> do
         b' <- tcMod x b
         return [$dc| module $uid:x = $b' |]
+      [$dc| module type $uid:u = $b |] -> do
+        return [$dc| open struct end |]
       [$dc| open $b |] -> do
         b' <- tcOpen b
         return [$dc| open $b' |]

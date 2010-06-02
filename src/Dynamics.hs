@@ -90,6 +90,7 @@ evalDecl [$dc| type $list:_ |]                      = return
 evalDecl [$dc| abstype $list:_ with $list:ds end |] = evalDecls ds
 evalDecl [$dc| open $b |]                           = evalOpen b
 evalDecl [$dc| module $uid:n = $b |]                = evalMod n b
+evalDecl [$dc| module type $uid:_ = $_ |]           = return
 evalDecl [$dc| local $list:d0 with $list:d1 end |]  = evalLocal d0 d1
 evalDecl [$dc| exception $uid:n of $opt:mt |]       = evalExn n mt
 evalDecl [$dc| $anti:a |]                           = $antifail
@@ -125,6 +126,8 @@ evalModExp [$me| $quid:n $list:_ |]      env = do
   case env =..= n of
     Just scope -> return scope
     Nothing    -> fail $ "BUG! Unknown module: " ++ show n
+evalModExp [$me| $me1 : $_ |]            env = do
+  evalModExp me1 env
 evalModExp [$me| $anti:a |]              _   = $antifail
 
 evalExn :: Uid R -> Maybe (Type R) -> DDecl

@@ -523,7 +523,6 @@ instance Show Lit        where showsPrec = showFromPpr
 instance Show (Type i)   where showsPrec = showFromPpr
 instance Show (TyPat i)  where showsPrec = showFromPpr
 instance Show (QExp i)   where showsPrec = showFromPpr
-instance Show (SigExp i) where showsPrec = showFromPpr
 instance Show (SigItem i)where showsPrec = showFromPpr
 
 instance Ppr QLit      where pprPrec = pprFromShow

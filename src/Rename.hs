@@ -176,6 +176,10 @@ withLoc loc =
 inModule :: Module -> R a -> R a
 inModule m = local (\e -> e `mappend` envify m)
 
+-- | Run in the environment consisting of only the given module
+onlyInModule :: Module -> R a -> R a
+onlyInModule = local (const mempty) <$$> inModule
+
 -- | Temporarily stop allocating unique ids
 don'tAllocate :: R a -> R a
 don'tAllocate = R . local (\cxt -> cxt { allocate = False }) . unR
@@ -295,8 +299,8 @@ bindGeneric ren build x = R $ do
   doAlloc <- asks allocate
   x' <- if doAlloc
     then do
-      counter <- M.S.get
-      M.S.put (succ counter)
+      counter <- get
+      put (succ counter)
       return (ren counter x)
     else do
       return (ren trivialId x)
@@ -481,7 +485,8 @@ renameModExp me0 = withLoc me0 $ case me0 of
   [$me| $me1 : $se2 |] -> do
     (me1', md1) <- steal $ renameModExp me1
     (se2', md2) <- steal $ renameSigExp se2
-    undefined
+    onlyInModule md1 $ sealWith md2
+    return [$me| $me1' : $se2' |]
   [$me| $anti:a |] -> $antifail
 
 renameSigExp :: SigExp Raw -> R (SigExp Renamed)
@@ -497,7 +502,7 @@ renameSigExp se0 = withLoc se0 $ case se0 of
     return [$seQ|+ $quid:qu' $list:qls |]
   [$seQ| $se1 with type $list:tvs $qlid:ql = $t |] -> do
     (se1', md) <- listen $ renameSigExp se1
-    ql' <- local (const mempty) $ inModule md $ getTycon ql
+    ql' <- onlyInModule md $ getTycon ql
     case unique id tvs of
       Nothing      -> return ()
       Just (tv, _) -> fail $
@@ -527,6 +532,38 @@ checkSigDuplicates md = case md of
           fail $
             "signature contains repeated " ++ kind ++
             " `" ++ show which ++ "'"
+
+sealWith :: Module -> R ()
+sealWith md = case md of
+    MdNil              -> return ()
+    MdApp md1 md2      -> do sealWith md1; sealWith md2
+    MdTycon   _ l _   -> do
+      (l', loc, _) <- find "type constructor" tycons l
+      tell (MdTycon loc l l')
+    MdVar     _ l _   -> do
+      (l', loc, _) <- find "variable" vars l
+      tell (MdVar loc l l')
+    MdDatacon _ u _   -> do
+      (u', loc, _) <- find "data constructor" datacons u
+      tell (MdDatacon loc u u')
+    MdModule  _ u _ md2 -> do
+      (u', loc, (md1, _)) <- find "module" modules u
+      ((), md1') <- steal $ onlyInModule md1 $ sealWith md2
+      tell (MdModule loc u u' md1')
+    MdSig     _ u _ md2 -> do
+      (u', loc, (md1, _)) <- find "module type" sigs u
+      ((), _   ) <- steal $ onlyInModule md2 $ sealWith md1
+      ((), md1') <- steal $ onlyInModule md1 $ sealWith md2
+      tell (MdSig loc u u' md1')
+    MdTyvar   _ _ _   -> fail $ "Signature can't declare type variable"
+  where
+    find what prj ident = do
+      m <- asks prj
+      case M.lookup ident m of
+        Just ident' -> return ident'
+        Nothing     -> fail $
+          "structure missing " ++ what ++ " `" ++ show ident ++
+          "' which is present in ascribed signature"
 
 -- | Rename a signature item and return the environment
 --   that they bind
@@ -700,13 +737,13 @@ renameTyPats x00 =
   tyvar :: Loc -> TyVar Raw ->
            M.S.StateT (M.Map (TyVar Raw) Loc) Renaming (TyVar Renamed)
   tyvar loc1 tv = do
-    seen <- M.S.get
+    seen <- get
     case M.lookup tv seen of
       Just loc2 -> fail $
         "type variable " ++ show tv ++ " bound twice in type pattern at " ++
         show loc1 ++ " and " ++ show loc2
       Nothing   -> do
-        M.S.put (M.insert tv loc1 seen)
+        put (M.insert tv loc1 seen)
         lift (bindTyvar tv)
 
 -- | Rename a qualifier expression
@@ -741,10 +778,10 @@ renamePatt x00 =
       l' <- var _loc l
       return [$pa|+ $lid:l' |]
     [$pa| $quid:qu |] -> do
-      qu' <- M.S.lift $ getDatacon qu
+      qu' <- lift $ getDatacon qu
       return [$pa|+ $quid:qu' |]
     [$pa| $quid:qu $x |] -> do
-      qu' <- M.S.lift $ getDatacon qu
+      qu' <- lift $ getDatacon qu
       x' <- loop x
       return [$pa|+ $quid:qu' $x' |]
     [$pa| ($x1, $x2) |] -> do
@@ -752,7 +789,7 @@ renamePatt x00 =
       x2' <- loop x2
       return [$pa|+ ($x1', $x2') |]
     [$pa| $lit:lit |] -> do
-      lit' <- M.S.lift $ renameLit lit
+      lit' <- lift $ renameLit lit
       return [$pa|+ $lit:lit' |]
     [$pa| $x as $lid:l |] -> do
       x' <- loop x
@@ -766,24 +803,24 @@ renamePatt x00 =
       $antifail
   --
   var loc1 l = do
-    seen <- M.S.get
+    seen <- get
     case M.lookup (Left l) seen of
       Just loc2 -> fail $
         "variable `" ++ show l ++ "' bound twice in pattern at " ++
         show loc1 ++ " and " ++ show loc2
       Nothing   -> do
-        M.S.put (M.insert (Left l) loc1 seen)
-        M.S.lift (withLoc loc1 (bindVar l))
+        put (M.insert (Left l) loc1 seen)
+        lift (withLoc loc1 (bindVar l))
   --
   tyvar loc1 tv = do
-    seen <- M.S.get
+    seen <- get
     case M.lookup (Right tv) seen of
       Just loc2 -> fail $
         "type variable " ++ show tv ++ " bound twice in pattern at " ++
         show loc1 ++ " and " ++ show loc2
       Nothing   -> do
-        M.S.put (M.insert (Right tv) loc1 seen)
-        M.S.lift (bindTyvar tv)
+        put (M.insert (Right tv) loc1 seen)
+        lift (bindTyvar tv)
 
 addVal     :: Lid Raw -> R (Lid Renamed)
 addType    :: Lid Raw -> Renamed -> R (Lid Renamed)
