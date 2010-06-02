@@ -272,6 +272,10 @@ interactive opt rs0 = do
           text "module" <+> ppr u <+> char ':' <+> text "sig"
           $$ nest 2 (loop False md1)
           $$ text "end"
+        MdSig u md1         ->
+          text "module type" <+> ppr u <+> char '=' <+> text "sig"
+          $$ nest 2 (loop False md1)
+          $$ text "end"
       pprValue tl x t mv =
         addHang '=' (if tl then fmap ppr mv else Nothing) $
           addHang ':' (Just (ppr t)) $

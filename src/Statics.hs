@@ -89,6 +89,7 @@ data Module
   | MdValue  !(BIdent R) !Type
   | MdTycon  !(Lid R)    !TyCon
   | MdModule !(Uid R)    !Module
+  | MdSig    !(Uid R)    !Module
   deriving (Typeable, Data)
 
 -- | Convert an ordered module into an un-ordered environment
@@ -98,6 +99,7 @@ envify (MdApp md1 md2) = envify md1 =+= envify md2
 envify (MdValue  x t)   = genEmpty =+= x =:= t
 envify (MdTycon  l tc)  = genEmpty =+= l =:= tc
 envify (MdModule u md)  = genEmpty =+= u =:= (md, envify md)
+-- XXX signature
 
 instance Monoid Module where
   mempty  = MdNil
@@ -1065,6 +1067,7 @@ tcDecl decl =
         b' <- tcMod x b
         return [$dc| module $uid:x = $b' |]
       [$dc| module type $uid:u = $b |] -> do
+        -- XXX signature
         return [$dc| open struct end |]
       [$dc| open $b |] -> do
         b' <- tcOpen b
