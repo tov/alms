@@ -552,10 +552,12 @@ sealWith md = case md of
       tell (MdModule loc u u' md1')
     MdSig     _ u _ md2 -> do
       (u', loc, (md1, _)) <- find "module type" sigs u
-      ((), _   ) <- steal $ onlyInModule md2 $ sealWith md1
-      ((), md1') <- steal $ onlyInModule md1 $ sealWith md2
+      let ctch body = body `catchError` \_ -> fail $
+            "signature `" ++ show u ++ "' must match exactly"
+      ((), _   ) <- ctch $ steal $ onlyInModule md2 $ sealWith md1
+      ((), md1') <- ctch $ steal $ onlyInModule md1 $ sealWith md2
       tell (MdSig loc u u' md1')
-    MdTyvar   _ _ _   -> fail $ "Signature can't declare type variable"
+    MdTyvar   _ _ _   -> fail $ "signature can't declare type variable"
   where
     find what prj ident = do
       m <- asks prj

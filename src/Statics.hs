@@ -73,13 +73,24 @@ type VE      = Env (BIdent R) Type
 type TE      = Env (Lid R) TyCon
 -- | Mapping from module names to modules
 type ME      = Env (Uid R) (Module, E)
+-- | Mapping from module type names to signatures
+type SE      = Env SIGVAR (Module, E)
 -- | An environment
 data E       = E {
                  vlevel :: VE, -- values
                  tlevel :: TE, -- types
-                 mlevel :: ME  -- modules
+                 mlevel :: ME, -- modules
+                 slevel :: SE  -- module types
                }
   deriving (Typeable, Data)
+
+-- | To distinguish signature variables from module variables
+--   in overloaded situations
+newtype SIGVAR  = SIGVAR { unSIGVAR :: Uid R }
+  deriving (Eq, Ord, Typeable, Data)
+
+instance Show SIGVAR where
+  showsPrec p (SIGVAR u) = showsPrec p u
 
 -- | A module item is empty, a pair of modules, a value entry (variable
 --   or data constructor), a type constructor, or a module.
@@ -99,16 +110,16 @@ envify (MdApp md1 md2) = envify md1 =+= envify md2
 envify (MdValue  x t)   = genEmpty =+= x =:= t
 envify (MdTycon  l tc)  = genEmpty =+= l =:= tc
 envify (MdModule u md)  = genEmpty =+= u =:= (md, envify md)
--- XXX signature
+envify (MdSig    u md)  = genEmpty =+= SIGVAR u =:= (md, envify md)
 
 instance Monoid Module where
   mempty  = MdNil
   mappend = MdApp
 
 instance Monoid E where
-  mempty  = E empty empty empty
-  mappend (E a1 a2 a3) (E b1 b2 b3)
-    = E (a1 =+= b1) (a2 =+= b2) (a3 =+= b3)
+  mempty  = E empty empty empty empty
+  mappend (E a1 a2 a3 a4) (E b1 b2 b3 b4)
+    = E (a1 =+= b1) (a2 =+= b2) (a3 =+= b3) (a4 =+= b4)
 
 -- Instances for generalizing environment operations over
 -- the whole environment structure
@@ -119,17 +130,21 @@ instance GenEmpty E where
 instance GenExtend E E where
   (=+=) = mappend
 instance GenExtend E VE where
-  e =+= ve' = e =+= E ve' empty empty
+  e =+= ve' = e =+= E ve' empty empty empty
 instance GenExtend E TE where
-  e =+= te' = e =+= E empty te' empty
+  e =+= te' = e =+= E empty te' empty empty
 instance GenExtend E ME where
-  e =+= me' = e =+= E empty empty me'
+  e =+= me' = e =+= E empty empty me' empty
+instance GenExtend E SE where
+  e =+= se' = e =+= E empty empty empty se'
 instance GenLookup E (BIdent R) Type where
   e =..= k = vlevel e =..= k
 instance GenLookup E (Lid R) TyCon where
   e =..= k = tlevel e =..= k
 instance GenLookup E (Uid R) (Module, E) where
   e =..= k = mlevel e =..= k
+instance GenLookup E SIGVAR (Module, E) where
+  e =..= k = slevel e =..= k
 instance GenLookup E k v =>
          GenLookup E (Path (Uid R) k) v where
   e =..= J []     k = e =..= k
@@ -156,21 +171,20 @@ data S   = S {
              currIx  :: !Int
            }
 
-instance GenLookup Context (QLid R) TyCon where
-  cxt =..= k = environment cxt =..= k
-instance GenLookup Context (Ident R) Type where
-  cxt =..= k = environment cxt =..= k
-instance GenLookup Context (QUid R) (Module, E) where
+instance GenLookup E k v =>
+         GenLookup Context (Path (Uid R) k) v where
   cxt =..= k = environment cxt =..= k
 
 instance GenExtend Context E where
   cxt =+= e = cxt { environment = environment cxt =+= e }
 instance GenExtend Context VE where
-  cxt =+= venv = cxt =+= E venv empty empty
+  cxt =+= venv = cxt =+= E venv empty empty empty
 instance GenExtend Context TE where
-  cxt =+= tenv = cxt =+= E empty tenv empty
+  cxt =+= tenv = cxt =+= E empty tenv empty empty
 instance GenExtend Context ME where
-  cxt =+= menv = cxt =+= E empty empty menv
+  cxt =+= menv = cxt =+= E empty empty menv empty
+instance GenExtend Context SE where
+  cxt =+= senv = cxt =+= E empty empty empty senv
 
 ---
 --- The type-checking monad
@@ -244,6 +258,10 @@ bindTycon l tc = tell (MdTycon l tc)
 -- | Add a module binding to the generated module
 bindModule :: Monad m => Uid R -> Module -> TC m ()
 bindModule u md = tell (MdModule u md)
+
+-- | Add a module type binding to the generated module
+bindSig :: Monad m => Uid R -> Module -> TC m ()
+bindSig u md = tell (MdSig u md)
 
 -- | Run some computation with the context extended by a module
 inModule :: Monad m => Module -> TC m a -> TC m a
@@ -873,6 +891,82 @@ tcTyPat [$tpQ| $antiP:a |]             = $antifail
 
 -- END type decl checking
 
+-- | Type check a module body
+tcSigExp :: (?loc :: Loc, Monad m) =>
+            SigExp R -> TC m (SigExp R)
+tcSigExp [$seQ| sig $list:ds end |] = do
+  ds' <- tcMapM tcSigItem ds
+  return [$seQ| sig $list:ds' end |]
+tcSigExp [$seQ| $quid:n $list:qls |] = do
+  (md, _) <- find (fmap SIGVAR n)
+  tell md
+  return [$seQ| $quid:n $list:qls |]
+tcSigExp [$seQ| $se1 with type $list:tvs $qlid:tc = $t |] = do
+  (se1', md) <- steal $ tcSigExp se1
+  t'         <- tcType t
+  fibrate tvs tc t' md
+  return [$seQ| $se1' with type $list:tvs $qlid:tc = $t |]
+tcSigExp [$seQ| $anti:a |] = $antifail
+
+fibrate :: (?loc :: Loc, Monad m) =>
+           [TyVar R] -> QLid R -> Type -> Module -> TC m ()
+fibrate tvs ql t md = do
+    let Just tc = findTycon ql md
+    tassert (isAbstractTyCon tc) $
+      "with-type: cannot update concrete type constructor `" ++
+      show ql
+    tassert (length tvs == length (tcArity tc)) $
+      "with-type: " ++ show (length tvs) ++
+      " parameters for type " ++ show ql ++
+      " which has " ++ show (length (tcArity tc))
+    let amap   = ftvVs t
+        arity  = map (\tv -> fromJust (M.lookup tv amap)) tvs
+        bounds = map tvqual tvs
+        qual   = numberQDen tvs (qualifier t)
+        next   = Just [(map TpVar tvs, t)]
+        tc'    = tc {
+                   tcArity  = arity,
+                   tcBounds = bounds,
+                   tcQual   = qual,
+                   tcNext   = next
+                 }
+    tell (replaceTyCon tc' md)
+  where
+    findTycon ql0 md0 = case md0 of
+      MdNil          -> mzero
+      MdApp md1 md2  -> findTycon ql0 md1 `mplus` findTycon ql0 md2
+      MdTycon l tc   -> if J [] l == ql0 then return tc else mzero
+      MdModule u md1 -> case ql0 of
+        J (u':us) l | u == u' -> findTycon (J us l) md1
+        _                     -> mzero
+      MdSig _ _      -> mzero
+      MdValue _ _    -> mzero
+
+tcSigItem :: (?loc :: Loc, Monad m) =>
+             SigItem R -> TC m (SigItem R)
+tcSigItem sg0 = case sg0 of
+  [$sgQ| val $lid:l : $t |] -> do
+    t' <- tcType t
+    bindVar l t'
+    return [$sgQ| val $lid:l : $t |]
+  [$sgQ| type $list:tds |] -> do
+     tds' <- tcTyDecs tds
+     return [$sgQ| type $list:tds' |]
+  [$sgQ| module $uid:u : $se1 |] -> do
+    (se', md) <- steal $ tcSigExp se1
+    bindModule u md
+    return [$sgQ| module $uid:u : $se' |]
+  [$sgQ| module type $uid:u = $se1 |] -> do
+    se' <- tcSig u se1
+    return [$sgQ| module type $uid:u = $se' |]
+  [$sgQ| include $se1 |] -> do
+    se' <- tcSigExp se1
+    return [$sgQ| include $se' |]
+  [$sgQ| exception $uid:u of $opt:mt |] -> do
+    mt' <- tcException u mt
+    return [$sgQ| exception $uid:u of $opt:mt' |]
+  [$sgQ| $anti:a |] -> $antifail
+
 -- | Run a computation in the context of a let declaration
 tcLet :: (?loc :: Loc, Monad m) =>
          Patt R -> Maybe (Syntax.Type R) -> Expr R ->
@@ -921,13 +1015,21 @@ tcException n mt = do
   bindCon n (maybe tyExn (`tyArr` tyExn) mt')
   return (fmap typeToStx mt')
 
--- | Run a computation in the context of a module
+-- | Type check and bind a module
 tcMod :: (?loc :: Loc, Monad m) =>
          Uid R -> ModExp R -> TC m (ModExp R)
 tcMod u me0 = do
   (me', md) <- steal $ enterModule u $ tcModExp me0
   bindModule u md
   return me'
+
+-- | Type check and bind a signature
+tcSig :: (?loc :: Loc, Monad m) =>
+         Uid R -> SigExp R -> TC m (SigExp R)
+tcSig u se0 = do
+  (se', md) <- steal $ tcSigExp se0
+  bindSig u md
+  return se'
 
 {-
 -- | Determine types that are no longer reachable by name
@@ -1066,9 +1168,9 @@ tcDecl decl =
       [$dc| module $uid:x = $b |] -> do
         b' <- tcMod x b
         return [$dc| module $uid:x = $b' |]
-      [$dc| module type $uid:u = $b |] -> do
-        -- XXX signature
-        return [$dc| open struct end |]
+      [$dc| module type $uid:x = $b |] -> do
+        b' <- tcSig x b
+        return [$dc| module type $uid:x = $b' |]
       [$dc| open $b |] -> do
         b' <- tcOpen b
         return [$dc| open $b' |]

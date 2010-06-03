@@ -27,7 +27,7 @@ module Type (
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
   castableType, typeToStx, typeToStx', tyPatToStx, tyPatToStx',
-  tyPatToType, qualifier,
+  tyPatToType, qualifier, isAbstractTyCon,
   -- * Built-in types
   -- ** Type constructors
   mkTC,
@@ -141,6 +141,12 @@ qualifier (TyVar tv)
   | otherwise             = qInterpret (qeVar tv)
 qualifier (TyQu _ tv t)   = qSubst tv minBound (qualifier t)
 qualifier (TyMu tv t)     = qSubst tv minBound (qualifier t)
+
+-- | Is the given type constructor abstract?
+isAbstractTyCon :: TyCon -> Bool
+isAbstractTyCon TyCon { tcNext = Nothing, tcCons = (_, cons) }
+                  = Env.isEmpty cons
+isAbstractTyCon _ = False
 
 ---
 --- Free type variables, freshness, and substitution
