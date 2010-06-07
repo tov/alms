@@ -21,7 +21,7 @@ module Env (
   -- ** Higher-order constructors
   unionWith, unionSum, unionProduct,
   -- ** Higher-order destructors
-  mapValsM, mapAccum, mapAccumM,
+  mapVals, mapValsM, mapAccum, mapAccumM,
   -- ** List conversions
   toList, fromList, domain, range,
 
@@ -50,7 +50,7 @@ infixl 5 -\-, -\\-, -|-
 
 -- | The basic type, mapping keys @k@ to values @v@
 newtype Env k v = Env { unEnv:: M.Map k v }
-  deriving (Typeable, Data)
+  deriving (Eq, Typeable, Data)
 
 -- | Key subsumption.  Downside: keys sometimes need to be
 -- declared.  Upside: we can use shorter keys that embed into
@@ -127,6 +127,11 @@ infix 5 `unionSum`, `unionProduct`
 
 instance Ord k => Functor (Env k) where
   fmap f = Env . M.map f . unEnv
+
+-- | Map over the values of an environment
+mapVals :: Ord k =>
+           (v -> w) -> Env k v -> Env k w
+mapVals f = Env . M.map f . unEnv
 
 -- | Map over the values of an environment (monadic)
 mapValsM :: (Ord k, Monad m) =>

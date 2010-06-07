@@ -27,7 +27,9 @@ module Type (
   tysubst, tysubsts, tyrename,
   -- * Miscellaneous type operations
   castableType, typeToStx, typeToStx', tyPatToStx, tyPatToStx',
-  tyPatToType, qualifier, isAbstractTyCon,
+  tyPatToType, qualifier,
+  -- ** Type varieties
+  TypeVariety(..), isAbstractTyCon, varietyOf,
   -- * Built-in types
   -- ** Type constructors
   mkTC,
@@ -132,6 +134,27 @@ instance Show Type  where showsPrec = showFromPpr
 instance Ppr TyPat  where pprPrec p = pprPrec p . tyPatToStx
 instance Show TyPat where showsPrec = showFromPpr
 
+-- | The different varieties of type definitions
+data TypeVariety
+  -- | Type operators and synonyms
+  = OperatorType
+  -- | Datatype
+  | DataType
+  -- | Abstract type
+  | AbstractType
+  deriving (Eq, Ord, Typeable, Data)
+
+instance Show TypeVariety where
+  showsPrec _ OperatorType = showString "a type operator"
+  showsPrec _ DataType     = showString "a datatype"
+  showsPrec _ AbstractType = showString "abstract"
+
+-- | What variety of type definition do we have?
+varietyOf :: TyCon -> TypeVariety
+varietyOf TyCon { tcNext = Just _ } = OperatorType
+varietyOf TyCon { tcCons = (_, e) } =
+  if Env.isEmpty e then AbstractType else DataType
+
 -- | Find the qualifier of a type
 qualifier     :: Type -> QDen TyVarR
 qualifier (TyApp tc ts _) = denumberQDen (map qualifier ts) (tcQual tc)
@@ -144,9 +167,7 @@ qualifier (TyMu tv t)     = qSubst tv minBound (qualifier t)
 
 -- | Is the given type constructor abstract?
 isAbstractTyCon :: TyCon -> Bool
-isAbstractTyCon TyCon { tcNext = Nothing, tcCons = (_, cons) }
-                  = Env.isEmpty cons
-isAbstractTyCon _ = False
+isAbstractTyCon  = (== AbstractType) . varietyOf
 
 ---
 --- Free type variables, freshness, and substitution
@@ -212,11 +233,35 @@ instance (i ~ Renamed) => Ftv (TyVar i) where
   alltv    = S.singleton
   maxtv    = lidUnique . tvname
 
+instance Ftv () where
+  ftv _    = S.empty
+  ftvVs _  = M.empty
+  alltv _  = S.empty
+  maxtv _  = maximum []
+
+instance Ftv a => Ftv (Maybe a) where
+  ftv      = maybe (ftv ()) ftv
+  ftvVs    = maybe (ftvVs ()) ftvVs
+  alltv    = maybe (alltv ()) alltv
+  maxtv    = maybe (maxtv ()) maxtv
+
 instance (Ftv a, Ftv b) => Ftv (a, b) where
   ftv (a, b)   = ftv a `S.union` ftv b
   ftvVs (a, b) = M.unionWith (+) (ftvVs a) (ftvVs b)
   alltv (a, b) = alltv a `S.union` alltv b
   maxtv (a, b) = maxtv a `max` maxtv b
+
+instance (Ftv a, Ftv b, Ftv c) => Ftv (a, b, c) where
+  ftv (a, b, c)   = ftv (a, (b, c))
+  ftvVs (a, b, c) = ftvVs (a, (b, c))
+  alltv (a, b, c) = alltv (a, (b, c))
+  maxtv (a, b, c) = maxtv (a, (b, c))
+
+instance (Ftv a, Ftv b, Ftv c, Ftv d) => Ftv (a, b, c, d) where
+  ftv (a, b, c, d)   = ftv ((a, b), (c, d))
+  ftvVs (a, b, c, d) = ftvVs ((a, b), (c, d))
+  alltv (a, b, c, d) = alltv ((a, b), (c, d))
+  maxtv (a, b, c, d) = maxtv ((a, b), (c, d))
 
 -- Rename a type variable, if necessary, to make its unique tag higher
 -- than the one given

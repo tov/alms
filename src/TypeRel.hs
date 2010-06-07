@@ -9,6 +9,7 @@ module TypeRel (
   AType(..), subtype, jointype,
   -- ** Queries and conversions
   qualConst, abstractTyCon, replaceTyCon, replaceTyCons,
+  substTyCons, substTyCon,
   -- * Tests
   tests,
 ) where
@@ -34,19 +35,27 @@ abstractTyCon tc = tc { tcCons = ([], empty), tcNext = Nothing }
 --   find all constructors with the same identity as the given type one, and
 --   replace them.  We can use this for type abstraction by redacting
 --   data constructor or synonym expansions.  It also replaces within
---   the list of type constructors themselves, which ties the not for
+--   the list of type constructors themselves, which ties the knot for
 --   recursive type constructors.
 replaceTyCons :: Data a => [TyCon] -> a -> a
-replaceTyCons tcs0 = loop where
-  tcs  :: M.Map (QLid Renamed) TyCon
-  tcs   = M.fromList [ (tcName tc, tc) | tc <- tcs0 ]
+replaceTyCons tcs0 = substTyCons tcs0 tcs0
+
+replaceTyCon :: Data a => TyCon -> a -> a
+replaceTyCon tc = replaceTyCons [tc]
+
+-- Give a list of tycons to replace and a list of tycons to replace them
+-- with, replaces them all recursively, including knot-tying
+substTyCons :: Data a => [TyCon] -> [TyCon] -> a -> a
+substTyCons tcs0 tcs0' = loop where
+  tcs  :: M.Map Int TyCon
+  tcs   = M.fromList [ (tcId tc, tc') | tc <- tcs0 | tc' <- tcs0' ]
   --
   loop :: Data a => a -> a
   loop  = everywhere (mkT tycon `extT` tyapp)
   --
   tycon :: TyCon -> TyCon
   tycon tc
-    | Just tc' <- M.lookup (tcName tc) tcs
+    | Just tc' <- M.lookup (tcId tc) tcs
                 = tc' {
                     tcNext = loop (tcNext tc'),
                     tcCons = loop (tcCons tc')
@@ -56,8 +65,10 @@ replaceTyCons tcs0 = loop where
   tyapp (TyApp tc ts _) = tyApp tc ts
   tyapp t               = t
 
-replaceTyCon :: Data a => TyCon -> a -> a
-replaceTyCon tc = replaceTyCons [tc]
+-- | Replace all occurrences of the first tycon with the second
+substTyCon :: Data a => TyCon -> TyCon -> a -> a
+substTyCon tc tc' = everywhere (mkT each) where
+  each tc0 = if tc == tc0 then tc' else tc0
 
 -- | The constant bound on the qualifier of a type
 qualConst :: Type -> QLit

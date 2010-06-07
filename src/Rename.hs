@@ -493,7 +493,7 @@ renameSigExp :: SigExp Raw -> R (SigExp Renamed)
 renameSigExp se0 = withLoc se0 $ case se0 of
   [$seQ| sig $list:sgs end |] -> do
     (sgs', md) <- listen $ don'tAllocate $ renameMapM renameSigItem sgs
-    inModule mempty $ checkSigDuplicates md
+    onlyInModule mempty $ checkSigDuplicates md
     return [$seQ|+ sig $list:sgs' end |]
   [$seQ| $quid:qu $list:_ |] -> do
     (qu', md, _) <- getSig qu
