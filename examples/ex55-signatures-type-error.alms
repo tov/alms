@@ -1,0 +1,7 @@
+(* Signature tests -- should print type error *)
+
+module A : sig
+  type `a t
+end = struct
+  type `a t = `a
+end

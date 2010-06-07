@@ -1,0 +1,10 @@
+(* Signature tests -- should print type error *)
+
+module A : sig
+  type `a t qualifier a
+end = struct
+  type `a t = unit
+  let f[`b] (x: `b t) = (x, x)
+end
+
+let f[`b] (x: `b A.t) = (x, x)

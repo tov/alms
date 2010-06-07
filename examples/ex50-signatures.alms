@@ -1,0 +1,14 @@
+(* Signature tests -- should print type error *)
+
+module type S = sig
+  type t
+  val f : t -> t -o t
+end
+
+module A = struct
+  type t = int
+  let f  = (+)
+end
+
+module B : S = A
+module C : S = A

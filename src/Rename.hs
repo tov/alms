@@ -64,7 +64,7 @@ instance Monad Renaming where
     loc <- asks location
     fail $ if isBogus loc
       then s
-      else show loc ++ ":\n" ++ s
+      else show loc ++ ":\nname error: " ++ s
 
 instance MonadWriter Module Renaming where
   listen = R . listen . unR

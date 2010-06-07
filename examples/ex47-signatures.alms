@@ -1,0 +1,17 @@
+(* Signature tests -- should print nothing *)
+
+module type S = sig
+  type t
+  val g : t -> int
+end
+
+module A = struct
+  type t = int
+  let f = (+) 1
+  let g = (+) 1
+end
+
+module B : S = A
+module C : S = A
+
+let f (x: B.t) = B.g x
