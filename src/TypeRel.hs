@@ -67,8 +67,7 @@ substTyCons tcs0 tcs0' = loop where
 
 -- | Replace all occurrences of the first tycon with the second
 substTyCon :: Data a => TyCon -> TyCon -> a -> a
-substTyCon tc tc' = everywhere (mkT each) where
-  each tc0 = if tc == tc0 then tc' else tc0
+substTyCon tc tc' = substTyCons [tc] [tc']
 
 -- | The constant bound on the qualifier of a type
 qualConst :: Type -> QLit

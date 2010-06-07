@@ -61,7 +61,7 @@ import qualified Data.Set as S
 -- pM a = if p a True then return () else fail "wibble"
 -- p = const
 
--- The kind of names we're using.  Should change to 'Renamed'
+-- The kind of names we're using.
 type R = Renamed
 
 ---
@@ -102,7 +102,7 @@ data Module
   | MdTycon  !(Lid R)    !TyCon
   | MdModule !(Uid R)    !Module
   | MdSig    !(Uid R)    !Module
-  deriving (Typeable, Data)
+  deriving (Typeable, Data, Show)
 
 -- | Convert an ordered module into an un-ordered environment
 envify :: Module -> E
@@ -1248,46 +1248,146 @@ makeNameMap md0 = case md0 of
 
 ascribeSignature :: (?loc :: Loc, Monad m) =>
                     Module -> Module -> TC m ()
-ascribeSignature mdmod sgmod = do
-  onlyInModule mdmod $ sealModule (makeNameMap mdmod) sgmod
+ascribeSignature md1 md2 = do
+  (_, md2') <- steal $ onlyInModule md1 $ subsumeSig (makeNameMap md1) md2
+  tell md2'
 
 sealModule :: (?loc :: Loc, Monad m) =>
               NameMap -> Module -> TC m ()
-sealModule nm0 = loop where 
-  loop md0 = case md0 of
-    MdNil          -> return ()
-    MdApp md1 md2  -> do loop md1; loop md2
+sealModule nm0 md0 = loop (linearize md0 []) MdNil where
+  loop []         md' = tell md'
+  loop (sg : sgs) md' = case sg of
     MdValue x t    -> do
       let Just x' = nm0 =..= x
       t' <- find (J [] x' :: Ident R)
       tassgot (t' <: t)
         ("when sealing module, variable `"++show x'++"'") t' (show t)
-      tell (MdValue x' t)
+      loop sgs (md' `MdApp` MdValue x' t)
     MdTycon x tc   -> do
       let Just x' = nm0 =..= x
       tc' <- find (J [] x' :: QLid R)
-      case varietyOf tc
-        OperatorType -> undefined -- XXX
-        DataType -> undefined -- XXX
-        AbstractType -> undefined -- XXX
+      case varietyOf tc of
+        OperatorType -> do
+          matchTycons tc' tc
+          loop sgs (md' `MdApp` MdTycon x' tc)
+        DataType     -> do
+          matchTycons tc' tc
+          ix <- newIndex
+          let tc''    = tc { tcId = ix }
+              fixup a = substTyCons [tc, tc'] [tc'', tc''] a
+          loop (fixup sgs) (fixup (md' `MdApp` MdTycon x' tc''))
+        AbstractType -> do
+          tassert (length (tcArity tc') == length (tcArity tc)) $
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because the actual number of type " ++
+            "parameters (" ++ show (length (tcArity tc')) ++
+            " does not match the expected number (" ++
+            show (length (tcArity tc)) ++ "("
+          tassert (all2 (<:) (tcArity tc') (tcArity tc)) $
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because actual variance " ++
+            show (tcArity tc') ++
+            " is less general than expected variance " ++
+            show (tcArity tc)
+          tassert (all2 (<:) (tcBounds tc') (tcBounds tc)) $
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because actual parameter bounds " ++
+            show (tcBounds tc') ++
+            " is less general than expected parameter bounds " ++
+            show (tcBounds tc)
+          tassert (tcQual tc' <: tcQual tc) $ 
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because actual qualifier " ++
+            show (tcQual tc') ++
+            " is less general than expected qualifier " ++
+            show (tcQual tc)
+          ix <- newIndex
+          let tc''    = tc { tcId = ix }
+              fixup a = substTyCons [tc, tc'] [tc'', tc''] a
+          loop (fixup sgs) (fixup (md' `MdApp` MdTycon x' tc''))
     MdModule x md1 -> do
       let Just x' = nm0 =..= x
       (md2, _)  <- find (J [] x' :: QUid R)
       (_, md1') <- steal $ ascribeSignature md2 md1
-      tell (MdModule x' md1')
+      loop sgs (md' `MdApp` MdModule x' md1')
     MdSig x md1    -> do
       let Just x' = nm0 =..= SIGVAR x
       (md2, _)  <- find (J [] (SIGVAR x') :: Path (Uid R) SIGVAR)
       matchSigs md2 md1
-      tell (MdSig x' md2)
+      loop sgs (md' `MdApp` MdSig x' md2)
+    MdNil          -> error "BUG! Statics.sealModule (1)"
+    MdApp _ _      -> error "BUG! Statics.sealModule (2)"
+
+-- | Check whether the given signature subsumes the signature
+--   implicit in the environment; takes a 'NameMap' mapping un-renamed
+--   signature names to renamed environment names.
+subsumeSig :: (?loc :: Loc, Monad m) =>
+              NameMap -> Module -> TC m ()
+subsumeSig nm0 md0 = loop (linearize md0 []) where
+  loop []         = return ()
+  loop (sg : sgs) = case sg of
+    MdValue x t    -> do
+      let Just x' = nm0 =..= x
+      tell (MdValue x' t)
+      t' <- find (J [] x' :: Ident R)
+      tassgot (t' <: t)
+        ("in signature matching, variable `"++show x'++"'") t' (show t)
+      loop sgs
+    MdTycon x tc   -> do
+      let Just x' = nm0 =..= x
+      tell (MdTycon x' tc)
+      tc' <- find (J [] x' :: QLid R)
+      case varietyOf tc of
+        OperatorType -> do
+          matchTycons tc' tc
+          loop sgs
+        DataType     -> do
+          matchTycons tc' tc
+          loop sgs
+        AbstractType -> do
+          tassert (length (tcArity tc') == length (tcArity tc)) $
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because the actual number of type " ++
+            "parameters (" ++ show (length (tcArity tc')) ++
+            " does not match the expected number (" ++
+            show (length (tcArity tc)) ++ "("
+          tassert (all2 (<:) (tcArity tc') (tcArity tc)) $
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because actual variance " ++
+            show (tcArity tc') ++
+            " is less general than expected variance " ++
+            show (tcArity tc)
+          tassert (all2 (<:) (tcBounds tc') (tcBounds tc)) $
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because actual parameter bounds " ++
+            show (tcBounds tc') ++
+            " is less general than expected parameter bounds " ++
+            show (tcBounds tc)
+          tassert (tcQual tc' <: tcQual tc) $ 
+            "in signature matching, cannot match type definition for " ++
+            show (tcName tc) ++ " because actual qualifier " ++
+            show (tcQual tc') ++
+            " is less general than expected qualifier " ++
+            show (tcQual tc)
+          loop (substTyCon tc tc' sgs)
+    MdModule x md1 -> do
+      let Just x' = nm0 =..= x
+      tell (MdModule x' md1)
+      (md2, _)  <- find (J [] x' :: QUid R)
+      onlyInModule md2 $ subsumeSig (makeNameMap md2) md1
+      loop sgs
+    MdSig x md1    -> do
+      let Just x' = nm0 =..= SIGVAR x
+      tell (MdSig x' md1)
+      (md2, _)  <- find (J [] (SIGVAR x') :: Path (Uid R) SIGVAR)
+      matchSigs md2 md1
+      loop sgs
+    MdNil          -> error "BUG! Statics.sealModule (1)"
+    MdApp _ _      -> error "BUG! Statics.sealModule (2)"
 
 matchSigs :: (?loc :: Loc, Monad m) =>
              Module -> Module -> TC m ()
 matchSigs md10 md20 = loop (linearize md10 []) (linearize md20 []) where
-  linearize MdNil           = id
-  linearize (MdApp md1 md2) = linearize md1 . linearize md2
-  linearize md1             = (md1 :)
-  --
   loop [] []                = return ()
   loop (MdValue x1 t1 : sgs1) (MdValue x2 t2 : sgs2)
     | x1 == x2 && t1 == t2  = loop sgs1 sgs2
@@ -1363,7 +1463,7 @@ matchTycons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
   (v1, v2) -> terr $ estr "kind of definition" (show v1) (show v2)
   where
     estr what which1 which2 =
-      "in signature matching, cannot match type definitions for " ++
+      "in signature matching, cannot match type definition for " ++
       show (tcName tc1) ++ " because the " ++ what ++
       " does not match (`" ++ which1 ++ "' vs. `" ++ which2 ++ "')"
 
@@ -1377,6 +1477,13 @@ matchTypats (TpApp tc1 tvs1) (TpApp tc2 tvs2)
 matchTypats tp1 tp2
   = terr $ "in signature matching, cannot match type patterns `" ++
            show tp1 ++ "' and `" ++ show tp2 ++ "'"
+
+-- | To flatten all the 'MdNil' and 'MdApp' constructors in a module
+--   into an ordinary list.
+linearize :: Module -> [Module] -> [Module]
+linearize MdNil           = id
+linearize (MdApp md1 md2) = linearize md1 . linearize md2
+linearize md1             = (md1 :)
 
 ---
 --- END Module Sealing
