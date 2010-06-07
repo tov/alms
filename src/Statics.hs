@@ -55,11 +55,10 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 
 -- import System.IO.Unsafe (unsafePerformIO)
--- p :: Show a => a -> b -> b
--- p a b = unsafePerformIO (print a) `seq` b
+-- pP :: Show a => a -> b -> b
+-- pP a b = unsafePerformIO (print a) `seq` b
 -- pM :: (Show a, Monad m) => a -> m ()
--- pM a = if p a True then return () else fail "wibble"
--- p = const
+-- pM a = if pP a True then return () else fail "wibble"
 
 -- The kind of names we're using.
 type R = Renamed
@@ -1203,11 +1202,13 @@ tcDecls = tcMapM tcDecl
 --- Module sealing
 ---
 
+-- | For mapping renamed names (from structures) into unrenamed names
+--   (in signatures)
 data NameMap
   = NameMap {
       nmValues  :: Env (BIdent R) (BIdent R),
       nmTycons  :: Env (Lid R)    (Lid R),
-      nmModules :: Env (Uid R)    (Uid R),
+      nmModules :: Env (Uid R)    (Uid R, NameMap),
       nmSigs    :: Env (Uid R)    (Uid R)
   }
 
@@ -1224,19 +1225,21 @@ instance GenLookup NameMap (BIdent R) (BIdent R) where
   e =..= k = nmValues e =..= k
 instance GenLookup NameMap (Lid R) (Lid R) where
   e =..= k = nmTycons e =..= k
-instance GenLookup NameMap (Uid R) (Uid R) where
+instance GenLookup NameMap (Uid R) (Uid R, NameMap) where
   e =..= k = nmModules e =..= k
 instance GenLookup NameMap SIGVAR (Uid R) where
   e =..= k = nmSigs e =..= unSIGVAR k
 
+-- | Given a module, construct a 'NameMap' mapping raw versions of its
+--   names to the actual renamed version.
 makeNameMap :: Module -> NameMap
 makeNameMap md0 = case md0 of
-  MdNil         -> mempty
-  MdApp md1 md2 -> makeNameMap md1 =+= makeNameMap md2
-  MdValue x _   -> mempty { nmValues  = unnameBIdent x =:= x }
-  MdTycon x _   -> mempty { nmTycons  = unnameLid x =:= x }
-  MdModule x _  -> mempty { nmModules = unnameUid x =:= x }
-  MdSig x _     -> mempty { nmSigs    = unnameUid x =:= x }
+  MdNil          -> mempty
+  MdApp md1 md2  -> makeNameMap md1 =+= makeNameMap md2
+  MdValue x _    -> mempty { nmValues  = unnameBIdent x =:= x }
+  MdTycon x _    -> mempty { nmTycons  = unnameLid x =:= x }
+  MdModule x md1 -> mempty { nmModules = unnameUid x =:= (x, makeNameMap md1) }
+  MdSig x _      -> mempty { nmSigs    = unnameUid x =:= x }
   where
     unnameLid :: Lid R -> Lid R
     unnameLid  = lid . unLid
@@ -1246,77 +1249,47 @@ makeNameMap md0 = case md0 of
     unnameBIdent (Var l) = Var (unnameLid l)
     unnameBIdent (Con u) = Con (unnameUid u)
 
+-- | Given a module and a signature, ascribe the signature to the module
+--   and write the result.
 ascribeSignature :: (?loc :: Loc, Monad m) =>
                     Module -> Module -> TC m ()
 ascribeSignature md1 md2 = do
-  (_, md2') <- steal $ onlyInModule md1 $ subsumeSig (makeNameMap md1) md2
-  tell md2'
+  let nameMap = makeNameMap md1
+  onlyInModule md1 $ subsumeSig nameMap md2
+  (_, md2') <- steal $ renameSig nameMap md2
+  let tcs    = getGenTycons md2' []
+  tcs'      <- forM tcs $ \tc -> do
+    ix <- newIndex
+    return tc { tcId = ix }
+  tell (substTyCons tcs tcs' md2')
 
-sealModule :: (?loc :: Loc, Monad m) =>
-              NameMap -> Module -> TC m ()
-sealModule nm0 md0 = loop (linearize md0 []) MdNil where
-  loop []         md' = tell md'
-  loop (sg : sgs) md' = case sg of
-    MdValue x t    -> do
-      let Just x' = nm0 =..= x
-      t' <- find (J [] x' :: Ident R)
-      tassgot (t' <: t)
-        ("when sealing module, variable `"++show x'++"'") t' (show t)
-      loop sgs (md' `MdApp` MdValue x' t)
-    MdTycon x tc   -> do
-      let Just x' = nm0 =..= x
-      tc' <- find (J [] x' :: QLid R)
-      case varietyOf tc of
-        OperatorType -> do
-          matchTycons tc' tc
-          loop sgs (md' `MdApp` MdTycon x' tc)
-        DataType     -> do
-          matchTycons tc' tc
-          ix <- newIndex
-          let tc''    = tc { tcId = ix }
-              fixup a = substTyCons [tc, tc'] [tc'', tc''] a
-          loop (fixup sgs) (fixup (md' `MdApp` MdTycon x' tc''))
-        AbstractType -> do
-          tassert (length (tcArity tc') == length (tcArity tc)) $
-            "in signature matching, cannot match type definition for " ++
-            show (tcName tc) ++ " because the actual number of type " ++
-            "parameters (" ++ show (length (tcArity tc')) ++
-            " does not match the expected number (" ++
-            show (length (tcArity tc)) ++ "("
-          tassert (all2 (<:) (tcArity tc') (tcArity tc)) $
-            "in signature matching, cannot match type definition for " ++
-            show (tcName tc) ++ " because actual variance " ++
-            show (tcArity tc') ++
-            " is less general than expected variance " ++
-            show (tcArity tc)
-          tassert (all2 (<:) (tcBounds tc') (tcBounds tc)) $
-            "in signature matching, cannot match type definition for " ++
-            show (tcName tc) ++ " because actual parameter bounds " ++
-            show (tcBounds tc') ++
-            " is less general than expected parameter bounds " ++
-            show (tcBounds tc)
-          tassert (tcQual tc' <: tcQual tc) $ 
-            "in signature matching, cannot match type definition for " ++
-            show (tcName tc) ++ " because actual qualifier " ++
-            show (tcQual tc') ++
-            " is less general than expected qualifier " ++
-            show (tcQual tc)
-          ix <- newIndex
-          let tc''    = tc { tcId = ix }
-              fixup a = substTyCons [tc, tc'] [tc'', tc''] a
-          loop (fixup sgs) (fixup (md' `MdApp` MdTycon x' tc''))
+-- | Make the names in a signature match the names from the module it's
+--   being applied to.
+renameSig :: Monad m => NameMap -> Module -> TC m ()
+renameSig nm0 = loop where
+  loop md0 = case md0 of
+    MdNil          -> return ()
+    MdApp md1 md2  -> do loop md1; loop md2
+    MdValue x t    -> tell (MdValue (fromJust (nm0 =..= x)) t)
+    MdTycon x tc   -> tell (MdTycon (fromJust (nm0 =..= x)) tc)
     MdModule x md1 -> do
-      let Just x' = nm0 =..= x
-      (md2, _)  <- find (J [] x' :: QUid R)
-      (_, md1') <- steal $ ascribeSignature md2 md1
-      loop sgs (md' `MdApp` MdModule x' md1')
-    MdSig x md1    -> do
-      let Just x' = nm0 =..= SIGVAR x
-      (md2, _)  <- find (J [] (SIGVAR x') :: Path (Uid R) SIGVAR)
-      matchSigs md2 md1
-      loop sgs (md' `MdApp` MdSig x' md2)
-    MdNil          -> error "BUG! Statics.sealModule (1)"
-    MdApp _ _      -> error "BUG! Statics.sealModule (2)"
+      let Just (x', nm1) = nm0 =..= x
+      (_, md1') <- steal $ renameSig nm1 md1
+      tell (MdModule x' md1')
+    MdSig x md1    -> tell (MdSig (fromJust (nm0 =..= SIGVAR x)) md1)
+
+-- | Get a list of all the tycons that need a new index allocated
+--   because they're generative.
+getGenTycons :: Module -> [TyCon] -> [TyCon]
+getGenTycons = loop where
+  loop MdNil            = id
+  loop (MdApp md1 md2)  = loop md1 . loop md2
+  loop (MdValue _ _)    = id
+  loop (MdTycon _ tc)   = if varietyOf tc == OperatorType
+                            then id
+                            else (tc:)
+  loop (MdModule _ md1) = loop md1
+  loop (MdSig _ _)      = id
 
 -- | Check whether the given signature subsumes the signature
 --   implicit in the environment; takes a 'NameMap' mapping un-renamed
@@ -1328,14 +1301,12 @@ subsumeSig nm0 md0 = loop (linearize md0 []) where
   loop (sg : sgs) = case sg of
     MdValue x t    -> do
       let Just x' = nm0 =..= x
-      tell (MdValue x' t)
       t' <- find (J [] x' :: Ident R)
       tassgot (t' <: t)
         ("in signature matching, variable `"++show x'++"'") t' (show t)
       loop sgs
     MdTycon x tc   -> do
       let Just x' = nm0 =..= x
-      tell (MdTycon x' tc)
       tc' <- find (J [] x' :: QLid R)
       case varietyOf tc of
         OperatorType -> do
@@ -1371,14 +1342,12 @@ subsumeSig nm0 md0 = loop (linearize md0 []) where
             show (tcQual tc)
           loop (substTyCon tc tc' sgs)
     MdModule x md1 -> do
-      let Just x' = nm0 =..= x
-      tell (MdModule x' md1)
+      let Just (x', nm') = nm0 =..= x
       (md2, _)  <- find (J [] x' :: QUid R)
-      onlyInModule md2 $ subsumeSig (makeNameMap md2) md1
+      onlyInModule md2 $ subsumeSig nm' md1
       loop sgs
     MdSig x md1    -> do
       let Just x' = nm0 =..= SIGVAR x
-      tell (MdSig x' md1)
       (md2, _)  <- find (J [] (SIGVAR x') :: Path (Uid R) SIGVAR)
       matchSigs md2 md1
       loop sgs

@@ -697,6 +697,8 @@ typeToStx = loop (S.empty, M.empty) where
     TyVar tv      -> Stx.tyVar (maybe tv id (M.lookup tv (snd ren)))
     TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (loop ren t1) (loop ren t2)
     TyApp tc ts _ -> Stx.tyApp (tcName tc) (map (loop ren) ts)
+       -- (fmap (\ql -> lid ("[" ++ show (tcId tc) ++ "]" ++ unLid ql))
+       --       (tcName tc))
     TyQu qu tv t1 -> Stx.tyQu qu tv' (loop ren' t1)
       where (tv', ren') = fresh tv ren
     TyMu tv t1    -> Stx.tyMu tv' (loop ren' t1)
@@ -895,6 +897,7 @@ dumpType = CMW.execWriter . loop 0 where
 
 instance Ppr TyCon where
   ppr tc =
+    -- brackets (text (show (tcId tc))) <>
     case tcNext tc of
       Just [(tps,t)] -> pprTyApp 0 (tcName tc) (ps (map snd tvs))
                           >?> qe (map fst tvs)
