@@ -17,6 +17,7 @@ type Prec = Either Int Int
 
 precOp :: String -> Prec
 precOp ('*':'*':_)    = Right precExp
+precOp ('@':'@':_)    = Right precExp
 precOp ('-':'>':_)    = Right precArr
 precOp ('-':'o':_)    = Right precArr
 precOp "-[]>"         = Right precArr
@@ -44,7 +45,7 @@ precAt    =  4 -- @ ^ (infixr)
 precPlus  =  5 -- - +
 precStar  =  6 -- % / *
 precSemi  =  7 -- ;  (types only)
-precExp   =  8 -- ** (infixr)
+precExp   =  8 -- ** @@ (infixr)
 precApp   =  9 -- f x
 precBang  = 10 -- ! ~ ? (prefix)
 precTApp  = 11 -- f[t]
