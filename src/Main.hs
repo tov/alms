@@ -289,6 +289,8 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
     []  -> putStrLn $ "not bound: `" ++ show ident ++ "'"
     ris -> mapM_ each ris
   where
+    each (SigAt      loc x') =
+      mention "module type" (ppr x') Ppr.empty loc
     each (ModuleAt   loc x') =
       mention "module" (ppr x') Ppr.empty loc
     each (VariableAt loc x') =

@@ -847,6 +847,7 @@ addMod u body = do
 -- | Result for 'getRenamingInfo'
 data RenamingInfo
   = ModuleAt   { renInfoLoc :: Loc, renInfoQUid :: QUid Renamed }
+  | SigAt      { renInfoLoc :: Loc, renInfoQUid :: QUid Renamed }
   | VariableAt { renInfoLoc :: Loc, renInfoQLid :: QLid Renamed }
   | TyconAt    { renInfoLoc :: Loc, renInfoQLid :: QLid Renamed }
   | DataconAt  { renInfoLoc :: Loc, renInfoQUid :: QUid Renamed }
@@ -857,8 +858,11 @@ data RenamingInfo
 getRenamingInfo :: Ident Raw -> RenameState -> [RenamingInfo]
 getRenamingInfo ident RenameState { savedEnv = e } =
   catMaybes $ case view ident of
-    Left ql  -> [ look tycons ql TyconAt, look vars ql VariableAt ]
-    Right qu -> [ look modules qu ModuleAt, look datacons qu DataconAt ]
+    Left ql  -> [ look tycons ql TyconAt,
+                  look vars ql VariableAt ]
+    Right qu -> [ look sigs qu SigAt,
+                  look modules qu ModuleAt,
+                  look datacons qu DataconAt ]
   where
     look prj qx build = case envLookup prj qx e of
       Left _                    -> Nothing
