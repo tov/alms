@@ -2,8 +2,9 @@
 
 EXE="$1"
 EXAMPLES="$2"
+LIB="`dirname "$EXAMPLES"`/lib"
 
-for i in $EXAMPLES/ex*.alms; do
+for i in $EXAMPLES/ex*.alms $LIB/lib*.alms; do
   $EXAMPLES/run-test.sh $EXE "$i"
 done
 

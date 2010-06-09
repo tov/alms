@@ -2,7 +2,36 @@
     A session types library
 *)
 
-module SessionType = struct
+module type SESSION_TYPE = sig
+  type 1
+  type +'a ; +'s
+  type ! -`a
+  type ? +`a
+  type +'a |+| +'b
+  type +'a |&| +'b
+
+  type 1           dual = 1
+     | (!`a ; 's)  dual = ?`a ; 's dual
+     | (?`a ; 's)  dual = !`a ; 's dual
+     | ('a |+| 'b) dual = 'a dual |&| 'b dual
+     | ('a |&| 'b) dual = 'a dual |+| 'b dual
+
+  type 's rendezvous
+  type +'s channel qualifier A
+
+  val newRendezvous : all 's. unit -> 's rendezvous
+
+  val request   : all 's. 's rendezvous -> 's channel
+  val accept    : all 's. 's rendezvous -> 's dual channel
+
+  val send      : all `a 's. (!`a; 's) channel -> `a -o 's channel
+  val recv      : all `a 's. (?`a; 's) channel -> `a * 's channel
+  val sel1      : all 's 'r. ('s |+| 'r) channel -> 's channel
+  val sel2      : all 's 'r. ('s |+| 'r) channel -> 'r channel
+  val follow    : all 's 'r. ('s |&| 'r) channel -> 's channel + 'r channel
+end
+
+module SessionType : SESSION_TYPE = struct
   module C = Channel
 
   type 1
@@ -13,48 +42,44 @@ module SessionType = struct
   type +'a |&| +'b
 
   type 1           dual = 1
-     | (!`a ; 's) dual = ?`a ; 's dual
-     | (?`a ; 's) dual = !`a ; 's dual
+     | (!`a ; 's)  dual = ?`a ; 's dual
+     | (?`a ; 's)  dual = !`a ; 's dual
      | ('a |+| 'b) dual = 'a dual |&| 'b dual
      | ('a |&| 'b) dual = 'a dual |+| 'b dual
 
-  abstype 's rendezvous = Rendezvous of ('s channel C.channel)
-      and +'s channel qualifier A = Chan of bool C.channel
-  with
-    let newRendezvous['s] (_: unit) : 's rendezvous =
-      Rendezvous (C.new['s channel] ())
+  type rep           = bool C.channel
+  type 's channel    = rep
+  type 's rendezvous = rep C.channel
 
-    let request['s] (Rendezvous r: 's rendezvous) : 's channel =
-      C.recv r
+  let newRendezvous['s] () =
+    (C.new['s channel] ())
 
-    let accept['s] (Rendezvous r: 's rendezvous) : 's dual channel =
-      let c = C.new[bool] () in
-        C.send r (Chan['s] c);
-        Chan['s dual] c
+  let request['s] (r: 's rendezvous) =
+    C.recv r
 
-    let send[`a, 's] (Chan c: (!`a; 's) channel)|
-                      (a: `a) : 's channel =
-      C.send c (Unsafe.unsafeCoerce[bool] a);
-      Chan['s] c
+  let accept['s] (r: 's rendezvous) =
+    let c = C.new[bool] () in
+      C.send r c;
+      c
 
-    let recv[`a, 's] (Chan c: (?`a; 's) channel)
-                      : `a * 's channel =
-      (Unsafe.unsafeCoerce[`a] (C.recv c), Chan['s] c)
+  let send[`a, 's] (c: rep)| (a: `a) =
+    C.send c (Unsafe.unsafeCoerce[bool] a);
+    c
 
-    let sel1['s1, 's2] (Chan c: ('s1 |+| 's2) channel)
-                       : 's1 channel =
-      C.send c true;
-      Chan['s1] c
+  let recv[`a, 's] (c: rep) =
+    (Unsafe.unsafeCoerce[`a] (C.recv c),  c)
 
-    let sel2['s1, 's2] (Chan c: ('s1 |+| 's2) channel)
-                       : 's2 channel =
-      C.send c false;
-      Chan['s2] c
+  let sel1['s1, 's2] (c: ('s1 |+| 's2) channel)
+                     : 's1 channel =
+    C.send c true;
+    c
 
-    let follow['s1, 's2] (Chan c: ('s1 |&| 's2) channel)
-                         : 's1 channel + 's2 channel =
-      if C.recv c
-        then Left ['s1 channel, 's2 channel] (Chan['s1] c)
-        else Right['s1 channel, 's2 channel] (Chan['s2] c)
-  end
+  let sel2['s1, 's2] (c: rep) =
+    C.send c false;
+    c
+
+  let follow['s1, 's2] (c: rep) =
+    if C.recv c
+      then Left [rep, rep] c
+      else Right[rep, rep] c
 end

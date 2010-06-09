@@ -2,7 +2,37 @@
     Another session types library.  Doesn't use equirecursive types.
 *)
 
-module SessionType = struct
+module type SESSION_TYPE = sig
+  type 1
+  type +'a ; +'s
+  type ! -`a
+  type ? +`a
+
+  type 1          dual = 1
+     | (!`a ; 's) dual = ?`a ; 's dual
+     | (?`a ; 's) dual = !`a ; 's dual
+
+  type ?-> `c = ?`c; 1
+  type !-> `c = !`c; 1
+
+  type 's rendezvous
+  type +'s channel qualifier A
+
+  val newRendezvous : all 's. unit -> 's rendezvous
+
+  val request   : all 's. 's rendezvous -> 's channel
+  val accept    : all 's. 's rendezvous -> 's dual channel
+
+  val send      : all `a. `a -> all 's. (!`a; 's) channel -[a]>
+                    unit * 's channel
+  val recv      : all `a 's. (?`a; 's) channel -> `a * 's channel
+
+  val follow    : all `c. ?-> `c channel -> unit * `c
+  val choose    : all 's `c. ('s channel -> `c) -> !-> `c channel ->
+                    unit * 's dual channel
+end
+
+module SessionType : SESSION_TYPE = struct
   module C = Channel
 
   type 1
@@ -10,50 +40,44 @@ module SessionType = struct
   type ! -`a
   type ? +`a
 
-  type 1           dual = 1
+  type 1          dual = 1
      | (!`a ; 's) dual = ?`a ; 's dual
      | (?`a ; 's) dual = !`a ; 's dual
 
-  abstype 's rendezvous = Rendezvous of ('s channel C.channel)
-      and +'s channel qualifier A = Chan of bool C.channel
-  with
-    let newRendezvous['s] (_: unit) : 's rendezvous =
-      Rendezvous (C.new['s channel] ())
+  type ?-> `c = ?`c; 1
+  type !-> `c = !`c; 1
 
-    let request['s] (Rendezvous r: 's rendezvous) : 's channel =
-      C.recv r
+  type rep = any C.channel
+  type 's channel    = rep
+  type 's rendezvous = rep C.channel
 
-    let accept['s] (Rendezvous r: 's rendezvous) : 's dual channel =
-      let c = C.new[bool] () in
-        C.send r (Chan['s] c);
-        Chan['s dual] c
+  let newRendezvous['s] () = C.new['s channel] ()
 
-    let newPair['s] () : 's channel * 's dual channel =
-      let c = C.new[bool] () in
-        (Chan['s] c, Chan['s dual] c)
+  let request['s] (r: 's rendezvous) = C.recv r
 
-    let send[`a] (a: `a)
-            ['s] |(Chan c: (!`a; 's) channel) : unit * 's channel =
-      C.send c (Unsafe.unsafeCoerce[bool] a);
-      ((), Chan['s] c)
+  let accept['s] (r: 's rendezvous) =
+    let c = C.new () in
+      C.send r c;
+      c
 
-    let recv[`a, 's] (Chan c: (?`a; 's) channel)
-                      : `a * 's channel =
-      (Unsafe.unsafeCoerce[`a] (C.recv c), Chan['s] c)
+  let newPair['s] () =
+    let c = C.new () in
+      (c, c)
 
-    type ?-> `c = ?`c; 1
+  let send[`a] (a: `a)
+          ['s] (c: rep) =
+    C.send c (Unsafe.unsafeCoerce a);
+    ((), c)
 
-    let follow[`c] (c: ?-> `c channel) =
-      let (c', _) = recv c in ((), c')
+  let recv[`a, 's] (c: rep) = (C.recv c, c)
 
-    type !-> `c = !`c; 1
+  let follow[`c] (c: rep) =
+    let (c', _) = recv c in ((), c')
 
-    let choose['s,`c] (ctor: 's channel -> `c)
-                    (c: !-> `c channel): unit * 's dual channel =
-      let (theirs, mine) = newPair['s] () in
-        send (ctor theirs) c;
-        ((), mine)
-  end
+  let choose['s,`c] (ctor: rep -> `c) (c: rep) =
+    let (theirs, mine) = newPair () in
+      send (ctor theirs) c;
+      ((), mine)
 end
 
 module SessionType2Test = struct
@@ -93,4 +117,3 @@ module SessionType2Test = struct
                send z c
      in fst (s1 c)
 end
-

@@ -4,45 +4,72 @@
 
 #load "libarray"
 
-module AArray = struct
+module type AARRAY_PRIM = sig
+  type ('a, 't) array
   type `a / `b
   type 1
   type 2
-  local
-    module A = Array
-  with
-    abstype ('a, 't) array = Array of 'a A.array with
-      abstype ('t, 'c) readcap qualifier A = MkCap with
-        type 't writecap = ('t, 1) readcap
+  type ('t, 'c) readcap qualifier A
+  type 't writecap = ('t, 1) readcap
 
-        let new['a] (size: int) : ex 't. ('a, 't) array * 't writecap =
-          Pack[ex 't. ('a, 't) array * 't writecap]
-              (unit, (Array['a,unit] (A.newArray['a] size), MkCap[unit,1]))
+  val new    : all 'a. int -> ex 't. ('a, 't) array * 't writecap
+  val split  : all 't 'c. ('t, 'c) readcap ->
+                 ('t, 'c/2) readcap * ('t, 'c/2) readcap
+  val join   : all 't 'c.  ('t, 'c/2) readcap * ('t, 'c/2) readcap ->
+                 ('t, 'c) readcap
+  val at     : all 'a 't 'c. ('a, 't) array -> int -> ('t, 'c) readcap ->
+                 'a * ('t, 'c) readcap
+  val update : all 'a 't. ('a, 't) array -> int -> 'a ->
+                 't writecap -> 't writecap
+  val size   : all 'a 't. ('a, 't) array -> int
+end
 
-        let split['t,'c] (_: ('t, 'c) readcap)
-                : ('t, 'c/2) readcap * ('t, 'c/2) readcap =
-          (MkCap['t, 'c/2], MkCap['t, 'c/2])
+module AArray : sig
+  include AARRAY_PRIM
 
-        let join['t,'c]
-                (_: ('t, 'c/2) readcap * ('t, 'c/2) readcap)
-                : ('t, 'c) readcap =
-          MkCap['t, 'c]
-      end
+  val par    : all 't 'c `r1 `r2.
+                 (all 'd. ('t, 'd) readcap -> `r1 * ('t, 'd) readcap) ->
+                 (all 'd. ('t, 'd) readcap -> `r2 * ('t, 'd) readcap) ->
+                 ('t, 'c) readcap ->
+                 `r1 * `r2 * ('t, 'c) readcap
+  val fold   : all 'a 't 'c `r.
+                 ('a -> `r -> `r) -> `r -> ('a, 't) array -[r]>
+                 ('t, 'c) readcap -[r]>
+                 `r * ('t, 'c) readcap
+  val map    : all 'a 't 'c 'b.
+                 ('a -> 'b) -> ('a, 't) array -> ('t, 'c) readcap ->
+                 (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap
+  val putArray
+             : all 'a 't 'c. ('a, 't) array -> ('t, 'c) readcap ->
+                 ('t, 'c) readcap
+end = struct
+  module A = Array
 
-      let at['a,'t,'c] (Array arr: ('a, 't) array) (ix: int)
-                        (cap : ('t, 'c) readcap)
-                        : 'a * ('t, 'c) readcap =
-        (A.at arr ix, cap)
+  open struct
+    type ('a, 't) array   = 'a A.array
+    type `a / `b
+    type 1
+    type 2
+    type ('t, 'c) readcap = unit
+    type 't writecap = ('t, 1) readcap
 
-      let update['a,'t] (Array arr: ('a, 't) array) (ix: int) (new: 'a)
-                         (cap : 't writecap) : 't writecap =
-        A.update arr ix new;
-        cap
+    let new['a] (size: int) =
+      Pack[ex 't. ('a, 't) array * unit]
+          (unit, A.newArray['a] size, ())
 
-      let size['a,'t] (Array arr: ('a, 't) array): int =
-        A.size arr
-    end
-  end
+    let split['t,'c] () = ((), ())
+
+    let join['t,'c] (_: unit * unit) = ()
+
+    let at['a,'t,'c] (arr: ('a, 't) array) (ix: int) () =
+      (A.at arr ix, ())
+
+    let update['a,'t] (arr: ('a, 't) array) (ix: int) (new: 'a) () =
+      A.update arr ix new
+
+    let size['a,'t] (arr: ('a, 't) array) =
+      A.size arr
+  end : AARRAY_PRIM
 
   let par ['t,'c,`r1,`r2]
           (left:  all 'd. ('t, 'd) readcap -> `r1 * ('t, 'd) readcap)

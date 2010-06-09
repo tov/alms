@@ -2,30 +2,38 @@
   An array library.
 *)
 
-module Array = struct
+module Array : sig
   exception ArrayIndex of string
-  abstype 'a array = Array of int * (int -> 'a) ref with
-    let newArray['a] (size : int): 'a array =
-      Array (size, ref (fun ix: int ->
-                          (raise (ArrayIndex "uninitialized"))))
+  type 'a array
 
-    let checkIndex (size: int) (ix: int): unit =
-      if ix < 0
-        then raise (ArrayIndex "too low")
-      else if ix >= size
-        then raise (ArrayIndex "too high")
-      else ()
+  val newArray : all 'a. int -> 'a array
+  val at       : all 'a. 'a array -> int -> 'a
+  val update   : all 'a. 'a array -> int -> 'a -> unit
+  val size     : all 'a. 'a array -> int
+end = struct
+  exception ArrayIndex of string
+  type 'a array = int * (int -> 'a) ref
 
-    let at['a] (Array (size, r): 'a array) (ix: int): 'a =
-      checkIndex size ix;
-      !r ix
+  let newArray['a] (size : int): 'a array =
+    (size, ref (fun ix: int ->
+                  (raise (ArrayIndex "uninitialized"))))
 
-    let update['a] (Array (size, r): 'a array) (ix: int) (new: 'a): unit =
-      checkIndex size ix;
-      let oldf = !r in
-        (r <- fun ix': int -> if ix == ix' then new else oldf ix');
-        ()
+  let checkIndex (size: int) (ix: int): unit =
+    if ix < 0
+      then raise (ArrayIndex "too low")
+    else if ix >= size
+      then raise (ArrayIndex "too high")
+    else ()
 
-    let size['a] (Array (size, _): 'a array) = size
-  end
+  let at['a] ((size, r): 'a array) (ix: int): 'a =
+    checkIndex size ix;
+    !r ix
+
+  let update['a] ((size, r): 'a array) (ix: int) (new: 'a): unit =
+    checkIndex size ix;
+    let oldf = !r in
+      (r <- fun ix': int -> if ix == ix' then new else oldf ix');
+      ()
+
+  let size['a] ((size, _): 'a array) = size
 end

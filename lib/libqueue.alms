@@ -1,41 +1,58 @@
-module Queue = struct
-  abstype +`a queue qualifier `a = Queue of `a list * `a list
-  with
-    exception Empty
+module type QUEUE = sig
+  type +`a queue qualifier `a
+  exception Empty
 
-    let emptyA[`a] () = Queue (Nil[`a], Nil[`a])
-    let isEmptyA[`a] (q : `a queue) =
-      match q with
-      | Queue (Nil, Nil) -> (true, Queue (Nil[`a], Nil[`a]))
-      | q                -> (false, q)
-    let sizeA[`a] (Queue (front, back) : `a queue) =
-      let (lenf, front) = lengthA front in
-      let (lenb, back)  = lengthA back in
-      (lenf + lenb, Queue (front, back))
-    let firstA[`a] (Queue (front, back) : `a queue) =
-      match front with
-      | Cons (x, xs) -> Some (x, Queue (xs, back))
-      | Nil ->
-        match rev back with
-        | Cons (x, xs) -> Some (x, Queue (xs, Nil[`a]))
-        | Nil -> None[`a * `a queue]
+  val emptyA   : all `a. unit -> `a queue
+  val isEmptyA : all `a. `a queue -> bool * `a queue
+  val sizeA    : all `a. `a queue -> int * `a queue
+  val dequeueA : all `a. `a queue -> (`a * `a queue) option
 
-    let empty['a] = Queue (Nil['a], Nil['a])
-    let isEmpty[`a] (q : `a queue) =
-      match q with
-      | Queue (Nil, Nil) -> true
-      | _                -> false
-    let enqueue[`a] (x : `a) (Queue (front, back) : `a queue) =
-      Queue (front, Cons (x, back))
-    let first[`a] (q : `a queue) =
-      match firstA q with
-      | Some (x, _) -> x
-      | None        -> raise Empty
-    let dequeue[`a] (q : `a queue) =
-      match firstA q with
-      | Some (_, q') -> q'
-      | None         -> raise Empty
-    let size[`a] (Queue (front, back) : `a queue) =
-      length front + length back
-  end
+  val enqueue  : all `a. `a -> `a queue -[a]> `a queue
+
+  val empty    : all 'a. 'a queue
+  val isEmpty  : all 'a. 'a queue -> bool
+  val size     : all 'a. 'a queue -> int
+  val first    : all 'a. 'a queue -> 'a
+  val dequeue  : all 'a. 'a queue -> 'a queue
+end
+
+module Queue : QUEUE = struct
+  type `a queue = `a list * `a list
+
+  exception Empty
+
+  let emptyA[`a] () = (Nil[`a], Nil[`a])
+  let isEmptyA[`a] (q : `a queue) =
+    match q with
+    | (Nil, Nil) -> (true, (Nil[`a], Nil[`a]))
+    | q                -> (false, q)
+  let sizeA[`a] ((front, back) : `a queue) =
+    let (lenf, front) = lengthA front in
+    let (lenb, back)  = lengthA back in
+    (lenf + lenb, (front, back))
+  let dequeueA[`a] ((front, back) : `a queue) =
+    match front with
+    | Cons (x, xs) -> Some (x, (xs, back))
+    | Nil ->
+      match rev back with
+      | Cons (x, xs) -> Some (x, (xs, Nil[`a]))
+      | Nil -> None[`a * `a queue]
+
+  let empty['a] = (Nil['a], Nil['a])
+  let isEmpty[`a] (q : `a queue) =
+    match q with
+    | (Nil, Nil) -> true
+    | _          -> false
+  let enqueue[`a] (x : `a) ((front, back) : `a queue) =
+    (front, Cons (x, back))
+  let first[`a] (q : `a queue) =
+    match dequeueA q with
+    | Some (x, _) -> x
+    | None        -> raise Empty
+  let dequeue[`a] (q : `a queue) =
+    match dequeueA q with
+    | Some (_, q') -> q'
+    | None         -> raise Empty
+  let size[`a] ((front, back) : `a queue) =
+    length front + length back
 end
