@@ -379,6 +379,12 @@ subtype limit uvars1 t1i uvars2 t2i =
           withUVars [tv'] env1 $
             cmp (tysubst tvt (TyVar tv') t1) u
         return ()
+      (_, TyQu Exists tvu u1) -> do
+        tv' <- freshU (tvqual tvu)
+        incU $
+          withUVars [tv'] env2 $
+            cmp t (tysubst tvu (TyVar tv') u1)
+        return ()
       -- Recursion
       (TyMu tvt t1, _) -> cmp (tysubst tvt t t1) u
       (_, TyMu tvu u1) -> cmp t (tysubst tvu u u1)

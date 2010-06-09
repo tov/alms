@@ -46,13 +46,13 @@ module type ASOCKET = sig
   (* Operations for reassociating frozen capabilities with their
      sockets. *)
   val thawInitial   : all 't. 't socket -> frozenInitial ->
-                        't initial + frozenInitial
+                        frozenInitial + 't initial
   val thawBound     : all 't. 't socket -> frozenBound ->
-                        't bound + frozenBound
+                        frozenBound + 't bound
   val thawListening : all 't. 't socket -> frozenListening ->
-                        't listening + frozenListening
+                        frozenListening + 't listening
   val thawConnected : all 't. 't socket -> frozenConnected ->
-                        't connected + frozenConnected
+                        frozenConnected + 't connected
 
   (* Operations for catching the error state associated with a given
      socket. *)
@@ -73,7 +73,7 @@ module type ASOCKET = sig
   exception StillConnected of frozenConnected * string
 end
 
-module ASocket = struct
+module ASocket : ASOCKET = struct
   module S = Socket
   let getAddrByName = S.getAddrByName
 
@@ -87,7 +87,7 @@ module ASocket = struct
   exception StillConnected of rep * string
 
   let socket () =
-    try Pack[ex 't. rep * unit](unit, S.socket (), ())
+    try (S.socket (), ())
     with
       IOError s -> raise (SocketError s)
 
@@ -110,7 +110,7 @@ module ASocket = struct
       IOError msg -> raise (StillBound (sock, msg))
 
   let accept['t] (sock: rep) () =
-    try (Pack[ex 's. rep * unit](unit, S.accept sock, ()), ())
+    try (S.accept sock, (), ())
     with
       IOError msg -> raise (StillListening (sock, msg))
 
