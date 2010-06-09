@@ -1255,8 +1255,8 @@ ascribeSignature :: (?loc :: Loc, Monad m) =>
                     Module -> Module -> TC m ()
 ascribeSignature md1 md2 = do
   let nameMap = makeNameMap md1
-  onlyInModule md1 $ subsumeSig nameMap md2
   (_, md2') <- steal $ renameSig nameMap md2
+  onlyInModule md1 $ subsumeSig md2'
   let tcs    = getGenTycons md2' []
   tcs'      <- forM tcs $ \tc -> do
     ix <- newIndex
@@ -1291,23 +1291,23 @@ getGenTycons = loop where
   loop (MdModule _ md1) = loop md1
   loop (MdSig _ _)      = id
 
+-- findSubsts :: 
+
 -- | Check whether the given signature subsumes the signature
 --   implicit in the environment; takes a 'NameMap' mapping un-renamed
 --   signature names to renamed environment names.
 subsumeSig :: (?loc :: Loc, Monad m) =>
-              NameMap -> Module -> TC m ()
-subsumeSig nm0 md0 = loop (linearize md0 []) where
+              Module -> TC m ()
+subsumeSig md0 = loop (linearize md0 []) where
   loop []         = return ()
   loop (sg : sgs) = case sg of
     MdValue x t    -> do
-      let Just x' = nm0 =..= x
-      t' <- find (J [] x' :: Ident R)
+      t' <- find (J [] x :: Ident R)
       tassgot (t' <: t)
-        ("in signature matching, variable `"++show x'++"'") t' (show t)
+        ("in signature matching, variable `"++show x++"'") t' (show t)
       loop sgs
     MdTycon x tc   -> do
-      let Just x' = nm0 =..= x
-      tc' <- find (J [] x' :: QLid R)
+      tc' <- find (J [] x :: QLid R)
       case varietyOf tc of
         OperatorType -> do
           matchTycons tc' tc
@@ -1342,13 +1342,11 @@ subsumeSig nm0 md0 = loop (linearize md0 []) where
             show (tcQual tc)
           loop (substTyCon tc tc' sgs)
     MdModule x md1 -> do
-      let Just (x', nm') = nm0 =..= x
-      (md2, _)  <- find (J [] x' :: QUid R)
-      onlyInModule md2 $ subsumeSig nm' md1
+      (md2, _) <- find (J [] x :: QUid R)
+      onlyInModule md2 $ subsumeSig md1
       loop sgs
     MdSig x md1    -> do
-      let Just x' = nm0 =..= SIGVAR x
-      (md2, _)  <- find (J [] (SIGVAR x') :: Path (Uid R) SIGVAR)
+      (md2, _)  <- find (J [] (SIGVAR x) :: Path (Uid R) SIGVAR)
       matchSigs md2 md1
       loop sgs
     MdNil          -> error "BUG! Statics.sealModule (1)"

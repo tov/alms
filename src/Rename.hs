@@ -465,7 +465,8 @@ renameTyDec mqe (N note td)      = withLoc note $ do
           Just ((u, _), (_, _)) -> fail $
             "repeated constructor `" ++ show u ++ "' in type declaration"
         cons' <- forM cons $ \(u, mt) -> withLoc mt $ do
-          u'    <- bindDatacon u
+          let u' = uid (unUid u)
+          tell (MdDatacon (getLoc mt) u u')
           mt'   <- gmapM renameType mt
           return (u', mt')
         return (tdDat l' tvs' cons')
