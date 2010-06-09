@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      GeneralizedNewtypeDeriving,
       ParallelListComp,
       PatternGuards,
       RankNTypes,
@@ -8,7 +9,11 @@ module TypeRel (
   -- ** Equality and subtyping
   AType(..), subtype, jointype,
   -- ** Queries and conversions
-  qualConst, abstractTyCon, replaceTyCon, replaceTyCons,
+  qualConst, abstractTyCon,
+  -- ** Tycon substitutions
+  TyConSubst, makeTyConSubst,
+  applyTyConSubst, applyTyConSubstInTyCon,
+  replaceTyCon, replaceTyCons,
   substTyCons, substTyCon,
   -- * Tests
   tests,
@@ -22,6 +27,7 @@ import Viewable
 
 import qualified Control.Monad.Reader as CMR
 import Data.Generics (Data, everywhere, mkT, extT)
+import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -30,6 +36,42 @@ import qualified Test.HUnit as T
 -- | Remove the concrete portions of a type constructor.
 abstractTyCon :: TyCon -> TyCon
 abstractTyCon tc = tc { tcCons = ([], empty), tcNext = Nothing }
+
+-- | A substitution mapping type constructors to other type
+--   constructors
+newtype TyConSubst = TyConSubst { unTyConSubst :: M.Map Int TyCon }
+  deriving Monoid
+
+-- | Construct a tycon substitution from a list of tycons and a list
+--   to map them to.
+makeTyConSubst :: [TyCon] -> [TyCon] -> TyConSubst
+makeTyConSubst tcs tcs' =
+  TyConSubst (M.fromList [ (tcId tc, tc') | tc <- tcs | tc' <- tcs' ])
+
+-- | Apply a tycon substitution to any SYB data.
+applyTyConSubst :: Data a => TyConSubst -> a -> a
+applyTyConSubst subst = loop where
+  loop :: Data a => a -> a
+  loop  = everywhere (mkT tycon `extT` tyapp)
+  --
+  tycon :: TyCon -> TyCon
+  tycon tc
+    | Just tc' <- M.lookup (tcId tc) (unTyConSubst subst)
+                = applyTyConSubstInTyCon subst tc'
+    | otherwise = tc
+  --
+  tyapp :: Type -> Type
+  tyapp (TyApp tc ts _) = tyApp tc ts
+  tyapp t               = t
+
+-- | Apply a tycon substitution "inside" the right-hand side of
+--   a tycon, but don't replace the tycon itself.
+applyTyConSubstInTyCon :: TyConSubst -> TyCon -> TyCon
+applyTyConSubstInTyCon subst tc =
+  tc {
+    tcNext = applyTyConSubst subst (tcNext tc),
+    tcCons = applyTyConSubst subst (tcCons tc)
+  }
 
 -- | Given a list of type constructors and something traversable,
 --   find all constructors with the same identity as the given type one, and
@@ -46,24 +88,7 @@ replaceTyCon tc = replaceTyCons [tc]
 -- Give a list of tycons to replace and a list of tycons to replace them
 -- with, replaces them all recursively, including knot-tying
 substTyCons :: Data a => [TyCon] -> [TyCon] -> a -> a
-substTyCons tcs0 tcs0' = loop where
-  tcs  :: M.Map Int TyCon
-  tcs   = M.fromList [ (tcId tc, tc') | tc <- tcs0 | tc' <- tcs0' ]
-  --
-  loop :: Data a => a -> a
-  loop  = everywhere (mkT tycon `extT` tyapp)
-  --
-  tycon :: TyCon -> TyCon
-  tycon tc
-    | Just tc' <- M.lookup (tcId tc) tcs
-                = tc' {
-                    tcNext = loop (tcNext tc'),
-                    tcCons = loop (tcCons tc')
-                  }
-    | otherwise = tc
-  tyapp :: Type -> Type
-  tyapp (TyApp tc ts _) = tyApp tc ts
-  tyapp t               = t
+substTyCons tcs tcs' = applyTyConSubst (makeTyConSubst tcs tcs')
 
 -- | Replace all occurrences of the first tycon with the second
 substTyCon :: Data a => TyCon -> TyCon -> a -> a

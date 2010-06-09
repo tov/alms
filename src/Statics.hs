@@ -1254,9 +1254,10 @@ makeNameMap md0 = case md0 of
 ascribeSignature :: (?loc :: Loc, Monad m) =>
                     Module -> Module -> TC m ()
 ascribeSignature md1 md2 = do
-  let nameMap = makeNameMap md1
-  (_, md2') <- steal $ renameSig nameMap md2
-  onlyInModule md1 $ subsumeSig md2'
+  let md2'   = renameSig (makeNameMap md1) md2
+  onlyInModule md1 $ do
+    subst <- matchSigTycons md2'
+    subsumeSig (applyTyConSubstInSig subst md2')
   let tcs    = getGenTycons md2' []
   tcs'      <- forM tcs $ \tc -> do
     ix <- newIndex
@@ -1265,18 +1266,45 @@ ascribeSignature md1 md2 = do
 
 -- | Make the names in a signature match the names from the module it's
 --   being applied to.
-renameSig :: Monad m => NameMap -> Module -> TC m ()
+renameSig :: NameMap -> Module -> Module
 renameSig nm0 = loop where
   loop md0 = case md0 of
-    MdNil          -> return ()
-    MdApp md1 md2  -> do loop md1; loop md2
-    MdValue x t    -> tell (MdValue (fromJust (nm0 =..= x)) t)
-    MdTycon x tc   -> tell (MdTycon (fromJust (nm0 =..= x)) tc)
-    MdModule x md1 -> do
+    MdNil          -> MdNil
+    MdApp md1 md2  -> MdApp (loop md1) (loop md2)
+    MdValue x t    -> MdValue (fromJust (nm0 =..= x)) t
+    MdTycon x tc   -> MdTycon (fromJust (nm0 =..= x)) tc
+    MdModule x md1 ->
       let Just (x', nm1) = nm0 =..= x
-      (_, md1') <- steal $ renameSig nm1 md1
-      tell (MdModule x' md1')
-    MdSig x md1    -> tell (MdSig (fromJust (nm0 =..= SIGVAR x)) md1)
+       in MdModule x' (renameSig nm1 md1)
+    MdSig x md1    -> MdSig (fromJust (nm0 =..= SIGVAR x)) md1
+
+-- | Given a signature, find the tycon substitutions necessary to
+--   unify it with the module in the environment.
+matchSigTycons :: Monad m => Module -> TC m TyConSubst
+matchSigTycons = loop [] where
+  loop path md0 = case md0 of
+    MdNil          -> return mempty
+    MdApp md1 md2  -> mappend <$> loop path md1 <*> loop path md2
+    MdValue _ _    -> return mempty
+    MdTycon x tc   -> do
+      tc' <- find (J path x)
+      return (makeTyConSubst [tc] [tc'])
+    MdModule x md1 -> loop (path++[x]) md1
+    MdSig _ _      -> return mempty
+
+-- | Given a tycon substitution, apply it to all the values and
+--   RIGHT-HAND-SIDES of type definitions in a signature.  In
+--   particular, don't replace any tycon bindings directly, but do
+--   replace any references to other types in their definitions.
+applyTyConSubstInSig :: TyConSubst -> Module -> Module
+applyTyConSubstInSig subst = loop where
+  loop md0   = case md0 of
+    MdNil          -> MdNil
+    MdApp md1 md2  -> MdApp (loop md1) (loop md2)
+    MdValue x t    -> MdValue x (applyTyConSubst subst t)
+    MdTycon x tc   -> MdTycon x (applyTyConSubstInTyCon subst tc)
+    MdModule x md1 -> MdModule x (loop md1)
+    MdSig x md1    -> MdSig x (loop md1)
 
 -- | Get a list of all the tycons that need a new index allocated
 --   because they're generative.
@@ -1291,30 +1319,22 @@ getGenTycons = loop where
   loop (MdModule _ md1) = loop md1
   loop (MdSig _ _)      = id
 
--- findSubsts :: 
-
 -- | Check whether the given signature subsumes the signature
 --   implicit in the environment; takes a 'NameMap' mapping un-renamed
 --   signature names to renamed environment names.
 subsumeSig :: (?loc :: Loc, Monad m) =>
               Module -> TC m ()
-subsumeSig md0 = loop (linearize md0 []) where
-  loop []         = return ()
-  loop (sg : sgs) = case sg of
+subsumeSig = loop where
+  loop md0 = case md0 of
+    MdNil         -> return ()
+    MdApp md1 md2 -> do loop md1; loop md2
     MdValue x t    -> do
       t' <- find (J [] x :: Ident R)
       tassgot (t' <: t)
         ("in signature matching, variable `"++show x++"'") t' (show t)
-      loop sgs
     MdTycon x tc   -> do
       tc' <- find (J [] x :: QLid R)
       case varietyOf tc of
-        OperatorType -> do
-          matchTycons tc' tc
-          loop sgs
-        DataType     -> do
-          matchTycons tc' tc
-          loop sgs
         AbstractType -> do
           tassert (length (tcArity tc') == length (tcArity tc)) $
             "in signature matching, cannot match type definition for " ++
@@ -1340,18 +1360,16 @@ subsumeSig md0 = loop (linearize md0 []) where
             show (tcQual tc') ++
             " is less general than expected qualifier " ++
             show (tcQual tc)
-          loop (substTyCon tc tc' sgs)
+        OperatorType -> matchTycons tc' tc
+        DataType     -> matchTycons tc' tc
     MdModule x md1 -> do
       (md2, _) <- find (J [] x :: QUid R)
       onlyInModule md2 $ subsumeSig md1
-      loop sgs
     MdSig x md1    -> do
       (md2, _)  <- find (J [] (SIGVAR x) :: Path (Uid R) SIGVAR)
       matchSigs md2 md1
-      loop sgs
-    MdNil          -> error "BUG! Statics.sealModule (1)"
-    MdApp _ _      -> error "BUG! Statics.sealModule (2)"
 
+-- | Check that two signatures match EXACTLY.
 matchSigs :: (?loc :: Loc, Monad m) =>
              Module -> Module -> TC m ()
 matchSigs md10 md20 = loop (linearize md10 []) (linearize md20 []) where
@@ -1384,6 +1402,7 @@ matchSigs md10 md20 = loop (linearize md10 []) (linearize md20 []) where
   name (MdSig x _)    = "module type " ++ show x
   name _              = error "BUG! in Statics.matchSigs"
 
+-- | Check that two type constructors match exactly.
 matchTycons :: (?loc :: Loc, Monad m) =>
                TyCon -> TyCon -> TC m ()
 matchTycons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
@@ -1434,6 +1453,8 @@ matchTycons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
       show (tcName tc1) ++ " because the " ++ what ++
       " does not match (`" ++ which1 ++ "' vs. `" ++ which2 ++ "')"
 
+-- | Check that two type patterns match, and return the pairs of
+--   type variables that line up and thus need renaming.
 matchTypats :: (?loc :: Loc, Monad m) =>
                TyPat -> TyPat -> TC m ([TyVar R], [TyVar R])
 matchTypats (TpVar tv1) (TpVar tv2)
