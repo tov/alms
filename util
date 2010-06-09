@@ -14,7 +14,8 @@ while [ -n "$1" ]; do
   case "$cmd" in
     release)
       ver="$1"; shift
-      set version "$ver" ci "version bump: $ver" clean dist send link $@
+      set version "$ver" ci "version bump: $ver" tagversion "$ver" \
+          clean dist send link $@
       ;;
     clean)
       rm $name*.tar.gz
@@ -51,6 +52,11 @@ while [ -n "$1" ]; do
       git add $@
       svn add $@
       set --
+      ;;
+    tagversion)
+      version="$1"
+      shift
+      git tag "$version"
       ;;
     version)
       version="$1"
