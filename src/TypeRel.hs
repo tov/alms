@@ -675,6 +675,13 @@ subtypeTests = T.test
              TyMu a (tyAll d (TyVar c .->.
                               tyAll c (tyInt .->. TyVar a)))) !<:
     TyMu a (tyAll c (tyInt .->. tyAll d (TyVar c .->. TyVar a)))
+  , tyInt <:! tyEx a (TyVar a)
+  , tyInt <:! tyEx a tyInt
+  , tyInt .*. tyInt <:! tyEx a (TyVar a .*. tyInt)
+  , tyInt .*. tyInt <:! tyEx a (tyInt .*. TyVar a)
+  , tyInt .*. tyInt <:! tyEx a (TyVar a .*. TyVar a)
+  , tyInt .*. tyInt <:! tyEx a (tyEx b (TyVar a .*. TyVar a))
+  , tyInt .*. tyInt <:! tyEx a (tyEx b (TyVar b .*. TyVar a))
   ]
   where
   t1  <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)
