@@ -261,7 +261,6 @@ getUVars = do
 chkU :: Type -> Type -> s -> UT s t s -> UT s t s
 chkU t1 t2 s body = do
   st   <- CMR.ask
-  pM ("chkU", t1, t2)
   let key = (AType t2, AType t1)
       ref = tcsSeen st
   seen <- lift $ readSTRef ref
@@ -288,9 +287,9 @@ freshU qlit = do
   return (f qlit)
 
 -- | Print a debug message
-pM :: Show b => b -> UT s t ()
+-- pM :: Show b => b -> UT s t ()
 -- pM = lift . unsafeIOToST . print
-pM = const $ return ()
+-- pM = const $ return ()
 
 subtype :: Monad m =>
            Int -> [TyVarR] -> Type -> [TyVarR] -> Type ->
@@ -311,114 +310,88 @@ subtype limit uvars1 t1i uvars2 t2i =
       -- Handle top
       (_ , TyApp tcu _ _)
         | tcu == tcUn && qualConst t <: Qu
-        -> pM 1 >> return ()
+        -> return ()
       (_ , TyApp tcu _ _)
         | tcu == tcAf
-        -> pM 2 >> return ()
+        -> return ()
       -- Handle bottom
       (TyApp tct _ _, _)
         | tct == tcBot
-        -> pM 3 >> return ()
+        -> return ()
       -- Variables
       (TyVar vt, TyVar vu) -> do
-        pM 4
         mt' <- getVar vt env1
-        pM 5
         mu' <- getVar vu env2
         case (mt', mu') of
-          (Just (_, t'), Nothing) -> pM 6 >> upperBoundUVar t' u
-          (Nothing, Just (_, u')) -> pM 7 >> lowerBoundUVar u' t
+          (Just (_, t'), Nothing) -> upperBoundUVar t' u
+          (Nothing, Just (_, u')) -> lowerBoundUVar u' t
           (Just (lt, t'), Just (lu, u'))
-            | lt > lu             -> pM 8 >> upperBoundUVar t' u
-            | lt < lu             -> pM 9 >> lowerBoundUVar u' t
-          _                       -> pM 10 >>
-                           (unless (vt == vu) $ pM 11 >> giveUp t u)
+            | lt > lu             -> upperBoundUVar t' u
+            | lt < lu             -> lowerBoundUVar u' t
+          _                       -> unless (vt == vu) $ giveUp t u
       (TyVar vt, _) -> do
-        pM 12
         mt' <- getVar vt env1
         case mt' of
-          Just (_, t') -> pM 13 >> upperBoundUVar t' u
-          Nothing      -> pM 14 >> giveUp t u
+          Just (_, t') -> upperBoundUVar t' u
+          Nothing      -> giveUp t u
       (_, TyVar vu) -> do
-        pM 15
         mu' <- getVar vu env2
         case mu' of
-          Just (_, u') -> pM 16 >> lowerBoundUVar u' t
-          Nothing      -> pM 17 >> giveUp t u
+          Just (_, u') -> lowerBoundUVar u' t
+          Nothing      -> giveUp t u
       -- Type applications
       (TyApp tct ts _, TyApp tcu us _)
         | tct == tcu,
           isHeadNormalType t, isHeadNormalType u ->
-        pM 18 >>
         cmpList (tcArity tct) ts us
       (TyApp tct ts _, TyApp tcu us _)
         | tct == tcu ->
-        pM 19 >>
         cmpList (tcArity tct) ts us `catchError` \_ -> do
           t' <- hn t
           u' <- hn u
           cmp t' u'
       (TyApp _ _ _, _)
         | not (isHeadNormalType t)
-        -> pM 20 >> ((`cmp` u) =<< hn t )
+        -> (`cmp` u) =<< hn t
       (_, TyApp _ _ _)
         | not (isHeadNormalType u)
-        -> pM 21 >> ((t `cmp`) =<< hn u )
+        -> (t `cmp`) =<< hn u
       -- Arrows
       (TyFun qt t1 t2, TyFun qu u1 u2) -> do
-        pM 22
         subkind qt qu $ giveUp t u
-        pM (23, t1, u1)
         revCmp t1 u1
-        pM 24
         cmp t2 u2
       -- Quantifiers
-      (TyQu qt tvt t1, TyQu qu tvu u1)
-        | qt == qu,
-          tvqual tvu <: tvqual tvt -> do
-        pM 25
-        tv' <- freshU (tvqual tvu)
-        pM 26
-        cmp (tysubst tvt (TyVar tv') t1)
-            (tysubst tvu (TyVar tv') u1)
       (TyQu Forall tvt t1, _) -> do
         tv' <- freshU (tvqual tvt)
-        pM 27
         incU $
           withUVars [tv'] env1 $
             cmp (tysubst tvt (TyVar tv') t1) u
-        pM 28
         return ()
       (_, TyQu Exists tvu u1) -> do
         tv' <- freshU (tvqual tvu)
-        pM 29
         incU $
           withUVars [tv'] env2 $
             cmp t (tysubst tvu (TyVar tv') u1)
-        pM 30
         return ()
       (_, TyQu Forall tvu u1) -> do
         tv' <- freshU (tvqual tvu)
-        pM 31
         cmp t (tysubst tvu (TyVar tv') u1)
-        pM 32
       (TyQu Exists tvt t1, _) -> do
         tv' <- freshU (tvqual tvt)
-        pM 33
         cmp (tysubst tvt (TyVar tv') t1) u
-        pM 34
       -- Recursion
       (TyMu tvt t1, _) -> cmp (tysubst tvt t t1) u
       (_, TyMu tvu u1) -> cmp t (tysubst tvu u u1)
       -- Failure
-      _ -> pM 35 >> giveUp t u
+      _ -> giveUp t u
     --
     giveUp t u = 
       fail $
         "Got type `" ++ show t ++ "' where type `" ++
         show u ++ "' expected"
     --
-    revCmp u t = flipU (pM (37, t, u) >> cmp t u)
+    revCmp u t = flipU (cmp t u)
     --
     hn t = headNormalizeTypeM limit t
     --
@@ -623,12 +596,12 @@ subtypeTests = T.test
   , TyVar a  <:! TyVar a
   , TyVar a !<:  TyVar b
   , tyAll a (tyInt .->. TyVar a)  <:! tyAll b (tyInt .->. TyVar b)
-  , tyAll a (tyInt .->. TyVar a) !<:  tyAll b (tyInt .->. TyVar a)
+  , tyAll a (tyInt .->. TyVar a)  <:! tyAll b (tyInt .->. TyVar a)
   , tyAll c (TyVar c .->. tyInt)  <:! tyAll a (TyVar a .-*. tyInt)
   , tyAll a (TyVar a .->. tyInt) !<:  tyAll c (TyVar c .-*. tyInt)
   , tyAll a (tyAll b (TyVar a .*. TyVar b))  <:!
     tyAll b (tyAll a (TyVar b .*. TyVar a))
-  , tyAll a (tyAll b (TyVar a .*. TyVar b)) !<:
+  , tyAll a (tyAll b (TyVar a .*. TyVar b))  <:!
     tyAll b (tyAll a (TyVar a .*. TyVar b))
   , tyAll a (tyAll a (TyVar a .*. TyVar b)) !<:
     tyAll b (tyAll a (TyVar a .*. TyVar b))
@@ -984,10 +957,12 @@ uvarsTests = T.test
   , TyVar a .*.  tyAll a (TyVar a .->. tyInt)  <:!
     tyInt   .*.  tyAll b (TyVar b .->. tyInt)
       ==!  (tyInt, noU, noA, noA)
-  , TyVar a .*.  tyAll a (TyVar a .->. tyInt) !<:
+  , TyVar a .*.  tyAll a (TyVar a .->. tyInt)  <:!
     tyInt   .*.  tyAll b (tyInt   .->. tyInt)
-  , tyAll a (TyVar a .->. tyInt) !<:
+      ==!  (tyInt, noU, noA, noA)
+  , tyAll a (TyVar a .->. tyInt)  <:!
     tyAll a (tyInt   .->. tyInt)
+      ==!  (noU, noU, noA, noA)
   , TyVar a <:! tyInt .->. TyMu a (tyInt .->. TyVar a)
       ==!  (TyMu b (tyInt .->. TyVar b), noU, noA, noA)
   , TyVar a .->. TyVar b <:! tyInt .->. TyMu a (tyInt .->. TyVar a)
