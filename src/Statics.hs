@@ -488,17 +488,20 @@ tcExpr = tc where
             ") to get " ++ show t1'
           return (t1', [$ex| Pack[$stx:t1']($stx:t2', $e') |])
         _ -> tgot "Pack[-]" t1' "ex(istential) type"
-    [$ex| ( $e1 : $opt:mt :> $ta ) |] -> do
+    [$ex| ( $e1 : $t2 ) |] -> do
       (t1, e1') <- tc e1
-      t'  <- maybe (return t1) tcType mt
-      ta' <- tcType ta
-      tassgot (castableType ta')
-        "cast (:>)" t' "function type"
-      tassgot (t1 <: t')
-        "cast (:>)" t1 (show t')
-      e1'' <- coerceExpression (e1' <<@ e0) t' ta'
+      t2'       <- tcType t2
+      tassgot (t1 <: t2')
+        "type ascription (:)" t1 (show t2')
+      return (t2', e1')
+    [$ex| ( $e1 :> $t2 ) |] -> do
+      (t1, e1') <- tc e1
+      t2'       <- tcType t2
+      tassgot (castableType t2')
+        "cast (:>)" t1 "function type"
+      e1'' <- coerceExpression (e1' <<@ e0) t1 t2'
       -- tcExpr e1'' -- re-type check the coerced expression
-      return (ta', e1'')
+      return (t2', e1'')
     [$ex| $anti:a |]    -> $antifail
     [$ex| $antiL:a |]   -> $antifail
   --

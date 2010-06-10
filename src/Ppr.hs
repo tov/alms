@@ -435,15 +435,19 @@ instance Ppr (Expr i) where
         text "Pack" <> maybe empty (brackets . ppr) t1 <+>
         parens (sep [ pprPrec (precCom + 1) t2 <> comma,
                       pprPrec precCom e ])
-    [$ex| ( $e : $opt:t1 :> $t2 ) |] ->
+    [$ex| ( $e : $t1 :> $t2 ) |] ->
       parensIf (p > precCast) $
-        sep (pprPrec (precCast + 2) e :
-             maybe [] (\t1' -> [
-               colon,
-               pprPrec (precCast + 2) t1'
-             ]) t1 ++
-             [ text ":>",
-               pprPrec (precCast + 2) t2 ])
+         sep [ pprPrec (precCast + 2) e,
+               colon     <+> pprPrec (precCast + 2) t1,
+               text ":>" <+> pprPrec (precCast + 2) t2 ]
+    [$ex| ( $e : $t1 ) |] ->
+      parensIf (p > precCast) $
+         sep [ pprPrec (precCast + 2) e,
+               colon     <+> pprPrec (precCast + 2) t1 ]
+    [$ex| ( $e :> $t1 ) |] ->
+      parensIf (p > precCast) $
+         sep [ pprPrec (precCast + 2) e,
+               text ":>" <+> pprPrec (precCast + 2) t1 ]
     [$ex| $anti:a |] -> pprPrec p a
 
 pprLet :: Int -> Doc -> Expr i -> Expr i -> Doc

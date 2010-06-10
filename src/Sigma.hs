@@ -342,8 +342,8 @@ transform env = loop where
     ExPack mt t1 e2
         -> unop (exPack mt t1) (loop e2)
 
-    ExCast e1 mt t2
-        -> unop (flip (flip exCast mt) t2) (loop e1)
+    ExCast e1 t2 b
+        -> unop (flip (flip exCast t2) b) (loop e1)
 
     _ | Just (k_vars, k_code) <- capture e
         -> (k_vars, k_code $ e +:: k_vars)

@@ -73,8 +73,8 @@ data Expr' i
   | ExTApp (Expr i) (Type i)
   -- | existential construction
   | ExPack (Maybe (Type i)) (Type i) (Expr i)
-  -- | dynamic promotion
-  | ExCast (Expr i) (Maybe (Type i)) (Type i)
+  -- | dynamic promotion (True) or static type ascription (False)
+  | ExCast (Expr i) (Type i) Bool
   -- | antiquotes
   | ExAnti Anti
   deriving (Typeable, Data)
@@ -178,10 +178,10 @@ newExpr e0 = flip N e0 $ case e0 of
       efv_  = fv e3,
       eloc_ = getLoc (mt1, t2, e3)
     }
-  ExCast e1 mt2 t3 ->
+  ExCast e1 t2 _ ->
     newNote {
       efv_  = fv e1,
-      eloc_ = getLoc (e1, mt2, t3)
+      eloc_ = getLoc (e1, t2)
     }
   ExAnti a ->
     newNote {

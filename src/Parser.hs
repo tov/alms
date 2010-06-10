@@ -889,10 +889,16 @@ exprp = expr0 where
   exprN1 = mark $ do
     e1 <- expr0
     choice
-      [ do t1 <- antioptaroundp (colon `between` punit) typep
-           reservedOp ":>"
+      [ do colon
+           t1 <- typep
+           let e1' = exCast e1 t1 False
+           option e1' $ do
+             reservedOp ":>"
+             t2 <- typep
+             return (exCast e1' t2 True),
+        do reservedOp ":>"
            t2 <- typep
-           return (exCast e1 t1 t2),
+           return (exCast e1 t2 True),
         do comma
            es <- commaSep1 expr0
            return (foldl exPair e1 es),

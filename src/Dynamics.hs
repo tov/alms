@@ -191,7 +191,8 @@ valOf e env = case e of
   [$ex| fun '$_ -> $e1 |]         -> valOf e1 env
   [$ex| $e1 [$_] |]               -> valOf e1 env
   [$ex| Pack[$opt:_]($_, $e1) |]  -> valOf e1 env
-  [$ex| ( $e1 : $opt:_ :> $_ ) |] -> valOf e1 env
+  [$ex| ( $e1 : $_ ) |]           -> valOf e1 env
+  [$ex| ( $e1 :> $_ ) |]          -> valOf e1 env
   [$ex| $anti:a |]                -> $antifail
 
 bindPatt :: Monad m => Patt R -> Value -> E -> m E

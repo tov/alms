@@ -109,7 +109,7 @@ build b recs (view -> TyVar tv) (view -> TyVar tv')
     = return [$ex|+ $lid:l |]
   | Just Nothing <- M.lookup (if b then (tv, tv') else (tv', tv)) recs
     = return [$ex|+ INTERNALS.Contract.any ['$tv'] |]
-build _ recs t t' =
+build _ _    t t' =
   if t <: t'
     then return [$ex|+ INTERNALS.Contract.any [$stx:t'] |]
     else fail $ "type error: no coercion from " ++ show t ++ " to " ++ show t'

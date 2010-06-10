@@ -649,11 +649,14 @@ renameExpr e0 = withLoc e0 $ case e0 of
     t'  <- renameType t
     e'  <- renameExpr e
     return [$ex|+ Pack[$opt:mt']($t', $e') |]
-  [$ex| ( $e : $opt:mt :> $t) |] -> do
+  [$ex| ( $e : $t) |] -> do
     e'  <- renameExpr e
-    mt' <- gmapM renameType mt
     t'  <- renameType t
-    return [$ex| ( $e' : $opt:mt' :> $t') |]
+    return [$ex| ( $e' : $t' ) |]
+  [$ex| ( $e :> $t) |] -> do
+    e'  <- renameExpr e
+    t'  <- renameType t
+    return [$ex| ( $e' :> $t' ) |]
   [$ex| $anti:a |] -> $antifail
 
 -- | Rename a literal (no-op, except fails on antiquotes)
