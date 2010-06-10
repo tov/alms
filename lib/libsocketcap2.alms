@@ -31,7 +31,7 @@ module type ASOCKET = sig
   val send    : all 't. 't socket -> string ->
                   't@@connected -> 't@@connected
   val recv    : all 't. 't socket -> int ->
-                  't@@connected -> string * ('t@@connected)
+                  't@@connected -> string * 't@@connected
   val close   : all 't. 't socket -> 't@@connected -> unit
 
   (* When we raise an exception, we "freeze" the capability.

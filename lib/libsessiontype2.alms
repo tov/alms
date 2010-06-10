@@ -51,30 +51,29 @@ module SessionType : SESSION_TYPE = struct
   type 's channel    = rep
   type 's rendezvous = rep C.channel
 
-  let newRendezvous['s] () = C.new['s channel] ()
+  let newRendezvous () = C.new[rep] ()
 
-  let request['s] (r: 's rendezvous) = C.recv r
+  let request (r: unit rendezvous) = C.recv r
 
-  let accept['s] (r: 's rendezvous) =
+  let accept (r: unit rendezvous) =
     let c = C.new () in
       C.send r c;
       c
 
-  let newPair['s] () =
+  let newPair () =
     let c = C.new () in
       (c, c)
 
-  let send[`a] (a: `a)
-          ['s] (c: rep) =
+  let send[`a] (a: `a) (c: rep) =
     C.send c (Unsafe.unsafeCoerce a);
     ((), c)
 
-  let recv[`a, 's] (c: rep) = (C.recv c, c)
+  let recv[`a] (c: rep) = (C.recv c, c)
 
-  let follow[`c] (c: rep) =
+  let follow (c: rep) =
     let (c', _) = recv c in ((), c')
 
-  let choose['s,`c] (ctor: rep -> `c) (c: rep) =
+  let choose[`c] (ctor: rep -> `c) (c: rep) =
     let (theirs, mine) = newPair () in
       send (ctor theirs) c;
       ((), mine)
