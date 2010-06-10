@@ -112,8 +112,8 @@ build b recs (view -> TyVar tv) (view -> TyVar tv')
 build _ recs t t' =
   if t <: t'
     then return [$ex|+ INTERNALS.Contract.any [$stx:t'] |]
-    else fail $ "No coercion from " ++ show t ++ " to " ++ show t'
-      ++ "\n" ++ show recs
+    else fail $ "type error: no coercion from " ++ show t ++ " to " ++ show t'
+      -- ++ "\n" ++ show recs
 
 shadow :: [TyVarR] -> [TyVarR] ->
           M.Map (TyVarR, TyVarR) a -> M.Map (TyVarR, TyVarR) a

@@ -16,7 +16,7 @@ end = struct
 
   let newArray['a] (size : int): 'a array =
     (size, ref (fun ix: int ->
-                  (raise (ArrayIndex "uninitialized"))))
+                  raise['a] (ArrayIndex "uninitialized")))
 
   let checkIndex (size: int) (ix: int): unit =
     if ix < 0

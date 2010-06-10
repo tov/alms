@@ -151,8 +151,6 @@ data TCS s t = TCS {
   -- | Pairs of types previously seen, and thus considered related
   --   if seen again.
   tcsSeen    :: STRef t (M.Map (AType, AType) s),
-  -- | Should key pairs for 'tcsSeen' be flipped?
-  tcsFlip    :: Bool,
   -- | A supply of fresh type variables
   tcsSupply  :: STRef t [QLit -> TyVarR],
   -- | The number of instantiated foralls we are currently under
@@ -186,7 +184,6 @@ runUT m set =
                          , f Qa `S.notMember` set ]
       CMR.runReaderT m TCS {
         tcsSeen   = seen,
-        tcsFlip   = False,
         tcsSupply = supply,
         tcsLevel  = 1,
         tcsEnv1   = M.empty,
@@ -264,9 +261,8 @@ getUVars = do
 chkU :: Type -> Type -> s -> UT s t s -> UT s t s
 chkU t1 t2 s body = do
   st   <- CMR.ask
-  let key = if tcsFlip st
-              then (AType t2, AType t1)
-              else (AType t1, AType t2)
+  pM ("chkU", t1, t2)
+  let key = (AType t2, AType t1)
       ref = tcsSeen st
   seen <- lift $ readSTRef ref
   case M.lookup key seen of
@@ -280,8 +276,8 @@ chkU t1 t2 s body = do
 -- | Flip the left and right sides of the relation in the given block.
 flipU :: UT s t a -> UT s t a
 flipU body = CMR.local flipSt body where
-  flipSt (TCS seen flipFlag level supply e1 e2) =
-    TCS seen (not flipFlag) level supply e2 e1
+  flipSt (TCS seen level supply e1 e2) =
+    TCS seen level supply e2 e1
 
 -- | Get a fresh type variable from the supply.
 freshU :: QLit -> UT s t TyVarR
@@ -292,9 +288,9 @@ freshU qlit = do
   return (f qlit)
 
 -- | Print a debug message
--- debug :: Show b => b -> UT s t ()
--- debug = lift . ST.unsafeIOToST . print
--- deubg = const $ return ()
+pM :: Show b => b -> UT s t ()
+-- pM = lift . unsafeIOToST . print
+pM = const $ return ()
 
 subtype :: Monad m =>
            Int -> [TyVarR] -> Type -> [TyVarR] -> Type ->
@@ -315,88 +311,114 @@ subtype limit uvars1 t1i uvars2 t2i =
       -- Handle top
       (_ , TyApp tcu _ _)
         | tcu == tcUn && qualConst t <: Qu
-        -> return ()
+        -> pM 1 >> return ()
       (_ , TyApp tcu _ _)
         | tcu == tcAf
-        -> return ()
+        -> pM 2 >> return ()
       -- Handle bottom
       (TyApp tct _ _, _)
         | tct == tcBot
-        -> return ()
+        -> pM 3 >> return ()
       -- Variables
       (TyVar vt, TyVar vu) -> do
+        pM 4
         mt' <- getVar vt env1
+        pM 5
         mu' <- getVar vu env2
         case (mt', mu') of
-          (Just (_, t'), Nothing) -> upperBoundUVar t' u
-          (Nothing, Just (_, u')) -> lowerBoundUVar u' t
+          (Just (_, t'), Nothing) -> pM 6 >> upperBoundUVar t' u
+          (Nothing, Just (_, u')) -> pM 7 >> lowerBoundUVar u' t
           (Just (lt, t'), Just (lu, u'))
-            | lt > lu             -> upperBoundUVar t' u
-            | lt < lu             -> lowerBoundUVar u' t
-          _                       -> unless (vt == vu) $ giveUp t u
+            | lt > lu             -> pM 8 >> upperBoundUVar t' u
+            | lt < lu             -> pM 9 >> lowerBoundUVar u' t
+          _                       -> pM 10 >>
+                           (unless (vt == vu) $ pM 11 >> giveUp t u)
       (TyVar vt, _) -> do
+        pM 12
         mt' <- getVar vt env1
         case mt' of
-          Just (_, t') -> upperBoundUVar t' u
-          Nothing      -> giveUp t u
+          Just (_, t') -> pM 13 >> upperBoundUVar t' u
+          Nothing      -> pM 14 >> giveUp t u
       (_, TyVar vu) -> do
+        pM 15
         mu' <- getVar vu env2
         case mu' of
-          Just (_, u') -> lowerBoundUVar u' t
-          Nothing      -> giveUp t u
+          Just (_, u') -> pM 16 >> lowerBoundUVar u' t
+          Nothing      -> pM 17 >> giveUp t u
       -- Type applications
       (TyApp tct ts _, TyApp tcu us _)
         | tct == tcu,
           isHeadNormalType t, isHeadNormalType u ->
+        pM 18 >>
         cmpList (tcArity tct) ts us
       (TyApp tct ts _, TyApp tcu us _)
         | tct == tcu ->
+        pM 19 >>
         cmpList (tcArity tct) ts us `catchError` \_ -> do
           t' <- hn t
           u' <- hn u
           cmp t' u'
       (TyApp _ _ _, _)
         | not (isHeadNormalType t)
-        -> (`cmp` u) =<< hn t 
+        -> pM 20 >> ((`cmp` u) =<< hn t )
       (_, TyApp _ _ _)
         | not (isHeadNormalType u)
-        -> (t `cmp`) =<< hn u 
+        -> pM 21 >> ((t `cmp`) =<< hn u )
       -- Arrows
       (TyFun qt t1 t2, TyFun qu u1 u2) -> do
+        pM 22
         subkind qt qu $ giveUp t u
+        pM (23, t1, u1)
         revCmp t1 u1
+        pM 24
         cmp t2 u2
       -- Quantifiers
       (TyQu qt tvt t1, TyQu qu tvu u1)
         | qt == qu,
           tvqual tvu <: tvqual tvt -> do
+        pM 25
         tv' <- freshU (tvqual tvu)
+        pM 26
         cmp (tysubst tvt (TyVar tv') t1)
             (tysubst tvu (TyVar tv') u1)
       (TyQu Forall tvt t1, _) -> do
         tv' <- freshU (tvqual tvt)
+        pM 27
         incU $
           withUVars [tv'] env1 $
             cmp (tysubst tvt (TyVar tv') t1) u
+        pM 28
         return ()
       (_, TyQu Exists tvu u1) -> do
         tv' <- freshU (tvqual tvu)
+        pM 29
         incU $
           withUVars [tv'] env2 $
             cmp t (tysubst tvu (TyVar tv') u1)
+        pM 30
         return ()
+      (_, TyQu Forall tvu u1) -> do
+        tv' <- freshU (tvqual tvu)
+        pM 31
+        cmp t (tysubst tvu (TyVar tv') u1)
+        pM 32
+      (TyQu Exists tvt t1, _) -> do
+        tv' <- freshU (tvqual tvt)
+        pM 33
+        cmp (tysubst tvt (TyVar tv') t1) u
+        pM 34
       -- Recursion
       (TyMu tvt t1, _) -> cmp (tysubst tvt t t1) u
       (_, TyMu tvu u1) -> cmp t (tysubst tvu u u1)
       -- Failure
-      _ -> giveUp t u
+      _ -> pM 35 >> giveUp t u
     --
     giveUp t u = 
       fail $
         "Got type `" ++ show t ++ "' where type `" ++
         show u ++ "' expected"
     --
-    revCmp u t = flipU (cmp t u)
+    revCmp u t = flipU (pM (37, t, u) >> cmp t u)
     --
     hn t = headNormalizeTypeM limit t
     --
@@ -667,13 +689,15 @@ subtypeTests = T.test
   , (tyInt .->. tyInt) .->. tyInt            <:!
     tyAll a (tyInt .->. TyVar a) .->. tyInt
   , tyAll a (tyInt .->. TyVar a) !<: tyInt .->. tyInt .-*. tyInt
-  , TyMu a (tyAll c (tyInt .->. tyAll d (TyVar c .->. TyVar a))) !<:
+  -- This is now true, but should it be?:
+  , TyMu a (tyAll c (tyInt .->. tyAll d (TyVar c .->. TyVar a))) <:!
     tyAll c (tyInt .->.
              TyMu a (tyAll d (TyVar c .->.
                               tyAll c (tyInt .->. TyVar a))))
+  -- This is now true, but should it be?:
   , tyAll c (tyInt .->.
              TyMu a (tyAll d (TyVar c .->.
-                              tyAll c (tyInt .->. TyVar a)))) !<:
+                              tyAll c (tyInt .->. TyVar a)))) <:!
     TyMu a (tyAll c (tyInt .->. tyAll d (TyVar c .->. TyVar a)))
   , tyInt <:! tyEx a (TyVar a)
   , tyInt <:! tyEx a tyInt
@@ -682,6 +706,13 @@ subtypeTests = T.test
   , tyInt .*. tyInt <:! tyEx a (TyVar a .*. TyVar a)
   , tyInt .*. tyInt <:! tyEx a (tyEx b (TyVar a .*. TyVar a))
   , tyInt .*. tyInt <:! tyEx a (tyEx b (TyVar b .*. TyVar a))
+  , tyUn .->. tyUn !<:  TyVar a .->. TyVar a
+  -- These are potentially sketchy, but useful:
+  , tyInt  <:! tyAll a tyInt
+  , tyInt !<:  tyAll a (TyVar a)
+  , tyEx a tyInt      <:! tyInt
+  , tyEx a (TyVar a) !<: tyInt
+  , tyEx a (TyVar a) !<: TyVar a
   ]
   where
   t1  <:! t2 = T.assertBool (show t1 ++ " <: " ++ show t2) (t1 <: t2)

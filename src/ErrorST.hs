@@ -14,7 +14,8 @@ module ErrorST (
   -- * 'STRef's
   STRef,
   -- ** Operations
-  newSTRef, newTransSTRef, readSTRef, writeSTRef, modifySTRef
+  newSTRef, newTransSTRef, readSTRef, writeSTRef, modifySTRef,
+  unsafeIOToST
 ) where
 
 import Control.Applicative
@@ -94,6 +95,9 @@ modifySTRef (Trans r)  f = ST $ do
   old <- liftST_ (S.readSTRef r)
   addUndo_ (S.writeSTRef r old)
   liftST_ (S.writeSTRef r (f old))
+
+unsafeIOToST  :: Error e => IO a -> ST s e a
+unsafeIOToST   = ST . liftST_ . Super.unsafeIOToST
 
 -- helpers
 

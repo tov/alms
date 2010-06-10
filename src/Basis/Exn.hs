@@ -13,7 +13,7 @@ import Control.Exception
 
 entries :: [Entry Raw]
 entries = [
-    fun "raise" -: [$ty| exn -> any |]
+    fun "raise" -: [$ty| all `a. exn -> `a |]
       -= \exn -> throw (VExn exn :: VExn)
                  :: IO Value,
     fun "tryfun_string"
