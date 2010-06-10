@@ -80,12 +80,12 @@ module ASocket : ASOCKET = struct
     with
       IOError s -> raise (SocketError s)
 
-  let bind['t] (sock: rep) (port: int) () =
+  let bind (sock: rep) (port: int) () =
     try S.bind sock port
     with
       IOError msg -> raise (StillInitial (sock, msg))
 
-  let connect['t] (sock: rep) (host: string) (port: string)
+  let connect (sock: rep) (host: string) (port: string)
                   (cap: unit + unit) =
     try S.connect sock host port
     with
@@ -93,66 +93,66 @@ module ASocket : ASOCKET = struct
         | Left _  -> raise (StillInitial (sock, msg))
         | Right _ -> raise (StillBound (sock, msg))
 
-  let listen['t] (sock: rep) () =
+  let listen (sock: rep) () =
     try S.listen sock
     with
       IOError msg -> raise (StillBound (sock, msg))
 
-  let accept['t] (sock: rep) () =
+  let accept (sock: rep) () =
     try (S.accept sock, (), ())
     with
       IOError msg -> raise (StillListening (sock, msg))
 
-  let send['t] (sock: rep) (data: string) () =
+  let send (sock: rep) (data: string) () =
     try
       S.send sock data;
       ()
     with
       IOError msg -> raise (SocketError msg)
 
-  let recv['t] (sock: rep) (len: int) () =
+  let recv (sock: rep) (len: int) () =
     try (S.recv sock len, ())
     with
       IOError msg -> raise (SocketError msg)
 
-  let close['t] (sock: rep) () =
+  let close (sock: rep) () =
     try S.close sock
     with
       IOError msg -> raise (SocketError msg)
 
   (* Convenience functions for catching and thawing frozen socket
    * capabilities. *)
-  let thaw ['t] (sock: rep) ['s] (sock': rep) =
+  let thaw (sock: rep) (sock': rep) =
     if sock == sock'
       then Right ()
       else Left  sock'
 
-  let catchInitial['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
+  let catchInitial (sock: rep) [`a] (body: unit -o `a)
+                   (handler: unit -o `a) =
     try body () with
     | StillInitial (frz, msg) ->
         match thaw sock frz with
         | Left frz  -> raise (StillInitial (frz, msg))
         | Right cap -> handler cap
 
-  let catchBound['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
+  let catchBound (sock: rep) [`a] (body: unit -o `a)
+                 (handler: unit -o `a) =
     try body () with
     | StillBound (frz, msg) ->
         match thaw sock frz with
         | Left frz  -> raise (StillBound (frz, msg))
         | Right cap -> handler cap
 
-  let catchListening['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
+  let catchListening (sock: rep) [`a] (body: unit -o `a)
+                     (handler: unit -o `a) =
     try body () with
     | StillListening (frz, msg) ->
         match thaw sock frz with
         | Left frz  -> raise (StillListening (frz, msg))
         | Right cap -> handler cap
 
-  let catchConnected['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
+  let catchConnected (sock: rep) [`a] (body: unit -o `a)
+                     (handler: unit -o `a) =
     try body () with
     | StillConnected (frz, msg) ->
         match thaw sock frz with
