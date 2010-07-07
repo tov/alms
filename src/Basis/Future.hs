@@ -42,6 +42,10 @@ entries  = [
             CC.forkIO (vapp f (Future future) >> return ())
             return (Future future),
     fun "coPut" -: [$ty| all `a. `a cofuture -> `a -o unit |]
-      -= \future value -> MV.putMVar (unFuture future) value
+      -= \future value -> MV.putMVar (unFuture future) value,
+    fun "newPair" -: [$ty| all `a. unit -> `a future * `a cofuture |]
+      -= \() -> do
+            future <- MV.newEmptyMVar
+            return (Future future, Future future)
   ]
 

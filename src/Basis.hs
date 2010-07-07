@@ -24,6 +24,7 @@ import qualified Basis.Thread
 import qualified Basis.Channel
 import qualified Basis.MVar
 import qualified Basis.Future
+import qualified Basis.Array
 
 import qualified IO
 import qualified System.Environment as Env
@@ -188,7 +189,8 @@ primBasis  = [
 
     submod "Prim" [
       submod "Socket" Basis.Socket.entries,
-      submod "Exn"    Basis.Exn.entries
+      submod "Exn"    Basis.Exn.entries,
+      submod "Array"  Basis.Array.entries
     ]
   ]
 

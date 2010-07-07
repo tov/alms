@@ -3,37 +3,30 @@
 *)
 
 module Array : sig
-  exception ArrayIndex of string
-  type 'a array
+  exception ArrayIndex
+  type `a array = `a Prim.Array.array
 
-  val newArray : all 'a. int -> 'a array
-  val at       : all 'a. 'a array -> int -> 'a
-  val update   : all 'a. 'a array -> int -> 'a -> unit
-  val size     : all 'a. 'a array -> int
+  val build    : all `a. int -> (int -> `a) -> `a array
+  val swap     : all `a. `a array -> int -> `a -> `a
+  val put      : all `a. `a array -> int -> `a -> unit
+  val size     : all `a. `a array -> int
+
+  (* Unlimited-only operations *)
+  val new      : all 'a. int -> 'a -> 'a array
+  val get      : all 'a. 'a array -> int -> 'a
 end = struct
-  exception ArrayIndex of string
-  type 'a array = int * (int -> 'a) ref
+  open Prim.Array
 
-  let newArray['a] (size : int): 'a array =
-    (size, ref (fun ix: int ->
-                  raise['a] (ArrayIndex "uninitialized")))
+  exception ArrayIndex
+  type `a array = `a Prim.Array.array
 
-  let checkIndex (size: int) (ix: int): unit =
-    if ix < 0
-      then raise (ArrayIndex "too low")
-    else if ix >= size
-      then raise (ArrayIndex "too high")
-    else ()
+  let new['a] (size : int) (elt : 'a) =
+    build size (fun (_: int) -> elt)
 
-  let at['a] ((size, r): 'a array) (ix: int): 'a =
-    checkIndex size ix;
-    !r ix
+  let swap[`a] (a : `a array) (ix : int) (elt : `a) =
+    try swap a ix elt
+    with _ -> raise ArrayIndex
 
-  let update['a] ((size, r): 'a array) (ix: int) (new: 'a): unit =
-    checkIndex size ix;
-    let oldf = !r in
-      (r <- fun ix': int -> if ix == ix' then new else oldf ix');
-      ()
-
-  let size['a] ((size, _): 'a array) = size
+  let put[`a] (a : `a array) (ix : int) (elt : `a) =
+    swap a ix elt; ()
 end

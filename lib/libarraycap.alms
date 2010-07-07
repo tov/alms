@@ -12,14 +12,16 @@ module type AARRAY_PRIM = sig
   type ('t, 'c) readcap qualifier A
   type 't writecap = ('t, 1) readcap
 
-  val new    : all 'a. int -> ex 't. ('a, 't) array * 't writecap
+  val new    : all 'a. int -> 'a -> ex 't. ('a, 't) array * 't writecap
+  val build  : all 'a. int -> (int -> 'a) ->
+                 ex 't. ('a, 't) array * 't writecap
   val split  : all 't 'c. ('t, 'c) readcap ->
                  ('t, 'c/2) readcap * ('t, 'c/2) readcap
   val join   : all 't 'c.  ('t, 'c/2) readcap * ('t, 'c/2) readcap ->
                  ('t, 'c) readcap
-  val at     : all 'a 't 'c. ('a, 't) array -> int -> ('t, 'c) readcap ->
+  val get    : all 'a 't 'c. ('a, 't) array -> int -> ('t, 'c) readcap ->
                  'a * ('t, 'c) readcap
-  val update : all 'a 't. ('a, 't) array -> int -> 'a ->
+  val put    : all 'a 't. ('a, 't) array -> int -> 'a ->
                  't writecap -> 't writecap
   val size   : all 'a 't. ('a, 't) array -> int
 end
@@ -53,19 +55,23 @@ end = struct
     type ('t, 'c) readcap = unit
     type 't writecap = ('t, 1) readcap
 
-    let new['a] (size: int) =
+    let new['a] (size: int) (x : 'a) =
       Pack[ex 't. ('a, 't) array * unit]
-          (unit, A.newArray['a] size, ())
+          (unit, A.new['a] size x, ())
+
+    let build['a] (size: int) (builder : int -> 'a) =
+      Pack[ex 't. ('a, 't) array * unit]
+          (unit, A.build['a] size builder, ())
 
     let split['t,'c] () = ((), ())
 
     let join['t,'c] (_: unit * unit) = ()
 
-    let at['a,'t,'c] (arr: ('a, 't) array) (ix: int) () =
-      (A.at arr ix, ())
+    let get['a,'t,'c] (arr: ('a, 't) array) (ix: int) () =
+      (A.get arr ix, ())
 
-    let update['a,'t] (arr: ('a, 't) array) (ix: int) (new: 'a) () =
-      A.update arr ix new
+    let put['a,'t] (arr: ('a, 't) array) (ix: int) (new: 'a) () =
+      A.put arr ix new
 
     let size['a,'t] (arr: ('a, 't) array) =
       A.size arr
@@ -88,7 +94,7 @@ end = struct
     let rec loop (i: int) (z: `r)| (c: ('t, 'c) readcap)
                  : `r * ('t, 'c) readcap =
       if i < size a
-        then let (elt, c) = at a i c in
+        then let (elt, c) = get a i c in
                loop (i + 1) (f elt z) c
         else (z, c)
      in loop 0 z c
@@ -97,11 +103,17 @@ end = struct
           (f: 'a -> 'b)
           (a: ('a, 't) array) (c: ('t, 'c) readcap)
           : (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap =
-    let Pack('s, (b, d)) = new['b] (size a) in
-    let ((_, d), c)      = fold (fun (x: 'a) (i: int, d: 's writecap) ->
-                                    (i + 1, update b i (f x) d))
-                                 (0, d) a c in
-      (Pack[ex 't. ('b, 't) array * 't writecap]('s, (b, d)), c)
+    let holder = ref (Some c) in
+    let builder (ix : int) = match holder <- None with
+                     | None -> failwith "can't happen"
+                     | Some c ->
+                         let (x, c) = get a ix c in
+                           holder <- Some c;
+                           f x in
+    let res = build (size a) builder in
+      match holder <- None with
+      | None   -> failwith "can't happen"
+      | Some c -> (res, c)
 
   let putArray['a,'t,'c] (a: ('a, 't) array) (c: ('t, 'c) readcap) =
     putStr "[";
