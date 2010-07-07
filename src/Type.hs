@@ -696,9 +696,12 @@ typeToStx = loop (S.empty, M.empty) where
   loop ren t0 = case t0 of
     TyVar tv      -> Stx.tyVar (maybe tv id (M.lookup tv (snd ren)))
     TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (loop ren t1) (loop ren t2)
-    TyApp tc ts _ -> Stx.tyApp (tcName tc) (map (loop ren) ts)
-       -- (fmap (\ql -> lid ("[" ++ show (tcId tc) ++ "]" ++ unLid ql))
-       --       (tcName tc))
+    TyApp tc ts _ -> Stx.tyApp (tcName tc) {jpath = []} (map (loop ren) ts)
+    {-
+        (fmap (\ql -> lid ("[" ++ show (tcId tc) ++ "]" ++ unLid ql))
+              (tcName tc)) 
+        (map (loop ren) ts)
+    -}
     TyQu qu tv t1 -> Stx.tyQu qu tv' (loop ren' t1)
       where (tv', ren') = fresh tv ren
     TyMu tv t1    -> Stx.tyMu tv' (loop ren' t1)

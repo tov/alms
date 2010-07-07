@@ -26,7 +26,8 @@ module Syntax (
   module Syntax.SyntaxTable,
 
   -- * Unfold syntax to lists
-  unfoldExAbs, unfoldTyQu, unfoldExTApp, unfoldExApp, unfoldTyFun,
+  unfoldExAbs, unfoldTyQu, unfoldTyMu,
+  unfoldExTApp, unfoldExApp, unfoldTyFun,
   unfoldTupleExpr, unfoldTuplePatt, unfoldSeWith,
 
   -- * Miscellany
@@ -90,6 +91,12 @@ unfoldTyQu  :: Quant -> Type i -> ([TyVar i], Type i)
 unfoldTyQu u = unscanr each where
   each (N _ (TyQu u' x t)) | u == u' = Just (x, t)
   each _                             = Nothing
+
+-- | Get the list of mu-bound tvs of a recursive type
+unfoldTyMu  :: Type i -> ([TyVar i], Type i)
+unfoldTyMu = unscanr each where
+  each (N _ (TyMu x t)) = Just (x, t)
+  each _                = Nothing
 
 -- | Get the list of actual parameters and body of a type application
 unfoldExTApp :: Expr i -> ([Type i], Expr i)

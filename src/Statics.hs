@@ -390,6 +390,11 @@ tcType = tc where
   tc [$ty| $quant:u '$tv . $t |] =
     TyQu u tv <$> tc t
   tc [$ty| mu '$tv . $t |] = do
+    case unfoldTyMu t of
+      (_, N _ (Syntax.TyVar tv')) | tv == tv' ->
+        terr $ "Recursive type ‘" ++ show (Syntax.tyMu tv t) ++
+               "’ is not contractive."
+      _ -> return ()
     t' <- tc t
     tassert (qualConst t' == tvqual tv) $
       "Recursive type " ++ show (Syntax.tyMu tv t) ++ " qualifier " ++
@@ -715,8 +720,8 @@ tcTyDecs tds0 = do
       TdAbs name params variances quals -> do
         quals' <- indexQuals name params quals
         ix     <- newIndex
-        -- us     <- currentModulePath
-        let tc' = mkTC ix (J [] name) quals'
+        us     <- currentModulePath
+        let tc' = mkTC ix (J us name) quals'
                        [ (tvqual parm, var)
                        | var <- variances
                        | parm <- params ]
@@ -730,13 +735,22 @@ tcTyDecs tds0 = do
                 mapM tcTyDec (atds ++ dtds ++ stds)
         if or changed
           then loop md'
-          else tds0 <$ tell (replaceTyCons tcs md')
-   in loop stub
+          else return (tcs, md')
+   in do
+     (tcs, md') <- loop stub
+     forM_ tcs $ \tc -> do
+       case tcNext tc of
+         Nothing      -> return ()
+         Just clauses -> forM_ clauses $ \(tps, rhs) ->
+           tassert (rhs /= tyPatToType (TpApp tc {tcNext = Nothing} tps)) $
+             "Type synonym ‘" ++ show tc ++ "’ is not contractive."
+     tell (replaceTyCons tcs md')
+     return tds0
   where
     allocStub name params = do
       ix <- newIndex
-      -- us <- currentModulePath
-      let tc = mkTC ix (J [] name)
+      us <- currentModulePath
+      let tc = mkTC ix (J us name)
                     [ (q, Omnivariant) | q <- params ]
       bindTycon name tc
     --
