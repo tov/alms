@@ -34,7 +34,7 @@ let client =
 let main =
   fun (x : int) (y : int) ->
     let rv = newRendezvous[int protocol] () in
-      AThread.fork (fun _:unit -> server (accept rv));
+      AThread.fork (fun () -> server (accept rv));
       client (request rv) x y
 
 in print (main 3 4)

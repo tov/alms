@@ -29,6 +29,7 @@ import qualified Basis.Array
 import qualified IO
 import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
+import System.Random (randomIO)
 import Data.Typeable
 
 -- Primitive operations implemented in Haskell
@@ -76,6 +77,8 @@ primBasis  = [
       -= (show :: Integer -> String),
     fun "int_of_string" -: [$ty| string -> int |]
       -= (read :: String -> Integer),
+    fun "random_int" -: [$ty| unit -> int |]
+      -= \() -> (randomIO :: IO Int),
 
     -- Floating point arithmetic
     fun "<=." -: [$ty| float -> float -> bool |]

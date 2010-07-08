@@ -197,12 +197,12 @@ let main : unit -> unit =
             | Nil              -> ic
             | Cons(plane,rest) ->
                 let outrv = newRendezvous[point stream] () in
-                  AThread.fork (fun _: unit ->
+                  AThread.fork (fun () ->
                     clipper plane ic (accept outrv));
                   connect rest (request outrv) in
-  fun _: unit ->
+  fun () ->
     let rv           = newRendezvous[main_prot] () in
-    let _            = AThread.fork (fun _: unit -> parser (accept rv)) in
+    let _            = AThread.fork (fun () -> parser (accept rv)) in
     let (planes, ic) = get_planes Nil[plane] (request rv) in
     let ic           = connect planes ic in
       printer ic

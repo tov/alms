@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      FlexibleInstances,
       GeneralizedNewtypeDeriving,
       MultiParamTypeClasses,
       QuasiQuotes,
@@ -29,6 +30,7 @@ import qualified Syntax.Notable
 import qualified Syntax.Patt
 import Util
 
+import qualified Data.List as List
 import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -360,8 +362,8 @@ renameDecl :: Decl Raw -> R (Decl Renamed)
 renameDecl d0 = withLoc d0 $ case d0 of
   [$dc| let $x : $opt:mt = $e |] -> do
     x'  <- renamePatt x
-    mt' <- gmapM renameType mt
-    e'  <- renameExpr e
+    mt' <- gmapM renameType (fmap closeType mt)
+    e'  <- renameExpr (closeExpr e)
     return [$dc|+ let $x' : $opt:mt' = $e' |]
   [$dc| type $list:tds |] -> do
     tds' <- renameTyDecs tds
@@ -574,7 +576,7 @@ renameSigItem :: SigItem Raw -> R (SigItem Renamed)
 renameSigItem sg0 = case sg0 of
   [$sgQ| val $lid:l : $t |] -> do
     l' <- bindVar l
-    t' <- renameType t
+    t' <- renameType (closeType t)
     return [$sgQ|+ val $lid:l' : $t' |]
   [$sgQ| type $list:tds |] -> do
     tds' <- renameTyDecs tds
@@ -827,6 +829,52 @@ renamePatt x00 =
       Nothing   -> do
         put (M.insert (Right tv) loc1 seen)
         lift (bindTyvar tv)
+
+-- | Univerally-quantify all free type variables
+closeType :: Type Raw -> Type Raw
+closeType t = foldr tyAll t (ftvList t)
+
+-- | Add type abstractions for free type variables in
+--   function arguments
+closeExpr :: Expr Raw -> Expr Raw
+closeExpr e = foldr exTAbs e (ftvList e)
+
+class FtvList a where
+  ftvList  :: a -> [TyVar Raw]
+
+instance FtvList a => FtvList [a] where
+  ftvList = foldr List.union [] . map ftvList
+
+instance FtvList a => FtvList (Maybe a) where
+  ftvList = maybe [] ftvList
+
+-- | Get the free type variables in a QExp, in order of appearance
+instance FtvList (QExp Raw) where
+  ftvList qe0 = case qe0 of
+    [$qeQ| $qlit:_ |]    -> []
+    [$qeQ| '$tv |]       -> [tv]
+    [$qeQ| $qdisj:qes |] -> ftvList qes
+    [$qeQ| $qconj:qes |] -> ftvList qes
+    [$qeQ| $anti:a |]    -> $antierror
+
+-- | Get the free type variables in a type, in order of appearance
+instance FtvList (Type Raw) where
+  ftvList t0 = case t0 of
+    [$ty| ($list:ts) $qlid:_ |] -> ftvList ts
+    [$ty| '$tv |]               -> [tv]
+    [$ty| $t1 -[$qe]> $t2 |]    ->
+      ftvList t1 `List.union` ftvList qe `List.union` ftvList t2
+    [$ty| $quant:_ '$tv. $t |]  -> List.delete tv (ftvList t)
+    [$ty| mu '$tv. $t |]        -> List.delete tv (ftvList t)
+    [$ty| $anti:a |] -> $antierror
+
+instance FtvList (Expr Raw) where
+  ftvList e0 = case e0 of
+    [$ex| fun ($_ : $t) -> $e |] ->
+      ftvList t `List.union` ftvList e
+    [$ex| fun '$tv -> $e |] ->
+      List.delete tv (ftvList e)
+    _ -> []
 
 addVal     :: Lid Raw -> R (Lid Renamed)
 addType    :: Lid Raw -> Renamed -> R (Lid Renamed)

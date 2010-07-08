@@ -995,11 +995,15 @@ paty  = do
     (_, Just t) -> return (p, t)
     (PaCon (J [] (Uid _ "()")) Nothing, Nothing)
                 -> return (p, tyUnit)
+    (PaWild, Nothing)
+                -> return (p, tyAf)
     _           -> pzero <?> ":"
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
 pamty :: Id i => P (Patt i, Maybe (Type i))
-pamty  = parens $ choice
+pamty  = (paWild, Nothing) <$ reserved "_"
+      <|>
+         parens (choice
            [
              do
                (p, mt) <- pamty
@@ -1008,7 +1012,7 @@ pamty  = parens $ choice
                p <- pattp
                maybecolon p,
              return (paCon (quid "()") Nothing, Nothing)
-           ]
+           ])
   where
     maybecolon p = choice
       [
