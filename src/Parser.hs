@@ -1001,18 +1001,22 @@ paty  = do
 
 -- Parse a (), (pat:typ, ...) or (pat) argument
 pamty :: Id i => P (Patt i, Maybe (Type i))
-pamty  = (paWild, Nothing) <$ reserved "_"
-      <|>
-         parens (choice
-           [
-             do
-               (p, mt) <- pamty
-               maybe (maybecolon p) (morepts p) mt,
-             do
-               p <- pattp
-               maybecolon p,
-             return (paCon (quid "()") Nothing, Nothing)
-           ])
+pamty  = choice
+  [ (paWild, Nothing) <$ reserved "_",
+    parens $ do
+      tvs <- many (tyvarp <* comma)
+      (p, mt) <- choice
+        [ do
+            (p, mt) <- pamty
+            maybe (maybecolon p) (morepts p) mt,
+          do
+            p <- pattp
+            maybecolon p,
+          return (paCon (quid "()") Nothing, Nothing)
+        ]
+      return (foldr paPack p tvs,
+              fmap (\t -> foldr tyEx t tvs) mt)
+   ]
   where
     maybecolon p = choice
       [
@@ -1111,11 +1115,14 @@ pattp  = patt0 where
       antiblep,
       parens pattN1
     ]
-  pattN1 = mark $ do
-    xs <- commaSep patt0
-    case xs of
-      []    -> return (paCon (quid "()") Nothing)
-      x:xs' -> return (foldl paPair x xs')
+  pattN1 = mark $ choice
+    [ paPack <$> try (tyvarp <* comma)
+             <*> pattN1,
+      do
+        xs <- commaSep patt0
+        case xs of
+          []    -> return (paCon (quid "()") Nothing)
+          x:xs' -> return (foldl paPair x xs') ]
 
 litp :: P Lit
 litp = (<?> "literal") $ choice [
