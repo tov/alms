@@ -40,7 +40,7 @@ end
 
 module type LOCK_CAP = sig
   type 't lock
-  type 't locked qualifier A
+  type 't locked : A
   val new     : unit -> ex 't. 't lock
   val acquire : 't lock -> 't locked
   val release : 't lock -> 't locked -> unit
@@ -69,11 +69,11 @@ module LockCapExample = struct
 end
 
 module type SINGLE_STATIC = sig
-  type 'a array qualifier A
+  type 'a array : A
 
   val build : int -> (int -> 'a) -> 'a array
-  val get   : 'a array -> int -> 'a * 'a array
-  val put   : 'a array -> int -> 'a -> 'a array
+  val get   : 'a array -> int -o 'a * 'a array
+  val put   : 'a array -> int -o 'a -o 'a array
 end
 
 module SingleStatic : SINGLE_STATIC = struct
@@ -139,14 +139,16 @@ module type ARRAY_CAP_LOCK = sig
   val release : 't arraylock -> 't arraycap -> unit
 end
 
-module ArrayCapLock : ARRAY_CAP_LOCK = struct
-  open ArrayCap
-  type 't arraylock   = 't arraycap MVar.mvar
+module ArrayCapLock :
+    ARRAY_CAP_LOCK with type ('a,'b) array = ('a,'b) ArrayCap.array =
+  struct
+    open ArrayCap
+    type 't arraylock   = 't arraycap MVar.mvar
 
-  let new (cap: 't arraycap) = MVar.new cap
-  let acquire = MVar.take
-  let release = MVar.put
-end
+    let new (cap: 't arraycap) = MVar.new cap
+    let acquire = MVar.take
+    let release = MVar.put
+  end
 
 module ArrayCapLockExample = struct
   let deposit (a: (currency, 't) ArrayCapLock.array)
@@ -162,7 +164,7 @@ module type FRACTIONAL = sig
   type 1
   type 2
   type 'n / 'd
-  type ('c,'t) cap qualifier A
+  type ('c,'t) cap : A
   type ('a,'t) array
 
   val build : int -> (int -> 'a) ->
@@ -199,7 +201,7 @@ module type RW_LOCK = sig
   type ('a, 't) array
   type read
   type write
-  type ('t, 'm) arraycap qualifier A
+  type ('t, 'm) arraycap : A
 
   val build : int -> (int -> 'a) -> ex 't. ('a, 't) array
 
@@ -334,8 +336,8 @@ module RWLockTest = struct
           else ())
 
   let go (iters: int) =
-    let next       = makeCounter () in
-    let Pack('t,a) = build 10 (fun x:int -> x) in
+    let next   = makeCounter () in
+    let ('t,a) = build 10 (fun x:int -> x) in
     let rec start (n: int) : unit Future.future list =
       if n < 1
         then Nil[any]

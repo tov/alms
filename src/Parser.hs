@@ -723,7 +723,8 @@ variancep =
       return Invariant ]
 
 qualsp   :: Id i => P (QExp i)
-qualsp    = option minBound $ reserved "qualifier" *> qExpp
+qualsp    = option minBound $
+  (reserved "qualifier" <|> reservedOp ":") *> qExpp
 
 qExpp :: Id i => P (QExp i)
 qExpp  = "qualifier expression" @@ qexp where
@@ -935,9 +936,11 @@ opappp p = do
 afargsp :: Id i => P (Bool, Type i -> Type i, Expr i -> Expr i)
 afargsp = loop tyArr where
   loop arrcon0 = do
-    arrcon <- option arrcon0 $ do
-      reservedOp "|"
-      return tyLol
+    arrcon <- option arrcon0 $ choice
+      [ tyFun <$> qualbox qExpp,
+        do
+          reservedOp "|"
+          return tyLol ]
     choice
       [ do (tvt, tve) <- tyargp
            (b, ft, fe) <- loop arrcon

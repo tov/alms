@@ -294,7 +294,7 @@ pprParamV v         tv = ppr v <> ppr tv
 
 pprQuals :: QExp i -> Doc
 pprQuals [$qeQ| U |] = empty
-pprQuals qs          = text "qualifier" <+> pprPrec precApp qs
+pprQuals qs          = text ":" <+> pprPrec precApp qs
 
 pprAlternatives :: [(Uid i, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals

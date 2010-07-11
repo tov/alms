@@ -109,18 +109,30 @@ let tl = fun 'a (xs : 'a list) ->
   let Cons(_, xs') = xs in xs'
 let foldr =
   let rec foldr `a `b (f : `a -> `b -o `b)
-                        (z : `b) |(xs : `a list) : `b =
+                        (z : `b) |[b](xs : `a list) : `b =
         match xs with
         | Nil -> z
         | Cons(x,xs) -> f x (foldr f z xs)
    in foldr
 let foldl =
   let rec foldl `a `b (f : `a -> `b -o `b)
-                        (z : `b) |(xs : `a list) : `b =
+                        (z : `b) |[b](xs : `a list) : `b =
         match xs with
         | Nil -> z
         | Cons(x,xs) -> foldl f (f x z) xs
    in foldl
+let map `a `b (f: `a -> `b) (xs: `a list) =
+      foldr (fun (x: `a) (xs': `b list) -> Cons (f x, xs')) Nil xs
+let filter 'a (f: 'a -> bool) (xs: 'a list) =
+      foldr (fun (x: 'a) (xs': 'a list) ->
+               if f x then Cons(x, xs') else xs')
+            Nil
+let mapFilterA `a `b (f: `a -> `b option) (xs: `a list) =
+      foldr (fun (x: `a) (xs': `b list) ->
+               match f x with
+               | Some y -> Cons(y, xs')
+               | None   -> xs')
+            Nil
 let revApp[`c] (xs : `c list) (ys : `c list) =
   let cons (x : `c) (acc : `c list) = Cons (x, acc) in
     foldl cons ys xs

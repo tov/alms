@@ -54,11 +54,11 @@ import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
--- import System.IO.Unsafe (unsafePerformIO)
--- pP :: Show a => a -> b -> b
--- pP a b = unsafePerformIO (print a) `seq` b
--- pM :: (Show a, Monad m) => a -> m ()
--- pM a = if pP a True then return () else fail "wibble"
+import System.IO.Unsafe (unsafePerformIO)
+pP :: Show a => a -> b -> b
+pP a b = unsafePerformIO (print a) `seq` b
+pM :: (Show a, Monad m) => a -> m ()
+pM a = if pP a True then return () else fail "wibble"
 
 -- The kind of names we're using.
 type R = Renamed
@@ -1419,6 +1419,13 @@ matchSigs md10 md20 = loop (linearize md10 []) (linearize md20 []) where
   name (MdSig x _)    = "module type " ++ show x
   name _              = error "BUG! in Statics.matchSigs"
 
+-- | Extensional equality for type constructors
+tyconExtEq :: TyCon -> TyCon -> Bool
+tyconExtEq tc1 tc2 | tcBounds tc1 == tcBounds tc2 =
+  let tvs = zipWith (TyVar .) tvalphabet (tcBounds tc1)
+   in tyApp tc1 tvs == tyApp tc2 tvs
+tyconExtEq _   _   = False
+
 -- | Check that two type constructors match exactly.
 matchTycons :: (?loc :: Loc, Monad m) =>
                TyCon -> TyCon -> TC m ()
@@ -1445,6 +1452,8 @@ matchTycons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
             ("constructor `" ++ show k ++ "'")
             (maybe "nothing" show t1)
             (maybe "nothing" show t2)
+  (OperatorType, _)            | tyconExtEq tc1 tc2 -> return ()
+  (_,            OperatorType) | tyconExtEq tc1 tc2 -> return ()
   (OperatorType, OperatorType) -> do
     let next1 = fromJust (tcNext tc1)
         next2 = fromJust (tcNext tc2)

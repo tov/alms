@@ -7,6 +7,7 @@ module Lexer (
   sharpLoad, sharpInfo,
   semis, bang, star, slash, plus,
   lolli, arrow, funbraces, funbraceLeft, funbraceRight,
+  qualbox, qualboxLeft, qualboxRight,
   qualU, qualA,
   opP,
 
@@ -156,6 +157,17 @@ funbraceRight    = try (symbol "]>") >> return ()
 
 funbraces       :: CharParser st a -> CharParser st a
 funbraces        = between funbraceLeft funbraceRight
+
+-- | The left part of the $|[_]$ annotation
+qualboxLeft     :: CharParser st ()
+qualboxLeft      = try (symbol "|[") >> return ()
+
+-- | The right part of the $|[_]$ annotation
+qualboxRight    :: CharParser st ()
+qualboxRight     = try (symbol "]") >> return ()
+
+qualbox         :: CharParser st a -> CharParser st a
+qualbox          = between qualboxLeft qualboxRight
 
 -- | @;@, @;;@, ...
 semis           :: CharParser st String
