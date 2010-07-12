@@ -46,7 +46,7 @@ let main () =
   let sock = setupConnection (getAddr ()) in
   let wait = Future.new (fun () -> recvThread sock) in
     sendThread sock;
-    Future.get wait;
+    Future.sync wait;
     teardownConnection sock
 
 in main ()

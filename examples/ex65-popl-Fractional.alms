@@ -1,0 +1,40 @@
+(* Example: arrays with fractional capabilities *)
+
+#load "libarray"
+
+module type FRACTIONAL = sig
+  type ('a,'b) array
+  type 1
+  type 2
+  type 'c / 'd
+  type ('b,'c) cap : A
+
+  val new   : int -> 'a ->
+                ex 'b. ('a,'b) array * ('b,1) cap
+  val get   : ('a,'b) array -> int ->
+                ('b,'c) cap -> 'a * ('b,'c) cap
+  val set   : ('a,'b) array -> int -> 'a ->
+                ('b,1) cap -> ('b,1) cap
+
+  val split : ('b,'c) cap -> ('b,'c/2) cap * ('b,'c/2) cap
+  val join  : ('b,'c/2) cap * ('b,'c/2) cap -> ('b,'c) cap
+end
+
+module A = Array
+
+module Fractional : FRACTIONAL = struct
+  type ('a,'b) array = 'a A.array
+  type 1
+  type 2
+  type 'c / 'd
+  type ('b,'c) cap = unit
+
+  let new (size: int) (init: 'a) = (A.new size init, ())
+
+  let get (ar: 'a A.array) (ix: int) _ = (A.get ar ix, ())
+  let set (ar: 'a A.array) (ix: int) (new: 'a) _ =
+    A.set ar ix new
+
+  let split _ = ((), ())
+  let join  _ = ()
+end

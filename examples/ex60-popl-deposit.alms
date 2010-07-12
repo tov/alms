@@ -1,0 +1,32 @@
+(* Example: conventional arrays and locks *)
+
+#load "libarray"
+
+module A = Array
+
+(* The first array example. *)
+let deposit (a: int A.array) (acct: int) (amount: int) =
+  A.set a acct (A.get a acct + amount)
+
+(* Alms doesn't provide locks, since MVars are strictly better,
+ * but for the sake of example: *)
+module type LOCK = sig
+  type lock
+  val new : unit -> lock
+  val acquire : lock -> unit
+  val release : lock -> unit
+end
+
+module Lock : LOCK = struct
+  type lock = unit MVar.mvar
+  let new = MVar.new
+  let acquire = MVar.take
+  let release (mv: lock) = MVar.put mv ()
+end
+
+(* The array example with locks. *)
+let deposit' (a: int A.array) (acct: int) (amount: int)
+             (lock: Lock.lock) =
+  Lock.acquire lock;
+  A.set a acct (A.get a acct + amount);
+  Lock.release lock

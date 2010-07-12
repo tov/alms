@@ -8,7 +8,7 @@ module Array : sig
 
   val build    : all `a. int -> (int -> `a) -> `a array
   val swap     : all `a. `a array -> int -> `a -> `a
-  val put      : all `a. `a array -> int -> `a -> unit
+  val set      : all `a. `a array -> int -> `a -> unit
   val size     : all `a. `a array -> int
 
   (* Unlimited-only operations *)
@@ -27,6 +27,6 @@ end = struct
     try swap a ix elt
     with _ -> raise ArrayIndex
 
-  let put[`a] (a : `a array) (ix : int) (elt : `a) =
+  let set[`a] (a : `a array) (ix : int) (elt : `a) =
     swap a ix elt; ()
 end

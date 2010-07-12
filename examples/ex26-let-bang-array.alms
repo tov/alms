@@ -58,7 +58,7 @@ with
       liftBang (get['a,'t,'c] a ix)
 
     let putAU['a,'t] (a: ('a, 't) array) (ix: int) (new: 'a) =
-      let f (cap: 't writecap) = ((), put['a,'t] a ix new cap) in
+      let f (cap: 't writecap) = ((), set['a,'t] a ix new cap) in
         liftBang f
   end
 end
@@ -71,12 +71,12 @@ let test () =
     let rec loop (i: int) (cap: 't writecap): 't writecap =
       if i >= n
         then cap
-        else loop (i + 1) (put a i (i * i) cap) in
+        else loop (i + 1) (set a i (i * i) cap) in
     let cap = loop 0 cap in
     let (r, cap) = letBang cap
       (fun (cap: 't uwritecap) ->
          getAU a 1 cap + getAU a 3 cap + getAU a 5 cap) in
-      put a 0 (-1) cap;
+      set a 0 (-1) cap;
       r
 
 in print (test ())

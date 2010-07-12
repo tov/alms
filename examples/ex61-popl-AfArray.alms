@@ -1,0 +1,111 @@
+(* Example: affine arrays *)
+
+#load "libarray"
+
+module A = Array
+
+module type AF_ARRAY = sig
+  type 'a array : A
+
+  val new : int -> 'a -> 'a array
+  val set : 'a array -> int -o 'a -o 'a array
+  val get : 'a array -> int -o 'a * 'a array
+
+  val size : 'a array -> int * 'a array
+end
+
+module AfArray : AF_ARRAY = struct
+  type 'a array = 'a A.array
+
+  let new = A.new
+  let set (a: 'a array) (ix: int) (v: 'a) =
+    A.set a ix v; a
+  let get (a: 'a array) (ix: int) =
+    (A.get a ix, a)
+
+  let size (a: 'a array) = (A.size a, a)
+end
+
+let deposit (a: int AfArray.array) (ix: int) (amount: int) =
+  let (balance, a) = AfArray.get a ix in
+    AfArray.set a ix (balance + amount)
+
+(*** Some definitions used by the next example. ***)
+
+ (* Placing them here ensures that "make test" will catch if they
+  * stop typing, since the example where they are used demonstrates
+  * a type error. *)
+
+module A = AfArray
+
+(* Swap the values at the given array indices *)
+let swapIndices (a: 'a A.array) (i: int) (j: int) =
+  let (ai, a) = A.get a i in
+  let (aj, a) = A.get a j in
+    A.set (A.set a i aj) j ai
+
+(* Fisher-Yates shuffle *)
+let inPlaceShuffle (a: 'a A.array) =
+  let rec loop (i: int) (a: 'a A.array) : 'a A.array =
+    if i == 0
+      then a
+      else let j = random_int () % (i + 1) in
+             loop (i - 1) (swapIndices a i j) in
+  let (n, a) = A.size a in
+    loop (n - 1) a
+
+(* Quicksort *)
+let inPlaceSort (a: int A.array) =
+  let rec quicksort (start: int) (limit: int) (a: int A.array) : int A.array =
+    if limit > start
+      then let (pivot, a) = A.get a limit in
+           let rec loop (i: int) (j: int) (a: int A.array)
+                     : int * int A.array =
+             if i < limit
+               then let (ai, a) = A.get a i in
+                      if ai <= pivot
+                        then loop (i + 1) (j + 1) (swapIndices a i j)
+                        else loop (i + 1) j a
+               else (j, a) in
+           let (j, a) = loop start start a in
+           let a      = swapIndices a j limit in
+           let a      = quicksort start (j - 1) a in
+             quicksort (j + 1) limit a
+      else a in
+  let (n, a) = A.size a in
+    quicksort 0 (n - 1) a
+
+(* For testing: *)
+let listToArray (Cons(x,xs): 'a list) =
+  let n = length xs + 1 in
+  let rec loop (i: int) (xs: 'a list) (a: 'a A.array) : 'a A.array =
+    match xs with
+    | Nil        -> a
+    | Cons(x,xs) -> loop (i + 1) xs (A.set a i x)
+   in loop 1 xs (A.new n x)
+
+let arrayToList (a: 'a A.array) =
+  let (n, a) = A.size a in
+  let rec loop (i: int) (xs: 'a list) (a: 'a A.array)
+            : 'a list * 'a A.array =
+        if i < 0
+          then (xs, a)
+          else let (ai, a) = A.get a i in
+                 loop (i - 1) (Cons(ai, xs)) a
+   in loop (n - 1) Nil a
+
+module Tests = struct
+  let unsorted  = Cons(4,Cons(1,Cons(0,Cons(3,Cons(2,Nil)))))
+  let sorted    = Cons(0,Cons(1,Cons(2,Cons(3,Cons(4,Nil)))))
+  let sorted'   = fst(arrayToList(inPlaceSort(listToArray(unsorted))))
+  let () = if sorted == sorted'
+             then ()
+             else failwith "test failed: inPlaceSort (1)"
+
+  let sorted' =
+        fst(arrayToList(inPlaceSort(inPlaceShuffle(listToArray(sorted)))))
+  let () = if sorted == sorted'
+             then ()
+             else failwith "test failed: inPlaceSort (2)"
+end
+

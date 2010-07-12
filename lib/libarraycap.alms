@@ -21,7 +21,7 @@ module type AARRAY_PRIM = sig
                  ('t, 'c) readcap
   val get    : all 'a 't 'c. ('a, 't) array -> int -> ('t, 'c) readcap ->
                  'a * ('t, 'c) readcap
-  val put    : all 'a 't. ('a, 't) array -> int -> 'a ->
+  val set    : all 'a 't. ('a, 't) array -> int -> 'a ->
                  't writecap -> 't writecap
   val size   : all 'a 't. ('a, 't) array -> int
 end
@@ -70,8 +70,8 @@ end = struct
     let get['a,'t,'c] (arr: ('a, 't) array) (ix: int) () =
       (A.get arr ix, ())
 
-    let put['a,'t] (arr: ('a, 't) array) (ix: int) (new: 'a) () =
-      A.put arr ix new
+    let set['a,'t] (arr: ('a, 't) array) (ix: int) (new: 'a) () =
+      A.set arr ix new
 
     let size['a,'t] (arr: ('a, 't) array) =
       A.size arr
@@ -85,7 +85,7 @@ end = struct
     let (c1, c2) = split c in
     let future   = Future.new (fun () -> left c1) in
     let (r2, c2) = right c2 in
-    let (r1, c1) = Future.get future in
+    let (r1, c1) = Future.sync future in
       (r1, r2, join (c1, c2))
 
   let fold ['a,'t,'c,`r]

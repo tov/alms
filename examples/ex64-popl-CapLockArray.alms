@@ -1,0 +1,61 @@
+(* Example: arrays with capability locks *)
+
+#load "ex63-popl-CapArray"
+
+module type CAP_LOCK_ARRAY = sig
+  include CAP_ARRAY
+
+  (* Already inherited new from CAP_ARRAY, so we need to use a
+   * different name here: *)
+  val new'    : int -> 'a -> ex 'b. ('a,'b) array
+  val acquire : ('a, 'b) array -> 'b cap
+  val release : ('a, 'b) array -> 'b cap -> unit
+end
+
+module CapLockArray : CAP_LOCK_ARRAY = struct
+  open CapArray
+
+  type ('a,'b) array = ('a,'b) CapArray.array * 'b cap MVar.mvar
+
+  let new' (size: int) (init: 'a) =
+    let ('b, a, cap) = new size init in
+      (a, MVar.new cap)
+
+  let acquire (a: ('a,'b) array) = MVar.take (snd a)
+  let release (a: ('a,'b) array) = MVar.put (snd a)
+
+  let new (size: int) (init: 'a) =
+    let a = new' size init in (a, acquire a)
+
+  let set (a: ('a,'b) array)      = set (fst a)
+  let get (a: ('a,'b) array)      = get (fst a)
+  let dirtyGet (a: ('a,'b) array) = dirtyGet (fst a)
+  let size (a: ('a,'b) array)     = size (fst a)
+end
+
+module A = CapLockArray
+
+let deposit (a: (int,'b) A.array) (acct: int) (amount: int) =
+  let cap            = A.acquire a in
+  let (balance, cap) = A.get a acct cap in
+  let cap            = A.set a acct (balance + amount) cap in
+    A.release a cap
+
+(* To use the imperative variable notation, we need set to
+ * return a pair, as the translation expects the result of operations
+ * that take imperative variables to produce both a direct result and a
+ * new value for the imperative variable.  (If the notation proves
+ * beneficial it may be worth defining interfaces in this way all the
+ * time. *)
+module A = struct
+  open CapLockArray
+  let set (a: ('a,'b) array) (ix: int) (v: 'a) (cap: 'b cap) =
+    ((), set a ix v cap)
+end
+
+(* Example with imperative variables: *)
+let deposit' (a: (int,'b) A.array) (acct: int) (amount: int) =
+  let !cap = A.acquire a in
+    A.set a acct (A.get a acct cap + amount) cap;
+    A.release a cap
+

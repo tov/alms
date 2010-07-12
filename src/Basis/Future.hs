@@ -34,14 +34,14 @@ entries  = [
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f () >>= MV.putMVar future)
             return (Future future),
-    fun "get" -: [$ty| all `a. `a future -> `a |]
+    fun "sync" -: [$ty| all `a. `a future -> `a |]
       -= (MV.takeMVar . unFuture),
     fun "coNew" -: [$ty| all `a. (`a future -o unit) -> `a cofuture |]
       -= \f -> do
             future <- MV.newEmptyMVar
             CC.forkIO (vapp f (Future future) >> return ())
             return (Future future),
-    fun "coPut" -: [$ty| all `a. `a cofuture -> `a -o unit |]
+    fun "coSync" -: [$ty| all `a. `a cofuture -> `a -o unit |]
       -= \future value -> MV.putMVar (unFuture future) value,
     fun "newPair" -: [$ty| all `a. unit -> `a future * `a cofuture |]
       -= \() -> do

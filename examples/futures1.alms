@@ -22,6 +22,6 @@ let main : string -> unit =
     let future = prompt () in
       printDots 80 20;
       putStrLn "";
-      putStrLn (Future.get future)
+      putStrLn (Future.sync future)
 
 in main "whadday say? "

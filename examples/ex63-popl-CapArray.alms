@@ -1,0 +1,108 @@
+(* Example: unlimited arrays with affine capabilities *)
+
+#load "libarray"
+
+module A = Array
+
+module type CAP_ARRAY = sig
+  type ('a,'b) array
+  type 'b cap : A
+
+  val new : int -> 'a -> ex 'b. ('a,'b) array * 'b cap
+  val set : ('a,'b) array -> int -> 'a -> 'b cap -> 'b cap
+  val get : ('a,'b) array -> int -> 'b cap -> 'a * 'b cap
+
+  val dirtyGet : ('a,'b) array -> int -> 'a
+  val size     : ('a,'b) array -> int
+end
+
+module CapArray : CAP_ARRAY = struct
+  type ('a,'b) array = 'a A.array
+  type 'a cap = unit
+
+  let new (size: int) (init: 'a) = (A.new size init, ())
+  let set (a: ('a,'b) array) (ix: int) (v: 'a) _ =
+    A.set a ix v
+  let get (a: ('a,'b) array) (ix: int) _ =
+    (A.get a ix, ())
+
+  let dirtyGet = A.get
+  let size     = A.size
+end
+
+let deposit (a: (int,'b) CapArray.array) (ix: int) (amount: int)
+            (cap: 'b CapArray.cap) =
+  let (balance, cap) = CapArray.get a ix cap in
+    CapArray.set a ix (balance + amount) cap
+
+module A = CapArray
+
+(* Swap the values at the given array indices *)
+let swapIndices (a: ('a,'b) A.array) (i: int) (j: int) (cap: 'b A.cap) =
+  let (ai, cap) = A.get a i cap in
+  let (aj, cap) = A.get a j cap in
+    A.set a j ai (A.set a i aj cap)
+
+(* Fisher-Yates shuffle *)
+let inPlaceShuffle (a: ('a,'b) A.array) (cap: 'b A.cap) =
+  let rec loop (i: int) (cap: 'b A.cap) : 'b A.cap =
+    if i == 0
+      then cap
+      else let j = random_int () % (i + 1) in
+             loop (i - 1) (swapIndices a i j cap)
+   in loop (A.size a - 1) cap
+
+let dirtySumArray (a: (int,'b) A.array) =
+  let rec loop (i: int) (acc: int) : int =
+    if i < 0
+      then acc
+      else loop (i - 1) (acc + A.dirtyGet a i)
+   in loop (A.size a - 1) 0
+
+let shuffleAndDirtySum (a: (int,'b) A.array) (cap: 'b A.cap) =
+  let f1 = Future.new (fun _ -> inPlaceShuffle a cap) in
+  let f2 = Future.new (fun _ -> dirtySumArray a) in
+    (Future.sync f1, Future.sync f2)
+
+(* For testing: *)
+let listToArray (Cons(x,xs): 'a list) =
+  let n            = length xs + 1 in
+  let ('b, a, cap) = A.new n x in
+  let rec loop (i: int) (xs: 'a list) (cap: 'b A.cap) : 'b A.cap =
+    match xs with
+    | Nil        -> cap
+    | Cons(x,xs) -> loop (i + 1) xs (A.set a i x cap)
+   in Pack('b, a, loop 1 xs cap)
+
+let dirtyArrayToList (a: ('a,'b) A.array) =
+  let n = A.size a in
+  let rec loop (i: int) (xs: 'a list) : 'a list =
+        if i < 0
+          then xs
+          else loop (i - 1) (Cons(A.dirtyGet a i, xs))
+   in loop (n - 1) Nil
+
+let randomIntList =
+  let rec loop (acc: int list) (len: int) : int list =
+    if len == 0
+      then acc
+      else loop (Cons(random_int (), acc)) (len - 1)
+   in loop Nil
+
+module Tests = struct
+  let test (size: int) =
+    let ('b, a, cap)  = listToArray (randomIntList size) in
+    let correctsum    = dirtySumArray a in
+    let (_, dirtysum) = shuffleAndDirtySum a cap
+     in if correctsum == dirtysum
+          then ()
+          else putStrLn ("dirtySumArray observed race condition: " ^
+                         string_of_int correctsum ^ " <> " ^
+                         string_of_int dirtysum)
+
+  (* experimentally, it appears that size = 100 gives us about a 20%
+   * chance of observing a race.  size = 1000 seems to observe a race
+   * almost without fail. *)
+  let _ = test 100
+end
+
