@@ -1,15 +1,16 @@
 This is a prototype implementation of Alms, an affine language with
 modules and subtyping.
 
-Please see http://www.ccs.neu.edu/home/tov/pubs/alms/ for
-more information.
+Please see http://www.ccs.neu.edu/home/tov/pubs/alms/ for more
+information.
 
 CONTENTS
 
  * GETTING STARTED
- * USAGE
- * THE LANGUAGE
+ * WHAT TO TRY
+ * PAPER SYNTAX VERSUS ASCII SYNTAX
  * EDITLINE TROUBLE
+
 
 GETTING STARTED
 
@@ -21,9 +22,9 @@ GETTING STARTED
 
     % make
 
-  This should produce an executable "affine" in the current directory,
+  This should produce an executable "alms" in the current directory,
 
-  If it fails, it may also be necessary to either install the editline
+  If this fails, it may also be necessary to either install the editline
   package first or disable line editing (Please see EDITLINE TROUBLE).
 
   On Windows, build with Cabal:
@@ -33,11 +34,32 @@ GETTING STARTED
 
   This produces an executable in "dist\build\alms\alms".
 
-USAGE
+
+WHAT TO TRY
 
   Examples from the paper, and several more, are in the examples/
-  directory.  To try the echo server example on port 10000,
-  run:
+  directory.  The examples from section 2 of the POPL submission are in:
+
+    examples/ex60-popl-deposit.alms
+    examples/ex61-popl-AfArray.alms
+    examples/ex62-popl-AfArray-type-error.alms
+    examples/ex63-popl-CapArray.alms
+    examples/ex64-popl-CapLockArray.alms
+    examples/ex65-popl-Fractional.alms
+    examples/ex66-popl-RWLock.alms
+
+  Other notable examples include two implementations of session types,
+  an implementation of Sutherland-Hodgman  re-entrant polygon clipping
+  (1974) using session types, and the tracked Berkeley Sockets API from
+  our ESOP 2010 paper:
+
+    lib/libsessiontype.alms
+    lib/libsessiontype2.alms
+    examples/session-types-polygons.alms
+    lib/libsocketcap.alms
+
+  The echo server from the ESOP paper, which uses libsocketcap, is in
+  examples/echoServer.alms.  To try it, listening on port 10000, run:
 
     % ./alms examples/echoServer.alms 10000
 
@@ -58,15 +80,46 @@ USAGE
 
     % make tests
 
-  We can also run the interpreter in interactive mode:
+  Of course, you can also run the interpreter in interactive mode:
 
     % ./alms
 
-  The program also accepts several flags:
+  You can load libraries from the command line like this:
 
-    -t   Don't type check
-    -x   Don't execute
-    -v   Verbose (results, types)
+    % ./alms -l libsocketcap
+
+  Or from within the REPL like this:
+
+    #- #load "libsocketcap"
+
+  Finally, it may be helpful to know about the #i command for asking the
+  REPL about identifiers:
+
+    #- #i list Exn *
+    type +`a list
+           qualifier a = Cons of `a * `a list | Nil
+        -- built-in
+    module Exn
+        -- defined at "lib/libbasis.alms" (line 2, col. 3 to line 23, col. 3)
+    type +`a * +`b qualifier a \/ b   -- built-in
+    val ( * ) : int -> int -> int   -- built-in
+
+
+PAPER SYNTAX VERSUS ASCII SYNTAX
+
+The language as presented in the paper is faithful to the language as
+implemented, except for issues of pretty printing:
+
+  LaTeX (what the paper says)     ASCII (what you type)
+  -----------------------------------------------------
+  \forall \exists \lambda         all ex fun   (binders)
+  \alpha                          'a           (unlimited type variable)
+  \hat\alpha                      `a           (affine type variable)
+  \to^A                           -o           (affine arrow)
+  \to^\phi                        -[q]>        (arrow with qualifier)
+  \sqcup \sqcap                   \/ /\        (qualifier join and meet)
+  \pm \baro + -                   = 0 + -      (variances)
+
 
 EDITLINE TROUBLE
 
@@ -103,7 +156,7 @@ EDITLINE TROUBLE
 
   If the cabal installation of the GHC package fails, it may be
   necessary first to install the C library that it depends on.  The
-  source is available at http://www.thrysoee.dk/editline/.  On my debian
+  source is available at http://www.thrysoee.dk/editline/.  On my Debian
   system, I was able to install it with:
 
     % sudo aptitude install libedit2 libedit-dev

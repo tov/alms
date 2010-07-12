@@ -39,7 +39,9 @@ Executable alms
                         directory >= 1.0,
                         template-haskell >= 2.0,
                         QuickCheck >= 2,
-                        HUnit >= 1.2
+                        HUnit >= 1.2,
+                        random >= 1,
+                        array >= 0.3
 
   if flag(readline)
     Build-Depends:  readline >= 1.0
