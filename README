@@ -118,7 +118,7 @@ implemented, except for issues of pretty printing:
   \to^A                           -o           (affine arrow)
   \to^\phi                        -[q]>        (arrow with qualifier)
   \sqcup \sqcap                   \/ /\        (qualifier join and meet)
-  \pm \baro + -                   = 0 + -      (variances)
+  \pm \baro + -                   = * + -      (variances)
 
 
 EDITLINE TROUBLE
