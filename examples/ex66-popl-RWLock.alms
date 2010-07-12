@@ -22,8 +22,8 @@ module type RW_LOCK = sig
    * the imperative variable notation. *)
 end
 
-#load "libarray"
 #load "libqueue"
+#load "libarray"
 
 module A = Array
 

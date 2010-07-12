@@ -13,7 +13,7 @@ let shuffleAndSort (a: int AfArray.array) =
     Future.sync f1; Future.sync f2
 
 (* N.B.: The duplication is the only cause of the type error.
- * This version works fine:
+ * This version is well typed:
 
 let shuffleAndSort (a: int AfArray.array) (b: int AfArray.array) =
   let f1 = Future.new (fun _ -> inPlaceShuffle a) in

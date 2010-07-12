@@ -1,9 +1,5 @@
 (* Example: unlimited arrays with affine capabilities *)
 
-#load "libarray"
-
-module A = Array
-
 module type CAP_ARRAY = sig
   type ('a,'b) array
   type 'b cap : A
@@ -15,6 +11,9 @@ module type CAP_ARRAY = sig
   val dirtyGet : ('a,'b) array -> int -> 'a
   val size     : ('a,'b) array -> int
 end
+
+#load "libarray"
+module A = Array
 
 module CapArray : CAP_ARRAY = struct
   type ('a,'b) array = 'a A.array

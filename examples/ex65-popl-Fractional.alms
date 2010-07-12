@@ -1,7 +1,5 @@
 (* Example: arrays with fractional capabilities *)
 
-#load "libarray"
-
 module type FRACTIONAL = sig
   type ('a,'b) array
   type 1
@@ -20,6 +18,7 @@ module type FRACTIONAL = sig
   val join  : ('b,'c/2) cap * ('b,'c/2) cap -> ('b,'c) cap
 end
 
+#load "libarray"
 module A = Array
 
 module Fractional : FRACTIONAL = struct

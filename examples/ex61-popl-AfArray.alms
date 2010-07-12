@@ -1,9 +1,5 @@
 (* Example: affine arrays *)
 
-#load "libarray"
-
-module A = Array
-
 module type AF_ARRAY = sig
   type 'a array : A
 
@@ -13,6 +9,9 @@ module type AF_ARRAY = sig
 
   val size : 'a array -> int * 'a array
 end
+
+#load "libarray"
+module A = Array
 
 module AfArray : AF_ARRAY = struct
   type 'a array = 'a A.array
