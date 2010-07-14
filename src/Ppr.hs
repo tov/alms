@@ -122,6 +122,10 @@ pprTyApp p (J [] l) [t1]
     = parensIf (p > precBang) $
         text (unLid l) <> pprPrec (precBang + 1) t1
 pprTyApp p (J [] l) [t1, t2]
+  -- print @ without space around it:
+  | isOperator l, '@':_ <- unLid l, Right prec <- precOp (unLid l)
+    = parensIf (p > prec) $
+        pprPrec (prec + 1) t1 <> text (unLid l) <> pprPrec prec t2
   | isOperator l, Left prec <- precOp (unLid l)
     = parensIf (p > prec) $
         sep [ pprPrec prec t1,

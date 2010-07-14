@@ -111,9 +111,9 @@ let maybeC['a,'r] (some: 'a -> 'r) (none: 'r) (opt: 'a option): 'r =
 -- sequence of points:
 --
 
-type 'a stream = 'a step follow
-    and 'a step   = Done of unit channel
-                  | Next of ('a recv; 'a stream) channel
+type 'a stream = ?->('a step)
+ and 'a step   = Done of 1 channel
+               | Next of (?'a; 'a stream) channel
 
 --
 -- Each transducer takes a plane to clip by, and two rendezvous objects,
@@ -123,7 +123,7 @@ type 'a stream = 'a step follow
 
 let clipper (plane: plane)
                !(ic: point stream channel, oc: point stream dual channel)
-               : unit * (unit channel * unit channel) =
+               : unit * (1 channel * 1 channel) =
        let finish !(oc: point stream dual channel) =
              choose Done[point] oc in
        let put (pt: point) !(oc: point stream dual channel) =
@@ -147,7 +147,7 @@ let clipper (plane: plane)
              let rec loop (pt: point)
                           !(ic: point stream channel,
                             oc: point stream dual channel)
-                          : unit * (unit channel * unit channel) =
+                          : unit * (1 channel * 1 channel) =
                          putVisible pt oc;
                          follow ic;
                          match ic with
@@ -158,7 +158,7 @@ let clipper (plane: plane)
                                       loop pt' (ic, oc)
                in loop pt0 (ic, oc)
 
-let rec printer !(ic: point stream channel): unit * unit channel =
+let rec printer !(ic: point stream channel): unit * 1 channel =
   follow ic;
   match ic with
   | Done ic -> ()
@@ -167,19 +167,19 @@ let rec printer !(ic: point stream channel): unit * unit channel =
 
 -- The main protocol for the program, which lets us split our parser
 -- from our main loop.
-type main_prot = main2 follow
-    and main2     = Planes of (plane recv; main_prot) channel
+type main_prot = ?->main2
+    and main2     = Planes of (?plane; main_prot) channel
                   | Points of point stream channel
 
-let parser : main_prot dual channel -> unit * unit channel =
-  let rec plane_loop !(oc: main_prot dual channel): unit * unit channel =
+let parser : main_prot dual channel -> unit * 1 channel =
+  let rec plane_loop !(oc: main_prot dual channel): unit * 1 channel =
             match getLine () with
             | "" -> choose Points oc;
                     point_loop oc
             | s  -> choose Planes oc;
                     send (parsePlane s) oc;
                     plane_loop oc
-      and point_loop !(oc: point stream dual channel): unit * unit channel =
+      and point_loop !(oc: point stream dual channel): unit * 1 channel =
             match getLine () with
             | "" -> choose Done[point] oc
             | s  -> choose Next[point] oc;

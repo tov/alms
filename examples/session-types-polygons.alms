@@ -5,11 +5,10 @@
 
 open SessionType
 
--- Some basic, low-level stuff
 let putAny 'a (x: 'a) = putStr (string_of x)
 
 --
--- We first build a 3-D geometry library in sublanguage C:
+-- We first build a tiny 3-D geometry library
 --
 
 -- Points and planes in R^3.
@@ -26,6 +25,7 @@ let string_of_plane (Plane(a, b, c, d): plane) =
     string_of a ^ "x + " ^ string_of b ^ "y + " ^
     string_of c ^ "z + " ^ string_of d ^ " > 0"
 
+(* Some of this should be in the library! *)
 let splitWhile['a] : ('a -> bool) -> 'a list -> 'a list * 'a list
   = fun pred: ('a -> bool) ->
       let rec loop (acc: 'a list) (xs: 'a list) : 'a list * 'a list =
