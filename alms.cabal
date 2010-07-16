@@ -9,10 +9,24 @@ Author:         Jesse A. Tov <tov@ccs.neu.edu>
 Maintainer:     tov@ccs.neu.edu
 Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms
 Category:       Compilers/Interpreters
-Synopsis:       An affine language with modules and subtyping
+Synopsis:       a practical affine language
 Build-type:     Simple
-Data-Dir:       lib
-Data-Files:     *.alms
+Data-files:     lib/*.alms examples/*.alms examples/*.sh
+                examples/*.in examples/*.out README Makefile
+
+Description:
+    Alms is a general-purpose programming language that supports practical
+    affine types. To offer the expressiveness of Girard’s linear logic while
+    keeping the type system light and convenient, Alms uses expressive kinds
+    that minimize notation while maximizing polymorphism between affine and
+    unlimited types.
+
+    A key feature of Alms is the ability to introduce abstract affine types
+    via ML-style signature ascription. In Alms, an interface can impose
+    stiffer resource usage restrictions than the principal usage
+    restrictions of its implementation. This form of sealing allows the type
+    system to naturally and directly express a variety of resource
+    management protocols from special-purpose type systems.
 
 Flag editline
   Description: Enable line editing using the editline package
@@ -28,7 +42,7 @@ Executable alms
   GHC-Options:          -O3
   CPP-Options:          -DALMS_CABAL_BUILD
   Build-Depends:        haskell98,
-                        base >= 4,
+                        base == 4.*,
                         syb >= 0.1,
                         pretty >= 1,
                         containers >= 0.1,
@@ -42,6 +56,53 @@ Executable alms
                         HUnit >= 1.2,
                         random >= 1,
                         array >= 0.3
+  Other-Modules:        Basis,
+                        Basis.Array,
+                        Basis.Channel,
+                        Basis.Channel.Haskell,
+                        Basis.Exn,
+                        Basis.Future,
+                        Basis.IO,
+                        Basis.MVar,
+                        Basis.Socket,
+                        Basis.Thread,
+                        BasisUtils,
+                        Coercion,
+                        Dynamics,
+                        Env,
+                        ErrorST,
+                        Lexer,
+                        Loc,
+                        Meta.DeriveNotable,
+                        Meta.FileString,
+                        Meta.Quasi,
+                        Meta.QuoteData,
+                        Meta.THHelpers,
+                        PDNF,
+                        Parser,
+                        Paths,
+                        Ppr,
+                        Prec,
+                        Rename,
+                        Sigma,
+                        Statics,
+                        Syntax,
+                        Syntax.Anti,
+                        Syntax.Decl,
+                        Syntax.Expr,
+                        Syntax.Ident,
+                        Syntax.Kind,
+                        Syntax.Lit,
+                        Syntax.Notable,
+                        Syntax.POClass,
+                        Syntax.Patt,
+                        Syntax.SyntaxTable,
+                        Syntax.Type,
+                        Type,
+                        TypeRel,
+                        Util,
+                        Value,
+                        Viewable
 
   if flag(readline)
     Build-Depends:  readline >= 1.0

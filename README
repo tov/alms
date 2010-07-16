@@ -34,6 +34,9 @@ GETTING STARTED
 
   This produces an executable in "dist\build\alms\alms".
 
+  Cabal should work on UNIX as well, but mixing Cabal and make leads to
+  linker errors, so it's probably best to stick with one or the other.
+
 
 WHAT TO TRY
 

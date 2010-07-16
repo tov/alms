@@ -21,7 +21,7 @@ Setup: Setup.hs
 $(EXE): default
 
 test tests: $(EXE)
-	@$(EXAMPLES)/run-tests.sh $(EXE) $(EXAMPLES)
+	@$(SHELL) $(EXAMPLES)/run-tests.sh ./$(EXE) $(EXAMPLES)
 
 examples: $(EXE)
 	@for i in $(EXAMPLES)/ex*.alms; do \

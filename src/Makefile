@@ -27,7 +27,7 @@ wc.%:
 	find .. -name \*."$*" | xargs wc -l
 
 test tests: $(EXE)
-	@$(EXAMPLES)/run-tests.sh $(EXE) $(EXAMPLES)
+	@$(EXAMPLES)/run-tests.sh ./$(EXE) $(EXAMPLES)
 
 examples: $(EXE)
 	@for i in $(EXAMPLES)/ex*.alms; do \
