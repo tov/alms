@@ -944,7 +944,7 @@ instance Ppr TyCon where
       qe :: [TyVarR] -> Doc
       qe tvs = case qDenToLit (tcQual tc) of
                  Just Qu -> empty
-                 _       -> text "qualifier" <+>
+                 _       -> colon <+>
                             ppr (qRepresent
                                  (denumberQDen
                                   (map qDenOfTyVar tvs) (tcQual tc)))

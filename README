@@ -15,7 +15,7 @@ CONTENTS
 GETTING STARTED
 
   We require GHC to build.  It is known to work with GHC 6.10.4,
-  and likely will not work with GHC 6.8.
+  and likely no longer works with GHC 6.8.
 
   Provided that a recent ghc is in your path, to build on UNIX it ought
   to be be sufficient to type:
@@ -37,7 +37,7 @@ GETTING STARTED
 
 WHAT TO TRY
 
-  Examples from the paper, and several more, are in the examples/
+  Examples from the paper and several more are in the examples/
   directory.  The examples from section 2 of the POPL submission are in:
 
     examples/ex60-popl-deposit.alms
@@ -49,7 +49,7 @@ WHAT TO TRY
     examples/ex66-popl-RWLock.alms
 
   Other notable examples include two implementations of session types,
-  an implementation of Sutherland-Hodgman  re-entrant polygon clipping
+  an implementation of Sutherland-Hodgman re-entrant polygon clipping
   (1974) using session types, and the tracked Berkeley Sockets API from
   our ESOP 2010 paper:
 
@@ -96,12 +96,11 @@ WHAT TO TRY
   REPL about identifiers:
 
     #- #i list Exn *
-    type +`a list
-           qualifier a = Cons of `a * `a list | Nil
+    type +`a list : a = Cons of `a * `a list | Nil
         -- built-in
     module Exn
         -- defined at "lib/libbasis.alms" (line 2, col. 3 to line 23, col. 3)
-    type +`a * +`b qualifier a \/ b   -- built-in
+    type +`a * +`b : a \/ b   -- built-in
     val ( * ) : int -> int -> int   -- built-in
 
 
@@ -116,7 +115,7 @@ implemented, except for issues of pretty printing:
   \alpha                          'a           (unlimited type variable)
   \hat\alpha                      `a           (affine type variable)
   \to^A                           -o           (affine arrow)
-  \to^\phi                        -[q]>        (arrow with qualifier)
+  \to^{\hat\alpha}                -[a]>        (arrow with qualifier)
   \sqcup \sqcap                   \/ /\        (qualifier join and meet)
   \pm \baro + -                   = * + -      (variances)
 
