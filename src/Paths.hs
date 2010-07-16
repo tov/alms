@@ -33,7 +33,7 @@ version = Version {versionBranch = [0,0,0], versionTags = ["dev"]}
 bindir, datadir :: FilePath
 
 bindir     = builddir
-datadir    = dropFileName builddir </> "lib"
+datadir    = dropFileName builddir
 
 getBinDir, getDataDir :: IO FilePath
 getBinDir  = catch (getEnv "alms_bindir") (\_ -> return bindir)
@@ -65,15 +65,18 @@ almsLibPath :: IO [FilePath]
 almsLibPath = do
   user   <- liftM splitSearchPath (getEnv "ALMS_LIB_PATH")
              `catch` \_ -> return []
-  system <- getDataDir
+  system <- liftM (</> "lib") getDataDir
   build  <- liftM (</> "lib") getBuildDir
   return $ user ++ [ system, build ]
 
+-- | Find an Alms library with the given name
 findAlmsLib :: FilePath -> IO (Maybe FilePath)
 findAlmsLib name = do
   path <- almsLibPath
   findFirstInPath [ name, name <.> "alms" ] path
 
+-- | Find an Alms library with the given name, first looking
+--   relative to the given path
 findAlmsLibRel :: FilePath -> FilePath -> IO (Maybe FilePath)
 findAlmsLibRel name rel = do
   path <- almsLibPath

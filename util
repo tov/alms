@@ -17,6 +17,11 @@ while [ -n "$1" ]; do
       set version "$ver" ci "version bump: $ver" tagversion "$ver" \
           clean dist send link $@
       ;;
+    hackage)
+      ver="$1"; shift
+      cabal sdist
+      cabal upload -c dist/$name-$ver.tar.gz
+      ;;
     clean)
       rm $name*.tar.gz
       ;;
