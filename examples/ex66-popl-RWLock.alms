@@ -4,20 +4,19 @@ module type RW_LOCK = sig
   type ('a,'b) array
   type read
   type write
-  type ('b,'c) cap : A
+  type 'b@'c : A
 
   val new      : int -> 'a -> ex 'b. ('a, 'b) array
   (* build is more convenient than new, but it would take more space
    * in the paper. *)
   val build    : int -> (int -> 'a) -> ex 'b. ('a, 'b) array
 
-  val acquireR : ('a,'b) array -> ('b,read) cap
-  val acquireW : ('a,'b) array -> ('b,write) cap
-  val release  : ('a,'b) array -> ('b,'c) cap -> unit * unit
+  val acquireR : ('a,'b) array -> 'b@read
+  val acquireW : ('a,'b) array -> 'b@write
+  val release  : ('a,'b) array -> 'b@'c -> unit * unit
 
-  val get : ('a,'b) array -> int -> ('b,'c) cap -> 'a * ('b,'c) cap
-  val set : ('a,'b) array -> int -> 'a -> ('b,write) cap ->
-        unit * ('b, write) cap
+  val get : ('a,'b) array -> int -> 'b@'c -> 'a * 'b@'c
+  val set : ('a,'b) array -> int -> 'a -> 'b@write -> unit * 'b@write
   (* We added (unit * _) to result types of release and get to support
    * the imperative variable notation. *)
 end
@@ -44,7 +43,7 @@ module RWLock : RW_LOCK = struct
   type ('a,'t) array = 'a A.array * lock
   type read
   type write
-  type ('t,'m) cap = unit
+  type 't@'m = unit
 
   let new (size: int) (init: 'a) =
     (A.new size init, MVar.new ((Queue.empty : queue), 0))

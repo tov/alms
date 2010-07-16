@@ -2,15 +2,24 @@
 
 #load "ex61-popl-AfArray"
 
+(* This has a type error because a is reused: *)
+let deposit (a: int AfArray.array) (ix: int) (amount: int) =
+  let (balance, _) = AfArray.get a ix in
+    AfArray.set a ix (balance + amount)
+
 (* This is a really bad idea -- and a type error!  Alms reports:
  *
  *  "examples/ex62-popl-AfArray-type-error.alms" (line 6, column 20):
  *  type error: Affine variable a : 'a array duplicated in lambda body
+ *
+ *  (This example is no longer in the paper.)
  *)
+(*
 let shuffleAndSort (a: int AfArray.array) =
   let f1 = Future.new (fun _ -> inPlaceShuffle a) in
   let f2 = Future.new (fun _ -> inPlaceSort a) in
     Future.sync f1; Future.sync f2
+ *)
 
 (* N.B.: The duplication is the only cause of the type error.
  * This version is well typed:

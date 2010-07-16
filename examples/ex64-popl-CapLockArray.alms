@@ -41,7 +41,7 @@ let deposit (a: (int,'b) A.array) (acct: int) (amount: int) =
   let cap            = A.set a acct (balance + amount) cap in
     A.release a cap
 
-(* To use the imperative variable notation, we need set to
+(* To use the imperative variable notation right now, we need set to
  * return a pair, as the translation expects the result of operations
  * that take imperative variables to produce both a direct result and a
  * new value for the imperative variable.  (If the notation proves
