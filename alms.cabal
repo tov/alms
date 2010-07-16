@@ -1,5 +1,5 @@
 Name:           alms
-Version:        0.4.9
+Version:        0.4.9.1
 Copyright:      2010, Jesse A. Tov
 Cabal-Version:  >= 1.8
 License:        BSD3
@@ -12,7 +12,8 @@ Category:       Compilers/Interpreters
 Synopsis:       a practical affine language
 Build-type:     Simple
 Data-files:     lib/*.alms examples/*.alms examples/*.sh
-                examples/*.in examples/*.out README Makefile
+                examples/*.in examples/*.out
+                README Makefile
 
 Description:
     Alms is a general-purpose programming language that supports practical

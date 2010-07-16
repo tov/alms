@@ -4,6 +4,8 @@ name=alms
 host=spelunker.ccs.neu.edu
 remote=public_html/pubs/$name
 
+version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"
+
 if [ -z "$1" ]; then
   set showVersion
 fi
@@ -17,10 +19,11 @@ while [ -n "$1" ]; do
       set version "$ver" ci "version bump: $ver" tagversion "$ver" \
           clean dist send link $@
       ;;
-    hackage)
-      ver="$1"; shift
-      cabal sdist
-      cabal upload -c dist/$name-$ver.tar.gz
+    hackage-check)
+      cabal upload -c $name-$version.tar.gz
+      ;;
+    hackage-upload)
+      cabal upload $name-$version.tar.gz
       ;;
     clean)
       rm $name*.tar.gz
@@ -29,10 +32,9 @@ while [ -n "$1" ]; do
       make dist
       ;;
     send)
-      scp -p $name*.tar.gz $host:$remote/
+      scp -p $name-$version.tar.gz $host:$remote/
       ;;
     link)
-      version="`$0 showVersion`"
       ssh $host "cd $remote;
                  DISPLAY='' ex -c '/$name-[0-9.]*[.]tar[.]gz/s/-[0-9.]*[.]tar/-$version.tar/|:wq' index.html;
                  rm $name.tar.gz;
@@ -59,9 +61,9 @@ while [ -n "$1" ]; do
       set --
       ;;
     tagversion)
-      version="$1"
+      gitversion="$1"
       shift
-      git tag "$version"
+      git tag "$gitversion"
       ;;
     version)
       version="$1"
@@ -71,7 +73,7 @@ while [ -n "$1" ]; do
       $0 showVersion
       ;;
     showVersion)
-      awk '$0 ~ /^VERSION *= / { print $3 }' Makefile
+      echo $version
       ;;
     *)
       echo "What does '$cmd' mean?" >&2
