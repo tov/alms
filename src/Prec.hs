@@ -10,6 +10,8 @@ module Prec (
   precPlus, precStar, precAt, precApp, precBang, precTApp
 ) where
 
+import Data.Char
+
 -- | Precedence and associativity, e.g. @Right 4@ is right-associative
 --   at level 4.  Higher precedences bind tighter, with application
 --   at precedence 9.
@@ -24,12 +26,20 @@ precOp (';':_)        = Right precSemi
 precOp "!="           = Left precEq
 precOp (c:_)
   | c `elem` "=<>|&$" = Left precEq
-  | c `elem` "*/%"    = Left precStar
+  | c `elem` "*×/%"   = Left precStar
   | c `elem` "+-"     = Left precPlus
   | c `elem` "^"      = Right precCaret
   | c `elem` "@"      = Right precAt
   | c `elem` "!~?"    = Right precBang
-precOp _              = Left precApp
+  | otherwise = case generalCategory c of
+      CurrencySymbol        -> Left precEq
+      MathSymbol            -> Left precStar
+      DashPunctuation       -> Left precPlus
+      OtherSymbol           -> Left precPlus
+      ConnectorPunctuation  -> Right precCaret
+      OtherPunctuation      -> Right precAt
+      _                     -> Left precEq -- defaulty
+precOp ""             = Left precApp
 
 precMin, precStart, precMax,
   precCast, precCom, precDot, precSemi, precEq, precCaret, precArr,

@@ -7,15 +7,15 @@ module type FRACTIONAL = sig
   type 'c / 'd
   type ('b,'c) cap : A
 
-  val new   : int -> 'a ->
-                ex 'b. ('a,'b) array * ('b,1) cap
-  val get   : ('a,'b) array -> int ->
-                ('b,'c) cap -> 'a * ('b,'c) cap
-  val set   : ('a,'b) array -> int -> 'a ->
-                ('b,1) cap -> ('b,1) cap
+  val new   : int → 'a →
+                ∃'b. ('a,'b) array × ('b,1) cap
+  val get   : ('a,'b) array → int →
+                ('b,'c) cap → 'a × ('b,'c) cap
+  val set   : ('a,'b) array → int → 'a →
+                ('b,1) cap → ('b,1) cap
 
-  val split : ('b,'c) cap -> ('b,'c/2) cap * ('b,'c/2) cap
-  val join  : ('b,'c/2) cap * ('b,'c/2) cap -> ('b,'c) cap
+  val split : ('b,'c) cap → ('b,'c/2) cap × ('b,'c/2) cap
+  val join  : ('b,'c/2) cap × ('b,'c/2) cap → ('b,'c) cap
 end
 
 #load "libarray"

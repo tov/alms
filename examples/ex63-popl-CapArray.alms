@@ -4,12 +4,12 @@ module type CAP_ARRAY = sig
   type ('a,'b) array
   type 'b cap : A
 
-  val new : int -> 'a -> ex 'b. ('a,'b) array * 'b cap
-  val set : ('a,'b) array -> int -> 'a -> 'b cap -> 'b cap
-  val get : ('a,'b) array -> int -> 'b cap -> 'a * 'b cap
+  val new : int → 'a → ∃'b. ('a,'b) array * 'b cap
+  val set : ('a,'b) array → int → 'a → 'b cap → 'b cap
+  val get : ('a,'b) array → int → 'b cap → 'a * 'b cap
 
-  val dirtyGet : ('a,'b) array -> int -> 'a
-  val size     : ('a,'b) array -> int
+  val dirtyGet : ('a,'b) array → int → 'a
+  val size     : ('a,'b) array → int
 end
 
 #load "libarray"
@@ -59,8 +59,8 @@ let dirtySumArray (a: (int,'b) A.array) =
    in loop (A.size a - 1) 0
 
 let shuffleAndDirtySum (a: (int,'b) A.array) (cap: 'b A.cap) =
-  let f1 = Future.new (fun _ -> inPlaceShuffle a cap) in
-  let f2 = Future.new (fun _ -> dirtySumArray a) in
+  let f1 = Future.new (λ _ → inPlaceShuffle a cap) in
+  let f2 = Future.new (λ _ → dirtySumArray a) in
     (Future.sync f1, Future.sync f2)
 
 (* For testing: *)
@@ -69,8 +69,8 @@ let listToArray (Cons(x,xs): 'a list) =
   let ('b, a, cap) = A.new n x in
   let rec loop (i: int) (xs: 'a list) (cap: 'b A.cap) : 'b A.cap =
     match xs with
-    | Nil        -> cap
-    | Cons(x,xs) -> loop (i + 1) xs (A.set a i x cap)
+    | Nil        → cap
+    | Cons(x,xs) → loop (i + 1) xs (A.set a i x cap)
    in Pack('b, a, loop 1 xs cap)
 
 let dirtyArrayToList (a: ('a,'b) A.array) =

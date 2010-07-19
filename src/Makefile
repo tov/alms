@@ -5,7 +5,8 @@ GHC      = ghc
 EXE      = alms
 EXAMPLES = ../examples
 SRC      = $(HS_SRC) $(HSBOOT_SRC)
-HS_SRC      = *.hs Basis/*.hs Basis/Channel/*.hs Syntax/*.hs Meta/*.hs
+HS_SRC      = *.hs Basis/*.hs Basis/Channel/*.hs Syntax/*.hs \
+              Message/*.hs Meta/*.hs
 HSBOOT_SRC  = Syntax/*.hs-boot
 
 HCOPTS  = -W -Wall -O0 $(EDITING) $(NOWARN)

@@ -16,11 +16,11 @@ Data-files:     lib/*.alms examples/*.alms examples/*.sh
                 README Makefile
 
 Description:
-    Alms is a general-purpose programming language that supports practical
-    affine types. To offer the expressiveness of Girard’s linear logic while
-    keeping the type system light and convenient, Alms uses expressive kinds
-    that minimize notation while maximizing polymorphism between affine and
-    unlimited types.
+    Alms is an experimental, general-purpose programming language that
+    supports practical affine types. To offer the expressiveness of
+    Girard’s linear logic while keeping the type system light and
+    convenient, Alms uses expressive kinds that minimize notation while
+    maximizing polymorphism between affine and unlimited types.
 
     A key feature of Alms is the ability to introduce abstract affine types
     via ML-style signature ascription. In Alms, an interface can impose
@@ -71,9 +71,14 @@ Executable alms
                         Coercion,
                         Dynamics,
                         Env,
+                        ErrorMessage,
                         ErrorST,
                         Lexer,
                         Loc,
+                        Message.AST,
+                        Message.Parser,
+                        Message.Quasi,
+                        message.Render,
                         Meta.DeriveNotable,
                         Meta.FileString,
                         Meta.Quasi,
@@ -83,6 +88,7 @@ Executable alms
                         Parser,
                         Paths,
                         Ppr,
+                        PprClass,
                         Prec,
                         Rename,
                         Sigma,
@@ -99,6 +105,7 @@ Executable alms
                         Syntax.Patt,
                         Syntax.SyntaxTable,
                         Syntax.Type,
+                        Token,
                         Type,
                         TypeRel,
                         Util,

@@ -45,6 +45,7 @@ import Data.Maybe
 import Control.Arrow hiding (loop, (<+>))
 import Control.Monad
 import Control.Applicative (Applicative(..), (<$>), (<$), (<**>))
+import Text.ParserCombinators.Parsec (GenParser)
 
 -- | Right-associative monadic fold
 foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a
@@ -83,7 +84,7 @@ mapA f (x:xs) = (:) <$> f x <*> mapA f xs
 -- | Apply one function to the head of a list and another to the
 --   tail
 mapCons :: (a -> b) -> ([a] -> [b]) -> [a] -> [b]
-mapCons fh ft []     = []
+mapCons _  _  []     = []
 mapCons fh ft (x:xs) = fh x : ft xs
 
 -- | Map a function over only the first element of a list
@@ -221,3 +222,8 @@ instance GSequence Maybe where
   gsequence  = maybe (return Nothing) (liftM return)
   gsequence_ = maybe (return ()) (>> return ())
 
+-- | Parsec parsers are Applicatives, which lets us write slightly
+--   more pleasant, non-monadic-looking parsers
+instance Applicative (GenParser a b) where
+  pure  = return
+  (<*>) = ap

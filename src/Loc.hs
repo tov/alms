@@ -195,15 +195,15 @@ scrub a = everywhere (mkT bogosify) a where
 
 instance Show Loc where
   showsPrec _ loc
-    | isBogus loc = shows (file loc)
+    | isBogus loc = showString (showFile (file loc))
     | otherwise   =
-        shows (file loc) . showString " (" .
+        showString (showFile (file loc)) . showString " (" .
         showCoords . showString ")"
     where
     showCoords =
-      if line1 loc == line2 loc || col2 loc == 1 then
+      if line1 loc == line2 loc then
         showString "line " . shows (line1 loc) . showString ", " .
-        if col1 loc == col2 loc || col2 loc == 1 then
+        if col1 loc + 1 >= col2 loc then
           showString "column " . shows (col1 loc)
         else
           showString "columns " . shows (col1 loc) .
@@ -213,4 +213,10 @@ instance Show Loc where
         showString ", col. " . shows (col1 loc) .
         showString " to line " . shows (line2 loc) .
         showString ", col. " . shows (col2 loc)
+    showFile "-" = "<stdin>"
+    showFile s   =
+      let shown = show s
+       in if shown == '"' : s ++ "\""
+            then shown
+            else s
 

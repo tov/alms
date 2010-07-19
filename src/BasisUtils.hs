@@ -31,6 +31,7 @@ module BasisUtils (
 
 import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
+import ErrorMessage (AlmsMonad)
 import Meta.Quasi
 import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
@@ -156,8 +157,8 @@ vapp  = \(VaFun _ f) x -> f (vinj x)
 infixr 0 `vapp`
 
 -- | Build the renaming environment and rename the entries
-basis2renv :: Monad m => [Entry Raw] ->
-              m ([Entry Renamed], RenameState)
+basis2renv :: AlmsMonad m =>
+              [Entry Raw] -> m ([Entry Renamed], RenameState)
 basis2renv =
   runRenamingM False _loc renameState0 . renameMapM each where
   each ValEn { enName = u, enType = t, enValue = v } = do
@@ -175,9 +176,9 @@ basis2renv =
     return ModEn { enModName = u', enEnts = es' }
 
 -- | Build the dynamic environment
-basis2venv :: Monad m => [Entry Renamed] -> m E
+basis2venv :: AlmsMonad m => [Entry Renamed] -> m E
 basis2venv es = foldM add genEmpty es where
-  add :: Monad m => E -> Entry Renamed -> m E
+  add :: AlmsMonad m => E -> Entry Renamed -> m E
   add e (ValEn { enName = n, enValue = v })
           = return (Dynamics.addVal e n v)
   add e (ModEn { enModName = n, enEnts = es' })
@@ -185,7 +186,7 @@ basis2venv es = foldM add genEmpty es where
   add e _ = return e
 
 -- | Build the static environment
-basis2tenv :: Monad m => [Entry Renamed] -> m S
+basis2tenv :: AlmsMonad m => [Entry Renamed] -> m S
 basis2tenv  = liftM snd . runTC env0 . tcMapM each where
   each ValEn { enName = n, enType = t }
     = Statics.addVal n t

@@ -1,13 +1,16 @@
 -- | Lexer setup for parsec
 module Lexer (
+  -- * Class for saving pre-whitespace position
+  T.TokenEnd(..),
   -- * Identifier tokens
   isUpperIdentifier, lid, uid,
 
-  -- * Special, unreserved operators
-  sharpLoad, sharpInfo,
+  -- * Operators
   semis, bang, star, slash, plus,
-  lolli, arrow, funbraces, funbraceLeft, funbraceRight,
-  qualbox, qualboxLeft, qualboxRight,
+  sharpLoad, sharpInfo, sharpPrec,
+  lolli, arrow, funbraces,
+  lambda, forall, exists, mu,
+  qualbox,
   qualU, qualA,
   opP,
 
@@ -21,11 +24,11 @@ module Lexer (
 
 import Prec
 
-import Data.Char (isUpper)
+import Data.Char
 import Text.ParserCombinators.Parsec
-import qualified Text.ParserCombinators.Parsec.Token as T
+import qualified Token as T
 
-tok :: T.TokenParser st
+tok :: T.TokenEnd st => T.TokenParser st
 tok = T.makeTokenParser T.LanguageDef {
     T.commentStart   = "(*",
     T.commentEnd     = "*)",
@@ -33,9 +36,9 @@ tok = T.makeTokenParser T.LanguageDef {
     T.nestedComments = True,
     T.identStart     = upper <|> lower <|> oneOf "_",
     T.identLetter    = alphaNum <|> oneOf "_'",
-    T.opStart        = oneOf "!$%&*+-/<=>?@^|~",
-    T.opLetter       = oneOf "!$%&*+-/<=>?@^|~.:",
-    T.reservedNames  = ["fun", "sigma",
+    T.opStart        = satisfy isOpStart,
+    T.opLetter       = satisfy isOpLetter,
+    T.reservedNames  = ["fun", "λ",
                         "if", "then", "else",
                         "match", "with", "as", "_",
                         "try",
@@ -45,27 +48,55 @@ tok = T.makeTokenParser T.LanguageDef {
                         "interface", "abstype", "end",
                         "module", "struct",
                         "sig", "val", "include",
-                        "all", "ex", "mu", "of",
+                        "all", "ex", "mu", "μ", "of",
                         "type", "qualifier"],
-    T.reservedOpNames = ["|", "=", ":", ":>", "->"],
+    T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
+                         "∀", "∃" ],
     T.caseSensitive = True
   }
 
-identifier      :: CharParser st String
+isOpStart, isOpLetter :: Char -> Bool
+isOpStart c
+  | isAscii c = c `elem` "!$%&*+-/<=>?@^|~"
+  | otherwise = case generalCategory c of
+      ConnectorPunctuation  -> True
+      DashPunctuation       -> True
+      OtherPunctuation      -> True
+      MathSymbol            -> True
+      CurrencySymbol        -> True
+      OtherSymbol           -> True
+      _                     -> False
+isOpLetter c
+  | isAscii c = c `elem` "!$%&*+-/<=>?@^|~.:"
+  | otherwise = case generalCategory c of
+      ConnectorPunctuation  -> True
+      DashPunctuation       -> True
+      OtherPunctuation      -> True
+      MathSymbol            -> True
+      CurrencySymbol        -> True
+      OtherSymbol           -> True
+      ModifierSymbol        -> True -- not in OpStart
+   -- OpenPunctuation
+   -- ClosePunctuation
+   -- InitialQuote
+   -- FinalQuote
+      _                     -> False
+
+identifier      :: T.TokenEnd st => CharParser st String
 identifier       = T.identifier tok
-reserved        :: String -> CharParser st ()
+reserved        :: T.TokenEnd st => String -> CharParser st ()
 reserved         = T.reserved tok
-operator        :: CharParser st String
+operator        :: T.TokenEnd st => CharParser st String
 operator         = T.operator tok
-reservedOp      :: String -> CharParser st ()
+reservedOp      :: T.TokenEnd st => String -> CharParser st ()
 reservedOp       = T.reservedOp tok
-charLiteral     :: CharParser st Char
+charLiteral     :: T.TokenEnd st => CharParser st Char
 charLiteral      = T.charLiteral tok
-stringLiteral   :: CharParser st String
+stringLiteral   :: T.TokenEnd st => CharParser st String
 stringLiteral    = T.stringLiteral tok
-natural         :: CharParser st Integer
+natural         :: T.TokenEnd st => CharParser st Integer
 natural          = T.natural tok
-integer         :: CharParser st Integer
+integer         :: T.TokenEnd st => CharParser st Integer
 integer          = lexeme $ try $ do
   sign <- choice [
             char '+' >> return id,
@@ -74,7 +105,7 @@ integer          = lexeme $ try $ do
           ]
   nat  <- natural
   return (sign nat)
-integerOrFloat  :: CharParser st (Either Integer Double)
+integerOrFloat  :: T.TokenEnd st => CharParser st (Either Integer Double)
 integerOrFloat   = lexeme $ try $ do
   sign <- choice [
             char '+' >> return id,
@@ -84,112 +115,132 @@ integerOrFloat   = lexeme $ try $ do
   nof  <- naturalOrFloat
   return (sign nof)
  
-float           :: CharParser st Double
+float           :: T.TokenEnd st => CharParser st Double
 float            = T.float tok
-naturalOrFloat  :: CharParser st (Either Integer Double)
+naturalOrFloat  :: T.TokenEnd st => CharParser st (Either Integer Double)
 naturalOrFloat   = T.naturalOrFloat tok
-decimal         :: CharParser st Integer
+decimal         :: T.TokenEnd st => CharParser st Integer
 decimal          = T.decimal tok
-hexadecimal     :: CharParser st Integer
+hexadecimal     :: T.TokenEnd st => CharParser st Integer
 hexadecimal      = T.hexadecimal tok
-octal           :: CharParser st Integer
+octal           :: T.TokenEnd st => CharParser st Integer
 octal            = T.octal tok
-symbol          :: String -> CharParser st String
+symbol          :: T.TokenEnd st => String -> CharParser st String
 symbol           = T.symbol tok
-lexeme          :: CharParser st a -> CharParser st a
+lexeme          :: T.TokenEnd st => CharParser st a -> CharParser st a
 lexeme           = T.lexeme tok
-whiteSpace      :: CharParser st ()
+whiteSpace      :: T.TokenEnd st => CharParser st ()
 whiteSpace       = T.whiteSpace tok
-parens          :: CharParser st a -> CharParser st a
+parens          :: T.TokenEnd st => CharParser st a -> CharParser st a
 parens           = T.parens tok
-braces          :: CharParser st a -> CharParser st a
+braces          :: T.TokenEnd st => CharParser st a -> CharParser st a
 braces           = T.braces tok
-angles          :: CharParser st a -> CharParser st a
+angles          :: T.TokenEnd st => CharParser st a -> CharParser st a
 angles           = T.angles tok
-brackets        :: CharParser st a -> CharParser st a
+brackets        :: T.TokenEnd st => CharParser st a -> CharParser st a
 brackets         = T.brackets tok
-squares         :: CharParser st a -> CharParser st a
+squares         :: T.TokenEnd st => CharParser st a -> CharParser st a
 squares          = T.squares tok
-semi            :: CharParser st String
+semi            :: T.TokenEnd st => CharParser st String
 semi             = T.semi tok
-comma           :: CharParser st String
+comma           :: T.TokenEnd st => CharParser st String
 comma            = T.comma tok
-colon           :: CharParser st String
+colon           :: T.TokenEnd st => CharParser st String
 colon            = T.reservedOp tok ":" >> return ":"
-dot             :: CharParser st String
+dot             :: T.TokenEnd st => CharParser st String
 dot              = T.dot tok
-semiSep         :: CharParser st a -> CharParser st [a]
+semiSep         :: T.TokenEnd st => CharParser st a -> CharParser st [a]
 semiSep          = T.semiSep tok
-semiSep1        :: CharParser st a -> CharParser st [a]
+semiSep1        :: T.TokenEnd st => CharParser st a -> CharParser st [a]
 semiSep1         = T.semiSep1 tok
-commaSep        :: CharParser st a -> CharParser st [a]
+commaSep        :: T.TokenEnd st => CharParser st a -> CharParser st [a]
 commaSep         = T.commaSep tok
-commaSep1       :: CharParser st a -> CharParser st [a]
+commaSep1       :: T.TokenEnd st => CharParser st a -> CharParser st [a]
 commaSep1        = T.commaSep1 tok
 
 -- | The @#load@ pragma
-sharpLoad       :: CharParser st ()
+sharpLoad       :: T.TokenEnd st => CharParser st ()
 sharpLoad        = reserved "#l" <|> reserved "#load"
 
 -- | The @#info@ pragma
-sharpInfo       :: CharParser st ()
+sharpInfo       :: T.TokenEnd st => CharParser st ()
 sharpInfo        = reserved "#i" <|> reserved "#info"
 
+-- | The @#prec@ pragma
+sharpPrec       :: T.TokenEnd st => CharParser st ()
+sharpPrec        = reserved "#p" <|> reserved "#prec"
+
 -- | @!@, which has special meaning in let patterns
-bang            :: CharParser st String
+bang            :: T.TokenEnd st => CharParser st String
 bang             = symbol "!"
 
 -- | The @-o@ type operator, which violates our other lexer rules
-lolli           :: CharParser st ()
-lolli            = reserved "-o"
+lolli           :: T.TokenEnd st => CharParser st ()
+lolli            = reserved "-o" <|> reservedOp "⊸"
 
 -- | The @->@ type operator
-arrow           :: CharParser st ()
-arrow            = reservedOp "->"
+arrow           :: T.TokenEnd st => CharParser st ()
+arrow            = reservedOp "->" <|> reservedOp "→"
 
 -- | The left part of the $-[_]>$ operator
-funbraceLeft    :: CharParser st ()
+funbraceLeft    :: T.TokenEnd st => CharParser st ()
 funbraceLeft     = try (symbol "-[") >> return ()
 
 -- | The right part of the $-[_]>$ operator
-funbraceRight   :: CharParser st ()
+funbraceRight   :: T.TokenEnd st => CharParser st ()
 funbraceRight    = try (symbol "]>") >> return ()
 
-funbraces       :: CharParser st a -> CharParser st a
+funbraces       :: T.TokenEnd st => CharParser st a -> CharParser st a
 funbraces        = between funbraceLeft funbraceRight
 
 -- | The left part of the $|[_]$ annotation
-qualboxLeft     :: CharParser st ()
+qualboxLeft     :: T.TokenEnd st => CharParser st ()
 qualboxLeft      = try (symbol "|[") >> return ()
 
 -- | The right part of the $|[_]$ annotation
-qualboxRight    :: CharParser st ()
+qualboxRight    :: T.TokenEnd st => CharParser st ()
 qualboxRight     = try (symbol "]") >> return ()
 
-qualbox         :: CharParser st a -> CharParser st a
+qualbox         :: T.TokenEnd st => CharParser st a -> CharParser st a
 qualbox          = between qualboxLeft qualboxRight
 
+-- | The function keyword
+lambda          :: T.TokenEnd st => CharParser st ()
+lambda           = reserved "fun" <|> reservedOp "λ" <|> reservedOp "Λ"
+
+-- | The universal quantifier keyword
+forall          :: T.TokenEnd st => CharParser st ()
+forall           = reserved "all" <|> reservedOp "∀"
+
+-- | The existential quantifier keyword
+exists          :: T.TokenEnd st => CharParser st ()
+exists           = reserved "ex" <|> reservedOp "∃"
+
+-- | The recursive type binder
+mu              :: T.TokenEnd st => CharParser st ()
+mu               = reserved "mu" <|> reservedOp "μ"
+
 -- | @;@, @;;@, ...
-semis           :: CharParser st String
+semis           :: T.TokenEnd st => CharParser st String
 semis            = lexeme (many1 (char ';'))
 
 -- | @*@, which is reserved in types but not in expressions
-star            :: CharParser st String
-star             = symbol "*"
+star            :: T.TokenEnd st => CharParser st String
+star             = symbol "*" <|> symbol "×"
 
 -- | @/@, which is reserved in types but not in expressions
-slash           :: CharParser st String
+slash           :: T.TokenEnd st => CharParser st String
 slash            = symbol "/"
 
 -- | @+@, which is reserved in types but not in expressions
-plus            :: CharParser st String
+plus            :: T.TokenEnd st => CharParser st String
 plus             = symbol "+"
 
 -- | Qualifier @U@ (not reserved)
-qualU    :: CharParser st ()
+qualU    :: T.TokenEnd st => CharParser st ()
 qualU     = reserved "U"
 -- | Qualifier @A@ (not reserved)
-qualA    :: CharParser st ()
+qualA    :: T.TokenEnd st => CharParser st ()
 qualA     = reserved "A"
 
 -- | Is the string an uppercase identifier?  (Special case: @true@ and
@@ -202,14 +253,14 @@ isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 
 -- | Lex a lowercase identifer
-lid        :: CharParser st String
+lid        :: T.TokenEnd st => CharParser st String
 lid              = try $ do
   s <- identifier
   if isUpperIdentifier s
     then pzero <?> "lowercase identifier"
     else return s
 -- | Lex an uppercase identifer
-uid        :: CharParser st String
+uid        :: T.TokenEnd st => CharParser st String
 uid              = try $ do
   s <- identifier <|> symbol "()"
   if isUpperIdentifier s
@@ -217,7 +268,7 @@ uid              = try $ do
     else pzero <?> "uppercase identifier"
 
 -- | Accept an operator having the specified precedence
-opP :: Prec -> CharParser st String
+opP :: T.TokenEnd st => Prec -> CharParser st String
 opP p = try $ do
   op <- operator
   if precOp op == p

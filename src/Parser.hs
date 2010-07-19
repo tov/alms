@@ -7,10 +7,13 @@
 module Parser (
   -- * The parsing monad
   P, parse,
+  -- ** Errors
+  ParseError,
   -- ** Quasiquote parsing
   parseQuasi,
-  -- ** REPL command parsing
-  parseGetInfo, parseInteractive,
+  -- ** File and REPL command parsing
+  parseFile,
+  REPLCommand(..), parseCommand,
   -- ** Parsers
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
     parseTyDec, parseAbsTy, parseType, parseTyPat,
@@ -27,16 +30,26 @@ import Prec
 import Syntax
 import Sigma
 import Lexer
+import ErrorMessage (AlmsException(..), Phase(ParserPhase))
+import qualified Message.AST as Msg
 
 import qualified Data.Map as M
+import qualified Data.List as L
 import qualified Language.Haskell.TH as TH
 import Text.ParserCombinators.Parsec hiding (parse)
+import qualified Text.ParserCombinators.Parsec.Error as PE
 import System.IO.Unsafe (unsafePerformIO)
 
 data St   = St {
               stSigma :: Bool,
-              stAnti  :: Bool
+              stAnti  :: Bool,
+              stPos   :: SourcePos
             }
+
+instance TokenEnd St where
+  saveTokenEnd = do
+    pos <- getPosition
+    updateState $ \st -> st { stPos = pos }
 
 -- | A 'Parsec' character parser, with abstract state
 type P a  = CharParser St a
@@ -44,7 +57,8 @@ type P a  = CharParser St a
 state0 :: St
 state0 = St {
            stSigma = False,
-           stAnti  = False
+           stAnti  = False,
+           stPos   = toSourcePos bogus
          }
 
 -- | Run a parser, given the source file name, on a given string
@@ -72,6 +86,53 @@ parseQuasi str p = do
   where
   mkSetter = setPosition . toSourcePos . fromTHLoc
 
+-- | REPL-level commands
+data REPLCommand
+  = GetInfoCmd [Ident Raw]
+  | GetPrecCmd [String]
+  | DeclsCmd [Decl Raw]
+  | ParseError AlmsException
+
+-- | Parse a line typed into the REPL
+parseCommand :: Int -> String -> String -> REPLCommand
+parseCommand row line cmd =
+  case parseGetInfo line of
+    Just ids -> GetInfoCmd ids
+    _ -> case parseGetPrec line of
+      Just lids -> GetPrecCmd lids
+      _ -> case parseInteractive row cmd of
+        Right ast -> DeclsCmd ast
+        Left err  -> ParseError (almsParseError err)
+
+-- | Given a file name and source, parse it
+parseFile :: Id i => String -> String -> Either AlmsException (Prog i)
+parseFile  = (almsParseError +++ id) <$$> parse parseProg
+
+almsParseError :: ParseError -> AlmsException
+almsParseError e =
+  AlmsException ParserPhase (fromSourcePos (errorPos e)) message
+  where
+    message =
+      Msg.Stack Msg.Broken [
+        flow ";" messages,
+        (if null messages then id else Msg.Indent)
+           (Msg.Table (unlist ++ explist))
+      ]
+    unlist  = case unexpects of
+      []  -> []
+      s:_ -> [("unexpected:", Msg.Block (Msg.Words s))]
+    explist = case expects of
+      []  -> []
+      _   -> [("expected:", flow "," expects)]
+    messages  = [ s | PE.Message s     <- PE.errorMessages e, not$null s ]
+    unexpects = [ s | PE.UnExpect s    <- PE.errorMessages e, not$null s ]
+             ++ [ s | PE.SysUnExpect s <- PE.errorMessages e, not$null s ]
+    expects   = [ s | PE.Expect s      <- PE.errorMessages e, not$null s ]
+    flow c         = Msg.Block . Msg.Flow . map Msg.Words . punct c . L.nub
+    punct _ []     = []
+    punct _ [s]    = [s]
+    punct c (s:ss) = (s++c) : punct c ss
+
 parseGetInfo :: String -> Maybe [Ident Raw]
 parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
   where
@@ -80,6 +141,13 @@ parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
         many1 (identp
                <|> fmap Var <$> qlidnatp
                <|> J [] . Var . Syntax.lid <$> (operator <|> semis))
+
+parseGetPrec :: String -> Maybe [String]
+parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
+  where
+    parser = finish $
+      sharpPrec *>
+        many1 (operator <|> semis)
 
 parseInteractive :: Id i => Int -> String -> Either ParseError [Decl i]
 parseInteractive line src = parse p "-" src where
@@ -105,15 +173,20 @@ mapSigma f p = do
 getSigma :: P Bool
 getSigma  = stSigma `fmap` getState
 
-curLoc :: P Loc
-curLoc  = getPosition >>! fromSourcePos
+-- | Get the ending position of the last token, before trailing whitespace
+getEndPosition :: P SourcePos
+getEndPosition  = stPos <$> getState
 
-addLoc :: Relocatable a => P a -> P a
-addLoc p = do
+-- | Parse something and return the span of its location
+withLoc :: P a -> P (a, Loc)
+withLoc p = do
   before <- getPosition
   a      <- p
-  after  <- getPosition
-  return (a <<@ fromSourcePosSpan before after)
+  after  <- getEndPosition
+  return (a, fromSourcePosSpan before after)
+
+addLoc :: Relocatable a => P a -> P a
+addLoc  = uncurry (<<@) <$$> withLoc
 
 class Nameable a where
   (@@) :: String -> a -> a
@@ -299,8 +372,8 @@ oplevelp :: Id i => Prec -> P (Lid i)
 oplevelp  = (<?> "operator") . liftM Syntax.lid . opP
 
 quantp :: P Quant
-quantp  = Forall <$ reserved "all"
-      <|> Exists <$ reserved "ex"
+quantp  = Forall <$ forall
+      <|> Exists <$ exists
       <|> antiblep
   <?> "quantifier"
 
@@ -312,7 +385,7 @@ typepP p = "type" @@ case () of
   _ | p == precStart
           -> do
                tc <- tyQu <$> quantp
-                 <|> tyMu <$  reserved "mu"
+                 <|> tyMu <$  mu
                tvs <- many tyvarp
                dot
                t   <- typepP p
@@ -810,7 +883,7 @@ exprp = expr0 where
          optional (reservedOp "|")
          clauses <- flip sepBy1 (reservedOp "|") $ addLoc $ do
            (xi, sigma, lift) <- pattbangp
-           reservedOp "->"
+           arrow
            ei <- mapSigma (sigma ||) expr0
            return $
              lift False
@@ -836,7 +909,7 @@ exprp = expr0 where
                 (exApp (exVar (qlid "INTERNALS.Exn.raise"))
                        (exVar (qlid "e")))
               ],
-      do reserved "fun"
+      do lambda
          (sigma, build) <- choice
            [
              argsp1,
@@ -908,7 +981,7 @@ exprp = expr0 where
 preCasealtp :: Id i => P (Bool -> CaseAlt i)
 preCasealtp = "match clause" @@ (const <$> antiblep) <|> do
     (xi, sigma, lift) <- pattbangp
-    reservedOp "->"
+    arrow
     ei <- mapSigma (sigma ||) exprp
     return (\b -> lift b caClause xi ei)
 
@@ -985,9 +1058,8 @@ vargp :: Id i =>
          (Type i -> Type i -> Type i) ->
          P (Bool, Type i -> Type i, Expr i -> Expr i)
 vargp arrcon = do
-  inBang <- bangp
-  loc    <- curLoc
-  (p, t) <- paty
+  inBang        <- bangp
+  ((p, t), loc) <- withLoc paty
   return (inBang, arrcon t, condSigma inBang True (flip exAbs t) p <<@ loc)
 
 -- Parse a (pat:typ, ...) or () argument
@@ -1056,10 +1128,10 @@ pamty  = choice
 tyargp :: Id i => P (Type i -> Type i, Expr i -> Expr i)
 tyargp  = do
   tvs <- liftM return loctv <|> brackets (commaSep1 loctv)
-  return (\t -> foldr (\(_,   tv) -> tyAll tv) t tvs,
-          \e -> foldr (\(loc, tv) -> exTAbs tv <<@ loc) e tvs)
+  return (\t -> foldr (\(tv, _  ) -> tyAll tv) t tvs,
+          \e -> foldr (\(tv, loc) -> exTAbs tv <<@ loc) e tvs)
     where
-  loctv = liftM2 (,) curLoc tyvarp
+  loctv = withLoc tyvarp
 
 pattbangp :: Id i =>
              P (Patt i, Bool,
@@ -1135,7 +1207,7 @@ litp = (<?> "literal") $ choice [
          antiblep
        ]
 
-finish :: CharParser st a -> CharParser st a
+finish :: P a -> P a
 finish p = do
   optional (whiteSpace)
   r <- p

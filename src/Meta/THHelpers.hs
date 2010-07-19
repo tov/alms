@@ -219,9 +219,3 @@ parseHs str0 = do
   hsOr hs1 (Just hs2)  = HsOr hs1 hs2
   underscore           = symbol haskell "_"
   lid_                 = lid <|> underscore
-
--- | Parsec parsers are Applicatives, which lets us write slightly
---   more pleasant, non-monadic-looking parsers
-instance Applicative (GenParser a b) where
-  pure  = return
-  (<*>) = ap

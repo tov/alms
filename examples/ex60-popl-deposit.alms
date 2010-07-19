@@ -12,9 +12,9 @@ let deposit (a: int A.array) (acct: int) (amount: int) =
  * but for the sake of example: *)
 module type LOCK = sig
   type lock
-  val new : unit -> lock
-  val acquire : lock -> unit
-  val release : lock -> unit
+  val new : unit → lock
+  val acquire : lock → unit
+  val release : lock → unit
 end
 
 module Lock : LOCK = struct

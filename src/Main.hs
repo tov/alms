@@ -8,7 +8,8 @@ module Main (
 import Util
 import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest, printDoc)
 import qualified Ppr
-import Parser (parse, parseInteractive, parseProg, parseGetInfo)
+import Parser (parseFile, REPLCommand(..), parseCommand)
+import Prec (precOp)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg,
                getRenamingInfo, RenamingInfo(..))
@@ -23,18 +24,19 @@ import BasisUtils (basis2venv, basis2tenv, basis2renv)
 import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
-import Loc (isBogus, initial)
+import Loc (isBogus, initial, bogus)
+import qualified ErrorMessage as EM
+import qualified Message.AST  as Msg
 
+import Data.Char (isSpace)
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
-import IO (hPutStrLn, stderr)
+import IO (hPutStrLn, hFlush, stdout, stderr)
 import qualified Control.Exception as Exn
 
 #ifdef USE_READLINE
 import qualified USE_READLINE as RL
-#else
-import IO (hFlush, stdout)
 #endif
 
 data Option = Don'tExecute
@@ -43,6 +45,7 @@ data Option = Don'tExecute
             | Verbose
             | Quiet
             | LoadFile String
+            | NoLineEdit
   deriving Eq
 
 -- | The main procedure
@@ -80,8 +83,8 @@ loadFile st name = do
 
 loadString :: ReplState -> String -> String -> IO ReplState
 loadString st name src = do
-  case parse parseProg name src of
-    Left e     -> fail $ show e
+  case parseFile name src of
+    Left e     -> Exn.throwIO e
     Right ast0 -> do
       (st1, ast1)    <- renaming (st, prog2decls (ast0 :: Prog Raw))
       (st2, _, ast2) <- statics False (st1, ast1)
@@ -92,8 +95,8 @@ loadString st name src = do
 batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
 batch filename msrc opt st0 = do
       src <- msrc
-      case parse parseProg filename src of
-        Left e    -> fail $ show e
+      case parseFile filename src of
+        Left e    -> Exn.throwIO e
         Right ast -> rename ast where
           rename  :: Prog Raw     -> IO ()
           check   :: Prog Renamed -> IO ()
@@ -163,20 +166,28 @@ carp msg = do
 
 handleExns :: IO a -> IO a -> IO a
 handleExns body handler =
-  (body
-    `Exn.catch`
-      \e@(VExn { }) -> do
+  body
+    `Exn.catches`
+    [ Exn.Handler $ \e@(VExn { }) -> do
         prog <- getProgName
-        hPutStrLn stderr .
-          show $
-            hang (text (prog ++ ": Uncaught exception:"))
-                 2
-                 (vppr e)
-        handler)
-    `Exn.catch`
-      \err -> do
-        hPutStrLn stderr (errorString err)
-        handler
+        continue $ EM.AlmsException
+                     (EM.OtherError ("Uncaught exception"))
+                     bogus
+                     (Msg.Table [
+                        ("in program:", Msg.Exact prog),
+                        ("exception:", Msg.Printable (vppr e))
+                     ]),
+      Exn.Handler continue,
+      Exn.Handler $ \err ->
+        continue $ EM.AlmsException EM.DynamicsPhase bogus $
+          Msg.Flow [Msg.Words (errorString err)],
+      Exn.Handler $ \(Exn.SomeException err) ->
+        continue $ EM.AlmsException EM.DynamicsPhase bogus $
+          Msg.Flow [Msg.Words (show err)] ]
+  where
+    continue err = do
+      hPutStrLn stderr (show (err :: EM.AlmsException))
+      handler
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
 interactive opt rs0 = do
@@ -226,9 +237,9 @@ interactive opt rs0 = do
                                return st3
 
       in rename (st, ast)
-    quiet  = opt Quiet
-    say    = if quiet then const (return ()) else printDoc
-    get    = if quiet then const (readline "") else readline
+    getln  = if opt NoLineEdit then getline else readline
+    say    = if opt Quiet then const (return ()) else printDoc
+    get    = if opt Quiet then const (getln "") else getln
     reader :: Int -> ReplState -> IO (Maybe (Int, [Decl Raw]))
     reader row st = loop 1 []
       where
@@ -242,20 +253,24 @@ interactive opt rs0 = do
               hPutStrLn stderr ""
               hPutStrLn stderr (show err)
               reader (row + count) st
-            (Just line, _)       ->
-              case parseGetInfo line of
-                Nothing ->
-                  let cmd = fixup (line : map fst acc) in
-                    case parseInteractive row cmd of
-                      Right ast -> do
-                        addHistory cmd
-                        return (Just (row + count, ast))
-                      Left derr ->
-                        loop (count + 1) ((line, derr) : acc)
-                Just ids -> do
+            (Just line, _)
+              | all isSpace line -> loop count acc
+              | otherwise        ->
+              let cmd = fixup (line : map fst acc) in
+              case parseCommand row line cmd of
+                GetInfoCmd ids -> do
                   mapM_ (printInfo st) ids
                   addHistory line
                   loop (count + 1) acc
+                GetPrecCmd lids -> do
+                  mapM_ printPrec lids
+                  addHistory line
+                  loop (count + 1) acc
+                DeclsCmd ast -> do
+                  addHistory cmd
+                  return (Just (row + count, ast))
+                ParseError derr -> 
+                  loop (count + 1) ((line, derr) : acc)
     printResult :: Module -> NewValues -> IO ()
     printResult md00 values = say (loop True md00) where
       loop tl md0 = case md0 of
@@ -325,6 +340,12 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
                        else text "  -- defined at" <+> text (show loc)
       where (>?>) = if Ppr.isEmpty who then (<+>) else (Ppr.>?>)
 
+printPrec :: String -> IO ()
+printPrec oper = printDoc $
+  hang (text oper)
+       2
+       (text ":" <+> text (show (precOp oper)))
+
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = printDoc $ hang (text s <> char ':') 2 (ppr a)
 
@@ -353,6 +374,7 @@ processArgs opts0 args0 k = loop opts0 args0 where
   loop opts ("-c":r)    = loop (Don'tCoerce:opts) r
   loop opts ("-v":r)    = loop (Verbose:opts) r
   loop opts ("-q":r)    = loop (Quiet:opts) r
+  loop opts ("-e":r)    = loop (NoLineEdit:opts) r
   loop opts (('-':c:d:e):r)
                         = loop opts (['-',c]:('-':d:e):r)
   loop _    (('-':_):_) = usage
@@ -370,6 +392,7 @@ usage  = do
   hPutStrLn stderr "Options:"
   hPutStrLn stderr "  -l FILE  Load file"
   hPutStrLn stderr "  -q       Don't print prompt, greeting, responses"
+  hPutStrLn stderr "  -e       Don't use line editing"
   hPutStrLn stderr ""
   hPutStrLn stderr "Debugging options:"
   hPutStrLn stderr "  -b       Don't load libbasis.alms"
@@ -379,8 +402,8 @@ usage  = do
   exitFailure
 
 initialize :: IO ()
-readline   :: String -> IO (Maybe String)
 addHistory :: String -> IO ()
+readline   :: String -> IO (Maybe String)
 
 #ifdef USE_READLINE
 initialize   = RL.initialize
@@ -389,8 +412,11 @@ readline     = RL.readline
 #else
 initialize   = return ()
 addHistory _ = return ()
-readline s   = do
+readline     = getline
+#endif
+
+getline    :: String -> IO (Maybe String)
+getline s   = do
   putStr s
   hFlush stdout
   catch (fmap Just getLine) (\_ -> return Nothing)
-#endif

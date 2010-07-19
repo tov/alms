@@ -95,6 +95,14 @@ let (>=) = flip (<=)
 let (>.) = flip (<.)
 let (>=.) = flip (<=.)
 
+type `a × `b = `a * `b
+(* These have too-tight precedences *)
+let (≠)  = (!=)
+let (≤)  = (<=)
+let (≥)  = (>=)
+let (≤.) = (<=.)
+let (≥.) = (>=.)
+
 let null = fun 'a (x : 'a list) ->
   match x with
   | Nil -> true
@@ -149,6 +157,10 @@ let fst[`a,`b] (x: `a, _: `b) = x
 let snd[`a,`b] (_: `a, y: `b) = y
 
 let (=>!) [`a] (x: `a) [`b] (y: `b) = (y, x)
+let (⇒) = (=>!)
+
+let (←) = (<-)
+let (⇐) = (<-!)
 
 open INTERNALS
 open Exn

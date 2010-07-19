@@ -7,15 +7,15 @@ module type CAP_LOCK_ARRAY = sig
 
   (* Already inherited new from CAP_ARRAY, so we need to use a
    * different name here: *)
-  val new'    : int -> 'a -> ex 'b. ('a,'b) array
-  val acquire : ('a, 'b) array -> 'b cap
-  val release : ('a, 'b) array -> 'b cap -> unit
+  val new'    : int → 'a → ∃'b. ('a,'b) array
+  val acquire : ('a, 'b) array → 'b cap
+  val release : ('a, 'b) array → 'b cap → unit
 end
 
 module CapLockArray : CAP_LOCK_ARRAY = struct
   open CapArray
 
-  type ('a,'b) array = ('a,'b) CapArray.array * 'b cap MVar.mvar
+  type ('a,'b) array = ('a,'b) CapArray.array × 'b cap MVar.mvar
 
   let new' (size: int) (init: 'a) =
     let ('b, a, cap) = new size init in

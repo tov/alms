@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      FlexibleContexts,
       FlexibleInstances,
       GeneralizedNewtypeDeriving,
       MultiParamTypeClasses,
@@ -20,6 +21,8 @@ module Rename (
   -- * REPL query
   getRenamingInfo, RenamingInfo(..),
 ) where
+
+import ErrorMessage
 
 import Meta.Quasi
 import Syntax hiding ((&))
@@ -53,20 +56,27 @@ renameState0  = RenameState {
   savedCounter  = renamed0
 }
 
+-- | Generate a renamer error.
+renameError :: MessageV -> R a
+renameError msg0 = do
+  loc <- R (asks location)
+  throwAlms (AlmsException RenamerPhase loc msg0)
+
+renameBug :: String -> String -> R a
+renameBug culprit msg0 = do
+  loc <- R (asks location)
+  throwAlms (almsBug RenamerPhase loc culprit msg0)
+
 -- | The renaming monad: Reads a context, writes a module, and
 --   keeps track of a renaming counter state.
 newtype Renaming a = R {
-  unR :: RWST Context Module Renamed (Either String) a
+  unR :: RWST Context Module Renamed (Either AlmsException) a
 } deriving Functor
 
 instance Monad Renaming where
   return  = R . return
   m >>= k = R (unR m >>= unR . k)
-  fail s  = R $ do
-    loc <- asks location
-    fail $ if isBogus loc
-      then s
-      else show loc ++ ":\nname error: " ++ s
+  fail    = renameError . [$msg| $words:1 |]
 
 instance MonadWriter Module Renaming where
   listen = R . listen . unR
@@ -77,10 +87,14 @@ instance MonadReader Env Renaming where
   ask     = R (asks env)
   local f = R . local (\cxt -> cxt { env = f (env cxt) }) . unR
 
-instance MonadError String Renaming where
-  throwError = fail
+instance MonadError AlmsException Renaming where
+  throwError = R . throwError
   catchError body handler =
     R (catchError (unR body) (unR . handler))
+
+instance AlmsMonad Renaming where
+  throwAlms = throwError
+  catchAlms = catchError
 
 -- | The renaming environment
 data Env = Env {
@@ -117,7 +131,7 @@ data Context = Context {
 
 -- | Run a renaming computation
 runRenaming :: Bool -> Loc -> RenameState -> Renaming a ->
-               Either String (a, RenameState)
+               Either AlmsException (a, RenameState)
 runRenaming nonTrivial loc saved action = do
   (result, counter, md) <-
     runRWST (unR action)
@@ -131,9 +145,10 @@ runRenaming nonTrivial loc saved action = do
   return (result, RenameState env' counter)
 
 -- | Run a renaming computation
-runRenamingM :: Monad m =>
-                Bool -> Loc -> RenameState -> Renaming a -> m (a, RenameState)
-runRenamingM  = either fail return <$$$$> runRenaming
+runRenamingM :: AlmsMonad m =>
+                Bool -> Loc -> RenameState -> Renaming a ->
+                m (a, RenameState)
+runRenamingM = unTryAlms . return <$$$$> runRenaming
 
 -- | Alias
 type R a  = Renaming a
@@ -188,7 +203,26 @@ don'tAllocate = R . local (\cxt -> cxt { allocate = False }) . unR
 
 -- | Generate an unbound name error
 unbound :: Show a => String -> a -> R b
-unbound ns a = fail $ ns ++ " not in scope: `" ++ show a ++ "'"
+unbound ns a =
+  renameError [$msg| $words:ns not in scope: <q>$show:a</q>. |]
+
+-- | Generate an error about a name declared twice
+repeated :: Show a => String -> a -> String -> [Loc] -> R b
+repeated what a inwhat locs =
+  renameError [$msg|
+    $words:what <q>$show:a</q>
+    repeated $words:times in $words:inwhat $words:at
+    $ul:slocs
+  |]
+  where
+    times = case length locs of
+          0 -> ""
+          1 -> ""
+          2 -> "twice"
+          3 -> "thrice"
+          _ -> show (length locs) ++ " times"
+    at    = if length locs > 1 then "at:" else ""
+    slocs = map [$msg| $show:1 |] locs
 
 -- | Are all keys of the list unique?  If not, return a pair of
 --   values
@@ -245,7 +279,7 @@ getGenericFull what prj qx = do
   case envLookup prj qx e of
     Right qx'     -> return qx'
     Left Nothing  -> unbound what qx
-    Left (Just m) -> unbound "module" m
+    Left (Just m) -> unbound "Module" m
 
 -- | Look up something in the environment
 getGeneric :: (Ord (f Raw), Show (f Raw)) =>
@@ -255,25 +289,25 @@ getGeneric = liftM (fmap (\(qx', _, _) -> qx')) <$$$> getGenericFull
 
 -- | Look up a variable in the environment
 getVar :: QLid Raw -> R (QLid Renamed)
-getVar  = getGeneric "variable" vars
+getVar  = getGeneric "Variable" vars
 
 -- | Look up a data constructor in the environment
 getDatacon :: QUid Raw -> R (QUid Renamed)
-getDatacon  = getGeneric "data constructor" datacons
+getDatacon  = getGeneric "Data constructor" datacons
 
 -- | Look up a variable in the environment
 getTycon :: QLid Raw -> R (QLid Renamed)
-getTycon  = getGeneric "type constructor" tycons
+getTycon  = getGeneric "Type constructor" tycons
 
 -- | Look up a module in the environment
 getModule :: QUid Raw -> R (QUid Renamed, Module, Env)
-getModule  = liftM pull . getGenericFull "structure" modules
+getModule  = liftM pull . getGenericFull "Structure" modules
   where
     pull (J ps (qu, _, (m, e))) = (J ps qu, m, e)
 
 -- | Look up a module in the environment
 getSig :: QUid Raw -> R (QUid Renamed, Module, Env)
-getSig  = liftM pull . getGenericFull "signature" sigs
+getSig  = liftM pull . getGenericFull "Signature" sigs
   where
     pull (J ps (qu, _, (m, e))) = (J ps qu, m, e)
 
@@ -282,12 +316,15 @@ getTyvar :: TyVar Raw -> R (TyVar Renamed)
 getTyvar tv = do
   e <- asks tyvars
   case M.lookup tv e of
-    Nothing              -> fail $ "type variable not in scope: " ++ show tv
+    Nothing              -> unbound "Type variable" tv
     Just (tv', _, True)  -> return tv'
-    Just (_, loc, False) -> fail $
-      "type variable not in scope: " ++ show tv ++ "\n" ++
-      "NB: It was bound at " ++ show loc ++ " but nested declarations\n" ++
-      "cannot see tyvars from their parent expression."
+    Just (_, loc, False) -> renameError [$msg|
+      Type variable $show:tv not in scope.
+      <indent>
+         (It was bound at $show:loc, but a nested declaration
+          cannot see type variables from its parent expression.)
+      </indent>
+      |]
 
 -- | Get a new name for a variable binding
 bindGeneric :: (Ord ident, Show ident, Antible ident) =>
@@ -378,9 +415,8 @@ renameDecl d0 = withLoc d0 $ case d0 of
     (llocs, mdT) <- listen $ mapM bindEach ats
     case unique fst llocs of
       Nothing -> return ()
-      Just ((l, loc1), (_, loc2)) -> fail $
-        "type `" ++ show l ++ "' declared twice in abstype group at " ++
-        show loc1 ++ " and " ++ show loc2
+      Just ((l, loc1), (_, loc2)) ->
+        repeated "Type" l "abstype group" [loc1, loc2]
     (ats', mdD) <-
       steal $
         inModule mdT $
@@ -428,9 +464,8 @@ renameTyDecs tds = do
   (llocs, md) <- listen $ mapM bindEach tds
   case unique fst llocs of
     Nothing -> return ()
-    Just ((l, loc1), (_, loc2)) -> fail $
-      "type `" ++ show l ++ "' declared twice in type group at " ++
-      show loc1 ++ " and " ++ show loc2
+    Just ((l, loc1), (_, loc2)) ->
+      repeated "Type" l "type group" [loc1, loc2]
   inModule md $ mapM (liftM snd . renameTyDec Nothing) tds
 
 renameTyDec :: Maybe (QExp Raw) -> TyDec Raw ->
@@ -439,7 +474,8 @@ renameTyDec _   (N _ (TdAnti a)) = $antierror
 renameTyDec mqe (N note (TdSyn l clauses)) = withLoc note $ do
   case mqe of
     Nothing -> return ()
-    Just _  -> fail "BUG! can't rename QExp in context of type synonym"
+    Just _  ->
+      renameBug "renameTyDec" "can’t rename QExp in context of type synonym"
   J [] l' <- getTycon (J [] l)
   clauses' <- forM clauses $ \(ps, rhs) -> withLoc ps $ do
     (ps', md) <- steal $ renameTyPats ps
@@ -451,8 +487,8 @@ renameTyDec mqe (N note td)      = withLoc note $ do
   let tvs = tdParams td
   case unique id tvs of
     Nothing      -> return ()
-    Just (tv, _) -> fail $
-      "type variable " ++ show tv ++ " repeated in type parameters"
+    Just (tv, _) ->
+      repeated "Type variable" tv "type parameters" []
   (tvs', mdTvs) <- steal $ mapM bindTyvar tvs
   inModule mdTvs $ do
     mqe' <- gmapM renameQExp mqe
@@ -460,12 +496,12 @@ renameTyDec mqe (N note td)      = withLoc note $ do
       TdAbs _ _ variances qe -> do
         qe' <- renameQExp qe
         return (tdAbs l' tvs' variances qe')
-      TdSyn _ _ -> fail "BUG! can't happen in Rename.renameTyDec"
+      TdSyn _ _ -> renameBug "renameTyDec" "unexpected TdSyn"
       TdDat _ _ cons -> do
         case unique fst cons of
           Nothing -> return ()
-          Just ((u, _), (_, _)) -> fail $
-            "repeated constructor `" ++ show u ++ "' in type declaration"
+          Just ((u, _), (_, _)) ->
+            repeated "Data constructor" u "type declaration" []
         cons' <- forM cons $ \(u, mt) -> withLoc mt $ do
           let u' = uid (unUid u)
           tell (MdDatacon (getLoc mt) u u')
@@ -508,8 +544,7 @@ renameSigExp se0 = withLoc se0 $ case se0 of
     ql' <- onlyInModule md $ getTycon ql
     case unique id tvs of
       Nothing      -> return ()
-      Just (tv, _) -> fail $
-        "type variable `" ++ show tv ++ "' bound twice in `with type'"
+      Just (tv, _) -> repeated "Type variable" tv "with-type" []
     (tvs', mdtvs) <- steal $ mapM bindTyvar tvs
     t' <- inModule mdtvs $ renameType t
     return [$seQ|+ $se1' with type $list:tvs' $qlid:ql' = $t' |]
@@ -521,20 +556,18 @@ checkSigDuplicates md = case md of
     MdApp md1 md2        -> do
       checkSigDuplicates md1
       inModule md1 $ checkSigDuplicates md2
-    MdTycon   loc l  _   -> mustFail loc "type"        l $ getTycon (J [] l)
-    MdVar     loc l  _   -> mustFail loc "variable"    l $ getVar (J [] l)
-    MdDatacon loc u  _   -> mustFail loc "constructor" u $ getDatacon (J [] u)
-    MdModule  loc u  _ _ -> mustFail loc "structure"   u $ getModule (J [] u)
-    MdSig     loc u  _ _ -> mustFail loc "signature"   u $ getSig (J [] u)
-    MdTyvar   loc tv _   -> mustFail loc "tyvar"      tv $ getTyvar tv
+    MdTycon   loc l  _   -> mustFail loc "Type"        l $ getTycon (J [] l)
+    MdVar     loc l  _   -> mustFail loc "Variable"    l $ getVar (J [] l)
+    MdDatacon loc u  _   -> mustFail loc "Constructor" u $ getDatacon (J [] u)
+    MdModule  loc u  _ _ -> mustFail loc "Structure"   u $ getModule (J [] u)
+    MdSig     loc u  _ _ -> mustFail loc "Signature"   u $ getSig (J [] u)
+    MdTyvar   loc tv _   -> mustFail loc "Tyvar"      tv $ getTyvar tv
   where
     mustFail loc kind which check = do
       failed <- (False <$ check) `M.E.catchError` \_ -> return True
       unless failed $ do
         withLoc loc $
-          fail $
-            "signature contains repeated " ++ kind ++
-            " `" ++ show which ++ "'"
+          repeated kind which "signature" []
 
 sealWith :: Module -> R ()
 sealWith md = case md of
@@ -555,20 +588,25 @@ sealWith md = case md of
       tell (MdModule loc u u' md1')
     MdSig     _ u _ md2 -> do
       (u', loc, (md1, _)) <- find "module type" sigs u
-      let ctch body = body `catchError` \_ -> fail $
-            "signature `" ++ show u ++ "' must match exactly"
+      let ctch body = body `catchError` \_ -> renameError
+            [$msg| In signature matching, signature
+                   $qshow:u does not match exactly.  |]
       ((), _   ) <- ctch $ steal $ onlyInModule md2 $ sealWith md1
       ((), md1') <- ctch $ steal $ onlyInModule md1 $ sealWith md2
       tell (MdSig loc u u' md1')
-    MdTyvar   _ _ _   -> fail $ "signature can't declare type variable"
+    MdTyvar   _ _ _   ->
+      renameBug "sealWith" "signature can’t declare type variable"
   where
     find what prj ident = do
       m <- asks prj
       case M.lookup ident m of
         Just ident' -> return ident'
-        Nothing     -> fail $
-          "structure missing " ++ what ++ " `" ++ show ident ++
-          "' which is present in ascribed signature"
+        Nothing     -> renameError $
+          [$msg|
+            In signature matching, structure is missing
+            $words:what $qshow:ident,
+            which is present in ascribed signature.
+          |]
 
 -- | Rename a signature item and return the environment
 --   that they bind
@@ -685,9 +723,8 @@ renameBindings bns = do
       [$bnQ| $antiB:a |] -> $antifail
   case unique (\(_,x,_,_) -> x) lxtes of
     Nothing          -> return ()
-    Just ((l1,x,_,_),(l2,_,_,_)) -> fail $
-      "variable `" ++ show x ++ "' bound twice in let rec at " ++
-      show l1 ++ " and " ++ show l2
+    Just ((l1,x,_,_),(l2,_,_,_)) ->
+      repeated "Variable" x "let-rec" [l1, l2]
   let bindEach rest (l,x,t,e) = withLoc l $ do
         x' <- bindVar x
         return ((l,x',t,e):rest)
@@ -747,9 +784,8 @@ renameTyPats x00 =
   tyvar loc1 tv = do
     seen <- get
     case M.lookup tv seen of
-      Just loc2 -> fail $
-        "type variable " ++ show tv ++ " bound twice in type pattern at " ++
-        show loc1 ++ " and " ++ show loc2
+      Just loc2 ->
+        lift (repeated "Type variable" tv "type pattern" [loc1, loc2])
       Nothing   -> do
         put (M.insert tv loc1 seen)
         lift (bindTyvar tv)
@@ -813,9 +849,7 @@ renamePatt x00 =
   var loc1 l = do
     seen <- get
     case M.lookup (Left l) seen of
-      Just loc2 -> fail $
-        "variable `" ++ show l ++ "' bound twice in pattern at " ++
-        show loc1 ++ " and " ++ show loc2
+      Just loc2 -> lift (repeated "Variable" l "pattern" [loc1, loc2])
       Nothing   -> do
         put (M.insert (Left l) loc1 seen)
         lift (withLoc loc1 (bindVar l))
@@ -823,9 +857,7 @@ renamePatt x00 =
   tyvar loc1 tv = do
     seen <- get
     case M.lookup (Right tv) seen of
-      Just loc2 -> fail $
-        "type variable " ++ show tv ++ " bound twice in pattern at " ++
-        show loc1 ++ " and " ++ show loc2
+      Just loc2 -> lift (repeated "Type variable" tv "pattern" [loc1, loc2])
       Nothing   -> do
         put (M.insert (Right tv) loc1 seen)
         lift (bindTyvar tv)

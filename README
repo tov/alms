@@ -14,8 +14,8 @@ CONTENTS
 
 GETTING STARTED
 
-  We require GHC to build.  It is known to work with GHC 6.10.4,
-  and likely no longer works with GHC 6.8.
+  Alms requires GHC to build.  It is known to work with GHC 6.12.1 and
+  6.10.4, and likely no longer works with GHC 6.8.
 
   Provided that a recent ghc is in your path, to build on UNIX it ought
   to be be sufficient to type:
@@ -72,9 +72,9 @@ WHAT TO TRY
 
   from another terminal.
 
-  The examples directory contains many more examples, many of which
-  are small, but demonstrate type or or contract errors -- the comment at
-  the top of each example says what to expect.  Run many of the examples
+  The examples directory contains many more examples, many of which are
+  small, but demonstrate type or contract errors -- the comment at the
+  top of each example says what to expect.  Run many of the examples
   with:
 
     % make examples

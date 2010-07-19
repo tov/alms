@@ -3,11 +3,11 @@
 module type AF_ARRAY = sig
   type 'a array : A
 
-  val new : int -> 'a -> 'a array
-  val set : 'a array -> int -o 'a -o 'a array
-  val get : 'a array -> int -o 'a * 'a array
+  val new : int → 'a → 'a array
+  val set : 'a array → int ⊸ 'a ⊸ 'a array
+  val get : 'a array → int ⊸ 'a * 'a array
 
-  val size : 'a array -> int * 'a array
+  val size : 'a array → int * 'a array
 end
 
 #load "libarray"
@@ -62,7 +62,7 @@ let inPlaceSort (a: int A.array) =
                      : int * int A.array =
              if i < limit
                then let (ai, a) = A.get a i in
-                      if ai <= pivot
+                      if ai ≤ pivot
                         then loop (i + 1) (j + 1) (swapIndices a i j)
                         else loop (i + 1) j a
                else (j, a) in
@@ -79,8 +79,8 @@ let listToArray (Cons(x,xs): 'a list) =
   let n = length xs + 1 in
   let rec loop (i: int) (xs: 'a list) (a: 'a A.array) : 'a A.array =
     match xs with
-    | Nil        -> a
-    | Cons(x,xs) -> loop (i + 1) xs (A.set a i x)
+    | Nil        → a
+    | Cons(x,xs) → loop (i + 1) xs (A.set a i x)
    in loop 1 xs (A.new n x)
 
 let arrayToList (a: 'a A.array) =

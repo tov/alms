@@ -22,7 +22,7 @@ while [ -n "$1" ]; do
     hackage-check)
       cabal upload -c $name-$version.tar.gz
       ;;
-    hackage-upload)
+    hackage)
       cabal upload $name-$version.tar.gz
       ;;
     clean)
