@@ -1,5 +1,3 @@
- - find a more systematic way to generate and print errors
- - modify the lexer to get more precise source locations
  - some termination checking for type operators
  - remove direct dependency of Parser on Sigma (! patterns)
  - row types for protocols
