@@ -64,47 +64,40 @@ renderMessageH cxt msg0 = case msg0 of
   Showable a  -> [addQuotes cxt (text (show a))]
   AntiMsg t a -> [addQuotes cxt (renderAntiMsg t a)]
 
-renderMessageV :: RenderContext -> Message V -> Doc
-renderMessageV cxt msg0 = case msg0 of
-  Words s     -> renderMessageV cxt (Block (Words s))
-  Flow s      -> renderMessageV cxt (Block (Flow s))
+renderMessage :: RenderContext -> Message d -> Doc
+renderMessage cxt msg0 = case msg0 of
+  Words s     -> fsep $ renderMessageH cxt (Words s)
+  Flow s      -> fsep $ renderMessageH cxt (Flow s)
   Exact s     -> text s
   Surround s e msg'
-              -> text s <> renderMessageV cxt msg' <> text e
-  Quote msg'  -> renderMessageV cxt' (Surround s e msg')
+              -> text s <> renderMessage cxt msg' <> text e
+  Quote msg'  -> renderMessage cxt' (Surround s e msg')
     where (s, e) = getQuotes cxt
           cxt'   = incQuotes cxt
-  Block msg'  -> fsep (renderMessageH cxt msg')
   Stack sty msgs -> case sty of
     Numbered  -> vcat [ integer i <> char '.' <+>
                         text (replicate (dent - length (show i)) ' ') <>
-                        nest (dent + 2) (renderMessageV cxt msg')
+                        nest (dent + 2) (renderMessage cxt msg')
                       | msg' <- msgs
                       | i    <- [ 1 .. ] ]
       where len  = length msgs
             dent = length (show len)
-    Bulleted  -> vcat [ text " •" <+> nest 3 (renderMessageV cxt msg')
+    Bulleted  -> vcat [ text " •" <+> nest 3 (renderMessage cxt msg')
                       | msg' <- msgs ]
     Separated -> vcat (punctuate (char '\n')
-                                 (map (renderMessageV cxt) msgs))
-    Broken    -> vcat (map (renderMessageV cxt) msgs)
+                                 (map (renderMessage cxt) msgs))
+    Broken    -> vcat (map (renderMessage cxt) msgs)
   Table rows  -> vcat [ text label <+>
                         text (replicate (dent - length label) ' ') <>
-                        nest (dent + 1) (renderMessageV cxt msg')
+                        nest (dent + 1) (renderMessage cxt msg')
                       | (label, msg') <- rows ]
     where dent = maximum (map (length . fst) rows)
   Indent msg' -> text "    " <>
-                 nest 4 (renderMessageV cxt msg')
+                 nest 4 (renderMessage cxt msg')
   Printable a -> ppr a
   Showable a  -> text (show a)
   AntiMsg t a -> renderAntiMsg t a
 
-instance Ppr (Message H) where
-  ppr = fsep . renderMessageH rc0
-
-instance Ppr (Message V) where
-  ppr = renderMessageV rc0
-
-instance Show (Message H) where showsPrec = showFromPpr
-instance Show (Message V) where showsPrec = showFromPpr
+instance Ppr (Message d)  where ppr = renderMessage rc0
+instance Show (Message d) where showsPrec = showFromPpr
 

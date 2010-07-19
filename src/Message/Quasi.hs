@@ -6,7 +6,7 @@
       TemplateHaskell
       #-}
 module Message.Quasi (
-  msg, Message(), MessageV, MessageH
+  msg, Message(), H, V,
 ) where
 
 import Message.AST
@@ -39,7 +39,6 @@ msgAstToExpQ msg0 = do
     Exact _           -> 0
     Surround _ _ msg' -> highest msg'
     Quote msg'        -> highest msg'
-    Block msg'        -> highest msg'
     Stack _ msgs      -> maximum (map highest msgs)
     Table rows        -> maximum (map (highest . snd) rows)
     Indent msg'       -> highest msg'
@@ -59,7 +58,6 @@ msgAstToExpQ msg0 = do
       Surround s e msg'
                   -> [| Surround $(lift s) $(lift e) $(loop msg') |]
       Quote msg'  -> [| Quote $(loop msg') |]
-      Block msg'  -> [| Block $(loop msg') |]
       Stack sty msgs
                   -> [| Stack $(styleQ sty)
                               $(listE (map loop msgs)) |]
@@ -76,7 +74,6 @@ msgAstToExpQ msg0 = do
         "words"   -> [| Words $var |]
         "flow"    -> [| Flow $var |]
         "exact"   -> [| Exact $var |]
-        'q':tag'  -> [| Quote $(loop (AntiMsg tag' name)) |]
         "msg"     -> var
         "ol"      -> [| Stack Numbered $var |]
         "ul"      -> [| Stack Bulleted $var |]
@@ -85,6 +82,11 @@ msgAstToExpQ msg0 = do
         "dl"      -> [| Table $var |]
         "indent"  -> [| Indent $var |]
         "show"    -> [| Showable $var |]
-        _         -> [| Printable $var |]
+        'v':tag'  -> [| $(loop (AntiMsg tag' name)) :: Message V |]
+        'h':tag'  -> [| $(loop (AntiMsg tag' name)) :: Message H |]
+        'q':tag'  -> [| Quote $(loop (AntiMsg tag' name)) |]
+        ""        -> [| Printable $var |]
+        _         -> fail $
+          "Unknown message antiquote tag: ‘" ++ tag ++ "’"
         where var = varE (M.findWithDefault (mkName name) name namemap)
 

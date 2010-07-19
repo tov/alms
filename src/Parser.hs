@@ -120,7 +120,7 @@ almsParseError e =
       ]
     unlist  = case unexpects of
       []  -> []
-      s:_ -> [("unexpected:", Msg.Block (Msg.Words s))]
+      s:_ -> [("unexpected:", Msg.Words s)]
     explist = case expects of
       []  -> []
       _   -> [("expected:", flow "," expects)]
@@ -128,7 +128,7 @@ almsParseError e =
     unexpects = [ s | PE.UnExpect s    <- PE.errorMessages e, not$null s ]
              ++ [ s | PE.SysUnExpect s <- PE.errorMessages e, not$null s ]
     expects   = [ s | PE.Expect s      <- PE.errorMessages e, not$null s ]
-    flow c         = Msg.Block . Msg.Flow . map Msg.Words . punct c . L.nub
+    flow c         = Msg.Flow . map Msg.Words . punct c . L.nub
     punct _ []     = []
     punct _ [s]    = [s]
     punct c (s:ss) = (s++c) : punct c ss

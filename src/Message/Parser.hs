@@ -13,7 +13,7 @@ import Text.ParserCombinators.Parsec
 -- | Given the string representation of a message, parse it,
 --   using the Template Haskell monad to get an initial source
 --   location and for errors.
-parseMessageQ :: String -> Q MessageV
+parseMessageQ :: String -> Q (Message V)
 parseMessageQ str0 = do
   loc  <- location
   toks <- either (fail . show) return $
@@ -63,11 +63,15 @@ whitespaceT  = Whitespace <$> many1 space
 
 antiT :: CharParser () Token
 antiT = char '$' *> (inner <|> between (char '<') (char '>') inner)
-  where inner = combine <$> many1 alphaNum
-                        <*> optionMaybe (char ':' *> many1 alphaNum)
-            <|> AntiTok "" <$> (char ':' *> many1 alphaNum)
+  where inner = combine <$> ident
+                        <*> optionMaybe (char ':' *> ident)
+            <|> AntiTok "" <$> (char ':' *> ident)
         combine name Nothing     = AntiTok "" name
         combine tag  (Just name) = AntiTok tag name
+
+ident :: CharParser () String
+ident  = many1 digit
+     <|> lower |:| many (alphaNum <|> oneOf "'_")
 
 tstring :: String -> CharParser () String
 tstring  = try . string
@@ -111,12 +115,17 @@ ws    = () <$ many whitespace
 
 anti :: Bool -> P (String, String)
 anti v = tsatisfy check where
-  check (AntiTok tag name) 
-    | elem tag vtags == v = Just (tag, name)
-  check _                  = Nothing
+  check (AntiTok tag name)
+    | isDTag v tag  = Just (tag, name)
+  check _           = Nothing
 
-vtags :: [String]
-vtags  = ["ol", "ul", "br", "p", "dl", "indent"]
+isDTag :: Bool -> String -> Bool
+isDTag _ "msg"     = True
+isDTag v ('v':_)   = v
+isDTag v ('h':_)   = not v
+isDTag v ('q':tag) = isDTag v tag
+isDTag v tag       = v == elem tag vtags
+  where vtags = ["ol", "ul", "br", "p", "dl", "indent"]
 
 intag     :: String -> P a -> P a
 intag s    = between (btag s) (etag s)
@@ -131,47 +140,43 @@ pretag s p = between (btag s *> ws) (optional (etag s)) p <* ws
 -- Parser
 --
 
-messageP :: P MessageV
+messageP :: P (Message V)
 messageP  = ws *> parseV <* eof
 
 -- | Vertical-mode message
-parseV  :: P MessageV
+parseV  :: P (Message V)
 parseV   = option emptyMsg parse1V
 
 -- | Vertical-mode message, non-empty
-parse1V :: P MessageV
+parse1V :: P (Message V)
 parse1V  = wrapMany (Stack Separated) <$> many1skip paragraphV (btag "p" *> ws)
 
-paragraphV :: P MessageV
+paragraphV :: P (Message V)
 paragraphV  = wrapMany (Stack Broken) <$> many1skip lineV (btag "br" *> ws)
 
-lineV      :: P MessageV
+lineV      :: P (Message V)
 lineV       = antiV
-          <|> blockV
           <|> indentV
           <|> quoteV
           <|> listV
           <|> tableV
           <|> parse1H
 
-antiV      :: P MessageV
+antiV      :: P (Message V)
 antiV       = uncurry AntiMsg <$> anti True <* ws
 
-blockV     :: P MessageV
-blockV      = Block <$> intagV "block" parseH
-
-indentV    :: P MessageV
+indentV    :: P (Message V)
 indentV     = Indent <$> intagV "indent" parseV
 
-quoteV     :: P MessageV
+quoteV     :: P (Message V)
 quoteV      = Quote <$> intagV "qq" parseV
 
-listV      :: P MessageV
+listV      :: P (Message V)
 listV       = Stack Numbered <$> intagV "ol" items
           <|> Stack Bulleted <$> intagV "ul" items
   where items = many1skip parse1V (btag "li" *> ws)
 
-tableV     :: P MessageV
+tableV     :: P (Message V)
 tableV      = (Indent . Table) <$> intagV "dl" items
   where items = many $
            (unwords <$> pretag "dt" (manyskip word whitespace))

@@ -57,7 +57,7 @@ renameState0  = RenameState {
 }
 
 -- | Generate a renamer error.
-renameError :: MessageV -> R a
+renameError :: Message V -> R a
 renameError msg0 = do
   loc <- R (asks location)
   throwAlms (AlmsException RenamerPhase loc msg0)
@@ -204,13 +204,13 @@ don'tAllocate = R . local (\cxt -> cxt { allocate = False }) . unR
 -- | Generate an unbound name error
 unbound :: Show a => String -> a -> R b
 unbound ns a =
-  renameError [$msg| $words:ns not in scope: <q>$show:a</q>. |]
+  renameError [$msg| $words:ns not in scope: $qshow:a. |]
 
 -- | Generate an error about a name declared twice
 repeated :: Show a => String -> a -> String -> [Loc] -> R b
 repeated what a inwhat locs =
   renameError [$msg|
-    $words:what <q>$show:a</q>
+    $words:what $qshow:a
     repeated $words:times in $words:inwhat $words:at
     $ul:slocs
   |]

@@ -202,7 +202,7 @@ newtype TC m a = TC {
 instance Monad m => Monad (TC m) where
   return  = TC . return
   m >>= k = TC (unTC m >>= unTC . k)
-  fail    = let ?loc = bogus in typeError . Block . Words
+  fail    = let ?loc = bogus in typeError . [$msg| $words:1 |]
 
 instance Monad m => Applicative (TC m) where
   pure  = return
@@ -227,12 +227,12 @@ instance Monad m => AlmsMonad (TC m) where
   catchAlms = catchError
 
 -- | Generate a type error.
-typeError :: (AlmsMonad m, ?loc :: Loc) => MessageV -> m a
-typeError msg = throwAlms (AlmsException RenamerPhase ?loc msg)
+typeError :: (AlmsMonad m, ?loc :: Loc) => Message V -> m a
+typeError msg0 = throwAlms (AlmsException RenamerPhase ?loc msg0)
 
 -- | Indicate a type checker bug.
 typeBug :: AlmsMonad m => String -> String -> m a
-typeBug culprit msg = throwAlms (almsBug RenamerPhase bogus culprit msg)
+typeBug culprit msg0 = throwAlms (almsBug RenamerPhase bogus culprit msg0)
 
 -- | Like 'ask', but monadic
 asksM :: MonadReader r m => (r -> m a) -> m a
@@ -348,7 +348,7 @@ tryFind k = asks (=..= k)
 
 -- | Raise a type error, with the dynamically-bound source location
 terr :: (?loc :: Loc, AlmsMonad m) => String -> m a
-terr  = typeError . Words
+terr  = typeError . [$msg| $words:1 |]
 
 -- | A type checking "assertion" raises a type error if the
 --   asserted condition is false.
@@ -360,22 +360,15 @@ tassert False s = terr s
 -- | A type checking "assertion" raises a type error if the
 --   asserted condition is false.
 tassert' :: (?loc :: Loc, AlmsMonad m) =>
-            Bool -> MessageV -> m ()
+            Bool -> Message V -> m ()
 tassert' True  _ = return ()
 tassert' False m = typeError m
 
 -- | A common form of type error: A got B where C expected
 tgot :: (?loc :: Loc, AlmsMonad m) =>
         String -> Type -> String -> m a
-tgot who got expected = typeError $
-  Flow [
-    Words who,
-    Words "got",
-    Quote (Printable got),
-    Words "where",
-    Words expected,
-    Words "expected."
-  ]
+tgot who got expected = typeError
+  [$msg| $words:who got $q:got where $words:expected expected |]
 
 -- | Combination of 'tassert' and 'tgot'
 tassgot :: (?loc :: Loc, AlmsMonad m) =>
@@ -385,30 +378,50 @@ tassgot True  = \_ _ _ -> return ()
 
 -- | Common message pattern involving text and table:
 terrtab :: (?loc :: Loc, AlmsMonad m) =>
-        [MessageH] -> [(String, [MessageH])] -> m a
-terrtab msg rows = typeError $
-  Stack Broken [
-    Flow msg,
-    Indent $ Table (map (second Flow) rows)
-  ]
+        [Message H] -> [(String, [Message H])] -> m a
+terrtab msgs = typeError .
+  [$msg| $flow:msgs $dl:1 |] .
+    map (second [$msg| $flow:1 |])
 
 -- | Common message pattern involving text and table:
 tasstab :: (?loc :: Loc, AlmsMonad m) =>
-           Bool -> [MessageH] -> [(String, [MessageH])] -> m ()
+           Bool -> [Message H] -> [(String, [Message H])] -> m ()
 tasstab False = terrtab
 tasstab True  = \_ _ -> return ()
 
 -- | Common message pattern, actual vs. expected
 terrexp :: (?loc :: Loc, AlmsMonad m) =>
-           [MessageH] -> [MessageH] -> [MessageH] -> m a
-terrexp msg actual expected =
-  terrtab msg [("actual:", actual), ("expected:", expected)]
+           [Message H] -> [Message H] -> [Message H] -> m a
+terrexp  = typeError <$$$> [$msg|
+  $flow:1
+  <dl>
+    <dt>actual:   <dd>$flow:2
+    <dt>expected: <dd>$flow:3
+  </dl>
+|]
 
 -- | Common message pattern, actual vs. expected
 tassexp :: (?loc :: Loc, AlmsMonad m) =>
-           Bool -> [MessageH] -> [MessageH] -> [MessageH] -> m ()
+           Bool -> [Message H] -> [Message H] -> [Message H] -> m ()
 tassexp False = terrexp
 tassexp True  = \_ _ _ -> return ()
+
+-- | Common message pattern, actual vs. expected
+terrexp' :: (?loc :: Loc, AlmsMonad m) =>
+           Message V -> Message V -> Message V -> m a
+terrexp'  = typeError <$$$> [$msg|
+  $msg:1
+  <dl>
+    <dt>actual:   <dd>$msg:2
+    <dt>expected: <dd>$msg:3
+  </dl>
+|]
+
+-- | Common message pattern, actual vs. expected
+tassexp' :: (?loc :: Loc, AlmsMonad m) =>
+           Bool -> Message V -> Message V -> Message V -> m ()
+tassexp' False = terrexp'
+tassexp' True  = \_ _ _ -> return ()
 
 -- | Run a partial computation, and if it fails, substitute
 --   the given failure message for the one generated
@@ -440,37 +453,31 @@ tcType = tc where
     checkBound (tcBounds tc') ts'
     return (tyApp tc' ts')
     where
+      actualLen = length ts
       checkLength len =
-        tassexp (length ts == len)
-          [ Words "Type constructor",
-            Quote (Showable n),
-            Words "got wrong number of parameters:" ]
-          [Showable (length ts)]
-          [Showable len]
+        tassexp' (actualLen == len)
+          [$msg| Type constructor $qshow:n got wrong number of parameters: |]
+          [$msg| $show:actualLen |]
+          [$msg| $show:len |]
       checkBound quals ts' =
-        tassexp (all2 (\qlit t -> qualConst t <: qlit) quals ts')
-          [ Words "Type constructor",
-            Quote (Showable n),
-            Words "used on higher qualifiers than permitted:" ]
-          [Showable (map (qRepresent . qualifier) ts')]
-          [Showable quals, Words "(or less)"]
+        tassexp' (all2 (\qlit t -> qualConst t <: qlit) quals ts')
+          [$msg| Type constructor $qshow:n used on higher
+                 qualifiers than permitted: |]
+          ([$msg| $show:1 |] (map (qRepresent . qualifier) ts'))
+          [$msg| $show:quals (or less) |]
   tc [$ty| $quant:u '$tv . $t |] =
     TyQu u tv <$> tc t
-  tc [$ty| mu '$tv . $t |] = do
+  tc t0@[$ty| mu '$tv . $t |] = do
     case unfoldTyMu t of
       (_, N _ (Syntax.TyVar tv')) | tv == tv' ->
         typeError $
-          "Recursive type is not contractive:" !:: Syntax.tyMu tv t
+          "Recursive type is not contractive:" !:: t0
       _ -> return ()
     t' <- tc t
-    tassert' (qualConst t' == tvqual tv) $
-      Flow [
-        Words "Recursive type",
-        Quote (Showable (Syntax.tyMu tv t)),
-        Words "has qualifier",
-        Quote (Showable (qualConst t')),
-        Words "which does not match its own type variable."
-      ]
+    let qual = qualConst t'
+    tassert' (qual == tvqual tv)
+       [$msg| Recursive type $qshow:t0 has qualifier $qshow:qual,
+              which does not map its own bound type variable. |]
     return (TyMu tv t')
   tc [$ty| $anti:a |] = $antifail
 
@@ -512,11 +519,11 @@ tcExpr = tc where
         return t'
       (tas, e's) <- liftM unzip $ inModule md $ mapM (tc . bnexpr) bs
       zipWithM_ (\tf ta ->
-                   tassexp (ta <: tf)
-                      [Words "In let rec, actual type does not",
-                       Words "agree with declared type:"]
-                      [Showable ta]
-                      [Showable tf])
+                   tassexp' (ta <: tf)
+                      [$msg| In let rec, actual type does not
+                             agree with declared type: |]
+                      [$msg| $show:ta |]
+                      [$msg| $show:tf |])
                 tfs tas
       (t2, e2') <- inModule md $ tc e2
       let b's =
@@ -560,20 +567,22 @@ tcExpr = tc where
       case t1' of
         TyQu Exists tv t11' -> do
           te' <- tapply (tyAll tv t11') t2'
-          tasstab (te <: te')
-            [ Words "Could not pack existential:" ]
-            [ ("concrete type:", [Showable te]),
-              ("hiding:", [Showable t2]),
-              ("to get:", [Showable t1']) ]
+          tassert' (te <: te')
+            [$msg| Could not pack existential:
+                   <dl>
+                     <dt>concrete type: <dd>$show:te
+                     <dt>hiding:        <dd>$show:t2
+                     <dt>to get:        <dd>$show:t1'
+                   </dl> |]
           return (t1', [$ex| Pack[$stx:t1']($stx:t2', $e') |])
         _ -> tgot "Pack[-]" t1' "existential type"
     [$ex| ( $e1 : $t2 ) |] -> do
       (t1, e1') <- tc e1
       t2'       <- tcType t2
-      tassexp (t1 <: t2')
-        [Words "Type ascription mismatch:"]
-        [Showable t1]
-        [Showable t2']
+      tassexp' (t1 <: t2')
+        [$msg| Type ascription mismatch: |]
+        [$msg| $show:t1 |]
+        [$msg| $show:t2' |]
       return (t2', e1')
     [$ex| ( $e1 :> $t2 ) |] -> do
       (t1, e1') <- tc e1
@@ -593,15 +602,9 @@ tcExpr = tc where
     loop md0 = case md0 of
       MdApp md1 md2     -> do loop md1; loop md2
       MdValue (Var l) t ->
-          tassert' (qualConst t <: usage (J [] l) e) $
-            Flow [
-              Words "Affine variable",
-              Quote (Showable l),
-              Words "of type",
-              Quote (Showable t),
-              Words "duplicated in",
-              Words (name ++ ".")
-            ]
+          tassert' (qualConst t <: usage (J [] l) e)
+            [$msg| Affine variable $qshow:l of type $qshow:t
+                   duplicated in $words:name. |]
       _                 -> return ()
   --
   -- | What is the join of the qualifiers of all free variables
@@ -648,17 +651,17 @@ tcExApp tc e0 = do
       arrows t'@(view -> TyQu Forall _ _) ts = foralls t' ts
       arrows (view -> TyFun _ ta tr) (t:ts) = do
         b <- unifies [] t ta
-        tassexp b
-          [Words "In application, operand type not in operator’s domain:"]
-          [Showable t]
-          [Showable ta]
+        tassexp' b
+          [$msg| In application, operand type not in operator’s domain: |]
+          [$msg| $show:t |]
+          [$msg| $show:ta |]
         arrows tr ts
       arrows (view -> TyMu tv t') ts = arrows (tysubst tv (TyMu tv t') t') ts
       arrows t' (t:_) =
-        terrexp
-          [Words "In application, operator is not a function:"]
-          [Showable t']
-          [Showable t, Words "-[...]> ..."]
+        terrexp'
+          [$msg| In application, operator is not a function: |]
+          [$msg| $show:t' |]
+          [$msg| $show:t -[...]> ... |]
       unifies tvs ta tf = do
           ts <- tryUnify tvs ta tf
           ta' <- foldM tapply (foldr tyAll ta tvs) ts
@@ -681,12 +684,14 @@ tcExApp tc e0 = do
 tapply :: (?loc :: Loc, AlmsMonad m) =>
           Type -> Type -> m Type
 tapply (view -> TyQu Forall tv t1') t2 = do
-  tasstab (qualConst t2 <: tvqual tv)
-    [Words "Type application cannot instantiate type variable:"]
-    [("type variable:", [Showable tv]),
-     ("expected qualifier:", [Showable (tvqual tv)]),
-     ("type given:", [Showable t2]),
-     ("actual qualifier:", [Showable (qualifier t2)])]
+  tassert' (qualConst t2 <: tvqual tv) $
+    [$msg| Type application cannot instantiate type variable:
+           <dl>
+             <dt>type variable:     <dd>$show:tv
+             <dt>expected qualifier:<dd>$show:1
+             <dt>type given:        <dd>$show:t2
+             <dt>actual qualifier:  <dd>$show:2
+           </dl> |] (tvqual tv) (qualifier t2)
   return (tysubst tv t2 t1')
 tapply t1 _ = tgot "Type application" t1 "forall type"
 
@@ -708,11 +713,13 @@ tcPatt t x0 = case x0 of
           (params, res)
             -> return (params, Nothing, res)
         let te = tysubsts params ts res
-        tasstab (t' <: te)
-          [Words "Pattern got wrong type:"]
-          [("actual:",     [Showable t']),
-           ("expected:",   [Showable te]),
-           ("in pattern:", [Showable x0])]
+        tassert' (t' <: te)
+          [$msg| Pattern got wrong type:
+                 <dl>
+                   <dt>actual:     <dd>$show:t'
+                   <dt>expected:   <dd>$show:te
+                   <dt>in pattern: <dd>$show:x0
+                 </dl> |]
         case (mt, mx) of
           (Nothing, Nothing) ->
             return [$pa|+ $quid:u |]
@@ -728,10 +735,11 @@ tcPatt t x0 = case x0 of
             Nothing -> return x0
             Just x  -> tcPatt tyBot x
         | otherwise ->
-            terrtab
-              [Words "Pattern got wrong type:"]
-              [("type:",    [Showable t']),
-               ("pattern:", [Showable x0])]
+            typeError [$msg| Pattern got wrong type:
+                             <dl>
+                               <dt>type:    <dd>$show:t'
+                               <dt>pattern: <dd>$show:x0
+                             </dl> |]
   [$pa| ($x, $y) |] -> do
     t' <- hnT t >>! mapBottom (tyApp tcTuple . replicate 2)
     case t' of
@@ -760,13 +768,17 @@ tcPatt t x0 = case x0 of
     t' <- hnT t >>! mapBottom (tyEx tv)
     case t' of
       TyQu Exists tve te -> do
-        tasstab (tvqual tve <: tvqual tv)
-          [Words "Existential unpacking pattern cannot",
-           Words "instantiate type variable:"]
-          [("pattern type variable:", [Showable tv]),
-           ("expected qualifier:",    [Showable (tvqual tv)]),
-           ("actual type variable:",  [Showable tve]),
-           ("actual qualifier:",      [Showable (tvqual tve)])]
+        let qexp = tvqual tv
+            qact = tvqual tve
+        tassert' (qact <: qexp)
+          [$msg| Existential unpacking pattern cannot
+                 instantiate type variable:
+                 <dl>
+                   <dt>pattern type variable: <dd>$show:tv
+                   <dt>expected qualifier:    <dd>$show:qexp
+                   <dt>actual type variable:  <dd>$show:tve
+                   <dt>actual qualifier:      <dd>$show:qact
+                 </dl> |]
         let te' = tysubst tve (TyVar tv) te
         x' <- tcPatt te' x
         return [$pa| Pack('$tv, $x') |]
@@ -793,24 +805,17 @@ tryUnify tvs t t'      =
     Right (_, ts)  -> return ts
   where
   giveUp _ = typeError $
-    Stack Broken [
-      Flow [
-        Words "In application, cannot find substitution for type",
-        Flow $ case tvs of
-          [tv]      -> [Words "variable", Showable tv]
-          [tv1,tv2] -> [Words "variables",
-                        Showable tv1,
-                        Words "and",
-                        Showable tv2]
-          _         -> [Words "variables",
-                        Flow (map Showable tvs)],
-        Words "to unify types:"
-      ],
-      Indent $ Table [
-        ("actual:",   Showable t'),
-        ("expected:", Showable t)
-      ]
-    ]
+    [$msg| In application, cannot find substitution for type
+           $msg:1 to unify types:
+           <dl>
+             <dt>actual:  <dd>$show:t'
+             <dt>expected:<dd>$show:t
+           </dl> |] $
+      case tvs of
+        [tv]      -> [$msg| variable $show:tv |]
+        [tv1,tv2] -> [$msg| variables $show:tv1 and $show:tv2 |]
+        _         -> [$msg| variables $flow:1 |]
+                     (map [$msg| $show:1 |] tvs)
 
 -- | Convert qualset representations from a list of all tyvars and
 --   list of qualifier-significant tyvars to a set of type parameter
@@ -820,8 +825,9 @@ indexQuals :: (?loc :: Loc, Monad m) =>
 indexQuals name tvs qexp = do
   qden <- qInterpretM qexp
   numberQDenM unbound tvs qden where
-  unbound tv = typeError $
-    "unbound tyvar " ++ show tv ++ " in qualifier list for type" !:: name
+  unbound tv = typeError
+    [$msg| Unbound type variable $show:tv in qualifier list
+           for type $qshow:name. |]
 
 -- BEGIN type decl checking
 
@@ -901,10 +907,8 @@ tcTyDec td0 = case dataOf td0 of
     tc   <- find (J [] name :: QLid R)
     let nparams = length (fst (head cs))
     tassert' (all ((==) nparams . length . fst) cs) $
-      Flow [
-        Words "Not all type operator clauses have",
-        Words "the same number of parameters."
-      ]
+      [$msg| In definition of type operator $qshow:name, not all
+             clauses have the same number of parameters. |]
     (cs', quals, vqs) <- liftM unzip3 $ forM cs $ \(tps, rhs) -> do
       rhs' <- tcType rhs
       let vs1 = ftvVs rhs'
@@ -1024,9 +1028,10 @@ tyConsOfType [$ty| $anti:a |]          = $antierror
 tcTyPat :: Monad m => Syntax.TyPat R -> TC m TyPat
 tcTyPat (N note (Syntax.TpVar tv var))    = do
   let ?loc = getLoc note
-  tassert' (var == Invariant) $
-    "Type pattern variable " ++ show tv ++
-    "has a variance annotation:" !:: var
+  tassert' (var == Invariant)
+    [$msg| Type pattern variable $show:tv has a variance annotation
+           $qshow:var.  Variances may not be specified for parameters
+           of type operators, but are inferred. |]
   return (TpVar tv)
 tcTyPat tp@[$tpQ| ($list:tps) $qlid:qu |] = do
   let ?loc = _loc
@@ -1062,12 +1067,16 @@ fibrate tvs ql t md = do
     tassert' (isAbstractTyCon tc) $
       "Signature fibration (with-type) cannot update concrete" ++
       "type constructor:" !:: ql
-    tasstab (length tvs == length (tcArity tc))
-      [Words "In signature fibration (with-type), wrong number",
-       Words "of parameters to type:"]
-      [("actual count:",   [Showable (length tvs)]),
-       ("expected count:", [Showable (length (tcArity tc))]),
-       ("for type:",       [Showable ql])]
+    let actlen = length tvs
+        explen = length (tcArity tc)
+    tassert' (actlen == explen)
+      [$msg| In signature fibration (with type), wrong number of
+             parameters to type:
+             <dl>
+               <dt>actual count:   <dd>$actlen
+               <dt>expected count: <dd>$explen
+               <dt>for type:       <dd>$ql
+             </dl> |]
     let amap   = ftvVs t
         arity  = map (\tv -> fromJust (M.lookup tv amap)) tvs
         bounds = map tvqual tvs
@@ -1128,19 +1137,23 @@ tcLet x mt e = do
     Just t  -> do
       t' <- tcType t
       tassert' (qualConst t' == Qu) $
-        "Declared type of top-level binding is not unlimited" !:: x
-      tasstab (te <: t')
-        [Words "Mismatch in declared type for top-level binding:"]
-        [("actual:",     [Showable te]),
-         ("expected:",   [Showable t']),
-         ("in pattern:", [Showable x])]
+        [$msg| Declared type of let declaration of $q:x is not unlimited |]
+      tassert' (te <: t')
+        [$msg| Mismatch in declared type for let declaration:
+               <dl>
+                 <dt>actual:     <dd>$te
+                 <dt>expected:   <dd>$t'
+                 <dt>in pattern: <dd>$x
+               </dl> |]
       return t'
     Nothing -> do
-      tasstab (qualConst te == Qu)
-        [Words "Type of top-level binding is not unlimited:"]
-        [("type:",       [Showable te]),
-         ("qualifier:",  [Showable (qualifier te)]),
-         ("in pattern:", [Showable x])]
+      tassert' (qualConst te == Qu) $
+        [$msg| Type of let declaration binding is not unlimited:
+               <dl>
+                 <dt>type:       <dd>$te
+                 <dt>qualifier:  <dd>$show:1
+                 <dt>in pattern: <dd>$x
+               </dl> |] (qualifier te)
       return te
   x' <- tcPatt t' x
   return (x', Just (typeToStx t'), e')
@@ -1293,18 +1306,18 @@ tcAbsTy atds ds = do
         "in abstype declaration " ++ show (length params) ++
         " parameters given for type " ++ show name ++
         " which has " ++ show (length (tcArity tc))
-      tassexp (all2 (<:) (tcArity tc) arity)
-        [Words "In abstype declaration, declared arity for type",
-         Quote (Showable name),
-         Words "is more permissive than actual arity:"]
-        [Showable (tcArity tc)]
-        [Showable arity]
-      tassexp (tcQual tc <: qualSet)
-        [Words "In abstype declaration, declared qualifier for type",
-         Quote (Showable name),
-         Words "is more permissive than actual qualifier:"]
-        [Showable (tcQual tc)]
-        [Showable qualSet]
+      let actualArity = tcArity tc
+          actualQual  = tcQual tc
+      tassexp' (all2 (<:) actualArity arity)
+        [$msg| In abstype declaration, declared parameter variance for
+               type $q:name is more permissive than actual variance: |]
+        [$msg| $show:actualArity |]
+        [$msg| $show:arity |]
+      tassexp' (actualQual <: qualSet)
+        [$msg| In abstype declaration, declared qualifier for
+               type $q:name is more permissive than actual qualifier: |]
+        [$msg| $show:actualQual |]
+        [$msg| $show:qualSet |]
       return $ abstractTyCon tc {
         tcQual  = qualSet,
         tcArity = arity,
@@ -1481,25 +1494,22 @@ subsumeSig = loop where
     MdApp md1 md2 -> do loop md1; loop md2
     MdValue x t    -> do
       t' <- find (J [] x :: Ident R)
-      tassexp (t' <: t)
-        [Words "In signature matching, type mismatch for",
-         Quote (Showable x)]
-        [Showable t']
-        [Showable t]
+      tassexp' (t' <: t)
+        [$msg| In signature matching, type mismatch for $q:x: |]
+        [$msg| $t' |]
+        [$msg| $t |]
     MdTycon x tc   -> do
       tc' <- find (J [] x :: QLid R)
       case varietyOf tc of
         AbstractType -> do
           let sigass assertion thing getter =
-                tassexp assertion
-                [Words "In signature matching, cannot match the",
-                 Words "type definition for type",
-                 Quote (Showable (tcName tc)),
-                 Words "because the actual",
-                 Words thing,
-                 Words "does not match what is expected:"]
-                [Showable (getter tc')]
-                [Showable (getter tc)]
+                tassexp' assertion
+                  ([$msg| In signature matching, cannot match the
+                          type definition for type $q:1 because the
+                          actual $words:thing does not match what is
+                          expected |] (tcName tc))
+                  ([$msg| $show:1 |] (getter tc'))
+                  ([$msg| $show:1 |] (getter tc))
           sigass (length (tcArity tc') == length (tcArity tc))
             "number of type parameters" (length . tcArity)
           sigass (all2 (<:) (tcArity tc') (tcArity tc))

@@ -22,8 +22,11 @@ while [ -n "$1" ]; do
     hackage-check)
       cabal upload -c $name-$version.tar.gz
       ;;
-    hackage)
+    hackage-upload)
       cabal upload $name-$version.tar.gz
+      ;;
+    hackage)
+      set dist hackage-upload $@
       ;;
     clean)
       rm $name*.tar.gz

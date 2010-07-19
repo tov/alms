@@ -4,8 +4,7 @@
       #-}
 module Message.AST (
   Message(..),
-  V, H, MessageV, MessageH,
-  StackStyle(..)
+  H, V, StackStyle(..)
 ) where
 
 import PprClass
@@ -17,7 +16,6 @@ data Message d where
   Exact     :: String -> Message d
   Surround  :: String -> String -> Message d -> Message d
   Quote     :: Message d -> Message d
-  Block     :: Message H -> Message V
   Stack     :: StackStyle -> [Message V] -> Message V
   Table     :: [(String, Message V)] -> Message V
   Indent    :: Message V -> Message V
@@ -25,14 +23,8 @@ data Message d where
   Showable  :: Show a => a -> Message d
   AntiMsg   :: String -> String -> Message d
 
-data V
 data H
-
--- | Vertical mode message
-type MessageV = Message V
-
--- | Horizontal mode message
-type MessageH = Message H
+data V
 
 -- | Types of lists
 data StackStyle

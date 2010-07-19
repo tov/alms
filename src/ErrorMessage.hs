@@ -113,4 +113,5 @@ instance Show AlmsException where showsPrec = showFromPpr
 instance Exception AlmsException
 
 instance Error AlmsException where
-  strMsg = AlmsException (OtherError "Error") bogus . Block . Words
+  strMsg = AlmsException (OtherError "Error") bogus . Words
+
