@@ -8,7 +8,7 @@ echo "$test"
 case "$test" in
   *-type-error.alms)
     if ! ./"$exe" "$test"  2>&1 |
-        grep '^\(type\|name\) error: ' > /dev/null; then
+        grep '^\(Type\|name\) error ' > /dev/null; then
       echo
       echo "TEST FAILED (expected type error):"
       head -1 "$test"

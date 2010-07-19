@@ -78,7 +78,7 @@ Executable alms
                         Message.AST,
                         Message.Parser,
                         Message.Quasi,
-                        message.Render,
+                        Message.Render,
                         Meta.DeriveNotable,
                         Meta.FileString,
                         Meta.Quasi,
