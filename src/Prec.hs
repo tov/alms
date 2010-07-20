@@ -38,7 +38,7 @@ precOp (c:_)
       OtherSymbol           -> Left precPlus
       ConnectorPunctuation  -> Right precCaret
       OtherPunctuation      -> Right precAt
-      _                     -> Left precEq -- defaulty
+      _                     -> Left precApp -- defaulty
 precOp ""             = Left precApp
 
 precMin, precStart, precMax,

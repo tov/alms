@@ -14,13 +14,14 @@ import Message.AST
 -- | Context for message rendering
 data RenderContext
   = RenderContext {
+      rcDetail  :: Int,
       rcQtLevel :: Int,
       rcLeft    :: Doc,
       rcRight   :: Doc
     }
 
 rc0 :: RenderContext
-rc0  = RenderContext 0 empty empty
+rc0  = RenderContext (-1) 0 empty empty
 
 getQuotes :: RenderContext -> (String, String)
 getQuotes cxt =
@@ -60,7 +61,8 @@ renderMessageH cxt msg0 = case msg0 of
   Quote msg'  -> renderMessageH cxt' (Surround s e msg')
     where (s, e) = getQuotes cxt
           cxt'   = incQuotes cxt
-  Printable a -> [addQuotes cxt (ppr a)]
+  Printable d a -> [addQuotes cxt (pprDepth d' a)]
+    where d' = if d == 0 then rcDetail cxt else d
   Showable a  -> [addQuotes cxt (text (show a))]
   AntiMsg t a -> [addQuotes cxt (renderAntiMsg t a)]
 
@@ -94,7 +96,8 @@ renderMessage cxt msg0 = case msg0 of
     where dent = maximum (map (length . fst) rows)
   Indent msg' -> text "    " <>
                  nest 4 (renderMessage cxt msg')
-  Printable a -> ppr a
+  Printable d a -> pprDepth d' a
+    where d' = if d == 0 then rcDetail cxt else d
   Showable a  -> text (show a)
   AntiMsg t a -> renderAntiMsg t a
 

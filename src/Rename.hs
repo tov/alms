@@ -32,6 +32,7 @@ import qualified Syntax.Expr
 import qualified Syntax.Notable
 import qualified Syntax.Patt
 import Util
+import Ppr (Ppr(..))
 
 import qualified Data.List as List
 import Data.Monoid
@@ -202,25 +203,25 @@ don'tAllocate :: R a -> R a
 don'tAllocate = R . local (\cxt -> cxt { allocate = False }) . unR
 
 -- | Generate an unbound name error
-unbound :: Show a => String -> a -> R b
+unbound :: Ppr a => String -> a -> R b
 unbound ns a =
-  renameError [$msg| $words:ns not in scope: $qshow:a. |]
+  renameError [$msg| $words:ns not in scope: $q:a |]
 
 -- | Generate an error about a name declared twice
-repeated :: Show a => String -> a -> String -> [Loc] -> R b
+repeated :: Ppr a => String -> a -> String -> [Loc] -> R b
 repeated what a inwhat locs =
   renameError [$msg|
-    $words:what $qshow:a
+    $words:what $q:a
     repeated $words:times in $words:inwhat $words:at
     $ul:slocs
   |]
   where
     times = case length locs of
-          0 -> ""
-          1 -> ""
-          2 -> "twice"
-          3 -> "thrice"
-          _ -> show (length locs) ++ " times"
+      0 -> ""
+      1 -> ""
+      2 -> "twice"
+      3 -> "thrice"
+      _ -> show (length locs) ++ " times"
     at    = if length locs > 1 then "at:" else ""
     slocs = map [$msg| $show:1 |] locs
 
@@ -319,9 +320,9 @@ getTyvar tv = do
     Nothing              -> unbound "Type variable" tv
     Just (tv', _, True)  -> return tv'
     Just (_, loc, False) -> renameError [$msg|
-      Type variable $show:tv not in scope.
+      Type variable $tv not in scope.
       <indent>
-         (It was bound at $show:loc, but a nested declaration
+         (It was bound at $loc, but a nested declaration
           cannot see type variables from its parent expression.)
       </indent>
       |]
@@ -416,7 +417,7 @@ renameDecl d0 = withLoc d0 $ case d0 of
     case unique fst llocs of
       Nothing -> return ()
       Just ((l, loc1), (_, loc2)) ->
-        repeated "Type" l "abstype group" [loc1, loc2]
+        repeated "Type declaration for" l "abstype group" [loc1, loc2]
     (ats', mdD) <-
       steal $
         inModule mdT $
@@ -465,7 +466,7 @@ renameTyDecs tds = do
   case unique fst llocs of
     Nothing -> return ()
     Just ((l, loc1), (_, loc2)) ->
-      repeated "Type" l "type group" [loc1, loc2]
+      repeated "Type declaration for" l "type group" [loc1, loc2]
   inModule md $ mapM (liftM snd . renameTyDec Nothing) tds
 
 renameTyDec :: Maybe (QExp Raw) -> TyDec Raw ->
@@ -570,42 +571,48 @@ checkSigDuplicates md = case md of
           repeated kind which "signature" []
 
 sealWith :: Module -> R ()
-sealWith md = case md of
+sealWith = loop Nothing where
+  loop b md = case md of
     MdNil              -> return ()
-    MdApp md1 md2      -> do sealWith md1; sealWith md2
+    MdApp md1 md2      -> do loop b md1; loop b md2
     MdTycon   _ l _   -> do
-      (l', loc, _) <- find "type constructor" tycons l
+      (l', loc, _) <- find b "type constructor" tycons l
       tell (MdTycon loc l l')
     MdVar     _ l _   -> do
-      (l', loc, _) <- find "variable" vars l
+      (l', loc, _) <- find b "variable" vars l
       tell (MdVar loc l l')
     MdDatacon _ u _   -> do
-      (u', loc, _) <- find "data constructor" datacons u
+      (u', loc, _) <- find b "data constructor" datacons u
       tell (MdDatacon loc u u')
     MdModule  _ u _ md2 -> do
-      (u', loc, (md1, _)) <- find "module" modules u
-      ((), md1') <- steal $ onlyInModule md1 $ sealWith md2
+      (u', loc, (md1, _)) <- find b "module" modules u
+      ((), md1') <- steal $ onlyInModule md1 $ loop b md2
       tell (MdModule loc u u' md1')
     MdSig     _ u _ md2 -> do
-      (u', loc, (md1, _)) <- find "module type" sigs u
-      let ctch body = body `catchError` \_ -> renameError
-            [$msg| In signature matching, signature
-                   $qshow:u does not match exactly.  |]
-      ((), _   ) <- ctch $ steal $ onlyInModule md2 $ sealWith md1
-      ((), md1') <- ctch $ steal $ onlyInModule md1 $ sealWith md2
+      (u', loc, (md1, _)) <- find b "module type" sigs u
+      ((), _   ) <- steal $ onlyInModule md2 $ loop (Just (Left u)) md1
+      ((), md1') <- steal $ onlyInModule md1 $ loop (Just (Right u)) md2
       tell (MdSig loc u u' md1')
     MdTyvar   _ _ _   ->
       renameBug "sealWith" "signature can’t declare type variable"
-  where
-    find what prj ident = do
-      m <- asks prj
-      case M.lookup ident m of
-        Just ident' -> return ident'
-        Nothing     -> renameError $
-          [$msg|
+  find b what prj ident = do
+    m <- asks prj
+    case M.lookup ident m of
+      Just ident' -> return ident'
+      Nothing     -> renameError $
+        case b of
+          Nothing -> [$msg|
             In signature matching, structure is missing
-            $words:what $qshow:ident,
+            $words:what $q:ident,
             which is present in ascribed signature.
+          |]
+          Just (Left u) -> [$msg|
+            In exact signature matching (for nested signature $u)
+            found unexpected $words:what $q:ident.
+          |]
+          Just (Right u) -> [$msg|
+            In exact signature matching (for nested signature $u)
+            missing expected $words:what $q:ident.
           |]
 
 -- | Rename a signature item and return the environment
@@ -724,7 +731,7 @@ renameBindings bns = do
   case unique (\(_,x,_,_) -> x) lxtes of
     Nothing          -> return ()
     Just ((l1,x,_,_),(l2,_,_,_)) ->
-      repeated "Variable" x "let-rec" [l1, l2]
+      repeated "Variable binding for" x "let-rec" [l1, l2]
   let bindEach rest (l,x,t,e) = withLoc l $ do
         x' <- bindVar x
         return ((l,x',t,e):rest)

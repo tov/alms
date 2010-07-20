@@ -7,7 +7,8 @@
 module ErrorMessage (
   AlmsException(..), Phase(..), AlmsMonad(..),
   almsBug, (!::),
-  module Message.Quasi
+  wordsMsg, quoteMsg, pprMsg, showMsg, emptyMsg,
+  module Message.Quasi,
 ) where
 
 import Loc
@@ -66,8 +67,8 @@ almsBug phase loc culprit0 msg0 =
                   Please report to <exact><tov@ccs.neu.edu></exact>.
                 |]
 
-(!::) :: Show a => String -> a -> Message d
-msg0 !:: thing = [$msg| $words:msg0 <q>$show:thing</q> |]
+(!::) :: Ppr a => String -> a -> Message d
+msg0 !:: thing = [$msg| $words:msg0 <q>$thing</q> |]
 infix 1 !::
 
 ---

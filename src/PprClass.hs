@@ -7,12 +7,14 @@ module PprClass (
   -- * Pretty-printing class
   Ppr(..), IsInfix(..), ListStyle(..),
   -- ** Helpers
-  ppr0, ppr1,
+  ppr0, ppr1, pprDepth,
   -- ** Context operations
   prec, prec1, descend, atPrec, atDepth,
   askPrec, askDepth,
+  trimList, trimCat,
   -- * Pretty-printing combinators
   (>+>), (>?>), ifEmpty,
+  vcat, sep, cat, fsep, fcat,
   -- * Renderers
   render, renderS, printDoc, printPpr,
   -- ** Instance helpers
@@ -21,7 +23,7 @@ module PprClass (
   module PrettyPrint
 ) where
 
-import PrettyPrint hiding (Doc(..), render)
+import PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
 import qualified PrettyPrint as P
 
 -- | Context for pretty-printing.
@@ -101,12 +103,16 @@ ppr0       = atPrec 0 . ppr
 ppr1      :: Ppr p => p -> Doc
 ppr1       = prec1 . ppr
 
+-- | Print to the given depth.
+pprDepth  :: Ppr p => Int -> p -> Doc
+pprDepth d = atDepth d . ppr
+
 -- | Enter the given precedence level, drawing parentheses if necessary,
 --   and count it as a descent in depth as well.
 prec :: Int -> Doc -> Doc
-prec p doc = descend $ asksD pcPrec $ \p' ->
+prec p doc = asksD pcPrec $ \p' ->
   if p' > p
-    then parens (atPrec (min p 0) doc)
+    then descend $ parens (atPrec (min p 0) doc)
     else atPrec p doc
 
 -- | Go to the next (tigher) precedence level.
@@ -136,6 +142,30 @@ askPrec  = asksD pcPrec
 -- | Find out the depth
 askDepth :: (Int -> Doc) -> Doc
 askDepth  = asksD pcDepth
+
+-- | Trim a list to (about) the given number of elements, with
+--   "..." in the middle.
+trimList :: Int -> [Doc] -> [Doc]
+trimList (-1) ds = ds
+trimList n2   ds = if k <= 2 * n
+                     then ds
+                     else take n ds ++ text "... " : drop (k - n) ds
+  where
+    n = (n2 + 1) `div` 2
+    k = length ds
+
+-- | Lift a concatenation function to respect depth.
+trimCat :: ([Doc] -> Doc) -> [Doc] -> Doc
+trimCat xcat docs = asksD pcDepth $ \d -> case d of
+  -1 -> xcat docs
+  _  -> atDepth ((d + 1) `div` 2) (xcat (trimList d docs))
+
+vcat, sep, cat, fsep, fcat :: [Doc] -> Doc
+vcat = trimCat P.vcat
+sep  = trimCat P.sep
+cat  = trimCat P.cat
+fsep = trimCat P.fsep
+fcat = trimCat P.fcat
 
 instance Ppr a => Ppr [a] where
   ppr = pprList

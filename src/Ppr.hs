@@ -30,34 +30,41 @@ instance IsInfix (Type i) where
   isInfix [$ty| $_ -[$_]> $_ |]    = True
   isInfix _                        = False
 
--- | To pretty print the application of a type constructor to
---   generic parameters
-pprTyApp :: Ppr a => QLid i -> [a] -> Doc
-pprTyApp ql       []   = ppr ql
-pprTyApp (J [] l) [t1]
-  | isOperator l, precOp (unLid l) == Right precBang
-    = prec precBang $
-        text (unLid l) <> ppr1 t1
-pprTyApp (J [] l) [t1, t2]
-  -- print @ without space around it:
-  | isOperator l, '@':_ <- unLid l, Right p <- precOp (unLid l)
-    = prec p $
-        ppr1 t1 <> text (unLid l) <> ppr t2
-  | isOperator l, Left p <- precOp (unLid l)
-    = prec p $
-        sep [ ppr t1,
-              text (unLid l) <+> ppr1 t2 ]
-  | isOperator l, Right p <- precOp (unLid l)
-    = prec p $
-        sep [ ppr1 t1, text (unLid l) <+> ppr t2 ]
-pprTyApp ql ts = prec precApp $
-                   sep [ ppr ts, ppr ql ]
+-- | For printing infix expressions.  Given a splitter function that
+--   splits expressions into a left operand, operator name, and right
+--   operand (if possible), and an expression to print, pretty-prints
+--   the expression, but only if there is one level of infix to be
+--   done.
+pprInfix :: Ppr a =>
+            (a -> Maybe (a, String, Maybe a)) ->
+            a -> Maybe Doc
+pprInfix inspect x0
+  | Just (x1, op, Nothing) <- inspect x0
+  , precOp op == Right precBang
+    = Just (prec precBang (text op <+> ppr x1))
+  | Just (_, op, Just _) <- inspect x0
+  , isOperator (lid op :: Lid Raw)
+  , p <- precOp op
+  , p /= Right precBang
+    = Just $
+        prec (id|||id $ p) $
+          fcat $ mapTail (nest 2) $ loop p empty x0
+  | otherwise
+    = Nothing
+  where
+  loop p suf x
+    | Just (x1, op, Just x2) <- inspect x
+    , precOp op == p
+    = case precOp op of
+        Left _  -> loop p (oper op) x1 ++ [ppr1 x2 <> suf]
+        Right _ -> ppr1 x1 <> oper op : loop p suf x2
+  loop _ suf x = [ ppr x <> suf ]
+  oper s = case s of
+    '@':_ -> text s
+    ';':_ -> text s <> space
+    _     -> space <> text s <> space
 
 instance Ppr (Type i) where
-  -- Print sugar for infix type constructors:
-  ppr [$ty| $t1 ; $t2 |]
-            = prec precSemi $
-                sep [ ppr1 t1 <> text ";", ppr t2 ]
   -- pprPrec p (TyFun q t1 t2)
   ppr [$ty| $t1 -[$q]> $t2 |]
             = prec precArr $
@@ -66,8 +73,11 @@ instance Ppr (Type i) where
     where pprArr (QeLit Qu) = text "->"
           pprArr (QeLit Qa) = text "-o"
           pprArr _          = text "-[" <> ppr0 q <> text "]>"
-  ppr [$ty| ($list:ts) $qlid:n |]
-                    = pprTyApp n ts
+  ppr t@[$ty| ($list:ts) $qlid:n |]
+    | Just doc <- pprInfix unfoldType t
+                    = doc
+    | null ts       = ppr n
+    | otherwise     = prec precApp $ sep [ ppr ts, ppr n ]
     -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
   ppr [$ty| '$x |]  = ppr x
   ppr [$ty| $quant:qu '$x. $t |]
@@ -85,12 +95,24 @@ instance Ppr (Type i) where
                           >+> ppr t
   ppr [$ty| $anti:a |] = ppr a
 
+unfoldType :: Type i -> Maybe (Type i, String, Maybe (Type i))
+unfoldType [$ty| ($t1, $t2) $name:n |] = Just (t1, n, Just t2)
+unfoldType [$ty| $t1 $name:n |]        = Just (t1, n, Nothing)
+unfoldType _                           = Nothing
+
 instance Ppr (TyPat i) where
   ppr tp0 = case tp0 of
+    _ | Just doc <- pprInfix unfoldTyPat tp0
+                       -> doc
     N _ (TpVar tv var) -> pprParamV var tv
     [$tpQ| ($list:tps) $qlid:ql |]
-                       -> pprTyApp ql tps
+                       -> ppr tps <+> ppr ql
     [$tpQ| $antiP:a |] -> ppr a
+
+unfoldTyPat :: TyPat i -> Maybe (TyPat i, String, Maybe (TyPat i))
+unfoldTyPat [$tpQ| ($t1, $t2) $name:n |] = Just (t1, n, Just t2)
+unfoldTyPat [$tpQ| $t1 $name:n |]        = Just (t1, n, Nothing)
+unfoldTyPat _                            = Nothing
 
 instance Ppr (QExp i) where
   ppr [$qeQ| $qlit:qu |] = ppr qu
@@ -275,6 +297,8 @@ instance Ppr (SigItem i) where
 
 instance Ppr (Expr i) where
   ppr e0 = case e0 of
+    _ | Just doc <- pprInfix unfoldExpr e0
+                     -> doc
     [$ex| $id:x |]   -> ppr x
     [$ex| $lit:lt |] -> ppr lt
     [$ex| if $ec then $et else $ef |] ->
@@ -282,10 +306,11 @@ instance Ppr (Expr i) where
         sep [ text "if" <+> ppr ec,
               nest 2 $ text "then" <+> ppr0 et,
               nest 2 $ text "else" <+> ppr ef ]
-    [$ex| $e1; $e2 |] ->
-      prec precSemi $
-        sep [ ppr1 e1 <> semi,
-              ppr0 e2 ]
+    [$ex| $_; $_ |] ->
+      prec precDot $
+        sep (unfold e0)
+      where unfold [$ex| $e1; $e2 |] = ppr1 e1 <> semi : unfold e2
+            unfold e                 = [ ppr0 e ]
     [$ex| let $x = $e1 in $e2 |] ->
       pprLet (ppr x) e1 e2
     [$ex| match $e1 with $list:clauses |] ->
@@ -321,17 +346,6 @@ instance Ppr (Expr i) where
       prec precCom $
         sep [ ppr e1 <> comma, ppr1 e2 ]
     [$ex| fun $_ : $_ -> $_ |] -> pprAbs e0
-    [$ex| $name:x $e2 |]
-      | Right p' <- precOp x,
-        p' == 10
-          -> prec p' $ text x <+> ppr e2
-    [$ex| ($name:x $e12) $e2 |] 
-      | (pprL, pprR, p') <- either ((,,) ppr ppr1) ((,,) ppr1 ppr) (precOp x),
-        p' < 9
-          -> prec p' $
-               sep [ pprL e12,
-                     text x,
-                     pprR e2 ]
     [$ex| $e1 $e2 |]
           -> prec precApp $
                sep [ ppr e1, ppr1 e2 ]
@@ -364,6 +378,10 @@ instance Ppr (Expr i) where
           sep [ ppr e,
                 text ":>" <+> ppr t1 ]
     [$ex| $anti:a |] -> ppr a
+    where
+    unfoldExpr [$ex| ($name:x $e1) $e2 |] = Just (e1, x, Just e2)
+    unfoldExpr [$ex| $name:x $e1 |]       = Just (e1, x, Nothing)
+    unfoldExpr _                          = Nothing
 
 pprLet :: Doc -> Expr i -> Expr i -> Doc
 pprLet pat e1 e2 = prec precDot $
@@ -429,6 +447,39 @@ instance Ppr Lit where
   ppr (LtStr s)   = text (show s)
   ppr (LtAnti a)  = ppr a
 
+--
+-- Helper for pretty-printing type-like things -- doesn't require
+-- underlying types, but does need to see the operator name.
+--
+
+data PprTyAppHelper i a
+  = PTAHBranch (QLid i) [a]
+  | PTAHLeaf   a
+
+instance Ppr a => Ppr (PprTyAppHelper i a) where
+  ppr (PTAHLeaf a) = ppr a
+  ppr _            = error "BUG! in PprTyAppHelper.ppr"
+
+unfoldPTAH :: PprTyAppHelper i a ->
+              Maybe (PprTyAppHelper i a, String, Maybe (PprTyAppHelper i a))
+unfoldPTAH (PTAHBranch (J [] l) [a, b])
+  = Just (PTAHLeaf a, unLid l, Just (PTAHLeaf b))
+unfoldPTAH (PTAHBranch (J [] l) [a])
+  = Just (PTAHLeaf a, unLid l, Nothing)
+unfoldPTAH _
+  = Nothing
+
+pprTyApp :: Ppr a => QLid i -> [a] -> Doc
+pprTyApp ql ts
+  | Just doc <- pprInfix unfoldPTAH (PTAHBranch ql ts)
+               = doc
+pprTyApp ql [] = ppr ql
+pprTyApp ql ts = prec precApp $ sep [ ppr ts, ppr ql ]
+
+--
+-- Instances
+--
+
 instance Show (Prog i)   where showsPrec = showFromPpr
 instance Show (Decl i)   where showsPrec = showFromPpr
 instance Show (TyDec i)  where showsPrec = showFromPpr
@@ -440,6 +491,7 @@ instance Show (TyPat i)  where showsPrec = showFromPpr
 instance Show (QExp i)   where showsPrec = showFromPpr
 instance Show (SigItem i)where showsPrec = showFromPpr
 
+instance Ppr Loc       where pprPrec = pprFromShow
 instance Ppr QLit      where pprPrec = pprFromShow
 instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Quant     where pprPrec = pprFromShow

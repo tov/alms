@@ -3,6 +3,7 @@
       GADTs,
       GeneralizedNewtypeDeriving,
       MultiParamTypeClasses,
+      PatternGuards,
       TemplateHaskell
       #-}
 module Message.Quasi (
@@ -42,7 +43,7 @@ msgAstToExpQ msg0 = do
     Stack _ msgs      -> maximum (map highest msgs)
     Table rows        -> maximum (map (highest . snd) rows)
     Indent msg'       -> highest msg'
-    Printable _       -> 0
+    Printable _ _     -> 0
     Showable _        -> 0
     AntiMsg _ name    -> case readsPrec 0 name of
       (z,""):_          -> z
@@ -68,7 +69,8 @@ msgAstToExpQ msg0 = do
       Table rows  -> [| Table $(listE (map each rows)) |]
         where each (s,msg') = [| ($(lift s), $(loop msg')) |]
       Indent msg' -> [| Indent $(loop msg') |]
-      Printable a -> [| Exact $(lift (show (PprClass.ppr a))) |]
+      Printable d a
+                  -> [| Exact $(lift (show (PprClass.pprDepth d a))) |]
       Showable a  -> [| Exact $(lift (show a)) |]
       AntiMsg tag name -> case tag of
         "words"   -> [| Words $var |]
@@ -85,7 +87,9 @@ msgAstToExpQ msg0 = do
         'v':tag'  -> [| $(loop (AntiMsg tag' name)) :: Message V |]
         'h':tag'  -> [| $(loop (AntiMsg tag' name)) :: Message H |]
         'q':tag'  -> [| Quote $(loop (AntiMsg tag' name)) |]
-        ""        -> [| Printable $var |]
+        ""        -> [| Printable 0 $var |]
+        _ | [(d,"")] <- (reads tag :: [(Int,String)])
+                  -> [| Printable d $var |]
         _         -> fail $
           "Unknown message antiquote tag: ‘" ++ tag ++ "’"
         where var = varE (M.findWithDefault (mkName name) name namemap)

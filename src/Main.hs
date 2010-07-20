@@ -175,7 +175,7 @@ handleExns body handler =
                      bogus
                      (Msg.Table [
                         ("in program:", Msg.Exact prog),
-                        ("exception:", Msg.Printable (vppr e))
+                        ("exception:", Msg.Printable (-1) (vppr e))
                      ]),
       Exn.Handler continue,
       Exn.Handler $ \err ->

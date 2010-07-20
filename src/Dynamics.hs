@@ -25,6 +25,7 @@ import qualified Syntax.Notable
 import qualified Syntax.Patt
 import Env
 import Ppr (Ppr(..), Doc, text, precApp)
+import ErrorMessage
 
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Control.Exception (throw)
@@ -125,7 +126,8 @@ evalModExp [$me| struct $list:ds end |]  env = do
 evalModExp [$me| $quid:n $list:_ |]      env = do
   case env =..= n of
     Just scope -> return scope
-    Nothing    -> fail $ "BUG! Unknown module: " ++ show n
+    Nothing    -> runtimeBug _loc "evalModExp" $
+      "Unknown module: ‘" ++ show n ++ "’"
 evalModExp [$me| $me1 : $_ |]            env = do
   evalModExp me1 env
 evalModExp [$me| $anti:a |]              _   = $antifail
@@ -143,7 +145,8 @@ valOf e env = case e of
   [$ex| $id:ident |] -> case view ident of
     Left x     -> case env =..= x of
       Just v     -> v
-      Nothing    -> fail $ "BUG! unbound identifier: " ++ show x
+      Nothing    -> runtimeBug _loc "valOf" $
+        "unbound identifier: ‘" ++ show x ++ "’"
     Right c    -> return (VaCon (jname c) Nothing)
   [$ex| $str:s |]    -> return (vinj s)
   [$ex| $int:z |]    -> return (vinj z)
@@ -160,7 +163,7 @@ valOf e env = case e of
     loop clauses
   [$ex| let rec $list:bs in $e2 |] -> do
     let extend (envI, rs) (N _ b) = do
-          r <- newIORef (fail "Accessed let rec binding too early")
+          r <- newIORef $ throwBadLetRec (unLid (bnvar b))
           return (envI =+= bnvar b =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
@@ -186,8 +189,9 @@ valOf e env = case e of
     case v1 of
       VaFun n f -> f v2 >>! nameApp n (pprPrec (precApp + 1) v2) 
       VaCon c _ -> return (VaCon c (Just v2))
-      _         -> fail $ "BUG! applied non-function " ++ show v1
-                           ++ " to argument " ++ show v2
+      _         -> runtimeBug _loc "valOf" $
+        "applied non-function ‘" ++ show v1 ++
+        "’ to argument ‘" ++ show v2 ++ "’"
   [$ex| fun '$_ -> $e1 |]         -> valOf e1 env
   [$ex| $e1 [$_] |]               -> valOf e1 env
   [$ex| Pack[$opt:_]($_, $e1) |]  -> valOf e1 env
@@ -206,7 +210,7 @@ bindPatt x0 v env = case x0 of
        case (mx, v) of
       (Nothing, VaCon u' Nothing)   | u == u' -> return env
       (Just x,  VaCon u' (Just v')) | u == u' -> bindPatt x v' env
-      _                                             -> perr
+      _                                       -> perr
   [$pa| ($x, $y) |]
     -> case vprjM v of
       Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
@@ -234,14 +238,23 @@ bindPatt x0 v env = case x0 of
   [$pa| $antiL:a |]
     -> antifail "dynamics" a
   where perr = fail $
-                 "Pattern match failure: " ++ show x0 ++
-                 " does not match " ++ show v
+                 "BUG! In bindPat, pattern match failure should " ++
+                 "raise PatternMatch exception, but didn’t!"
 
 throwPatternMatch :: Value -> [String] -> E -> IO a
 throwPatternMatch v ps _ =
   throw VExn {
     exnValue = VaCon (uid "PatternMatch") (Just (vinj (show v, ps)))
   }
+
+throwBadLetRec :: String -> IO a
+throwBadLetRec v =
+  throw VExn {
+    exnValue = VaCon (uid "UninitializedLetRec") (Just (vinj v))
+  }
+
+runtimeBug :: Loc -> String -> String -> IO a
+runtimeBug  = throwAlms <$$$> almsBug DynamicsPhase
 
 ---
 --- helpful stuff

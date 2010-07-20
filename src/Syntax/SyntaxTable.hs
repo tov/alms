@@ -49,7 +49,7 @@ typeAntis
   & "stx"    =:  appFun (TH.mkName "typeToStx'")
   & "anti"   =:< 'TyAnti
 tyPatAntis
-  = "typat"  =:  Nothing
+  = "typat"  =:! Nothing
   & "antiP"  =:< 'TpAnti
 quantAntis
   = "quant"  =:  Nothing

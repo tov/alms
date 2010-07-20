@@ -216,9 +216,6 @@ wrapMany :: ([a] -> a) -> [a] -> a
 wrapMany _ [x] = x
 wrapMany w xs  = w xs
 
-emptyMsg :: Message d
-emptyMsg  = Exact ""
-
 --
 -- Auxiliary
 --

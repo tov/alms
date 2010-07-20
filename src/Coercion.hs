@@ -19,6 +19,7 @@ import Syntax hiding (Type, Type'(..))
 import Type
 import TypeRel ()
 import Util
+import ErrorMessage
 
 import qualified Data.Map as M
 import qualified Control.Monad.State as CMS
@@ -45,7 +46,7 @@ _loc  = mkBogus "<coercion>"
 translateDecls :: TEnv -> [Decl Renamed] -> (TEnv, [Decl Renamed])
 translateDecls tenv decls = (tenv, decls)
 
-coerceExpression :: Monad m =>
+coerceExpression :: AlmsMonad m =>
                     Expr Renamed -> Type -> Type -> m (Expr Renamed)
 coerceExpression e tfrom tto = do
   prj <- CMS.evalStateT (build True M.empty tfrom tto) 0
@@ -54,7 +55,7 @@ coerceExpression e tfrom tto = do
   neg = "context at " ++ show (getLoc e)
   pos = "value at " ++ show (getLoc e)
 
-build :: Monad m =>
+build :: AlmsMonad m =>
          Bool -> M.Map (TyVarR, TyVarR) (Maybe (Lid Renamed)) ->
          Type -> Type -> CMS.StateT Integer m (Expr Renamed)
 build b recs tfrom tto
@@ -112,8 +113,12 @@ build b recs (view -> TyVar tv) (view -> TyVar tv')
 build _ _    t t' =
   if t <: t'
     then return [$ex|+ INTERNALS.Contract.any [$stx:t'] |]
-    else fail $ "type error: no coercion from " ++ show t ++ " to " ++ show t'
-      -- ++ "\n" ++ show recs
+    else CMS.lift . throwAlms $ AlmsException StaticsPhase bogus [$msg|
+        <dl>
+          <dt>from type: <dd>$t
+          <dt>to type:   <dd>$t'.
+        </dl>
+    |]
 
 shadow :: [TyVarR] -> [TyVarR] ->
           M.Map (TyVarR, TyVarR) a -> M.Map (TyVarR, TyVarR) a

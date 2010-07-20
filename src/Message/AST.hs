@@ -4,7 +4,8 @@
       #-}
 module Message.AST (
   Message(..),
-  H, V, StackStyle(..)
+  H, V, StackStyle(..),
+  wordsMsg, quoteMsg, pprMsg, showMsg, emptyMsg,
 ) where
 
 import PprClass
@@ -19,7 +20,7 @@ data Message d where
   Stack     :: StackStyle -> [Message V] -> Message V
   Table     :: [(String, Message V)] -> Message V
   Indent    :: Message V -> Message V
-  Printable :: Ppr a => a -> Message d
+  Printable :: Ppr a => Int -> a -> Message d
   Showable  :: Show a => a -> Message d
   AntiMsg   :: String -> String -> Message d
 
@@ -32,4 +33,23 @@ data StackStyle
   | Bulleted
   | Separated
   | Broken
+
+--
+-- Public AST builders
+--
+
+wordsMsg :: String -> Message d
+wordsMsg  = Words
+
+quoteMsg :: Message d -> Message d
+quoteMsg  = Quote
+
+pprMsg   :: Ppr a => a -> Message d
+pprMsg    = Printable (-1)
+
+showMsg  :: Show a => a -> Message d
+showMsg   = Showable
+
+emptyMsg :: Message d
+emptyMsg  = Words ""
 

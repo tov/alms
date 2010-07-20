@@ -6,6 +6,7 @@ module INTERNALS = struct
     exception IOError of string 
     exception Blame of string * string
     exception PatternMatch of string * string list
+    exception UninitializedLetRec of string
 
     let failwith (msg: string) =
       raise (Failure msg)

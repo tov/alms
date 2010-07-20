@@ -158,8 +158,8 @@ fullRenderIn :: e ->
                 P.Mode -> Int -> Float ->
                 (P.TextDetails -> a -> a) -> a ->
                 Doc e -> a
-fullRenderIn e mode int float f z =
-  P.fullRender mode int float f z . toDocIn e
+fullRenderIn e mode cols ribbon f z =
+  P.fullRender mode cols ribbon f z . toDocIn e
 
 toDoc    :: Monoid e => Doc e -> P.Doc
 toDoc     = toDocIn mempty
