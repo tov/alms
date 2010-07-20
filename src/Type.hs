@@ -129,9 +129,9 @@ instance Eq TyCon where
 instance Ord TyCon where
   compare tc tc'  = compare (tcName tc) (tcName tc')
 
-instance Ppr Type   where pprPrec p = pprPrec p . typeToStx
+instance Ppr Type   where ppr = ppr . typeToStx
 instance Show Type  where showsPrec = showFromPpr
-instance Ppr TyPat  where pprPrec p = pprPrec p . tyPatToStx
+instance Ppr TyPat  where ppr = ppr . tyPatToStx
 instance Show TyPat where showsPrec = showFromPpr
 
 -- | The different varieties of type definitions
@@ -899,10 +899,10 @@ dumpType = CMW.execWriter . loop 0 where
         CMW.tell (replicate i ' ' ++ "}\n")
 
 instance Ppr TyCon where
-  ppr tc =
+  ppr tc = atPrec 0 $
     -- brackets (text (show (tcId tc))) <>
     case tcNext tc of
-      Just [(tps,t)] -> pprTyApp 0 (tcName tc) (ps (map snd tvs))
+      Just [(tps,t)] -> pprTyApp (tcName tc) (ps (map snd tvs))
                           >?> qe (map fst tvs)
                             >?> char '=' <+> ppr t
         where
@@ -917,7 +917,7 @@ instance Ppr TyCon where
                  | qlit <- tcBounds tc
                  | i <- [ 1 :: Integer .. ] ]
       --
-      Just next -> pprTyApp 0 (tcName tc) (ps tvs)
+      Just next -> pprTyApp (tcName tc) (ps tvs)
                      >?> (qe tvs <+> text "with"
                           $$ vcat (map alt next))
         where
@@ -927,7 +927,7 @@ instance Ppr TyCon where
           alt (tps,t) = char '|' <+> pprPrec precApp tps <+> ppr (tcName tc)
                           >?> char '=' <+> ppr t
       --
-      Nothing -> pprTyApp 0 (tcName tc) (ps tvs)
+      Nothing -> pprTyApp (tcName tc) (ps tvs)
                    >?> qe tvs
                      >?> alts
         where

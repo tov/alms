@@ -202,7 +202,7 @@ newtype Ref = Ref { unRef :: IORef Value }
 
 instance Valuable Ref where
   veq = (==)
-  vpprPrec _ _ = text "#<ref>"
+  vppr _ = text "#<ref>"
 
 -- | Built-in operations implemented in the object language
 srcBasis :: String

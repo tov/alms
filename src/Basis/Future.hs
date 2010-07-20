@@ -20,7 +20,7 @@ newtype Future = Future { unFuture :: MV.MVar Value }
 
 instance Valuable Future where
   veq = (==)
-  vpprPrec _ _ = text "#<(co)future>"
+  vppr _ = text "#<(co)future>"
 
 
 entries :: [Entry Raw]

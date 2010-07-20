@@ -20,7 +20,7 @@ newtype Array = Array { unArray :: A.IOArray Int Value }
 
 instance Valuable Array where
   veq = (==)
-  vpprPrec _ _ = text "#<array>"
+  vppr _ = text "#<array>"
 
 io :: IO a -> IO a
 io  = id

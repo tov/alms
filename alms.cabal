@@ -90,6 +90,7 @@ Executable alms
                         Ppr,
                         PprClass,
                         Prec,
+                        PrettyPrint,
                         Rename,
                         Sigma,
                         Statics,

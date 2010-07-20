@@ -20,11 +20,11 @@ import qualified Syntax.Decl
 
 instance Valuable S.Socket where
   veq = (==)
-  vpprPrec _ _ = text "#<socket>"
+  vppr _ = text "#<socket>"
 
 instance Valuable S.Family where
   veq      = (==)
-  vpprPrec _ = text . show
+  vppr     = text . show
   vinj     = vinjData
   vprjM    = vprjDataM
 deriving instance Typeable S.Family
@@ -32,7 +32,7 @@ deriving instance Data S.Family
 
 instance Valuable S.ShutdownCmd where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
   vinj       = vinjData
   vprjM      = vprjDataM
 deriving instance Eq S.ShutdownCmd
@@ -41,21 +41,21 @@ deriving instance Data S.ShutdownCmd
 
 instance Valuable S.SocketType where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
   vinj       = vinjData
   vprjM      = vprjDataM
 deriving instance Data S.SocketType
 
 instance Valuable S.AddrInfoFlag where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
   vinj       = vinjData
   vprjM      = vprjDataM
 deriving instance Data S.AddrInfoFlag
 
 instance Valuable S.PortNumber where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
   vinj       = vinjData
   vprjM      = vprjDataM
 
@@ -88,14 +88,14 @@ cIntType  = mkIntType "Foreign.C.Types.CInt"
 
 instance Valuable S.SockAddr where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
   vinj       = vinjData
   vprjM      = vprjDataM
 deriving instance Data S.SockAddr
 
 instance Valuable S.AddrInfo where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
   vinj       = vinjData
   vprjM      = vprjDataM
 deriving instance Data S.AddrInfo

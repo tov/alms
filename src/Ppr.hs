@@ -32,93 +32,89 @@ instance IsInfix (Type i) where
 
 -- | To pretty print the application of a type constructor to
 --   generic parameters
-pprTyApp :: (Ppr a) => Int -> QLid i -> [a] -> Doc
-pprTyApp _ ql       []   = ppr ql
-pprTyApp p (J [] l) [t1]
+pprTyApp :: Ppr a => QLid i -> [a] -> Doc
+pprTyApp ql       []   = ppr ql
+pprTyApp (J [] l) [t1]
   | isOperator l, precOp (unLid l) == Right precBang
-    = parensIf (p > precBang) $
-        text (unLid l) <> pprPrec (precBang + 1) t1
-pprTyApp p (J [] l) [t1, t2]
+    = prec precBang $
+        text (unLid l) <> ppr1 t1
+pprTyApp (J [] l) [t1, t2]
   -- print @ without space around it:
-  | isOperator l, '@':_ <- unLid l, Right prec <- precOp (unLid l)
-    = parensIf (p > prec) $
-        pprPrec (prec + 1) t1 <> text (unLid l) <> pprPrec prec t2
-  | isOperator l, Left prec <- precOp (unLid l)
-    = parensIf (p > prec) $
-        sep [ pprPrec prec t1,
-              text (unLid l) <+> pprPrec (prec + 1) t2 ]
-  | isOperator l, Right prec <- precOp (unLid l)
-    = parensIf (p > prec) $
-        sep [ pprPrec (prec + 1) t1,
-              text (unLid l) <+> pprPrec prec t2]
-pprTyApp p ql ts = parensIf (p > precApp) $
-                     sep [ pprPrec precApp ts,
-                           ppr ql ]
+  | isOperator l, '@':_ <- unLid l, Right p <- precOp (unLid l)
+    = prec p $
+        ppr1 t1 <> text (unLid l) <> ppr t2
+  | isOperator l, Left p <- precOp (unLid l)
+    = prec p $
+        sep [ ppr t1,
+              text (unLid l) <+> ppr1 t2 ]
+  | isOperator l, Right p <- precOp (unLid l)
+    = prec p $
+        sep [ ppr1 t1, text (unLid l) <+> ppr t2 ]
+pprTyApp ql ts = prec precApp $
+                   sep [ ppr ts, ppr ql ]
 
 instance Ppr (Type i) where
   -- Print sugar for infix type constructors:
-  pprPrec p [$ty| $t1 ; $t2 |]
-                  = parensIf (p > precSemi) $
-                      sep [ pprPrec (precSemi + 1) t1 <> text ";",
-                            pprPrec precSemi t2 ]
+  ppr [$ty| $t1 ; $t2 |]
+            = prec precSemi $
+                sep [ ppr1 t1 <> text ";", ppr t2 ]
   -- pprPrec p (TyFun q t1 t2)
-  pprPrec p [$ty| $t1 -[$q]> $t2 |]
-                  = parensIf (p > precArr) $
-                    sep [ pprPrec (precArr + 1) t1,
-                          pprArr (view q) <+> pprRight precArr t2 ]
+  ppr [$ty| $t1 -[$q]> $t2 |]
+            = prec precArr $
+              sep [ ppr1 t1,
+                    pprArr (view q) <+> pprRight t2 ]
     where pprArr (QeLit Qu) = text "->"
           pprArr (QeLit Qa) = text "-o"
-          pprArr _          = text "-[" <> pprPrec precStart q <> text "]>"
-  pprPrec p [$ty| ($list:ts) $qlid:n |]
-                          = pprTyApp p n ts
+          pprArr _          = text "-[" <> ppr0 q <> text "]>"
+  ppr [$ty| ($list:ts) $qlid:n |]
+                    = pprTyApp n ts
     -- debugging: <> text (show (ttId (unsafeCoerce tag :: TyTag)))
-  pprPrec p [$ty| '$x |]  = pprPrec p x
-  pprPrec p [$ty| $quant:qu '$x. $t |]
-                          = parensIf (p > precDot) $
-                              ppr qu <+>
-                              fsep (map (pprPrec (precDot + 1))
-                                        tvs) <>
-                              char '.'
-                                >+> pprPrec precDot body
+  ppr [$ty| '$x |]  = ppr x
+  ppr [$ty| $quant:qu '$x. $t |]
+                    = prec precDot $
+                        ppr qu <+>
+                        fsep (map ppr1 tvs) <>
+                        char '.'
+                          >+> ppr body
       where (tvs, body) = unfoldTyQu qu [$ty| $quant:qu '$x. $t |]
-  pprPrec p [$ty| mu '$x. $t |]
-                          = parensIf (p > precDot) $
-                              text "mu" <+>
-                              pprPrec (precDot + 1) x <>
-                              char '.'
-                                >+> pprPrec precDot t
-  pprPrec p [$ty| $anti:a |] = pprPrec p a
+  ppr [$ty| mu '$x. $t |]
+                    = prec precDot $
+                        text "mu" <+>
+                        ppr1 x <>
+                        char '.'
+                          >+> ppr t
+  ppr [$ty| $anti:a |] = ppr a
 
 instance Ppr (TyPat i) where
-  pprPrec p tp0 = case tp0 of
+  ppr tp0 = case tp0 of
     N _ (TpVar tv var) -> pprParamV var tv
     [$tpQ| ($list:tps) $qlid:ql |]
-                       -> pprTyApp p ql tps
+                       -> pprTyApp ql tps
     [$tpQ| $antiP:a |] -> ppr a
 
 instance Ppr (QExp i) where
-  pprPrec p [$qeQ| $qlit:qu |] = pprPrec p qu
-  pprPrec p [$qeQ| $qvar:v |]  = pprPrec p (tvname v)
-  pprPrec p [$qeQ| $qdisj:qes |] = case qes of
-    []    -> pprPrec p Qu
-    [qe]  -> pprPrec p qe
-    _     -> parensIf (p > precPlus) $
+  ppr [$qeQ| $qlit:qu |] = ppr qu
+  ppr [$qeQ| $qvar:v |]  = ppr (tvname v)
+  ppr [$qeQ| $qdisj:qes |] = case qes of
+    []    -> ppr Qu
+    [qe]  -> ppr qe
+    _     -> prec precPlus $
                fsep $
                  intersperse (text "\\/") $
-                   map (pprPrec (precPlus + 1)) qes
-  pprPrec p [$qeQ| $qconj:qes |] = case qes of
-    []    -> pprPrec p Qa
-    [qe]  -> pprPrec p qe
-    _     -> parensIf (p > precStar) $
+                   map ppr1 qes
+  ppr [$qeQ| $qconj:qes |] = case qes of
+    []    -> ppr Qa
+    [qe]  -> ppr qe
+    _     -> prec precStar $
                hcat $
                  intersperse (text "/\\") $
-                   map (pprPrec (precStar + 1)) qes
-  pprPrec p [$qeQ| $anti:a |] = pprPrec p a
+                   map ppr1 qes
+  ppr [$qeQ| $anti:a |] = ppr a
 
 instance Ppr (Prog i) where
-  ppr [$prQ| $list:ms |]       = vcat (map ppr ms)
+  ppr [$prQ| $list:ms |]       = vcat (map ppr0 ms)
   ppr [$prQ| $expr:e |]        = ppr e
-  ppr [$prQ| $list:ms in $e |] = vcat (map ppr ms) $+$
+  ppr [$prQ| $list:ms in $e |] = vcat (map ppr0 ms) $+$
                                  (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
@@ -230,7 +226,7 @@ pprModExp add modexp = case modexp of
     brackets (fsep (punctuate comma (map ppr qls)))
   [$me| struct $list:ds end |] ->
     add (text "struct")
-    $$ nest 2 (vcat (map ppr ds))
+    $$ nest 2 (vcat (map ppr0 ds))
     $$ text "end"
   [$me| $me1 : $se2 |] ->
     pprSigExp (pprModExp add me1 <+> colon <+>) se2
@@ -246,16 +242,16 @@ pprSigExp add se0 = body >+> withs where
       brackets (fsep (punctuate comma (map ppr qls)))
     [$seQ| sig $list:sgs end |] ->
       add (text "sig")
-      $$ nest 2 (vcat (map ppr sgs))
+      $$ nest 2 (vcat (map ppr0 sgs))
       $$ text "end"
     [$seQ| $_ with type $list:_ $qlid:_ = $_ |] ->
       error "BUG! can't happen in pprSigExp"
     [$seQ| $anti:a |] -> add (ppr a)
   withs      =
-    sep $
+    atPrec 0 $ sep $
       mapHead (text "with type" <+>) $
         mapTail ((nest 6) . (text "and" <+>)) $
-          [ pprTyApp 0 tc tvs <+> equals <+> ppr t
+          [ pprTyApp tc tvs <+> equals <+> ppr t
           | (tc, tvs, t) <- wts ]
 
 instance Ppr (SigItem i) where
@@ -278,113 +274,114 @@ instance Ppr (SigItem i) where
       ppr a
 
 instance Ppr (Expr i) where
-  pprPrec p e0 = case e0 of
-    [$ex| $id:x |]   -> pprPrec p x
-    [$ex| $lit:lt |] -> pprPrec p lt
+  ppr e0 = case e0 of
+    [$ex| $id:x |]   -> ppr x
+    [$ex| $lit:lt |] -> ppr lt
     [$ex| if $ec then $et else $ef |] ->
-      parensIf (p > precDot) $
+      prec precDot $
         sep [ text "if" <+> ppr ec,
-              nest 2 $ text "then" <+> ppr et,
-              nest 2 $ text "else" <+> pprPrec precDot ef ]
+              nest 2 $ text "then" <+> ppr0 et,
+              nest 2 $ text "else" <+> ppr ef ]
     [$ex| $e1; $e2 |] ->
-      parensIf (p > precSemi) $
-        sep [ pprPrec (precSemi + 1) e1 <> semi,
-              ppr e2 ]
+      prec precSemi $
+        sep [ ppr1 e1 <> semi,
+              ppr0 e2 ]
     [$ex| let $x = $e1 in $e2 |] ->
-      pprLet p (ppr x) e1 e2
+      pprLet (ppr x) e1 e2
     [$ex| match $e1 with $list:clauses |] ->
-      parensIf (p > precDot) $
+      prec precDot $
         vcat (sep [ text "match",
-                    nest 2 $ ppr e1,
+                    nest 2 $ ppr0 e1,
                     text "with" ] : map alt clauses)
       where
         alt (N _ (CaClause xi ei)) =
-          hang (char '|' <+> pprPrec precDot xi <+> text "->")
+          hang (char '|' <+> ppr xi <+> text "->")
                 4
-                (pprPrec precDot ei)
+                (ppr ei)
         alt (N _ (CaAnti a))      = char '|' <+> ppr a
     [$ex| let rec $list:bs in $e2 |] ->
-      text "let" <+>
-      vcat (zipWith each ("rec" : repeat "and") bs) $$
-      text "in" <+> pprPrec precDot e2
-        where
-          each kw (N _ (BnBind x t e)) =
-            -- This could be better by pulling some args out.
-            hang (hang (text kw <+> ppr x)
-                       6
-                       (colon <+> ppr t <+> equals))
-                 2
-                 (ppr e)
-          each kw (N _ (BnAnti a)) = text kw <+> ppr a
+      prec precDot $
+        text "let" <+>
+        vcat (zipWith each ("rec" : repeat "and") bs) $$
+        text "in" <+> ppr e2
+          where
+            each kw (N _ (BnBind x t e)) =
+              -- This could be better by pulling some args out.
+              hang (hang (text kw <+> ppr x)
+                         6
+                         (colon <+> ppr t <+> equals))
+                   2
+                   (ppr e)
+            each kw (N _ (BnAnti a)) = text kw <+> ppr a
     [$ex| let $decl:d in $e2 |] ->
-      text "let" <+> ppr d $$
-      (text "in" >+> pprPrec precDot e2)
+      prec precDot $
+        text "let" <+> ppr0 d $$
+        (text "in" >+> ppr e2)
     [$ex| ($e1, $e2) |] ->
-      parensIf (p > precCom) $
-        sep [ pprPrec precCom e1 <> comma,
-              pprPrec (precCom + 1) e2 ]
-    [$ex| fun $_ : $_ -> $_ |] -> pprAbs p e0
+      prec precCom $
+        sep [ ppr e1 <> comma, ppr1 e2 ]
+    [$ex| fun $_ : $_ -> $_ |] -> pprAbs e0
     [$ex| $name:x $e2 |]
       | Right p' <- precOp x,
         p' == 10
-          -> parensIf (p > p') $
-               text x <+> pprPrec p' e2
+          -> prec p' $ text x <+> ppr e2
     [$ex| ($name:x $e12) $e2 |] 
-      | (dl, dr, p') <- either ((,,) 0 1) ((,,) 1 0) (precOp x),
+      | (pprL, pprR, p') <- either ((,,) ppr ppr1) ((,,) ppr1 ppr) (precOp x),
         p' < 9
-          -> parensIf (p > p') $
-               sep [ pprPrec (p' + dl) e12,
+          -> prec p' $
+               sep [ pprL e12,
                      text x,
-                     pprPrec (p' + dr) e2 ]
+                     pprR e2 ]
     [$ex| $e1 $e2 |]
-          -> parensIf (p > precApp) $
-               sep [ pprPrec precApp e1,
-                     pprPrec (precApp + 1) e2 ]
-    [$ex| fun '$_ -> $_ |] -> pprAbs p e0
+          -> prec precApp $
+               sep [ ppr e1, ppr1 e2 ]
+    [$ex| fun '$_ -> $_ |] -> pprAbs e0
     [$ex| $_ [$_] |] ->
-      parensIf (p > precTApp) $
-        cat [ pprPrec precTApp op,
+      prec precTApp $
+        cat [ ppr op,
               brackets . fsep . punctuate comma $
                 map (pprPrec precCom) args ]
       where 
         (args, op) = unfoldExTApp e0
     [$ex| Pack[$opt:t1]($t2, $e) |] ->
-      parensIf (p > precApp) $
-        text "Pack" <> maybe empty (brackets . ppr) t1 <+>
-        parens (sep [ pprPrec (precCom + 1) t2 <> comma,
-                      pprPrec precCom e ])
+      prec precApp $
+        text "Pack" <> maybe empty (brackets . ppr0) t1 <+>
+        prec precCom (sep [ ppr1 t2 <> comma, ppr e ])
     [$ex| ( $e : $t1 :> $t2 ) |] ->
-      parensIf (p > precCast) $
-         sep [ pprPrec (precCast + 2) e,
-               colon     <+> pprPrec (precCast + 2) t1,
-               text ":>" <+> pprPrec (precCast + 2) t2 ]
+      prec precCast $
+        atPrec (precCast + 2) $
+          sep [ ppr e,
+                colon     <+> ppr t1,
+                text ":>" <+> ppr t2 ]
     [$ex| ( $e : $t1 ) |] ->
-      parensIf (p > precCast) $
-         sep [ pprPrec (precCast + 2) e,
-               colon     <+> pprPrec (precCast + 2) t1 ]
+      prec precCast $
+        atPrec (precCast + 2) $
+          sep [ ppr e,
+                colon <+> ppr t1 ]
     [$ex| ( $e :> $t1 ) |] ->
-      parensIf (p > precCast) $
-         sep [ pprPrec (precCast + 2) e,
-               text ":>" <+> pprPrec (precCast + 2) t1 ]
-    [$ex| $anti:a |] -> pprPrec p a
+      prec precCast $
+        atPrec (precCast + 2) $
+          sep [ ppr e,
+                text ":>" <+> ppr t1 ]
+    [$ex| $anti:a |] -> ppr a
 
-pprLet :: Int -> Doc -> Expr i -> Expr i -> Doc
-pprLet p pat e1 e2 = parensIf (p > precDot) $
+pprLet :: Doc -> Expr i -> Expr i -> Doc
+pprLet pat e1 e2 = prec precDot $
   hang (text "let" <+> pat <+> pprArgList args <+> equals
           >+> ppr body <+> text "in")
        (if isLet (view e2)
           then 0
           else 2)
-       (pprPrec precDot e2)
+       (ppr e2)
   where
     (args, body) = unfoldExAbs e1
     isLet (ExCase _ [_]) = True
     isLet _              = False
 
-pprAbs :: Int -> Expr i -> Doc
-pprAbs p e = parensIf (p > precDot) $
+pprAbs :: Expr i -> Doc
+pprAbs e = prec precDot $
     text "fun" <+> argsDoc <+> text "->"
-      >+> pprPrec precDot body
+      >+> ppr body
   where (args, body)   = unfoldExAbs e
         argsDoc = case args of
           [Left ([$pa| _ |], [$ty|@! unit |])]
@@ -397,13 +394,13 @@ pprArgList = fsep . map eachArg . combine where
   eachArg (Left ([$pa| _ |], [$ty|@! unit |]))
                           = parens empty
   eachArg (Left (x, t))   = parens $
-                              ppr x
-                                >+> colon <+> ppr t
+                              ppr0 x
+                                >+> colon <+> ppr0 t
   eachArg (Right tvs)     = brackets .
                               sep .
                                 punctuate comma $
                                   map ppr tvs
-
+  --
   combine :: [Either a b] -> [Either a [b]]
   combine  = foldr each [] where
     each (Right b) (Right bs : es) = Right (b : bs) : es
@@ -411,24 +408,20 @@ pprArgList = fsep . map eachArg . combine where
     each (Left a)  es              = Left a : es
 
 instance Ppr (Patt i) where
-  pprPrec _ [$pa| _ |]             = text "_"
-  pprPrec _ [$pa| $lid:l |]        = ppr l
-  pprPrec _ [$pa| $quid:qu |]      = ppr qu
-  pprPrec p [$pa| $quid:qu $x |]   = parensIf (p > precApp) $
-                                       pprPrec precApp qu <+>
-                                       pprPrec (precApp + 1) x
-  pprPrec p [$pa| ($x, $y) |]      = parensIf (p > precCom) $
-                                       pprPrec precCom x <> comma <+>
-                                       pprPrec (precCom + 1) y
-  pprPrec p [$pa| $lit:lt |]       = pprPrec p lt
-  pprPrec p [$pa| $x as $lid:l |]  = parensIf (p > precDot) $
-                                       pprPrec (precDot + 1) x <+>
-                                       text "as" <+> ppr l
-  pprPrec p [$pa| Pack('$tv,$x) |] = parensIf (p > precApp) $
-                                       text "Pack" <+> parens (sep pair)
-    where pair = [ pprPrec (precCom + 1) tv <> comma,
-                   pprPrec precCom x ]
-  pprPrec p [$pa| $anti:a |]       = pprPrec p a
+  ppr [$pa| _ |]             = text "_"
+  ppr [$pa| $lid:l |]        = ppr l
+  ppr [$pa| $quid:qu |]      = ppr qu
+  ppr [$pa| $quid:qu $x |]   = prec precApp $
+                                 ppr qu <+> ppr1 x
+  ppr [$pa| ($x, $y) |]      = prec precCom $
+                                 ppr x <> comma <+> ppr1 y
+  ppr [$pa| $lit:lt |]       = ppr lt
+  ppr [$pa| $x as $lid:l |]  = prec precDot $
+                                 ppr1 x <+> text "as" <+> ppr l
+  ppr [$pa| Pack('$tv,$x) |] = prec precApp $
+                                 text "Pack" <+> pprPrec precCom (sep pair)
+    where pair = [ ppr1 tv <> comma, ppr x ]
+  ppr [$pa| $anti:a |]       = ppr a
 
 instance Ppr Lit where
   ppr (LtInt i)   = integer i

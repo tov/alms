@@ -19,11 +19,11 @@ import qualified Syntax.Decl
 
 instance Valuable IO.Handle where
   veq = (==)
-  vpprPrec _ _ = text "#<handle>"
+  vppr _ = text "#<handle>"
 
 instance Valuable IO.IOMode where
   veq      = (==)
-  vpprPrec _ = text . show
+  vppr     = text . show
   vinj     = vinjData
   vprjM    = vprjDataM
 deriving instance Typeable IO.IOMode

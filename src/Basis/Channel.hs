@@ -19,7 +19,7 @@ newtype Channel = Channel { unChannel :: C.Chan Value }
 
 instance Valuable Channel where
   veq = (==)
-  vpprPrec _ _ = text "#<channel>"
+  vppr _ = text "#<channel>"
 
 entries :: [Entry Raw]
 entries  = [

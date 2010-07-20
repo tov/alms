@@ -31,7 +31,7 @@ import Data.Generics
 import Util
 import Syntax (Uid(..), Type, Renamed, uid)
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
-            parensIf, precCom, precApp)
+            prec, prec1, ppr1, atPrec, precCom, precApp)
 
 import qualified Control.Exception as Exn
 
@@ -68,13 +68,9 @@ class Typeable a => Valuable a where
   veqDyn       :: Valuable b => a -> b -> Bool
   veqDyn a b    = maybe False (veq a) (vcast b)
 
-  -- | Pretty-print a value at the given precedence
-  vpprPrec     :: Int -> a -> Doc
-  vpprPrec _ _  = text "#<->"
-
-  -- | Pretty-print a value at top-level precedence
+  -- | Pretty-print a value at current precedence
   vppr         :: a -> Doc
-  vppr          = vpprPrec 0
+  vppr _        = text "#<->"
 
   -- | Inject a Haskell value into the 'Value' type
   vinj         :: a -> Value
@@ -93,13 +89,12 @@ class Typeable a => Valuable a where
   -- | Pretty-print a list of values.  (This is the same hack used
   --   by 'Show' for printing 'String's differently than other
   --   lists.)
-  vpprPrecList :: Int -> [a] -> Doc
-  vpprPrecList _ []     = text "nil"
-  vpprPrecList p (x:xs) = parensIf (p > precApp) $
-                            hang (text "cons" <+>
-                                  vpprPrec (precApp + 1) x)
-                                 1
-                                 (vpprPrecList (precApp + 1) xs)
+  vpprList :: [a] -> Doc
+  vpprList []     = text "nil"
+  vpprList (x:xs) = prec precApp $ prec1 $
+                      hang (text "cons" <+> vppr x)
+                           1
+                           (vpprList xs)
 
   -- | Inject a list.  As with the above, this lets us special-case
   --   lists at some types (e.g. we inject Haskell 'String' as object
@@ -154,7 +149,8 @@ instance Ppr FunName where
                   sep (funNameDocs fn) <> char '>'
 
 instance Ppr Value where
-  pprPrec = vpprPrec
+  ppr     = vppr
+  pprList = vpprList
 
 instance Eq Value where
   (==)    = veq
@@ -164,41 +160,41 @@ instance Show Value where
 
 instance Valuable a => Valuable [a] where
   veq a b  = length a == length b && all2 veq a b
-  vpprPrec = vpprPrecList
+  vppr     = vpprList
   vinj     = vinjList
   vprjM    = vprjListM
 
 instance Valuable Int where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = ppr
   vinj       = vinj . toInteger
   vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
 
 instance Valuable Word16 where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = vppr . toInteger
   vinj       = vinj . toInteger
   vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
 
 instance Valuable Word32 where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = vppr . toInteger
   vinj       = vinj . toInteger
   vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
 
 instance Valuable CInt where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = vppr . toInteger
   vinj       = vinj . toInteger
   vprjM v    = vprjM v >>= \z -> return (fromIntegral (z :: Integer))
 
 instance Valuable Integer where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = ppr
 
 instance Valuable Double where
   veq = (==)
-  vpprPrec _ = text . show
+  vppr = ppr
 
 instance Valuable () where
   veq        = (==)
@@ -219,12 +215,11 @@ instance Valuable Value where
   veq (VaCon c v) (VaCon d w) = c == d && v == w
   veq (VaDyn a)   b           = veqDyn a b
   veq _           _           = False
-  vpprPrec p (VaFun n _)        = pprPrec p n
-  vpprPrec p (VaCon c Nothing)  = pprPrec p c
-  vpprPrec p (VaCon c (Just v)) = parensIf (p > precApp) $
-                                    pprPrec precApp c <+>
-                                    vpprPrec (precApp + 1) v
-  vpprPrec p (VaDyn v)          = vpprPrec p v
+  vppr (VaFun n _)            = ppr n
+  vppr (VaCon c Nothing)      = ppr c
+  vppr (VaCon c (Just v))     = prec precApp $
+                                  ppr c <+> ppr1 v
+  vppr (VaDyn v)              = vppr v
   -- for value debugging:
   {-
   vpprPrec p (VaCon c Nothing)  = char '[' <> pprPrec p c <> char ']'
@@ -236,16 +231,15 @@ instance Valuable Value where
 
 instance Valuable Char where
   veq            = (==)
-  vpprPrec _     = text . show
-  vpprPrecList _ = text . show
+  vppr           = text . show
+  vpprList       = text . show
   vinjList       = VaDyn
   vprjListM      = vcast
 
 instance (Valuable a, Valuable b) => Valuable (a, b) where
   veq (a, b) (a', b') = veq a a' && veq b b'
-  vpprPrec p (a, b)   = parensIf (p > precCom) $
-                          sep [vpprPrec precCom a <> char ',',
-                               vpprPrec (precCom + 1) b]
+  vppr (a, b)         = prec precCom $
+                          sep [vppr a <> char ',', prec1 (vppr b)]
   vinj (a, b) = VaDyn (vinj a, vinj b)
   vprjM v = case vcast v of
     Just (a, b) -> do
@@ -283,7 +277,7 @@ newtype Vinj a = Vinj { unVinj :: a }
 
 instance (Eq a, Show a, Data a) => Valuable (Vinj a) where
   veq        = (==)
-  vpprPrec _ = text . show
+  vppr       = text . show
 
 instance Show a => Show (Vinj a) where
   showsPrec p = showsPrec p . unVinj
@@ -298,10 +292,10 @@ data VExn = VExn {
 
 instance Valuable VExn where
   veq        = (==)
-  vpprPrec p = vpprPrec p . exnValue
+  vppr       = vppr . exnValue
 
 instance Show VExn where
-  showsPrec p e = (show (vpprPrec p e) ++)
+  showsPrec p e = (show (atPrec p (vppr e)) ++)
 
 instance Exn.Exception VExn
 

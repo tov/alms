@@ -20,7 +20,7 @@ newtype MVar = MVar { unMVar :: MV.MVar Value }
 
 instance Valuable MVar where
   veq = (==)
-  vpprPrec _ _ = text "#<mvar>"
+  vppr _ = text "#<mvar>"
 
 entries :: [Entry Raw]
 entries  = [

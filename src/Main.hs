@@ -301,7 +301,7 @@ interactive opt rs0 = do
 
 printInfo :: ReplState -> Ident Raw -> IO ()
 printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
-    []  -> putStrLn $ "not bound: `" ++ show ident ++ "'"
+    []  -> putStrLn $ "Not bound: ‘" ++ show ident ++ "’"
     ris -> mapM_ each ris
   where
     each (SigAt      loc x') =
@@ -338,7 +338,7 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
                      if isBogus loc
                        then text "  -- built-in"
                        else text "  -- defined at" <+> text (show loc)
-      where (>?>) = if Ppr.isEmpty who then (<+>) else (Ppr.>?>)
+      where a >?> b = Ppr.ifEmpty who (a <+> b) (a Ppr.>?> b)
 
 printPrec :: String -> IO ()
 printPrec oper = printDoc $
