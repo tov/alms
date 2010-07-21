@@ -41,7 +41,16 @@ pprInfix :: Ppr a =>
 pprInfix inspect x0
   | Just (x1, op, Nothing) <- inspect x0
   , precOp op == Right precBang
-    = Just (prec precBang (text op <+> ppr x1))
+    = let rloop x'
+            | Just (x1', op', Nothing) <- inspect x'
+            , precOp op == Right precBang
+            = first (op':) (rloop x1')
+            | otherwise
+            = ([], x')
+          (ops, x) = first (op:) (rloop x1)
+       in Just $
+            fsep (mapTail (nest 2) $ map text ops)
+            <> pprPrec precBang x
   | Just (_, op, Just _) <- inspect x0
   , isOperator (lid op :: Lid Raw)
   , p <- precOp op
