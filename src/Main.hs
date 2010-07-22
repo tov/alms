@@ -6,11 +6,13 @@ module Main (
 ) where
 
 import Util
-import Ppr (Ppr(..), (<+>), (<>), text, char, hang, ($$), nest, printDoc)
+import Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
+            ($$), nest, printDoc, hPrintDoc)
 import qualified Ppr
 import Parser (parseFile, REPLCommand(..), parseCommand)
 import Prec (precOp)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
+import Printing (addTyNameContext)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg,
                getRenamingInfo, RenamingInfo(..))
 import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..),
@@ -66,7 +68,7 @@ main  = do
   st2 <- foldM (\st n -> findAlmsLibRel n "." >>= tryLoadFile st n)
                st1 (reverse [ name | LoadFile name <- opts ])
   maybe interactive (batch filename) mmsrc (`elem` opts) st2
-    `handleExns` exitFailure
+    `handleExns` (st2, exitFailure)
 
 tryLoadFile :: ReplState -> String -> Maybe String -> IO ReplState
 tryLoadFile st name mfile = case mfile of
@@ -164,8 +166,8 @@ carp msg = do
   prog <- getProgName
   hPutStrLn stderr (prog ++ ": " ++ msg)
 
-handleExns :: IO a -> IO a -> IO a
-handleExns body handler =
+handleExns :: IO a -> (ReplState, IO a) -> IO a
+handleExns body (st, handler) =
   body
     `Exn.catches`
     [ Exn.Handler $ \e@(VExn { }) -> do
@@ -186,7 +188,7 @@ handleExns body handler =
           Msg.Flow [Msg.Words (show err)] ]
   where
     continue err = do
-      hPutStrLn stderr (show (err :: EM.AlmsException))
+      hPrintDoc stderr (withRS st (ppr (err :: EM.AlmsException)))
       handler
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
@@ -200,7 +202,7 @@ interactive opt rs0 = do
         Nothing  -> return ()
         Just (row', ast) -> do
           st' <- doLine st ast
-                   `handleExns` return st
+                   `handleExns` (st, return st)
           repl row' st'
     doLine st ast = let
       rename  :: (ReplState, [Decl Raw]) -> IO ReplState
@@ -233,7 +235,7 @@ interactive opt rs0 = do
                                 display newDefs newVals st3
 
       display newDefs newVals st3
-                          = do printResult newDefs newVals
+                          = do printResult st3 newDefs newVals
                                return st3
 
       in rename (st, ast)
@@ -271,8 +273,8 @@ interactive opt rs0 = do
                   return (Just (row + count, ast))
                 ParseError derr -> 
                   loop (count + 1) ((line, derr) : acc)
-    printResult :: Module -> NewValues -> IO ()
-    printResult md00 values = say (loop True md00) where
+    printResult :: ReplState -> Module -> NewValues -> IO ()
+    printResult st md00 values = say (withRS st (loop True md00)) where
       loop tl md0 = case md0 of
         MdNil               -> Ppr.empty
         MdApp md1 md2       -> loop tl md1 $$ loop tl md2
@@ -282,8 +284,9 @@ interactive opt rs0 = do
           Just Nothing   -> text "exception"<+>ppr u
           Just (Just t') -> text "exception"<+>ppr u<+>text "of"<+>ppr t'
         MdTycon _ tc        ->
-          text "type" <+> ppr (tyConToDec tc :: TyDec Renamed)
-        MdModule u md1      ->
+          text "type" <+>
+          Ppr.askTyNames (\tn -> ppr (tyConToDec tn tc :: TyDec Renamed))
+        MdModule u md1      -> Ppr.enterTyNames u $
           text "module" <+> ppr u <+> char ':' <+> text "sig"
           $$ nest 2 (loop False md1)
           $$ text "end"
@@ -333,12 +336,18 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
     s = rsStatics st
     --
     mention what who rhs loc = do
-      printDoc $ text what <+> ppr who
-                   >?> rhs Ppr.>?>
-                     if isBogus loc
-                       then text "  -- built-in"
-                       else text "  -- defined at" <+> text (show loc)
+      printDoc $
+        withRS st $
+          text what <+> ppr who
+            >?> rhs Ppr.>?>
+              if isBogus loc
+                then text "  -- built-in"
+                else text "  -- defined at" <+> text (show loc)
       where a >?> b = Ppr.ifEmpty who (a <+> b) (a Ppr.>?> b)
+
+-- Add the ReplState to the pretty-printing context.
+withRS :: ReplState -> Doc -> Doc
+withRS rs = addTyNameContext (rsRenaming rs) (rsStatics rs)
 
 printPrec :: String -> IO ()
 printPrec oper = printDoc $

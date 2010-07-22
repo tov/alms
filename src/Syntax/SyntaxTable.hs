@@ -46,7 +46,6 @@ caseAltAntis
   & "antiC"  =:< 'CaAnti
 typeAntis
   = "type"   =:! Nothing
-  & "stx"    =:  appFun (TH.mkName "typeToStx'")
   & "anti"   =:< 'TyAnti
 tyPatAntis
   = "typat"  =:! Nothing

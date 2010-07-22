@@ -9,14 +9,17 @@ module PprClass (
   -- ** Helpers
   ppr0, ppr1, pprDepth,
   -- ** Context operations
-  prec, prec1, descend, atPrec, atDepth,
+  prec, mapPrec, prec1, descend, atPrec, atDepth,
   askPrec, askDepth,
   trimList, trimCat,
+  -- *** For type name shortening
+  TyNames(..), tyNames0,
+  setTyNames, askTyNames, enterTyNames, lookupTyNames,
   -- * Pretty-printing combinators
   (>+>), (>?>), ifEmpty,
   vcat, sep, cat, fsep, fcat,
   -- * Renderers
-  render, renderS, printDoc, printPpr,
+  render, renderS, printDoc, printPpr, hPrintDoc, hPrintPpr,
   -- ** Instance helpers
   showFromPpr, pprFromShow,
   -- * Re-exports
@@ -26,18 +29,36 @@ module PprClass (
 import PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
 import qualified PrettyPrint as P
 
+import Syntax.Ident (QLid, Uid, Renamed)
+
+import System.IO (Handle, stdout, hPutChar, hPutStr)
+
 -- | Context for pretty-printing.
 data PprContext
   = PprContext {
-      pcPrec  :: !Int,
-      pcDepth :: !Int
+      pcPrec   :: !Int,
+      pcDepth  :: !Int,
+      pcTyName :: !TyNames
+  }
+
+data TyNames =
+  TyNames {
+    tnLookup   :: Int -> QLid Renamed -> QLid Renamed,
+    tnEnter    :: Uid Renamed -> TyNames
   }
 
 -- | Default context
 pprContext0 :: PprContext
 pprContext0  = PprContext {
-  pcPrec  = 0,
-  pcDepth = -1
+  pcPrec   = 0,
+  pcDepth  = -1,
+  pcTyName = tyNames0
+}
+
+tyNames0 :: TyNames
+tyNames0  = TyNames {
+  tnLookup = const id,
+  tnEnter  = const tyNames0
 }
 
 type Doc = P.Doc PprContext
@@ -115,6 +136,10 @@ prec p doc = asksD pcPrec $ \p' ->
     then descend $ parens (atPrec (min p 0) doc)
     else atPrec p doc
 
+-- | Adjust the precedence with the given function.
+mapPrec :: (Int -> Int) -> Doc -> Doc
+mapPrec f doc = askPrec (\p -> prec (f p) doc)
+
 -- | Go to the next (tigher) precedence level.
 prec1 :: Doc -> Doc
 prec1  = mapD (\e -> e { pcPrec = pcPrec e + 1 })
@@ -142,6 +167,24 @@ askPrec  = asksD pcPrec
 -- | Find out the depth
 askDepth :: (Int -> Doc) -> Doc
 askDepth  = asksD pcDepth
+
+-- | Change the type name lookup function
+setTyNames   :: TyNames -> Doc -> Doc
+setTyNames f  = mapD (\e -> e { pcTyName = f })
+
+-- | Retrieve the type name lookup function
+askTyNames   :: (TyNames -> Doc) -> Doc
+askTyNames    = asksD pcTyName
+
+-- | Render a document with a module opened
+enterTyNames :: Uid Renamed -> Doc -> Doc
+enterTyNames u doc = askTyNames $ \tn ->
+  setTyNames (tnEnter tn u) doc
+
+-- | Look up a type name in the rendering context
+lookupTyNames :: Int -> QLid Renamed -> (QLid Renamed -> Doc) -> Doc
+lookupTyNames tag ql kont = askTyNames $ \tn ->
+  kont (tnLookup tn tag ql)
 
 -- | Trim a list to (about) the given number of elements, with
 --   "..." in the middle.
@@ -210,14 +253,21 @@ render doc = renderS doc ""
 
 -- Render and display a document in the preferred style
 printDoc :: Doc -> IO ()
-printDoc = fullRenderIn pprContext0 PageMode 80 1.1 each (putChar '\n')
-  where each (Chr c) io  = putChar c >> io
-        each (Str s) io  = putStr s >> io
-        each (PStr s) io = putStr s >> io
+printDoc  = hPrintDoc stdout
 
 -- Pretty-print, render and display in the preferred style
 printPpr :: Ppr a => a -> IO ()
-printPpr = printDoc . ppr
+printPpr  = hPrintPpr stdout
+
+-- Render and display a document in the preferred style
+hPrintDoc :: Handle -> Doc -> IO ()
+hPrintDoc h = fullRenderIn pprContext0 PageMode 80 1.1 each (putChar '\n')
+  where each (Chr c) io  = hPutChar h c >> io
+        each (Str s) io  = hPutStr h s >> io
+        each (PStr s) io = hPutStr h s >> io
+
+hPrintPpr :: Ppr a => Handle -> a -> IO ()
+hPrintPpr h = hPrintDoc h . ppr
 
 showFromPpr :: Ppr a => Int -> a -> ShowS
 showFromPpr p t = renderS (pprPrec p t)

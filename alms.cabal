@@ -1,5 +1,5 @@
 Name:           alms
-Version:        0.4.11
+Version:        0.4.12
 Copyright:      2010, Jesse A. Tov
 Cabal-Version:  >= 1.8
 License:        BSD3
@@ -91,6 +91,7 @@ Executable alms
                         PprClass,
                         Prec,
                         PrettyPrint,
+                        Printing,
                         Rename,
                         Sigma,
                         Statics,

@@ -129,9 +129,12 @@ instance Eq TyCon where
 instance Ord TyCon where
   compare tc tc'  = compare (tcName tc) (tcName tc')
 
-instance Ppr Type   where ppr = ppr . typeToStx
+instance Ppr Type   where
+  ppr t = askTyNames (\tn -> ppr (typeToStx tn t))
+instance Ppr TyPat where
+  ppr t = askTyNames (\tn -> ppr (tyPatToStx tn t))
+
 instance Show Type  where showsPrec = showFromPpr
-instance Ppr TyPat  where ppr = ppr . tyPatToStx
 instance Show TyPat where showsPrec = showFromPpr
 
 -- | The different varieties of type definitions
@@ -685,18 +688,18 @@ infixr 8 .:., `tySemi`
 ---
 
 -- | Represent a type value as a pre-syntactic type, for printing
-typeToStx' :: Type -> Stx.Type' Renamed
-typeToStx'  = view . typeToStx
+typeToStx' :: Type -> Stx.Type Renamed
+typeToStx'  = typeToStx tyNames0
 
 -- | Represent a type value as a syntactic type, for printing; renames
 --   so that scope is apparent, since internal renaming may result int
 --   different identifiers that print the same
-typeToStx :: Type -> Stx.Type Renamed
-typeToStx = loop (S.empty, M.empty) where
+typeToStx :: TyNames -> Type -> Stx.Type Renamed
+typeToStx f = loop (S.empty, M.empty) where
   loop ren t0 = case t0 of
     TyVar tv      -> Stx.tyVar (maybe tv id (M.lookup tv (snd ren)))
     TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (loop ren t1) (loop ren t2)
-    TyApp tc ts _ -> Stx.tyApp (tcName tc) {jpath = []} (map (loop ren) ts)
+    TyApp tc ts _ -> Stx.tyApp (bestName f tc) (map (loop ren) ts)
     {-
         (fmap (\ql -> lid ("[" ++ show (tcId tc) ++ "]" ++ unLid ql))
               (tcName tc)) 
@@ -715,14 +718,19 @@ typeToStx = loop (S.empty, M.empty) where
      in (tv', (S.insert (unLid (tvname tv')) seen,
                M.insert tv tv' remap))
 
-tyPatToStx' :: TyPat -> Stx.TyPat' Renamed
-tyPatToStx'  = view . tyPatToStx
+tyPatToStx' :: TyPat -> Stx.TyPat Renamed
+tyPatToStx'  = tyPatToStx tyNames0
 
 -- | Represent a type pattern as a syntactic type pattern, for printing
-tyPatToStx :: TyPat -> Stx.TyPat Renamed
-tyPatToStx tp0 = case tp0 of
+tyPatToStx :: TyNames -> TyPat -> Stx.TyPat Renamed
+tyPatToStx f tp0 = case tp0 of
   TpVar tv      -> Stx.tpVar tv Invariant
-  TpApp tc tps  -> Stx.tpApp (tcName tc) (map tyPatToStx tps)
+  TpApp tc tps  -> Stx.tpApp (bestName f tc) (map (tyPatToStx f) tps)
+  where
+
+-- | Look up the best printing name for a type.
+bestName :: TyNames -> TyCon -> QLid Renamed
+bestName tn = tnLookup tn <$> tcId <*> tcName
 
 -- | Convert a type pattern to a type; useful for quqlifier and variance
 --   analysis
@@ -900,7 +908,6 @@ dumpType = CMW.execWriter . loop 0 where
 
 instance Ppr TyCon where
   ppr tc = atPrec 0 $
-    -- brackets (text (show (tcId tc))) <>
     case tcNext tc of
       Just [(tps,t)] -> pprTyApp (tcName tc) (ps (map snd tvs))
                           >?> qe (map fst tvs)
@@ -910,9 +917,10 @@ instance Ppr TyCon where
                      TpVar tv -> (tv, ppr tv)
                      _        -> let tv  = TV (lid (show i)) qlit
                                      tv' = case qlit of
-                                       Qa -> ppr tv <> char '='
-                                       Qu -> empty
-                                  in (tv, tv' <> pprPrec precEq tp)
+                                       Qa -> ppr tv <> char '=' <>
+                                             mapPrec (max precEq) (ppr tp)
+                                       Qu -> ppr tp
+                                  in (tv, tv')
                  | tp   <- tps
                  | qlit <- tcBounds tc
                  | i <- [ 1 :: Integer .. ] ]
@@ -924,7 +932,8 @@ instance Ppr TyCon where
           tvs  = [ TV (lid (show i)) qlit
                  | qlit <- tcBounds tc
                  | i <- [ 1 .. ] :: [Int] ]
-          alt (tps,t) = char '|' <+> pprPrec precApp tps <+> ppr (tcName tc)
+          alt (tps,t) = char '|' <+> pprPrec precApp tps
+                          <+> ppr (jname (tcName tc))
                           >?> char '=' <+> ppr t
       --
       Nothing -> pprTyApp (tcName tc) (ps tvs)
@@ -948,7 +957,7 @@ instance Ppr TyCon where
                             ppr (qRepresent
                                  (denumberQDen
                                   (map qDenOfTyVar tvs) (tcQual tc)))
-      ps tvs = [ ppr var <> pprPrec precApp tv
+      ps tvs = [ ppr var <> pprPrec (precApp + 1) tv
                | tv <- tvs
                | var <- tcArity tc ]
 

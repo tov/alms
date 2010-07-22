@@ -27,6 +27,7 @@ module Statics (
   -- * Type checking results for the REPL
   runTCNew, Module(..), getExnParam, tyConToDec,
   getVarInfo, getTypeInfo, getConInfo,
+  staticsEnterScope,
 ) where
 
 import Meta.Quasi
@@ -41,7 +42,7 @@ import Syntax hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
                       TyPat, TyPat'(..))
 import Loc
 import Env as Env
-import Ppr (Ppr)
+import Ppr (Ppr, TyNames)
 import Type
 import TypeRel
 import Coercion (coerceExpression)
@@ -52,18 +53,16 @@ import Control.Monad.RWS    as RWS
 import Control.Monad.Error  as Error
 import Data.Data (Typeable, Data)
 import Data.Generics (everywhere, mkT)
-import Data.List (transpose)
+import Data.List (transpose, tails)
 import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-{-
 import System.IO.Unsafe (unsafePerformIO)
 pP :: Show a => a -> b -> b
 pP a b = unsafePerformIO (print a) `seq` b
 pM :: (Show a, Monad m) => a -> m ()
 pM a = if pP a True then return () else fail "wibble"
--}
 
 -- The kind of names we're using.
 type R = Renamed
@@ -234,7 +233,7 @@ typeError msg0 = throwAlms (AlmsException StaticsPhase ?loc msg0)
 
 -- | Indicate a type checker bug.
 typeBug :: AlmsMonad m => String -> String -> m a
-typeBug culprit msg0 = throwAlms (almsBug RenamerPhase bogus culprit msg0)
+typeBug culprit msg0 = throwAlms (almsBug StaticsPhase bogus culprit msg0)
 
 -- | Like 'ask', but monadic
 asksM :: MonadReader r m => (r -> m a) -> m a
@@ -268,6 +267,11 @@ enterModule :: Monad m => Uid R -> TC m a -> TC m a
 enterModule u = local $ \cxt ->
   cxt { modulePath = u : modulePath cxt }
 
+-- | Forget the module path (for type checking signatures)
+forgetModulePath :: Monad m => TC m a -> TC m a
+forgetModulePath  = local $ \cxt -> cxt { modulePath = [] }
+
+-- | Find out the current module path
 currentModulePath :: Monad m => TC m [Uid R]
 currentModulePath  = asks (reverse . modulePath)
 
@@ -491,7 +495,8 @@ tcExpr = tc where
       (t2, e2') <- inModule md $ tc e2
       let b's =
             zipWith3
-              (\b tf e' -> newBinding b { bntype = typeToStx tf, bnexpr = e' })
+              (\b tf e' -> newBinding b { bntype = typeToStx' tf,
+                                          bnexpr = e' })
               bs tfs e's
       return (t2, [$ex|+ let rec $list:b's in $e2' |])
     [$ex| let $decl:d in $e2 |] -> do
@@ -508,7 +513,8 @@ tcExpr = tc where
       checkSharing "function body" e md
       (te, e') <- inModule md $ tc e
       q <- getWorthiness e0
-      return (TyFun q t' te, [$ex|+ fun ($x' : $stx:t') -> $e' |])
+      let stxt' = typeToStx' t'
+      return (TyFun q t' te, [$ex|+ fun ($x' : $stxt') -> $e' |])
     [$ex| $_ $_ |] -> do
       tcExApp tc e0
     [$ex| fun '$tv -> $e |] -> do
@@ -520,7 +526,8 @@ tcExpr = tc where
       (t1, e1') <- tc e1
       t2'       <- tcType t2
       t1'       <- tapply t1 t2'
-      return (t1', [$ex|+ $e1' [$stx:t2'] |])
+      let stxt2' = typeToStx' t2'
+      return (t1', [$ex|+ $e1' [$stxt2'] |])
     [$ex| Pack[$opt:mt1]($t2, $e) |] -> do
       t2'      <- tcType t2
       (te, e') <- tc e
@@ -537,7 +544,9 @@ tcExpr = tc where
                      <dt>hiding:        <dd>$t2
                      <dt>to get:        <dd>$t1'
                    </dl> |]
-          return (t1', [$ex| Pack[$stx:t1']($stx:t2', $e') |])
+          let stxt1' = typeToStx' t1'
+              stxt2' = typeToStx' t2'
+          return (t1', [$ex| Pack[$stxt1']($stxt2', $e') |])
         _ -> terrgot "Pack[-]" t1' "existential type"
     [$ex| ( $e1 : $t2 ) |] -> do
       (t1, e1') <- tc e1
@@ -1016,11 +1025,11 @@ tcTyPat [$tpQ| $antiP:a |]             = $antifail
 
 -- END type decl checking
 
--- | Type check a module body
+-- | Type check a signature
 tcSigExp :: (?loc :: Loc, Monad m) =>
             SigExp R -> TC m (SigExp R)
 tcSigExp [$seQ| sig $list:ds end |] = do
-  ds' <- tcMapM tcSigItem ds
+  ds' <- forgetModulePath $ tcMapM tcSigItem ds
   return [$seQ| sig $list:ds' end |]
 tcSigExp [$seQ| $quid:n $list:qls |] = do
   (md, _) <- find (fmap SIGVAR n)
@@ -1129,7 +1138,7 @@ tcLet x mt e = do
                </dl> |] (qRepresent (qualifier te))
       return te
   x' <- tcPatt t' x
-  return (x', Just (typeToStx t'), e')
+  return (x', Just (typeToStx' t'), e')
 
 -- | Run a computation in the context of a module open declaration
 tcOpen :: (?loc :: Loc, Monad m) =>
@@ -1153,7 +1162,7 @@ tcException :: (?loc :: Loc, Monad m) =>
 tcException n mt = do
   mt' <- gmapM tcType mt
   bindCon n (maybe tyExn (`tyArr` tyExn) mt')
-  return (fmap typeToStx mt')
+  return (fmap typeToStx' mt')
 
 -- | Type check and bind a module
 tcMod :: (?loc :: Loc, Monad m) =>
@@ -1170,79 +1179,6 @@ tcSig u se0 = do
   (se', md) <- steal $ tcSigExp se0
   bindSig u md
   return se'
-
-{-
--- | Determine types that are no longer reachable by name
---   in a given scope, and give them an ugly printing name
-hideInvisible :: Monad m =>
-                 Scope -> TC m Scope
-hideInvisible (PEnv modenv level) = do
-  level' <- withAny level $ everywhereM (mkM repair) level
-  withAny level' $ do
-    ((), modenv') <- mapAccumM
-                   (\scope acc -> do
-                      scope' <- hideInvisible scope
-                      return (acc, scope'))
-                   () modenv
-    return (PEnv modenv' level')
-  where
-    repair :: Monad m => Type -> TC m Type
-    repair t@(TyApp tc ts cache) = do
-      mtc <- tryGetAny (tcName tc)
-      return $ if mtc == Just tc
-        then t
-        else TyApp (hide tc) ts cache
-    repair t = return t
-    --
-    hide :: TyCon -> TyCon
-    hide tc@TyCon { tcName = J (Uid _ "?" : _) _ } = tc
-    hide tc@TyCon { tcName = J qs (Lid _ k), tcId = i } =
-      tc { tcName = J (Uid "?":qs) (Lid _ (k ++ ':' : show i)) }
-
--- | Replace the printing name of each type with the shortest
---   path to access that type.  (So unnecessary!)
-requalifyTypes :: [Uid R] -> E -> E
-requalifyTypes _uids env = map (fmap repairLevel) env where
-  repairLevel :: Level -> Level
-  repairLevel level = everywhere (mkT repair) level
-  --
-  repair :: TypeT -> TypeT
-  repair t@(TyCon { }) = case tyConsInThisEnv -.- ttId (tyinfo t) of
-    Nothing   -> t
-    Just name -> t `setTycon` name
-  repair t = t
-  --
-  tyConsInThisEnv :: Env Integer (QLid R)
-  tyConsInThisEnv  = uids <...> foldr addToScopeMap empty env
-  --
-  addToScopeMap :: Scope -> Env Integer (QLid R) -> Env Integer (QLid R)
-  addToScopeMap (PEnv ms level) acc = 
-    foldr (Env.unionWith chooseQLid) acc
-      (makeLevelMap level :
-       [ uid <..> addToScopeMap menv empty
-       | (uid, menv) <- toList ms ])
-  --
-  makeLevelMap (Level _ ts) =
-    fromList [ (ttId tag, J [] lid)
-             | (lid, info) <- toList ts,
-               tag <- tagOfTyInfo info ]
-  --
-  tagOfTyInfo (TiAbs tag)     = [tag]
-  tagOfTyInfo (TiSyn _ _)     = []
-  tagOfTyInfo (TiDat tag _ _) = [tag]
-  tagOfTyInfo TiExn           = [tdExn]
-  --
-  chooseQLid :: QLid R -> QLid R -> QLid R
-  chooseQLid q1@(J p1 _) q2@(J p2 _)
-    | length p1 < length p2 = q1
-    | otherwise             = q2
-  --
-  (<..>) :: Functor f => p -> f (Path p k) -> f (Path p k)
-  (<..>)  = fmap . (<.>)
-  --
-  (<...>) :: Functor f => [p] -> f (Path p k) -> f (Path p k)
-  (<...>) = flip $ foldr (<..>)
--}
 
 -- | Type check a module body
 tcModExp :: (?loc :: Loc, Monad m) =>
@@ -1391,7 +1327,8 @@ makeNameMap md0 = case md0 of
 ascribeSignature :: (?loc :: Loc, Monad m) =>
                     Module -> Module -> TC m ()
 ascribeSignature md1 md2 = do
-  let md2'   = renameSig (makeNameMap md1) md2
+  us <- currentModulePath
+  let md2'   = renameSig (makeNameMap md1) us md2
   onlyInModule md1 $ do
     subst <- matchSigTycons md2'
     subsumeSig (applyTyConSubstInSig subst md2')
@@ -1403,16 +1340,17 @@ ascribeSignature md1 md2 = do
 
 -- | Make the names in a signature match the names from the module it's
 --   being applied to.
-renameSig :: NameMap -> Module -> Module
-renameSig nm0 = loop where
+renameSig :: NameMap -> [Uid Renamed] -> Module -> Module
+renameSig nm0 us = loop where
   loop md0 = case md0 of
     MdNil          -> MdNil
     MdApp md1 md2  -> MdApp (loop md1) (loop md2)
     MdValue x t    -> MdValue (fromJust (nm0 =..= x)) t
-    MdTycon x tc   -> MdTycon (fromJust (nm0 =..= x)) tc
+    MdTycon x tc   -> MdTycon (fromJust (nm0 =..= x)) tc'
+      where tc' = tc { tcName = J us (jname (tcName tc)) }
     MdModule x md1 ->
       let Just (x', nm1) = nm0 =..= x
-       in MdModule x' (renameSig nm1 md1)
+       in MdModule x' (renameSig nm1 (us++[x']) md1)
     MdSig x md1    -> MdSig (fromJust (nm0 =..= SIGVAR x)) md1
 
 -- | Given a signature, find the tycon substitutions necessary to
@@ -1457,8 +1395,7 @@ getGenTycons = loop where
   loop (MdSig _ _)      = id
 
 -- | Check whether the given signature subsumes the signature
---   implicit in the environment; takes a 'NameMap' mapping un-renamed
---   signature names to renamed environment names.
+--   implicit in the environment.
 subsumeSig :: (?loc :: Loc, Monad m) =>
               Module -> TC m ()
 subsumeSig = loop where
@@ -1613,7 +1550,7 @@ matchTycons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
         </dl>
       |]
 
--- | Check that two type patterns match, and return the pairs of
+-- | To check that two type patterns match, and return the pairs of
 --   type variables that line up and thus need renaming.
 matchTypats :: (?loc :: Loc, Monad m) =>
                TyPat -> TyPat -> TC m ([TyVar R], [TyVar R])
@@ -1683,16 +1620,16 @@ getExnParam (TyFun _ t1 (TyApp tc _ _))
 getExnParam _               = Nothing
 
 -- | Reconstruct the declaration from a tycon binding, for printing
-tyConToDec :: TyCon -> TyDec R
-tyConToDec tc = case tc of
+tyConToDec :: TyNames -> TyCon -> TyDec R
+tyConToDec tn tc = case tc of
   _ | tc == tcExn
     -> tdAbs (lid "exn") [] [] maxBound
   TyCon { tcName = n, tcNext = Just clauses }
-    -> tdSyn (jname n) [ (map tyPatToStx ps, typeToStx rhs)
+    -> tdSyn (jname n) [ (map (tyPatToStx tn) ps, typeToStx tn rhs)
                        | (ps, rhs) <- clauses ]
   TyCon { tcName = n, tcCons = (ps, alts) }
     | not (isEmpty alts)
-    -> tdDat (jname n) ps [ (u, fmap typeToStx mt)
+    -> tdDat (jname n) ps [ (u, fmap (typeToStx tn) mt)
                           | (u, mt) <- toList alts ]
   TyCon { tcName = n }
     ->
@@ -1711,7 +1648,7 @@ getVarInfo ql (S e _) = e =..= fmap Var ql
 getTypeInfo :: QLid R -> S -> Maybe TyCon
 getTypeInfo ql (S e _) = e =..= ql
 
--- Find out about a type constructor.  If it's an exception constructor,
+-- Find out about a data constructor.  If it's an exception constructor,
 -- return 'Left' with its paramter, otherwise return the type construtor
 -- of the result type
 getConInfo :: QUid R -> S -> Maybe (Either (Maybe Type) TyCon)
@@ -1725,3 +1662,12 @@ getConInfo qu (S e _) = do
           loop (TyApp tc _ _) = Just (Right tc)
           loop _              = Nothing
        in loop t
+
+-- Open the given module, if it exists.
+staticsEnterScope    :: Uid R -> S -> S
+staticsEnterScope u s =
+  let e = sEnv s in
+  case e =..= u of
+    Just (_, e') -> s { sEnv = e =+= e' }
+    Nothing      -> s
+

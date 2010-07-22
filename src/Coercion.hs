@@ -78,9 +78,9 @@ build b recs tfrom tto
         return $ if null tvs
           then body
           else absContract $
-               exAbsVar' (lid "f") (typeToStx tfrom) $
+               exAbsVar' (lid "f") (typeToStx' tfrom) $
                foldr (\tv0 acc -> exTAbs tv0 . acc) id tvs $
-               exAbsVar' (lid "x") (typeToStx t1') $
+               exAbsVar' (lid "x") (typeToStx' t1') $
                instContract body `exApp`
                foldl (\acc tv0 -> exTApp acc (Syntax.tyVar tv0))
                      (exBVar (lid "f")) tvs `exApp`
@@ -89,19 +89,23 @@ build b recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
   body <- build b recs' t t' >>! instContract
   let tv''  = freshTyVar tv (ftv (tv, tv'))
+      tstx  = typeToStx' t
+      tstx' = typeToStx' t'
   return $
     absContract $
-      [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $stx:t) ->
-               Pack[ex '$tv'. $stx:t']('$tv'', $body e) |]
+      [$ex|+ fun (Pack('$tv'', e) : ex '$tv. $tstx) ->
+               Pack[ex '$tv'. $tstx']('$tv'', $body e) |]
 build b recs (view -> TyMu tv t) (view -> TyMu tv' t') = do
   l    <- freshLid
   let recs' = M.insert (tv, tv') (Just l) (shadow [tv] [tv'] recs)
   body <- build b recs' t t'
+  let tstx  = typeToStx' t
+      tstx' = typeToStx' t'
   return $
     [$ex|+
       let rec $lid:l
               (parties : string * string)
-                       : (mu '$tv. $stx:t) -> mu '$tv'. $stx:t'
+                       : (mu '$tv. $tstx) -> mu '$tv'. $tstx'
           = $body parties
        in $lid:l
     |]
@@ -112,7 +116,8 @@ build b recs (view -> TyVar tv) (view -> TyVar tv')
     = return [$ex|+ INTERNALS.Contract.any ['$tv'] |]
 build _ _    t t' =
   if t <: t'
-    then return [$ex|+ INTERNALS.Contract.any [$stx:t'] |]
+    then let tstx' = typeToStx' t' in
+         return [$ex|+ INTERNALS.Contract.any [$tstx'] |]
     else CMS.lift . throwAlms $ AlmsException StaticsPhase bogus [$msg|
         <dl>
           <dt>from type: <dd>$t

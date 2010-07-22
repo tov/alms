@@ -21,6 +21,7 @@ module TypeRel (
 
 import Env
 import ErrorST
+import Ppr ()
 import Type
 import Util
 import Viewable

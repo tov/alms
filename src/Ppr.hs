@@ -114,8 +114,9 @@ instance Ppr (TyPat i) where
     _ | Just doc <- pprInfix unfoldTyPat tp0
                        -> doc
     N _ (TpVar tv var) -> pprParamV var tv
+    [$tpQ| $qlid:ql |] -> ppr ql
     [$tpQ| ($list:tps) $qlid:ql |]
-                       -> ppr tps <+> ppr ql
+                       -> prec precApp $ sep [ppr tps, ppr ql]
     [$tpQ| $antiP:a |] -> ppr a
 
 unfoldTyPat :: TyPat i -> Maybe (TyPat i, String, Maybe (TyPat i))

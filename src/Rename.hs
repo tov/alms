@@ -20,6 +20,7 @@ module Rename (
   renameProg, renameDecls, renameDecl, renameType,
   -- * REPL query
   getRenamingInfo, RenamingInfo(..),
+  renamingEnterScope,
 ) where
 
 import ErrorMessage
@@ -957,4 +958,13 @@ getRenamingInfo ident RenameState { savedEnv = e } =
     look prj qx build = case envLookup prj qx e of
       Left _                    -> Nothing
       Right (J ps (x', loc, _)) -> Just (build loc (J ps x'))
+
+-- Open the given module, if it exists.
+renamingEnterScope    :: Uid i -> RenameState -> RenameState
+renamingEnterScope u r =
+  let e  = savedEnv r in
+  case M.lookup (uid (unUid u)) (modules e) of
+    Nothing -> r
+    Just (_, _, (_, e'))
+            -> r { savedEnv = e `mappend` e' }
 
