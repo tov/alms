@@ -42,7 +42,7 @@ type TyPat i = Located TyPat' i
 data Type' i
   = TyApp  (QLid i) [Type i]
   | TyVar  (TyVar i)
-  | TyFun  (QExp i) (Type i) (Type i)
+  | TyFun  (Maybe (QExp i)) (Type i) (Type i)
   | TyQu   Quant (TyVar i) (Type i)
   | TyMu   (TyVar i) (Type i)
   | TyAnti Anti
@@ -99,10 +99,10 @@ tyAf          :: Id i => Type i
 tyAf           = tyNulOp "A"
 
 tyArr         :: Type i -> Type i -> Type i
-tyArr          = tyFun minBound
+tyArr          = tyFun Nothing
 
 tyLol         :: Type i -> Type i -> Type i
-tyLol          = tyFun maxBound
+tyLol          = tyFun (Just maxBound)
 
 infixr 8 `tyArr`, `tyLol`
 
@@ -115,8 +115,10 @@ dumpType i (N _ t0) = do
       putStrLn $ show n ++ " {"
       mapM_ (dumpType (i + 2)) ps
       putStrLn (replicate i ' ' ++ "}")
-    TyFun q dom cod -> do
-      putStrLn $ "-[" ++ maybe "ANTI" show (qInterpretM q) ++ "]> {"
+    TyFun mq dom cod -> do
+      putStrLn $ case mq of
+        Just q  -> "-[" ++ maybe "ANTI" show (qInterpretM q) ++ "]> {"
+        Nothing -> "-> {"
       dumpType (i + 2) dom
       dumpType (i + 2) cod
       putStrLn (replicate i ' ' ++ "}")

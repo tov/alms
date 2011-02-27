@@ -698,7 +698,8 @@ typeToStx :: TyNames -> Type -> Stx.Type Renamed
 typeToStx f = loop (S.empty, M.empty) where
   loop ren t0 = case t0 of
     TyVar tv      -> Stx.tyVar (maybe tv id (M.lookup tv (snd ren)))
-    TyFun q t1 t2 -> Stx.tyFun (qRepresent q) (loop ren t1) (loop ren t2)
+    -- XXX should turn annotated arrows to implicit arrows when possible
+    TyFun q t1 t2 -> Stx.tyFun (Just (qRepresent q)) (loop ren t1) (loop ren t2)
     TyApp tc ts _ -> Stx.tyApp (bestName f tc) (map (loop ren) ts)
     {-
         (fmap (\ql -> lid ("[" ++ show (tcId tc) ++ "]" ++ unLid ql))

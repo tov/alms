@@ -63,6 +63,8 @@ pP :: Show a => a -> b -> b
 pP a b = unsafePerformIO (print a) `seq` b
 pM :: (Show a, Monad m) => a -> m ()
 pM a = if pP a True then return () else fail "wibble"
+ioM :: Monad m => IO a -> m ()
+ioM a = if unsafePerformIO a `seq` True then return () else fail "wibble"
 
 -- The kind of names we're using.
 type R = Renamed
@@ -395,12 +397,17 @@ hnT  = headNormalizeTypeM 100
 -- | Check type for closed-ness and and defined-ness, and add info
 tcType :: (?loc :: Loc, Monad m) =>
           Syntax.Type R -> TC m Type
-tcType = tc where
+tcType stxtype0 = do
+  -- ioM (putStrLn ("{{{" ++ show stxtype0 ++ "}}}"))
+  t <- tc stxtype0
+  return t
+  where
   tc :: Monad m => Syntax.Type R -> TC m Type
   tc [$ty| '$tv |] = do
     return (TyVar tv)
-  tc [$ty| $t1 -[$q]> $t2 |] = do
-    TyFun <$> qInterpretM q
+  -- XXX implicit arrow
+  tc [$ty| $t1 -[$opt:mq]> $t2 |] = do
+    TyFun <$> maybe (return minBound) qInterpretM mq
           <*> tcType t1
           <*> tcType t2
   tc [$ty| ($list:ts) $qlid:n |] = do
@@ -1001,7 +1008,7 @@ tyConsOfType [$ty| ($list:ts) $qlid:n |] =
     _      -> S.empty
   `S.union` S.unions (map tyConsOfType ts)
 tyConsOfType [$ty| '$_ |]              = S.empty
-tyConsOfType [$ty| $t1 -[$_]> $t2 |]   =
+tyConsOfType [$ty| $t1 -[$opt:_]> $t2 |]   =
   tyConsOfType t1 `S.union` tyConsOfType t2
 tyConsOfType [$ty| $quant:_ '$_. $t |] = tyConsOfType t
 tyConsOfType [$ty| mu '$_. $t |]       = tyConsOfType t

@@ -755,11 +755,11 @@ renameType t0 = case t0 of
   [$ty| '$tv |] -> do
     tv' <- getTyvar tv
     return [$ty|+ '$tv' |]
-  [$ty| $t1 -[$qe]> $t2 |] -> do
-    t1' <- renameType t1
-    qe' <- renameQExp qe
-    t2' <- renameType t2
-    return [$ty|+ $t1' -[$qe']> $t2' |]
+  [$ty| $t1 -[$opt:mqe]> $t2 |] -> do
+    t1'  <- renameType t1
+    mqe' <- gmapM renameQExp mqe
+    t2'  <- renameType t2
+    return [$ty|+ $t1' -[$opt:mqe']> $t2' |]
   [$ty| $quant:u '$tv. $t |] -> do
     (tv', md) <- steal $ bindTyvar tv
     t' <- inModule md $ renameType t
@@ -902,8 +902,8 @@ instance FtvList (Type Raw) where
   ftvList t0 = case t0 of
     [$ty| ($list:ts) $qlid:_ |] -> ftvList ts
     [$ty| '$tv |]               -> [tv]
-    [$ty| $t1 -[$qe]> $t2 |]    ->
-      ftvList t1 `List.union` ftvList qe `List.union` ftvList t2
+    [$ty| $t1 -[$opt:mqe]> $t2 |]    ->
+      ftvList t1 `List.union` ftvList mqe `List.union` ftvList t2
     [$ty| $quant:_ '$tv. $t |]  -> List.delete tv (ftvList t)
     [$ty| mu '$tv. $t |]        -> List.delete tv (ftvList t)
     [$ty| $anti:a |] -> $antierror

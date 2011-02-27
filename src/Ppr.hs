@@ -75,13 +75,13 @@ pprInfix inspect x0
 
 instance Ppr (Type i) where
   -- pprPrec p (TyFun q t1 t2)
+  ppr [$ty| $t1 -> $t2 |]
+            = prec precArr $
+              sep [ ppr1 t1, text "->" <+> pprRight t2 ]
   ppr [$ty| $t1 -[$q]> $t2 |]
             = prec precArr $
               sep [ ppr1 t1,
-                    pprArr (view q) <+> pprRight t2 ]
-    where pprArr (QeLit Qu) = text "->"
-          pprArr (QeLit Qa) = text "-o"
-          pprArr _          = text "-[" <> ppr0 q <> text "]>"
+                    text "-" <> ppr0 q <> text ">" <+> pprRight t2 ]
   ppr t@[$ty| ($list:ts) $qlid:n |]
     | Just doc <- pprInfix unfoldType t
                     = doc
@@ -131,8 +131,8 @@ instance Ppr (QExp i) where
     []    -> ppr Qu
     [qe]  -> ppr qe
     _     -> prec precPlus $
-               fsep $
-                 intersperse (text "\\/") $
+               hcat $
+                 intersperse (text ",") $
                    map ppr1 qes
   ppr [$qeQ| $qconj:qes |] = case qes of
     []    -> ppr Qa

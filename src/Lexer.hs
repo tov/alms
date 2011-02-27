@@ -11,7 +11,7 @@ module Lexer (
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
-  qualU, qualA,
+  qualU, qualA, qdisj, qconj,
   opP,
 
   -- * Token parsers from Parsec
@@ -23,6 +23,7 @@ module Lexer (
 ) where
 
 import Prec
+import Util
 
 import Data.Char
 import Text.ParserCombinators.Parsec
@@ -182,16 +183,25 @@ lolli            = reserved "-o" <|> reservedOp "⊸"
 arrow           :: T.TokenEnd st => CharParser st ()
 arrow            = reservedOp "->" <|> reservedOp "→"
 
--- | The left part of the $-[_]>$ operator
+-- | The left part of the $-_>$ operator
 funbraceLeft    :: T.TokenEnd st => CharParser st ()
-funbraceLeft     = try (symbol "-[") >> return ()
+funbraceLeft     = try (symbol "-") >> return ()
+
+-- | The right part of the $-_>$ operator
+funbraceRight   :: T.TokenEnd st => CharParser st ()
+funbraceRight    = try (symbol ">") >> return ()
+
+-- | The left part of the $-[_]>$ operator
+oldFunbraceLeft    :: T.TokenEnd st => CharParser st ()
+oldFunbraceLeft     = try (symbol "-[") >> return ()
 
 -- | The right part of the $-[_]>$ operator
-funbraceRight   :: T.TokenEnd st => CharParser st ()
-funbraceRight    = try (symbol "]>") >> return ()
+oldFunbraceRight   :: T.TokenEnd st => CharParser st ()
+oldFunbraceRight    = try (symbol "]>") >> return ()
 
 funbraces       :: T.TokenEnd st => CharParser st a -> CharParser st a
-funbraces        = between funbraceLeft funbraceRight
+funbraces        = liftM2 (<|>) (between oldFunbraceLeft oldFunbraceRight)
+                                (between funbraceLeft funbraceRight)
 
 -- | The left part of the $|[_]$ annotation
 qualboxLeft     :: T.TokenEnd st => CharParser st ()
@@ -242,6 +252,14 @@ qualU     = reserved "U"
 -- | Qualifier @A@ (not reserved)
 qualA    :: T.TokenEnd st => CharParser st ()
 qualA     = reserved "A"
+
+-- | Infix operator for qualifier disjunction
+qdisj           :: T.TokenEnd st => CharParser st ()
+qdisj            = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
+
+-- | Infix operator for qualifier conjunction
+qconj           :: T.TokenEnd st => CharParser st ()
+qconj            = reservedOp "/\\" <|> reservedOp "⋀"
 
 -- | Is the string an uppercase identifier?  (Special case: @true@ and
 --   @false@ are consider uppercase.)

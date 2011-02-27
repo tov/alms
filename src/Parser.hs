@@ -397,7 +397,7 @@ typepP p = "type" @@ case () of
                (choice
                 [ tyArr <$ arrow,
                   tyLol <$ lolli,
-                  funbraces (tyFun <$> qExpp),
+                  funbraces (tyFun <$> (antiblep <|> Just <$> qExpp)),
                   tybinopp (Right precArr) ])
                (typepP precStart)
     | p == precSemi
@@ -801,8 +801,8 @@ qualsp    = option minBound $
 
 qExpp :: Id i => P (QExp i)
 qExpp  = "qualifier expression" @@ qexp where
-  qexp  = addLoc $ qeDisj <$> sepBy1 qterm (reservedOp "\\/")
-  qterm = addLoc $ qeConj <$> sepBy1 qfact (reservedOp "/\\")
+  qexp  = addLoc $ qeDisj <$> sepBy1 qterm qdisj
+  qterm = addLoc $ qeConj <$> sepBy1 qfact qconj
   qfact = addLoc $ parens qexp <|> qatom
   qatom = addLoc $
           qeLit Qu <$  qualU
@@ -1010,7 +1010,7 @@ afargsp :: Id i => P (Bool, Type i -> Type i, Expr i -> Expr i)
 afargsp = loop tyArr where
   loop arrcon0 = do
     arrcon <- option arrcon0 $ choice
-      [ tyFun <$> qualbox qExpp,
+      [ tyFun . Just <$> qualbox qExpp, -- XXX update for implicit arrows
         do
           reservedOp "|"
           return tyLol ]
