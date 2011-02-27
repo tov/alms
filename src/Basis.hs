@@ -113,9 +113,9 @@ primBasis  = [
       -= (read :: String -> Double),
 
     -- Strings
-    fun "explode"  -: [$ty| string -> int list |]
+    fun "explode"  -: [$ty| string -> char list |]
       -= map char2integer,
-    fun "implode"  -: [$ty| int list -> string |]
+    fun "implode"  -: [$ty| char list -> string |]
       -= map integer2char,
     fun "^" -: [$ty| string -> string -> string |]
       -= ((++) :: String -> String -> String),
@@ -131,9 +131,9 @@ primBasis  = [
       -= (print :: Value -> IO ()),
 
     -- I/O
-    fun "putChar"  -: [$ty| int -> unit |]
+    fun "putChar"  -: [$ty| char -> unit |]
       -= putChar . integer2char,
-    fun "getChar"  -: [$ty| unit -> int |]
+    fun "getChar"  -: [$ty| unit -> char |]
       -= \() -> fmap char2integer getChar,
     fun "flush"    -: [$ty| unit -> unit |]
       -= \() -> IO.hFlush IO.stdout,

@@ -4,9 +4,9 @@ module type CAP_ARRAY = sig
   type ('a,'b) array
   type 'b cap : A
 
-  val new : int → 'a → ∃'b. ('a,'b) array * 'b cap
+  val new : int → 'a → ∃'b. ('a,'b) array × 'b cap
   val set : ('a,'b) array → int → 'a → 'b cap → 'b cap
-  val get : ('a,'b) array → int → 'b cap → 'a * 'b cap
+  val get : ('a,'b) array → int → 'b cap → 'a × 'b cap
 
   val dirtyGet : ('a,'b) array → int → 'a
   val size     : ('a,'b) array → int

@@ -19,7 +19,7 @@ module EchoServer = struct
 
   let rec acceptLoop['t] (sock: 't socket) (f: string -> string)
                          (cap: 't listening) : unit =
-    let (Pack('s, clientsock, clientcap), cap) = accept sock cap in
+    let (('s, clientsock, clientcap), cap) = accept sock cap in
       putStrLn "Opened connection";
       (Thread.fork :> (unit -o unit) -> Thread.thread)
         (fun () -> handleClient clientsock f clientcap;
@@ -27,7 +27,7 @@ module EchoServer = struct
       acceptLoop sock f cap
 
   let serve (port: int) (f: string -> string) =
-    let Pack('t, sock, cap) = socket () in
+    let ('t, sock, cap) = socket () in
     let cap = bind sock port cap in
     let cap = listen sock cap in
       acceptLoop sock f cap
