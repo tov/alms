@@ -7,325 +7,91 @@ int
 `b
 `a *  `a list
 `a *  `a list
-int
-int
-int
-int -U> int
 int -U> int -U> int
-int
-int
-int
-int -U> int
 int -U> int -U> int
-int
-int
-int
-int -U> int
 int -U> int -U> int
-int
-int
-int
-int -U> int
 int -U> int -U> int
-int
-int
-int
-int -U> int
 int -U> int -U> int
-int
-int
 int -U> int
-int
-int
 int -U> int
-int
-int
-bool
-int -U> bool
 int -U> int -U> bool
-int
-string
 int -U> string
-string
-int
 string -U> int
-unit
-int
 unit -U> int
-float
-float
-bool
-float -U> bool
 float -U> float -U> bool
-float
-float
-bool
-float -U> bool
 float -U> float -U> bool
-float
-float
-float
-float -U> float
 float -U> float -U> float
-float
-float
-float
-float -U> float
 float -U> float -U> float
-float
-float
-float
-float -U> float
 float -U> float -U> float
-float
-float
-float
-float -U> float
 float -U> float -U> float
-float
-float
-float
-float -U> float
 float -U> float -U> float
-float
-float
 float -U> float
-float
-float
 float -U> float
-float
-float
 float -U> float
-float
-float
 float -U> float
-int
-float
 int -U> float
-float
-int
 float -U> int
-float
-string
 float -U> string
-string
-float
 string -U> float
-string
-char list
 string -U> char list
-char list
-string
 char list -U> string
-string
-string
-string
-string -U> string
 string -U> string -U> string
-'a
-string
 all 'a. 'a -U> string
-string
-int
 string -U> int
-'a
-'a
-bool
-'a -U> bool
 all 'a. 'a -U> 'a -U> bool
-'a
-unit
 all 'a. 'a -U> unit
-char
-unit
 char -U> unit
-unit
-char
 unit -U> char
-unit
-unit
 unit -U> unit
-string
-unit
 string -U> unit
-string
-unit
 string -U> unit
-unit
-string
 unit -U> string
-unit
-string list
 unit -U> string list
-unit
-string
 unit -U> string
-string
-string
 string -U> string
-unit
-(string *  string) list
 unit -U> (string *  string) list
-`a
-`a ref
 all `a. `a -U> `a ref
-`a
-`a aref
 all `a. `a -U> `a aref
-'a ref
-'a
 all 'a. 'a ref -U> 'a
-'a aref
-'a aref *  'a
 all 'a. 'a aref -U> 'a aref *  'a
-`a ref
-`a
-`a
-`a -A> `a
-all `a. `a ref -U> `a -A> `a
-`a aref
-`b
-`b aref *  `a
-`b -A> `b aref *  `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
-`a
-`b
 all `b `a. `a -U> `b
-`a
-`a *  `a
 all `a. `a -U> `a *  `a
-string
-IO.ioMode
-IO.handle
-IO.ioMode -U> IO.handle
 string -U> IO.ioMode -U> IO.handle
-IO.handle
-char
 IO.handle -U> char
-IO.handle
-string
 IO.handle -U> string
-IO.handle
-bool
 IO.handle -U> bool
-IO.handle
-char
-unit
-char -U> unit
 IO.handle -U> char -U> unit
-IO.handle
-string
-unit
-string -U> unit
 IO.handle -U> string -U> unit
-IO.handle
-unit
 IO.handle -U> unit
-IO.handle
-unit
 IO.handle -U> unit
 IO.handle
 IO.handle
 IO.handle
-unit
-'a Channel.channel
 all 'a. unit -U> 'a Channel.channel
-'a Channel.channel
-'a
-unit
-'a -U> unit
 all 'a. 'a Channel.channel -U> 'a -U> unit
-'a Channel.channel
-'a
 all 'a. 'a Channel.channel -U> 'a
-unit
-unit
-unit -U> unit
-Thread.thread
 (unit -U> unit) -U> Thread.thread
-Thread.thread
-unit
 Thread.thread -U> unit
-int
-unit
 int -U> unit
-Thread.thread
-Thread.thread
 Thread.thread -U> Thread.thread
-`a
-`a MVar.mvar
 all `a. `a -U> `a MVar.mvar
-unit
-`a MVar.mvar
 all `a. unit -U> `a MVar.mvar
-`a MVar.mvar
-`a
 all `a. `a MVar.mvar -U> `a
-`a MVar.mvar
-`a
-unit
-`a -U> unit
 all `a. `a MVar.mvar -U> `a -U> unit
-'a MVar.mvar
-'a
 all 'a. 'a MVar.mvar -U> 'a
-`a MVar.mvar
-`a
-`a
-`a -U> `a
 all `a. `a MVar.mvar -U> `a -U> `a
-`a MVar.mvar
-`a option
 all `a. `a MVar.mvar -U> `a option
-`a MVar.mvar
-`a
-bool
-`a -U> bool
 all `a. `a MVar.mvar -U> `a -U> bool
-`a MVar.mvar
-bool
 all `a. `a MVar.mvar -U> bool
-`a MVar.mvar
-`a
-`b
-`a -U> `b
-`b
-(`a -U> `b) -U> `b
 all `a `b. `a MVar.mvar -U> (`a -U> `b) -U> `b
-`a MVar.mvar
-`a
-`a
-`a -U> `a
-unit
-(`a -U> `a) -U> unit
 all `a. `a MVar.mvar -U> (`a -U> `a) -U> unit
-`a MVar.mvar
-`a
-`a *  `b
-`a -U> `a *  `b
-`b
-(`a -U> `a *  `b) -U> `b
 all `a `b. `a MVar.mvar -U> (`a -U> `a *  `b) -U> `b
-unit
-`a
-unit -A> `a
-`a Future.future
 all `a. (unit -A> `a) -U> `a Future.future
-`a Future.future
-`a
 all `a. `a Future.future -U> `a
-`a Future.future
-unit
-`a Future.future -A> unit
-`a Future.cofuture
 all `a. (`a Future.future -A> unit) -U> `a Future.cofuture
-`a Future.cofuture
-`a
-unit
-`a -A> unit
 all `a. `a Future.cofuture -U> `a -A> unit
-unit
-`a Future.future *  `a Future.cofuture
 all `a. unit -U> `a Future.future *  `a Future.cofuture
 int
 int
@@ -342,92 +108,23 @@ string
 Prim.Socket.hostAddress
 Prim.Socket.protocolNumber
 Prim.Socket.addrInfo
-Prim.Socket.addrInfo option
-Prim.Socket.hostName option
-Prim.Socket.serviceName option
-Prim.Socket.addrInfo list
-Prim.Socket.serviceName option -U> Prim.Socket.addrInfo list
-Prim.Socket.hostName option -U> Prim.Socket.serviceName option -U> Prim.Socket.addrInfo list
 Prim.Socket.addrInfo option -U> Prim.Socket.hostName option -U> Prim.Socket.serviceName option -U> Prim.Socket.addrInfo list
-string
-Prim.Socket.hostAddress
 string -U> Prim.Socket.hostAddress
-Prim.Socket.family
-Prim.Socket.socketType
-Prim.Socket.protocolNumber
-Prim.Socket.socket
-Prim.Socket.protocolNumber -U> Prim.Socket.socket
-Prim.Socket.socketType -U> Prim.Socket.protocolNumber -U> Prim.Socket.socket
 Prim.Socket.family -U> Prim.Socket.socketType -U> Prim.Socket.protocolNumber -U> Prim.Socket.socket
-Prim.Socket.socket
-Prim.Socket.sockAddr
-unit
-Prim.Socket.sockAddr -U> unit
 Prim.Socket.socket -U> Prim.Socket.sockAddr -U> unit
-Prim.Socket.socket
-Prim.Socket.sockAddr
-unit
-Prim.Socket.sockAddr -U> unit
 Prim.Socket.socket -U> Prim.Socket.sockAddr -U> unit
-Prim.Socket.socket
-int
-unit
-int -U> unit
 Prim.Socket.socket -U> int -U> unit
-Prim.Socket.socket
-Prim.Socket.socket *  Prim.Socket.sockAddr
 Prim.Socket.socket -U> Prim.Socket.socket *  Prim.Socket.sockAddr
-Prim.Socket.socket
-string
-int
-string -U> int
 Prim.Socket.socket -U> string -U> int
-Prim.Socket.socket
-int
-string
-int -U> string
 Prim.Socket.socket -U> int -U> string
-Prim.Socket.socket
-Prim.Socket.shutdownCmd
-unit
-Prim.Socket.shutdownCmd -U> unit
 Prim.Socket.socket -U> Prim.Socket.shutdownCmd -U> unit
-Prim.Socket.socket
-unit
 Prim.Socket.socket -U> unit
-Prim.Socket.socket
-bool
 Prim.Socket.socket -U> bool
-Prim.Socket.socket
-bool
 Prim.Socket.socket -U> bool
-exn
-`a
 all `a. exn -U> `a
-unit
-`a
-unit -A> `a
-exn +  string +  `a
 all `a. (unit -A> `a) -U> exn +  string +  `a
-int
-int
-`a
-int -U> `a
-`a Prim.Array.array
-(int -U> `a) -U> `a Prim.Array.array
 all `a. int -U> (int -U> `a) -U> `a Prim.Array.array
-`a Prim.Array.array
-int
 all `a. `a Prim.Array.array -U> int
-`a Prim.Array.array
-int
-`a
-`a
-`a -U> `a
-int -U> `a -U> `a
 all `a. `a Prim.Array.array -U> int -U> `a -U> `a
-'a Prim.Array.array
-int
-'a
-int -U> 'a
 all 'a. 'a Prim.Array.array -U> int -U> 'a
+Alms, version 0.0.0-dev

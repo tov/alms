@@ -11,7 +11,7 @@ let length[`a] (xs: `a list) : int * `a list =
            (n + 1, Cons (x, xs)))
         (0, Nil[`a]) xs
 
-let snoc[`a] (x: `a) | (xs: `a list) : `a list =
+let snoc[`a] (x: `a) |[a] (xs: `a list) : `a list =
   foldr (fun (x: `a) (xs: `a list) -> Cons (x, xs))
         (Cons (x, Nil[`a])) xs
 
@@ -25,7 +25,7 @@ let revAppN =
                | xs          -> (acc, xs)
   in loop
 
-let swapN[`a] (ix: int) (y: `a) | (xs: `a list)
+let swapN[`a] (ix: int) (y: `a) |[a] (xs: `a list)
        : `a * `a list =
   let (Cons(x, xs), acc) = revAppN ix xs Nil[`a] in
   let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in

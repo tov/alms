@@ -168,7 +168,7 @@ primBasis  = [
       -= (\r -> do
            v <- readIORef (unRef r)
            return (r, v)),
-    fun "<-" -: [$ty| all `a. `a ref -> `a -o `a |]
+    fun "<-" -: [$ty| all `a. `a ref -> `a -> `a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, v'))),
     fun "<-!" -: [$ty| all `a `b. `a aref ->

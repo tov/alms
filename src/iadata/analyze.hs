@@ -47,9 +47,13 @@ annotationsOf t = case t of
 annotations ∷ [[(String, [String])]]
 annotations = map (map (id &&& annotationsOf) . filter hasArrowType) trials
 
+-- | Types that have annotations
+anntypes    ∷ [[(String, [String])]]
+anntypes    = map (filter (any (not . null) . snd)) annotations
+
 -- | Number of non-trivial (arrow-containing) types
 nanntypes   ∷ [Int]
-nanntypes   = map (length . filter (any (not . null) . snd)) annotations
+nanntypes   = map length anntypes
 
 -- | A flat list of the annotations for each trial.
 flatAnnotations ∷ [[String]]

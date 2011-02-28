@@ -56,19 +56,20 @@ We performed a pairwise comparison of the trial results. For the actual
 corpus of types present here, rules 2, 3, 4, and 5 give exactly the same
 results. Thus, it makes sense to compare only rules 0, 1, and 2
 
-Each trial has 390 types, of which 336 are non-trivial (contain arrows).
-These contain a total of 622 arrows, which means 622 potential
-annotations.  Of the 336 arrow types, we have:
+Each trial has 326 types, of which 309 are non-trivial (contain arrows).
+These contain a total of 588 arrows, which means 590 potential
+annotations.  Of the 309 arrow types, we have:
 
   Rule | ann. types | annotations
   -----+------------+------------
-   0   |        336 |         622
-   1   |         47 |          70
-   2   |         26 |          29
+   0   |        309 |         588
+   1   |         40 |          63
+   2,3 |         18 |          21
+   4,5 |         17 |          20
 
-Of the 29 annotations required in rule 2, 28 of them are the same in
-rule 1.  Rule 2 adds one annotation, where an unannotated arrow by rule
-1 needs a U in rule 2:
+Of the 20-21 annotations required in rules 2-5, all but one of them are the
+same in rule 1.  Rules 2-5 add one annotation, where an unannotated arrow by
+rule 1 needs a U in the other rules:
 
 Rule 1:
   (`a1, `a2) coercion -> (`b1, `b2) coercion ->
@@ -77,4 +78,37 @@ Rule 1:
 Rule 2:
   (`a1, `a2) coercion -> (`b1, `b2) coercion ->
     party * party -> (`a2 -A> `b1) -> `a1 -U> `b2
+
+
+We can categorize all the annotations the remain in rules 2-5:
+
+  -A> in negative position indicating functions that apply their
+  arguments but once (15 types, 17 annotations)
+
+all `a. (unit -A> `a) -> `a Future.future
+all `a. (`a Future.future -A> unit) -> `a Future.cofuture
+all `a. (unit -A> `a) -> exn +  string +  `a
+all `a. (unit -A> `a) -> exn +  `a
+all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
+all `a `b. (`a -A> `b) -> `a -> `b
+(int -A> int) -> int -> int
+all 'a 'b. ('a -A> 'b) -> 'a -> 'b
+all 't 'c `a. ('t, 'c) AArray.readcap -> (('t, 'c) ureadcap -A> `a) -> `a *  ('t, 'c) AArray.readcap
+all 't 'c `r. (('t, 'c) AArray.readcap -A> `r *  ('t, 'c) AArray.readcap) -> ('t, 'c) ureadcap -> `r
+(unit -A> unit) -> Thread.thread
+all `a 'ta `b 'tb. ('ta, `a) cap *  'ta tr -> ('tb, `b) cap *  'tb tr -> (('ta, `a) cap -A> unit) -> ('tb, `b) cap *  ('tb, `a) guarded
+all `a 't `b `r. ('t, `a) cap *  ('t, `b) guarded -> (all 's. ('s, `b) cap *  's tr -A> ('s, `b) cap *  `r) -> ('t, `a) cap *  `r
+all 't `a. ASocket.rep -> (unit -A> `a) -> (unit -A> `a) -> `a
+all `a. ASocket.rep -> (unit -A> `a) -> (unit -A> `a) -> `a
+
+  weird contract thing (1 type, 2 annotations):
+
+all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -A> `b1) -> `a1 -U> `b2
+
+  relating domain and range (rules 2-3: 2 types, 2 annotations; /rules
+  4-5: 1 type, 1 annotations):
+
+all `q `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -q> `b1) -> `a1 -> `b2
+all `a 't. ('t, `a) region -> 't ptr -> ex 't1. ('t1, `a) region1 *  't1 ptr *  (('t1, `a) region1 -A> ('t, `a) region)
+
 

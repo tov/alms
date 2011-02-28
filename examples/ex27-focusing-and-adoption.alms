@@ -23,12 +23,12 @@ let length[`a] (xs: `a list) : int * `a list =
            (n + 1, Cons (x, xs)))
         (0, Nil[`a]) xs
 
-let snoc[`a] (x: `a) | (xs: `a list) : `a list =
+let snoc[`a] (x: `a) |[a] (xs: `a list) : `a list =
   foldr (fun (x: `a) (xs: `a list) -> Cons (x, xs))
         (Cons (x, Nil[`a])) xs
 
 let revAppN =
-  let rec loop[`a] (n: int) (xs: `a list) | (acc: `a list)
+  let rec loop[`a] (n: int) (xs: `a list) |[a] (acc: `a list)
                     : `a list * `a list =
         match n with
         | 0 -> (acc, xs)
@@ -41,55 +41,54 @@ let rev[`a] (xs: `a list) : `a list =
   let (_, acc) = revAppN (-1) xs Nil[`a] 
    in acc
 
-let swapN[`a] (ix: int) (y: `a) | (xs: `a list)
+let swapN[`a] (ix: int) (y: `a) |[a] (xs: `a list)
        : `a * `a list =
   let (Cons(x, xs), acc) = revAppN ix xs Nil[`a] in
   let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
     (x, xs)
 
-abstype ('t, `a) region qualifier A = Rgn of `a list
-    and ('t, `a) region1 qualifier A = Rgn1 of `a
-    and 't ptr qualifier U = Ptr of int
-with
-  let newRgn[`a] () =
-    Pack[ex 't. ('t, `a) region] (unit, Rgn[unit] (Nil[`a]))
-  let freeRgn[`a,'t] (_: ('t, `a) region) = ()
+module Region : sig
+  type ('t, `a) region : A
+  type ('t, `a) region1 : A
+  type 't ptr
 
-  let mallocIn[`a,'t] (Rgn xs: ('t, `a) region) | (a: `a)
-      : 't ptr * ('t, `a) region =
+  val newRgn    : unit -> ex 't. ('t,`a) region
+  val mallocIn  : ('t,`a) region -> `a -o 't ptr * ('t,`a) region
+  val swap      : ('t,`a) region -> 't ptr -o `a -o `a * ('t,`a) region
+  val malloc    : unit -> ex 't. ('t,unit) region1 * 't ptr
+  val free      : ('t,`a) region1 -> unit
+  val adopt     : ('t1,`a) region -> ('t2,`a) region1 -o 't2 ptr -o
+                  't1 ptr * ('t1,`a) region
+  val focus     : ('t,`a) region -> 't ptr -o
+                  ex 't1. ('t1,`a) region1 * 't1 ptr *
+                          (('t1,`a) region1 -o ('t,`a) region)
+end = struct
+  type ('t, `a) region = `a list
+  type ('t, `a) region1 = `a
+  type 't ptr = int
+
+  let newRgn () = Nil
+
+  let freeRgn _ = ()
+
+  let mallocIn (xs: `a list) (a: `a) =
     let (ix, xs) = length xs in
-      (Ptr['t] ix, Rgn['t] (snoc a xs))
-  let swap[`a,'t] (Rgn xs: ('t, `a) region) |
-                   (Ptr ix: 't ptr) (x: `a)
-                   : `a * ('t, `a) region =
+      (ix, snoc a xs)
+
+  let swap (xs: `a list) (ix: 't ptr) (x: `a) =
     let (y, xs) = swapN ix x xs in
-      (y, Rgn['t] xs)
+      (y, xs)
 
-  let malloc () =
-    Pack[ex 't. ('t, unit) region1 * 't ptr]
-        (unit, Rgn1[unit] (), Ptr[unit] 0)
-  let swap1[`a,`b,'t] (Rgn1 x: ('t, `a) region1) |
-                        (_: 't ptr) (y: `b)
-                        : `a * ('t, `b) region1 =
-    (x, Rgn1['t] y)
-  let free[`a, 't] (_: ('t, `a) region1) = ()
+  let malloc () = ((), 0)
 
-  let adopt[`a,'t1,'t2] (rgn: ('t1, `a) region) |
-                         (Rgn1 x: ('t2, `a) region1)
-                         (_: 't2 ptr)
-                         : 't1 ptr * ('t1, `a) region =
+  let swap1 (x: `a) _ (y: `b) = (x, y)
+
+  let free _ = ()
+
+  let adopt (rgn: `a list) (x: `a) _ =
     mallocIn rgn x
 
-  let focus[`a,'t]
-        (Rgn xs: ('t, `a) region) |
-        (Ptr ix: 't ptr)
-        : ex 't1. ('t1, `a) region1 * 't1 ptr *
-                  (('t1, `a) region1 -o ('t, `a) region) =
-     let (Cons (x, xs), acc) = revAppN ix xs Nil[`a] in
-       Pack[ex 't1. ('t1, `a) region1 * 't1 ptr *
-                    (('t1, `a) region1 -o ('t, `a) region)]
-           (unit, Rgn1[unit] x, Ptr[unit] 0,
-            fun (Rgn1 y: (unit, `a) region1) ->
-              let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
-                Rgn['t] xs)
+  let focus (xs: `a list) (ix: 't ptr) =
+     let (Cons (x, xs), acc) = revAppN ix xs Nil in
+       (x, 0, fun (y: `a) -> fst (revAppN (-1) acc (Cons (y, xs))))
 end

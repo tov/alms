@@ -142,6 +142,7 @@ let mapFilterA `a `b (f: `a -> `b option) (xs: `a list) =
                | Some y -> Cons(y, xs')
                | None   -> xs')
             Nil
+            xs
 let revApp[`c] (xs : `c list) (ys : `c list) =
   let cons (x : `c) (acc : `c list) = Cons (x, acc) in
     foldl cons ys xs

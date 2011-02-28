@@ -409,8 +409,8 @@ tcType stxtype0 = do
   -- XXX implicit arrow
   tc [$ty| $t1 -[$opt:mq]> $t2 |] = do
     TyFun <$> maybe (return minBound) qInterpretM mq
-          <*> tcType t1
-          <*> tcType t2
+          <*> tc t1
+          <*> tc t2
   tc [$ty| ($list:ts) $qlid:n |] = do
     ts'  <- mapM tc ts
     tc'  <- find n

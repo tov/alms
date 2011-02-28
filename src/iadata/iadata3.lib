@@ -28,7 +28,7 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
+all `a `b. (`a -> `b option) -> `a list -> `a list -> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -38,7 +38,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `a `b. (`a -A> `b) -> `a -> `b
 int -> int
@@ -72,7 +72,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -82,7 +81,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (int -A> int) -> int -> int
 int -> int
@@ -116,7 +115,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -126,7 +124,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a 'b. ('a -A> 'b) -> 'a -> 'b
 int -> int
@@ -160,7 +158,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -170,7 +167,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (int -A> int) -> int -> int
 int -> int
@@ -204,7 +201,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -214,7 +210,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a 'b. ('a -> 'b) -> 'a -> 'b
 int -> int
@@ -248,7 +244,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -258,7 +253,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (int -> int) -> int -> int
 int -> int
@@ -292,7 +287,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -302,7 +296,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a 'b. ('a -> 'b) -> 'a -> 'b
 all 'a 'b. ('a -A> 'b) -> 'a -> 'b
@@ -337,7 +331,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -347,7 +340,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (int -> int) -> int -> int
 (int -A> int) -> int -> int
@@ -382,7 +375,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -392,7 +384,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. ('a -> 'a) -> 'a -> 'a
 int -> int
@@ -426,7 +418,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -436,7 +427,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (int -> int) -> int -> int
 int -> int
@@ -470,7 +461,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -480,7 +470,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> in_channel'
 in_channel' -> char
@@ -528,7 +518,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -538,7 +527,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -591,7 +580,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -601,11 +589,11 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `a. `a list -> int *  `a list
 all `a. `a -> `a list -> `a list
-all `a. int -> `a list -> `a list -A> `a list *  `a list
+all `a. int -> `a list -> `a list -> `a list *  `a list
 all `a. `a list -> `a list
 all `a. int -> `a -> `a list -> `a *  `a list
 all `a. unit -> ex 't. ('t, `a) region
@@ -647,7 +635,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -657,11 +644,11 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `a. `a list -> int *  `a list
 all `a. `a -> `a list -> `a list
-all `a. int -> `a list -> `a list -A> `a list *  `a list
+all `a. int -> `a list -> `a list -> `a list *  `a list
 all `a. int -> `a -> `a list -> `a *  `a list
 all `a. `a -> ex 't. ('t, `a) cap *  't tr
 all `a `b 't. ('t, `a) cap *  't tr -> `b -> ('t, `b) cap *  `a
@@ -699,7 +686,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -709,7 +695,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 bool -> string -> unit
 exn -> int
@@ -748,7 +734,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -758,7 +743,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> string -> Prim.Socket.sockAddr
 unit -> Prim.Socket.socket
@@ -800,7 +785,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -810,7 +794,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (unit -A> unit) -> Thread.thread
 Thread.thread -> Thread.thread
@@ -855,7 +839,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -865,7 +848,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (unit -A> unit) -> Thread.thread
 Thread.thread -> Thread.thread
@@ -910,7 +893,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -920,7 +902,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 int -> int
 int -> int
@@ -962,7 +944,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -972,7 +953,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 int -> int
 int -> int
@@ -1007,7 +988,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1017,7 +997,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 int -> int -> int
 string -> any
@@ -1050,7 +1030,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1060,7 +1039,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 A.t -> A.t *  A.t
 A.t -> A.t *  A.t
@@ -1094,7 +1073,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1104,7 +1082,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `b. `b A.t -> `b A.t *  `b A.t
 all 'b. 'b A.t -> 'b A.t *  'b A.t
@@ -1138,7 +1116,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1148,7 +1125,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> any
 all `a. (unit -A> `a) -> exn +  `a
@@ -1180,7 +1157,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1190,7 +1166,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1230,7 +1206,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1240,7 +1215,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1291,7 +1266,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1301,7 +1275,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1351,7 +1325,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1361,7 +1334,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1422,7 +1395,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1432,7 +1404,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1472,7 +1444,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1482,7 +1453,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `a. unit -> `a list *  `a list
 all `a. `a Queue.queue -> bool *  (`a list *  `a list)
@@ -1542,7 +1513,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1552,7 +1522,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `a. unit -> `a list *  `a list
 all `a. `a Queue.queue -> bool *  (`a list *  `a list)
@@ -1600,7 +1570,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1610,7 +1579,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1645,7 +1614,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1655,7 +1623,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 'a. int -> 'a -> 'a Prim.Array.array
 all `a. `a Array.array -> int -> `a -> `a
@@ -1701,7 +1669,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1711,7 +1678,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> any
 all `a. (unit -A> `a) -> exn +  `a
@@ -1743,7 +1710,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1753,7 +1719,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> any
 all `a. (unit -A> `a) -> exn +  `a
@@ -1785,7 +1751,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1795,7 +1760,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all `a. unit -> `a list *  `a list
 all `a. `a Queue.queue -> bool *  (`a list *  `a list)
@@ -1837,7 +1802,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1847,7 +1811,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 all 's. unit -> 's SessionType.channel Channel.channel
 all 's. 's SessionType.rendezvous -> SessionType.rep
@@ -1887,7 +1851,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1897,7 +1860,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 unit -> SessionType.rep Channel.channel
 unit SessionType.rendezvous -> SessionType.rep
@@ -1939,7 +1902,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -1949,7 +1911,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> string -> Prim.Socket.sockAddr
 unit -> Prim.Socket.socket
@@ -1990,7 +1952,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -2000,7 +1961,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> string -> Prim.Socket.sockAddr
 unit -> Prim.Socket.socket
@@ -2059,7 +2020,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -2069,7 +2029,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 string -> string -> Prim.Socket.sockAddr
 unit -> Prim.Socket.socket
@@ -2125,7 +2085,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -2135,7 +2094,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (unit -A> unit) -> Thread.thread
 Thread.thread -> Thread.thread
@@ -2169,7 +2128,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -2179,76 +2137,7 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
-all `a `b. `a aref -> `b -> `b aref *  `a
-(unit -A> unit) -> Thread.thread
-Thread.thread -> Thread.thread
-all 's. unit -> 's SessionType.channel Channel.channel
-all 's. 's SessionType.rendezvous -> SessionType.rep
-all 's. 's SessionType.rendezvous -> bool Channel.channel
-all `a 's. SessionType.rep -> `a -> SessionType.rep
-all `a 's. SessionType.rep -> `a *  SessionType.rep
-all 's1 's2. ('s1, 's2) SessionType.(|+|) SessionType.channel -> ('s1, 's2) SessionType.(|+|) SessionType.channel
-all 's1 's2. SessionType.rep -> SessionType.rep
-all 's1 's2. SessionType.rep -> SessionType.rep +  SessionType.rep
-all 'a. 'a -> unit
-point -> string
-plane -> string
-all 'a. ('a -> bool) -> 'a list -> 'a list *  'a list
-bool -> bool
-all 'a. ('a -> bool) -> 'a -> bool
-int -> bool
-int list -> int list
-string -> point
-string -> plane
-point -> plane -> bool
-point -> point -> plane -> point option
-all 'a 'r. ('a -> 'r) -> 'r -> 'a option -> 'r
-plane -> point stream SessionType.channel -> point stream SessionType.dual SessionType.channel -> unit
-point stream SessionType.channel -> unit
-main_prot SessionType.dual SessionType.channel -> unit
-unit -> unit
-string -> any
-all `a. (unit -A> `a) -> exn +  `a
-string -> string -> any
-all 'a. ('a -> bool) -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> 'a -> 'a
-all `a. (`a -> bool *  `a) -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> `a -> `a
-all `a. INTERNALS.Contract.party *  INTERNALS.Contract.party -> `a -> `a
-all `q `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -q> `b1) -> `a1 -> `b2
-all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -A> `b1) -> `a1 -U> `b2
-all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -> `b1) -> `a1 -> `b2
-bool -> bool
-all 'a. 'a -> 'a -> bool
-all 'a 'b 'c. ('a -> 'b -> 'c) -> 'b -> 'a -> 'c
-int -> int -> bool
-int -> int -> bool
-int -> int -> bool
-float -> float -> bool
-float -> float -> bool
-all 'a. 'a -> 'a -> bool
-int -> int -> bool
-int -> int -> bool
-float -> float -> bool
-float -> float -> bool
-all 'a. 'a list -> bool
-all `a. `a list -> `a list *  bool
-all 'a. 'a list -> 'a
-all 'a. 'a list -> 'a list
-all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
-all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
-all `a `b. (`a -> `b) -> `a list -> `b list
-all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
-all `c. `c list -> `c list -> `c list
-all `b. `b list -> `b list
-all `a. `a list -> `a list -> `a list
-all `a. `a list -> int
-all `a. `a list -> int *  `a list
-all `a `b. `a *  `b -> `a
-all `a `b. `a *  `b -> `b
-all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (unit -A> unit) -> Thread.thread
 Thread.thread -> Thread.thread
@@ -2307,7 +2196,6 @@ all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
 all `a `b. (`a -> `b) -> `a list -> `b list
 all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
-all `a `b. (`a -> `b option) -> `a list -> `a list -b> `b list
 all `c. `c list -> `c list -> `c list
 all `b. `b list -> `b list
 all `a. `a list -> `a list -> `a list
@@ -2317,7 +2205,75 @@ all `a `b. `a *  `b -> `a
 all `a `b. `a *  `b -> `b
 all `a. `a -> all `b. `b -> `b *  `a
 all `a. `a -> all `b. `b -> `b *  `a
-all `a. `a ref -> `a -A> `a
+all `a. `a ref -> `a -> `a
+all `a `b. `a aref -> `b -> `b aref *  `a
+(unit -A> unit) -> Thread.thread
+Thread.thread -> Thread.thread
+all 's. unit -> 's SessionType.channel Channel.channel
+all 's. 's SessionType.rendezvous -> SessionType.rep
+all 's. 's SessionType.rendezvous -> bool Channel.channel
+all `a 's. SessionType.rep -> `a -> SessionType.rep
+all `a 's. SessionType.rep -> `a *  SessionType.rep
+all 's1 's2. ('s1, 's2) SessionType.(|+|) SessionType.channel -> ('s1, 's2) SessionType.(|+|) SessionType.channel
+all 's1 's2. SessionType.rep -> SessionType.rep
+all 's1 's2. SessionType.rep -> SessionType.rep +  SessionType.rep
+all 'a. 'a -> unit
+point -> string
+plane -> string
+all 'a. ('a -> bool) -> 'a list -> 'a list *  'a list
+bool -> bool
+all 'a. ('a -> bool) -> 'a -> bool
+int -> bool
+int list -> int list
+string -> point
+string -> plane
+point -> plane -> bool
+point -> point -> plane -> point option
+all 'a 'r. ('a -> 'r) -> 'r -> 'a option -> 'r
+plane -> point stream SessionType.channel -> point stream SessionType.dual SessionType.channel -> unit
+point stream SessionType.channel -> unit
+main_prot SessionType.dual SessionType.channel -> unit
+unit -> unit
+string -> any
+all `a. (unit -A> `a) -> exn +  `a
+string -> string -> any
+all 'a. ('a -> bool) -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> 'a -> 'a
+all `a. (`a -> bool *  `a) -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> `a -> `a
+all `a. INTERNALS.Contract.party *  INTERNALS.Contract.party -> `a -> `a
+all `q `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -q> `b1) -> `a1 -> `b2
+all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -A> `b1) -> `a1 -U> `b2
+all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -> INTERNALS.Contract.party *  INTERNALS.Contract.party -> (`a2 -> `b1) -> `a1 -> `b2
+bool -> bool
+all 'a. 'a -> 'a -> bool
+all 'a 'b 'c. ('a -> 'b -> 'c) -> 'b -> 'a -> 'c
+int -> int -> bool
+int -> int -> bool
+int -> int -> bool
+float -> float -> bool
+float -> float -> bool
+all 'a. 'a -> 'a -> bool
+int -> int -> bool
+int -> int -> bool
+float -> float -> bool
+float -> float -> bool
+all 'a. 'a list -> bool
+all `a. `a list -> `a list *  bool
+all 'a. 'a list -> 'a
+all 'a. 'a list -> 'a list
+all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
+all `a `b. (`a -> `b -A> `b) -> `b -> `a list -> `b
+all `a `b. (`a -> `b) -> `a list -> `b list
+all 'a. ('a -> bool) -> 'a list -> 'a list -> 'a list
+all `c. `c list -> `c list -> `c list
+all `b. `b list -> `b list
+all `a. `a list -> `a list -> `a list
+all `a. `a list -> int
+all `a. `a list -> int *  `a list
+all `a `b. `a *  `b -> `a
+all `a `b. `a *  `b -> `b
+all `a. `a -> all `b. `b -> `b *  `a
+all `a. `a -> all `b. `b -> `b *  `a
+all `a. `a ref -> `a -> `a
 all `a `b. `a aref -> `b -> `b aref *  `a
 (unit -A> unit) -> Thread.thread
 Thread.thread -> Thread.thread

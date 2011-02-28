@@ -28,7 +28,7 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
+all `a `b. (`a -U> `b option) -U> `a list -U> `a list -U> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -38,7 +38,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `a `b. (`a -A> `b) -U> `a -A> `b
 int -U> int
@@ -72,7 +72,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -82,7 +81,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (int -A> int) -U> int -A> int
 int -U> int
@@ -116,7 +115,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -126,7 +124,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a 'b. ('a -A> 'b) -U> 'a -A> 'b
 int -U> int
@@ -160,7 +158,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -170,7 +167,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (int -A> int) -U> int -A> int
 int -U> int
@@ -204,7 +201,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -214,7 +210,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a 'b. ('a -U> 'b) -U> 'a -U> 'b
 int -U> int
@@ -248,7 +244,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -258,7 +253,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (int -U> int) -U> int -U> int
 int -U> int
@@ -292,7 +287,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -302,7 +296,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a 'b. ('a -U> 'b) -U> 'a -U> 'b
 all 'a 'b. ('a -A> 'b) -U> 'a -A> 'b
@@ -337,7 +331,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -347,7 +340,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (int -U> int) -U> int -U> int
 (int -A> int) -U> int -A> int
@@ -382,7 +375,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -392,7 +384,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. ('a -U> 'a) -U> 'a -U> 'a
 int -U> int
@@ -426,7 +418,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -436,7 +427,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (int -U> int) -U> int -U> int
 int -U> int
@@ -470,7 +461,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -480,7 +470,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> in_channel'
 in_channel' -U> char
@@ -528,7 +518,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -538,7 +527,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -591,7 +580,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -601,11 +589,11 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `a. `a list -U> int *  `a list
 all `a. `a -U> `a list -a> `a list
-all `a. int -U> `a list -U> `a list -A> `a list *  `a list
+all `a. int -U> `a list -U> `a list -a> `a list *  `a list
 all `a. `a list -U> `a list
 all `a. int -U> `a -U> `a list -a> `a *  `a list
 all `a. unit -U> ex 't. ('t, `a) region
@@ -616,7 +604,7 @@ unit -U> ex 't. ('t, unit) region1 *  't ptr
 all `a `b 't. ('t, `a) region1 -U> 't ptr -a> `b -a> `a *  ('t, `b) region1
 all `a 't. ('t, `a) region1 -U> unit
 all `a 't1 't2. ('t1, `a) region -U> ('t2, `a) region1 -a> 't2 ptr -a> 't1 ptr *  ('t1, `a) region
-all `a 't. ('t, `a) region -U> 't ptr -a> ex 't1. ('t1, `a) region1 *  't1 ptr *  (('t1, `a) region1 -A> ('t, `a) region)
+all `a 't. ('t, `a) region -U> 't ptr -A> ex 't1. ('t1, `a) region1 *  't1 ptr *  (('t1, `a) region1 -A> ('t, `a) region)
 string -U> any
 all `a. (unit -A> `a) -U> exn +  `a
 string -U> string -U> any
@@ -647,7 +635,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -657,11 +644,11 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `a. `a list -U> int *  `a list
 all `a. `a -U> `a list -a> `a list
-all `a. int -U> `a list -U> `a list -A> `a list *  `a list
+all `a. int -U> `a list -U> `a list -a> `a list *  `a list
 all `a. int -U> `a -U> `a list -a> `a *  `a list
 all `a. `a -U> ex 't. ('t, `a) cap *  't tr
 all `a `b 't. ('t, `a) cap *  't tr -U> `b -A> ('t, `b) cap *  `a
@@ -699,7 +686,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -709,7 +695,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 bool -U> string -U> unit
 exn -U> int
@@ -748,7 +734,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -758,7 +743,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> string -U> Prim.Socket.sockAddr
 unit -U> Prim.Socket.socket
@@ -800,7 +785,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -810,7 +794,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (unit -A> unit) -U> Thread.thread
 Thread.thread -U> Thread.thread
@@ -855,7 +839,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -865,7 +848,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (unit -A> unit) -U> Thread.thread
 Thread.thread -U> Thread.thread
@@ -910,7 +893,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -920,7 +902,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 int -U> int
 int -U> int
@@ -962,7 +944,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -972,7 +953,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 int -U> int
 int -U> int
@@ -1007,7 +988,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1017,7 +997,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 int -U> int -U> int
 string -U> any
@@ -1050,7 +1030,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1060,7 +1039,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 A.t -U> A.t *  A.t
 A.t -U> A.t *  A.t
@@ -1094,7 +1073,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1104,7 +1082,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `b. `b A.t -U> `b A.t *  `b A.t
 all 'b. 'b A.t -U> 'b A.t *  'b A.t
@@ -1138,7 +1116,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1148,7 +1125,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> any
 all `a. (unit -A> `a) -U> exn +  `a
@@ -1180,7 +1157,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1190,7 +1166,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1230,7 +1206,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1240,7 +1215,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1291,7 +1266,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1301,7 +1275,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1351,7 +1325,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1361,7 +1334,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1422,7 +1395,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1432,7 +1404,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1472,7 +1444,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1482,7 +1453,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `a. unit -U> `a list *  `a list
 all `a. `a Queue.queue -U> bool *  (`a list *  `a list)
@@ -1542,7 +1513,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1552,7 +1522,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `a. unit -U> `a list *  `a list
 all `a. `a Queue.queue -U> bool *  (`a list *  `a list)
@@ -1600,7 +1570,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1610,7 +1579,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1645,7 +1614,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1655,7 +1623,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 'a. int -U> 'a -U> 'a Prim.Array.array
 all `a. `a Array.array -U> int -U> `a -U> `a
@@ -1701,7 +1669,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1711,7 +1678,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> any
 all `a. (unit -A> `a) -U> exn +  `a
@@ -1743,7 +1710,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1753,7 +1719,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> any
 all `a. (unit -A> `a) -U> exn +  `a
@@ -1785,7 +1751,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1795,7 +1760,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all `a. unit -U> `a list *  `a list
 all `a. `a Queue.queue -U> bool *  (`a list *  `a list)
@@ -1837,7 +1802,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1847,7 +1811,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 all 's. unit -U> 's SessionType.channel Channel.channel
 all 's. 's SessionType.rendezvous -U> SessionType.rep
@@ -1887,7 +1851,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1897,7 +1860,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 unit -U> SessionType.rep Channel.channel
 unit SessionType.rendezvous -U> SessionType.rep
@@ -1939,7 +1902,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -1949,7 +1911,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> string -U> Prim.Socket.sockAddr
 unit -U> Prim.Socket.socket
@@ -1990,7 +1952,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -2000,7 +1961,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> string -U> Prim.Socket.sockAddr
 unit -U> Prim.Socket.socket
@@ -2059,7 +2020,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -2069,7 +2029,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 string -U> string -U> Prim.Socket.sockAddr
 unit -U> Prim.Socket.socket
@@ -2125,7 +2085,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -2135,7 +2094,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (unit -A> unit) -U> Thread.thread
 Thread.thread -U> Thread.thread
@@ -2169,7 +2128,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -2179,76 +2137,7 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
-all `a `b. `a aref -U> `b -A> `b aref *  `a
-(unit -A> unit) -U> Thread.thread
-Thread.thread -U> Thread.thread
-all 's. unit -U> 's SessionType.channel Channel.channel
-all 's. 's SessionType.rendezvous -U> SessionType.rep
-all 's. 's SessionType.rendezvous -U> bool Channel.channel
-all `a 's. SessionType.rep -U> `a -U> SessionType.rep
-all `a 's. SessionType.rep -U> `a *  SessionType.rep
-all 's1 's2. ('s1, 's2) SessionType.(|+|) SessionType.channel -U> ('s1, 's2) SessionType.(|+|) SessionType.channel
-all 's1 's2. SessionType.rep -U> SessionType.rep
-all 's1 's2. SessionType.rep -U> SessionType.rep +  SessionType.rep
-all 'a. 'a -U> unit
-point -U> string
-plane -U> string
-all 'a. ('a -U> bool) -U> 'a list -U> 'a list *  'a list
-bool -U> bool
-all 'a. ('a -U> bool) -U> 'a -U> bool
-int -U> bool
-int list -U> int list
-string -U> point
-string -U> plane
-point -U> plane -U> bool
-point -U> point -U> plane -U> point option
-all 'a 'r. ('a -U> 'r) -U> 'r -U> 'a option -U> 'r
-plane -U> point stream SessionType.channel -U> point stream SessionType.dual SessionType.channel -A> unit
-point stream SessionType.channel -U> unit
-main_prot SessionType.dual SessionType.channel -U> unit
-unit -U> unit
-string -U> any
-all `a. (unit -A> `a) -U> exn +  `a
-string -U> string -U> any
-all 'a. ('a -U> bool) -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> 'a -U> 'a
-all `a. (`a -U> bool *  `a) -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> `a -U> `a
-all `a. INTERNALS.Contract.party *  INTERNALS.Contract.party -U> `a -U> `a
-all `q `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -U> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> (`a2 -q> `b1) -U> `a1 -q> `b2
-all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -U> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> (`a2 -A> `b1) -U> `a1 -U> `b2
-all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -U> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> (`a2 -U> `b1) -U> `a1 -U> `b2
-bool -U> bool
-all 'a. 'a -U> 'a -U> bool
-all 'a 'b 'c. ('a -U> 'b -U> 'c) -U> 'b -U> 'a -U> 'c
-int -U> int -U> bool
-int -U> int -U> bool
-int -U> int -U> bool
-float -U> float -U> bool
-float -U> float -U> bool
-all 'a. 'a -U> 'a -U> bool
-int -U> int -U> bool
-int -U> int -U> bool
-float -U> float -U> bool
-float -U> float -U> bool
-all 'a. 'a list -U> bool
-all `a. `a list -U> `a list *  bool
-all 'a. 'a list -U> 'a
-all 'a. 'a list -U> 'a list
-all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
-all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
-all `a `b. (`a -U> `b) -U> `a list -U> `b list
-all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
-all `c. `c list -U> `c list -c> `c list
-all `b. `b list -U> `b list
-all `a. `a list -U> `a list -a> `a list
-all `a. `a list -U> int
-all `a. `a list -U> int *  `a list
-all `a `b. `a *  `b -U> `a
-all `a `b. `a *  `b -U> `b
-all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (unit -A> unit) -U> Thread.thread
 Thread.thread -U> Thread.thread
@@ -2307,7 +2196,6 @@ all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
 all `a `b. (`a -U> `b) -U> `a list -U> `b list
 all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
-all `a `b. (`a -U> `b option) -U> `a list -U> `a list -b> `b list
 all `c. `c list -U> `c list -c> `c list
 all `b. `b list -U> `b list
 all `a. `a list -U> `a list -a> `a list
@@ -2317,7 +2205,75 @@ all `a `b. `a *  `b -U> `a
 all `a `b. `a *  `b -U> `b
 all `a. `a -U> all `b. `b -a> `b *  `a
 all `a. `a -U> all `b. `b -a> `b *  `a
-all `a. `a ref -U> `a -A> `a
+all `a. `a ref -U> `a -U> `a
+all `a `b. `a aref -U> `b -A> `b aref *  `a
+(unit -A> unit) -U> Thread.thread
+Thread.thread -U> Thread.thread
+all 's. unit -U> 's SessionType.channel Channel.channel
+all 's. 's SessionType.rendezvous -U> SessionType.rep
+all 's. 's SessionType.rendezvous -U> bool Channel.channel
+all `a 's. SessionType.rep -U> `a -U> SessionType.rep
+all `a 's. SessionType.rep -U> `a *  SessionType.rep
+all 's1 's2. ('s1, 's2) SessionType.(|+|) SessionType.channel -U> ('s1, 's2) SessionType.(|+|) SessionType.channel
+all 's1 's2. SessionType.rep -U> SessionType.rep
+all 's1 's2. SessionType.rep -U> SessionType.rep +  SessionType.rep
+all 'a. 'a -U> unit
+point -U> string
+plane -U> string
+all 'a. ('a -U> bool) -U> 'a list -U> 'a list *  'a list
+bool -U> bool
+all 'a. ('a -U> bool) -U> 'a -U> bool
+int -U> bool
+int list -U> int list
+string -U> point
+string -U> plane
+point -U> plane -U> bool
+point -U> point -U> plane -U> point option
+all 'a 'r. ('a -U> 'r) -U> 'r -U> 'a option -U> 'r
+plane -U> point stream SessionType.channel -U> point stream SessionType.dual SessionType.channel -A> unit
+point stream SessionType.channel -U> unit
+main_prot SessionType.dual SessionType.channel -U> unit
+unit -U> unit
+string -U> any
+all `a. (unit -A> `a) -U> exn +  `a
+string -U> string -U> any
+all 'a. ('a -U> bool) -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> 'a -U> 'a
+all `a. (`a -U> bool *  `a) -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> `a -U> `a
+all `a. INTERNALS.Contract.party *  INTERNALS.Contract.party -U> `a -U> `a
+all `q `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -U> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> (`a2 -q> `b1) -U> `a1 -q> `b2
+all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -U> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> (`a2 -A> `b1) -U> `a1 -U> `b2
+all `a1 `a2. (`a1, `a2) INTERNALS.Contract.coercion -U> all `b1 `b2. (`b1, `b2) INTERNALS.Contract.coercion -U> INTERNALS.Contract.party *  INTERNALS.Contract.party -U> (`a2 -U> `b1) -U> `a1 -U> `b2
+bool -U> bool
+all 'a. 'a -U> 'a -U> bool
+all 'a 'b 'c. ('a -U> 'b -U> 'c) -U> 'b -U> 'a -U> 'c
+int -U> int -U> bool
+int -U> int -U> bool
+int -U> int -U> bool
+float -U> float -U> bool
+float -U> float -U> bool
+all 'a. 'a -U> 'a -U> bool
+int -U> int -U> bool
+int -U> int -U> bool
+float -U> float -U> bool
+float -U> float -U> bool
+all 'a. 'a list -U> bool
+all `a. `a list -U> `a list *  bool
+all 'a. 'a list -U> 'a
+all 'a. 'a list -U> 'a list
+all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
+all `a `b. (`a -U> `b -A> `b) -U> `b -U> `a list -b> `b
+all `a `b. (`a -U> `b) -U> `a list -U> `b list
+all 'a. ('a -U> bool) -U> 'a list -U> 'a list -U> 'a list
+all `c. `c list -U> `c list -c> `c list
+all `b. `b list -U> `b list
+all `a. `a list -U> `a list -a> `a list
+all `a. `a list -U> int
+all `a. `a list -U> int *  `a list
+all `a `b. `a *  `b -U> `a
+all `a `b. `a *  `b -U> `b
+all `a. `a -U> all `b. `b -a> `b *  `a
+all `a. `a -U> all `b. `b -a> `b *  `a
+all `a. `a ref -U> `a -U> `a
 all `a `b. `a aref -U> `b -A> `b aref *  `a
 (unit -A> unit) -U> Thread.thread
 Thread.thread -U> Thread.thread
