@@ -51,6 +51,7 @@ import Message.AST
 
 import Control.Monad.RWS    as RWS
 import Control.Monad.Error  as Error
+import System.IO (hPutStrLn, stderr)
 import Data.Data (Typeable, Data)
 import Data.Generics (everywhere, mkT)
 import Data.List (transpose, tails)
@@ -397,10 +398,7 @@ hnT  = headNormalizeTypeM 100
 -- | Check type for closed-ness and and defined-ness, and add info
 tcType :: (?loc :: Loc, Monad m) =>
           Syntax.Type R -> TC m Type
-tcType stxtype0 = do
-  -- ioM (putStrLn ("{{{" ++ show stxtype0 ++ "}}}"))
-  t <- tc stxtype0
-  return t
+tcType = tc
   where
   tc :: Monad m => Syntax.Type R -> TC m Type
   tc [$ty| '$tv |] = do
@@ -1145,6 +1143,7 @@ tcLet x mt e = do
                </dl> |] (qRepresent (qualifier te))
       return te
   x' <- tcPatt t' x
+  -- ioM (hPutStrLn stderr (show te))
   return (x', Just (typeToStx' t'), e')
 
 -- | Run a computation in the context of a module open declaration

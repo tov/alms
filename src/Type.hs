@@ -692,25 +692,39 @@ typeToStx' :: Type -> Stx.Type Renamed
 typeToStx'  = typeToStx tyNames0
 
 -- | Represent a type value as a syntactic type, for printing; renames
---   so that scope is apparent, since internal renaming may result int
+--   so that scope is apparent, since internal renaming may result in
 --   different identifiers that print the same
 typeToStx :: TyNames -> Type -> Stx.Type Renamed
-typeToStx f = loop (S.empty, M.empty) where
-  loop ren t0 = case t0 of
+typeToStx tns = typeToStxRule tns (iaeInit :: Rule1)
+
+class ImpArrRule a where
+  iaeInit      :: a
+  iaeLeft      :: a -> a
+  iaeRight     :: a -> QDen (TyVar Renamed) -> Type -> a
+  iaeRepresent :: a -> QDen (TyVar Renamed) -> Maybe (QExp Renamed)
+  iaeUnder     :: a -> Variance -> a
+  --
+  iaeLeft _           = iaeInit
+  iaeRight iae _ _    = iae
+  iaeRepresent _      = Just . qRepresent
+  iaeUnder _ _        = iaeInit
+
+-- | Turns annotated arrows into implicit arrows where possible
+typeToStxRule :: ImpArrRule iae => TyNames -> iae -> Type -> Stx.Type Renamed
+typeToStxRule f iae0 = loop (S.empty, M.empty) iae0 where
+  loop ren iae t0 = case t0 of
     TyVar tv      -> Stx.tyVar (maybe tv id (M.lookup tv (snd ren)))
-    -- XXX should turn annotated arrows to implicit arrows when possible
-    TyFun q t1 t2 -> Stx.tyFun (Just (qRepresent q)) (loop ren t1) (loop ren t2)
-    TyApp tc ts _ -> Stx.tyApp (bestName f tc) (map (loop ren) ts)
-    {-
-        (fmap (\ql -> lid ("[" ++ show (tcId tc) ++ "]" ++ unLid ql))
-              (tcName tc)) 
-        (map (loop ren) ts)
-    -}
-    TyQu qu tv t1 -> Stx.tyQu qu tv' (loop ren' t1)
+    TyFun q t1 t2 -> Stx.tyFun (iaeRepresent iae q)
+                               (loop ren (iaeLeft iae) t1)
+                               (loop ren (iaeRight iae q t1) t2)
+    TyApp tc ts _ -> Stx.tyApp
+                       (bestName f tc)
+                       (zipWith (loop ren . iaeUnder iae) (tcArity tc) ts)
+    TyQu qu tv t1 -> Stx.tyQu qu tv' (loop ren' iae t1)
       where (tv', ren') = fresh tv ren
-    TyMu tv t1    -> Stx.tyMu tv' (loop ren' t1)
+    TyMu tv t1    -> Stx.tyMu tv' (loop ren' iae t1)
       where (tv', ren') = fresh tv ren
-  fresh tv (seen, remap) = 
+  fresh tv (seen, remap) =
     let tv' = if S.member (unLid (tvname tv)) seen
                 then freshTyVar tv $
                        M.keysSet remap `S.union`
@@ -718,6 +732,70 @@ typeToStx f = loop (S.empty, M.empty) where
                 else tv
      in (tv', (S.insert (unLid (tvname tv')) seen,
                M.insert tv tv' remap))
+
+data Rule0 = Rule0
+
+instance ImpArrRule Rule0 where
+  iaeInit                = Rule0
+  iaeRepresent _ actual  = Just (qRepresent actual)
+
+data Rule1 = Rule1
+
+instance ImpArrRule Rule1 where
+  iaeInit        = Rule1
+  iaeRepresent _ actual
+    | actual == minBound = Nothing
+    | otherwise          = Just (qRepresent actual)
+
+newtype Rule2 = Rule2 { unRule2 :: QDen (TyVar Renamed) }
+
+instance ImpArrRule Rule2 where
+  iaeInit      = Rule2 minBound
+  iaeRight iae _ t = Rule2 (unRule2 iae \/ qualifier t)
+  iaeRepresent iae actual
+    | unRule2 iae == actual = Nothing
+    | otherwise             = Just (qRepresent actual)
+
+newtype Rule3 = Rule3 { unRule3 :: QDen (TyVar Renamed) }
+
+instance ImpArrRule Rule3 where
+  iaeInit      = Rule3 minBound
+  iaeRight iae actual t
+    | unRule3 iae == actual = Rule3 (unRule3 iae \/ qualifier t)
+    | otherwise             = Rule3 (actual \/ qualifier t)
+  iaeRepresent iae actual
+    | unRule3 iae == actual = Nothing
+    | otherwise             = Just (qRepresent actual)
+
+newtype Rule4 = Rule4 { unRule4 :: QDen (TyVar Renamed) }
+
+instance ImpArrRule Rule4 where
+  iaeInit      = Rule4 minBound
+  iaeRight iae actual t
+    | unRule4 iae == actual = Rule4 (unRule4 iae \/ qualifier t)
+    | otherwise             = Rule4 (actual \/ qualifier t)
+  iaeRepresent iae actual
+    | unRule4 iae == actual = Nothing
+    | otherwise             = Just (qRepresent actual)
+  iaeUnder iae Covariant    = iae
+  iaeUnder _   _            = iaeInit
+
+data Rule5
+  = Rule5 {
+      unRule5 :: !(QDen (TyVar Renamed)),
+      r4Var   :: !Variance
+    }
+
+instance ImpArrRule Rule5 where
+  iaeInit      = Rule5 minBound 1
+  iaeRight iae actual t
+    | unRule5 iae == actual = Rule5 (unRule5 iae \/ qualifier t) 1
+    | otherwise             = Rule5 (actual \/ qualifier t) 1
+  iaeRepresent iae actual
+    | r4Var iae == 1 && unRule5 iae == actual
+                            = Nothing
+    | otherwise             = Just (qRepresent actual)
+  iaeUnder iae var          = Rule5 (unRule5 iae) (var * r4Var iae)
 
 tyPatToStx' :: TyPat -> Stx.TyPat Renamed
 tyPatToStx'  = tyPatToStx tyNames0
