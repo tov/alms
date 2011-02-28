@@ -3,6 +3,25 @@ arrow labeling rules.  It can be made to print out all syntactic types
 that have been kind checked (mode A) or to print out the type of every
 top-level let-bound expression (mode B).
 
+We are trying 6 rules:
+
+    0: Print all annotations explicitly.
+
+    1: Use unannotated arrows for -U>, so implicit = unlimited.
+
+    2: Accumulate the qualifiers of curried arguments and use
+       the accumulated qualifier for implicit annotations.
+
+    3: Like 2, but when we encounter an explicit annotation, that
+       replaced the accumulated qualifier.
+
+    4: Like 3, but we retain the accumulated qualifier when going under
+       covariant type constructors to the left of an arrow.
+
+    5: Like 4, but we retain the accumulated qualifier when going under
+       any composition of type constructors whose net result is
+       covariant.
+
 To get the types of the built-in operations, we run Alms in mode A,
 using the -b switch to prevent it from loading additional libraries. For
 each rule set $i from 0 to 5, we have to recompile Alms to use that that
@@ -15,3 +34,47 @@ B.  I'm actually running the entire test suite, to get as many types as
 possible:
 
     make && make test 2> iadata/iadata$i.lib
+
+For now, I'm combining both the builtin and lib data for each trial for
+my analysis, because I have no reason to believe that should be treated
+separately.
+
+I've written a Haskell program, analyze.hs, that loads the trial data.
+It removes duplicates from the trials, since some types may appear many
+times.  (It might be valid not to remove duplicates, since we care about
+types that are written repeatedly, but since these are libraries, very
+few types are actually written repeatedly, and the effect of library
+loading, which causes the same types to appear each time a library is
+written, would dominate.)  To remove duplicates, we treat trial 0 (all
+annotations explicit) as the reference trial, and for duplicate lines in
+0, we remove the corresponding lines in the other trials. (As a sanity
+check, it turns on that using any particular trial as the reference
+produces the same result, which means that none of the rules obviously
+results in information loss.)
+
+We performed a pairwise comparison of the trial results. For the actual
+corpus of types present here, rules 2, 3, 4, and 5 give exactly the same
+results. Thus, it makes sense to compare only rules 0, 1, and 2
+
+Each trial has 390 types, of which 336 are non-trivial (contain arrows).
+These contain a total of 622 arrows, which means 622 potential
+annotations.  Of the 336 arrow types, we have:
+
+  Rule | ann. types | annotations
+  -----+------------+------------
+   0   |        336 |         622
+   1   |         47 |          70
+   2   |         26 |          29
+
+Of the 29 annotations required in rule 2, 28 of them are the same in
+rule 1.  Rule 2 adds one annotation, where an unannotated arrow by rule
+1 needs a U in rule 2:
+
+Rule 1:
+  (`a1, `a2) coercion -> (`b1, `b2) coercion ->
+    party * party -> (`a2 -A> `b1) -> `a1 -> `b2
+
+Rule 2:
+  (`a1, `a2) coercion -> (`b1, `b2) coercion ->
+    party * party -> (`a2 -A> `b1) -> `a1 -U> `b2
+
