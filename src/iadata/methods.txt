@@ -1,0 +1,17 @@
+Alms has been instrumented to print out types using various implicit
+arrow labeling rules.  It can be made to print out all syntactic types
+that have been kind checked (mode A) or to print out the type of every
+top-level let-bound expression (mode B).
+
+To get the types of the built-in operations, we run Alms in mode A,
+using the -b switch to prevent it from loading additional libraries. For
+each rule set $i from 0 to 5, we have to recompile Alms to use that that
+rule set, load it, and capture the results:
+
+    make && < /dev/null ./alms -b 2> iadata/iadata$i.builtin
+
+Then, to get the types of operations in the library, we run Alms in mode
+B.  I'm actually running the entire test suite, to get as many types as
+possible:
+
+    make && make test 2> iadata/iadata$i.lib

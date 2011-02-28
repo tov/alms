@@ -398,7 +398,10 @@ hnT  = headNormalizeTypeM 100
 -- | Check type for closed-ness and and defined-ness, and add info
 tcType :: (?loc :: Loc, Monad m) =>
           Syntax.Type R -> TC m Type
-tcType = tc
+tcType stxtype0 = do
+  t <- tc stxtype0
+  -- ioM (hPutStrLn stderr (show t))
+  return t
   where
   tc :: Monad m => Syntax.Type R -> TC m Type
   tc [$ty| '$tv |] = do

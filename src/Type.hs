@@ -733,12 +733,14 @@ typeToStxRule f iae0 = loop (S.empty, M.empty) iae0 where
      in (tv', (S.insert (unLid (tvname tv')) seen,
                M.insert tv tv' remap))
 
+-- | Print all arrow annotations explicitly
 data Rule0 = Rule0
 
 instance ImpArrRule Rule0 where
   iaeInit                = Rule0
   iaeRepresent _ actual  = Just (qRepresent actual)
 
+-- | Annotation ‘U’ is implicit for unlabeled arrows.
 data Rule1 = Rule1
 
 instance ImpArrRule Rule1 where
@@ -749,6 +751,9 @@ instance ImpArrRule Rule1 where
 
 newtype Rule2 = Rule2 { unRule2 :: QDen (TyVar Renamed) }
 
+-- | Implicit annotation is lub of qualifiers of prior curried
+--   arguments.  Explicit annotations have no effect on subsequent
+--   arrows.
 instance ImpArrRule Rule2 where
   iaeInit      = Rule2 minBound
   iaeRight iae _ t = Rule2 (unRule2 iae \/ qualifier t)
@@ -756,6 +761,8 @@ instance ImpArrRule Rule2 where
     | unRule2 iae == actual = Nothing
     | otherwise             = Just (qRepresent actual)
 
+-- | Like 'Rule2', but explicit annotations reset the qualifier to
+--   themselves for subsequent arrows.
 newtype Rule3 = Rule3 { unRule3 :: QDen (TyVar Renamed) }
 
 instance ImpArrRule Rule3 where
@@ -767,6 +774,8 @@ instance ImpArrRule Rule3 where
     | unRule3 iae == actual = Nothing
     | otherwise             = Just (qRepresent actual)
 
+-- | Like 'Rule3', but we arrow the implicit qualifer into covariant
+--   type constructors.
 newtype Rule4 = Rule4 { unRule4 :: QDen (TyVar Renamed) }
 
 instance ImpArrRule Rule4 where
@@ -780,6 +789,9 @@ instance ImpArrRule Rule4 where
   iaeUnder iae Covariant    = iae
   iaeUnder _   _            = iaeInit
 
+-- | Like 'Rule4', but we carry the implicit quantifier into ALL type
+--   constructors and only use it when we arrive at an arrow in a
+--   positive position wrt the surrounding arrow.
 data Rule5
   = Rule5 {
       unRule5 :: !(QDen (TyVar Renamed)),
