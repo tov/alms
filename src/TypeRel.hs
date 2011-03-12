@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      FlexibleContexts,
       GeneralizedNewtypeDeriving,
       ParallelListComp,
       PatternGuards,
@@ -27,6 +28,7 @@ import Util
 import Viewable
 
 import qualified Control.Monad.Reader as CMR
+import Control.Monad.Error
 import Data.Generics (Data, everywhere, mkT, extT)
 import Data.Monoid
 import qualified Data.Map as M
@@ -171,25 +173,21 @@ env1, env2 :: Field s t
 env1 = Field tcsEnv1 (\tcs e -> tcs { tcsEnv1 = e })
 env2 = Field tcsEnv2 (\tcs e -> tcs { tcsEnv2 = e })
 
-lift :: (CMR.MonadTrans t, Monad m) => m a -> t m a
-lift  = CMR.lift
-
-runUT  :: forall s a m. Monad m =>
+runUT  :: forall s a m. MonadError String m =>
           (forall t. UT s t a) -> S.Set TyVarR -> m a
 runUT m set =
-  either fail return $
-    runST $ do
-      seen   <- newTransSTRef M.empty
-      supply <- newSTRef [ f | f <- tvalphabet
-                         , f Qu `S.notMember` set
-                         , f Qa `S.notMember` set ]
-      CMR.runReaderT m TCS {
-        tcsSeen   = seen,
-        tcsSupply = supply,
-        tcsLevel  = 1,
-        tcsEnv1   = M.empty,
-        tcsEnv2   = M.empty
-      }
+  runST $ do
+    seen   <- newTransSTRef M.empty
+    supply <- newSTRef [ f | f <- tvalphabet
+                       , f Qu `S.notMember` set
+                       , f Qa `S.notMember` set ]
+    CMR.runReaderT m TCS {
+      tcsSeen   = seen,
+      tcsSupply = supply,
+      tcsLevel  = 1,
+      tcsEnv1   = M.empty,
+      tcsEnv2   = M.empty
+    }
 
 getVar :: TyVarR -> Field s t -> UT s t (Maybe (UVar t))
 getVar tv field = CMR.asks (M.lookup tv . get field)
@@ -221,7 +219,7 @@ withUVars tvs field body = do
             if isBotType lower
               then if upper == tyUn || upper == tyAf then lower else upper
               else lower
-          else fail $
+          else throwError $
             "Unification cannot solve:\n" ++
             show lower ++ " <: " ++ show upper
     | (_, (_, ref)) <- refs ]
@@ -292,7 +290,7 @@ freshU qlit = do
 -- pM = lift . unsafeIOToST . print
 -- pM = const $ return ()
 
-subtype :: Monad m =>
+subtype :: MonadError String m =>
            Int -> [TyVarR] -> Type -> [TyVarR] -> Type ->
            m ([Type], [Type])
 subtype limit uvars1 t1i uvars2 t2i =
@@ -388,7 +386,7 @@ subtype limit uvars1 t1i uvars2 t2i =
       _ -> giveUp t u
     --
     giveUp t u = 
-      fail $
+      throwError $
         "Got type `" ++ show t ++ "' where type `" ++
         show u ++ "' expected"
     --
@@ -423,7 +421,7 @@ subtype limit uvars1 t1i uvars2 t2i =
             -> lowerBoundUVar ref (tyTop qlit)
           _ -> orElse
 
-jointype :: Monad m => Int -> Bool -> Type -> Type -> m Type
+jointype :: MonadError String m => Int -> Bool -> Type -> Type -> m Type
 jointype limit b t1i t2i =
   liftM clean $ runUT (cmp (b, True) t1i t2i) (alltv (t1i, t2i))
   where
@@ -485,7 +483,7 @@ jointype limit b t1i t2i =
         cmp m t (tysubst tvu u u1)
       -- Failure
       _ ->
-        fail $
+        throwError $
           "Could not " ++ (if direction then "join" else "meet") ++
           " types `" ++ show t ++
           "' and `" ++ show u ++ "'"
@@ -499,7 +497,7 @@ jointype limit b t1i t2i =
           -1 -> revCmp m tj uj
           _  -> if tj == uj
                   then return tj
-                  else fail $
+                  else throwError $
                     "Could not unify types `" ++ show tj ++
                     "' and `" ++ show uj ++ "'"
       | var      <- arity
@@ -546,7 +544,8 @@ instance Eq Type where
 instance PO Type where
   t1 <: t2     = runEither (const False) (const True)
                            (subtype 100 [] t1 [] t2)
-  ifMJ b t1 t2 = jointype 100 b t1 t2
+  ifMJ b t1 t2 = runEither (throwError . strMsg) return
+                           (jointype 100 b t1 t2)
 
 subtypeTests, joinTests, uvarsTests :: T.Test
 
@@ -915,14 +914,14 @@ joinTests = T.test
   t1 \/! t2 = Left (t1, t2)
   t1 /\! t2 = Right (t1, t2)
   Left  (t1, t2) ==! t =
-    T.assertEqual (show t1 ++ " \\/ " ++ show t2 ++ " = " ++ show t)
-                  (Just t) (t1 \/? t2)
+    tassertSuccess (show t1 ++ " \\/ " ++ show t2 ++ " = " ++ show t)
+                   t (t1 \/? t2)
   Right (t1, t2) ==! t =
-    T.assertEqual (show t1 ++ " /\\ " ++ show t2 ++ " = " ++ show t)
-                  (Just t) (t1 /\? t2)
+    tassertSuccess (show t1 ++ " /\\ " ++ show t2 ++ " = " ++ show t)
+                   t (t1 /\? t2)
   t1 !/\ t2 =
-    T.assertEqual (show t1 ++ " /\\ " ++ show t2 ++ " DNE")
-                  Nothing (t1 /\? t2)
+    tassertFailure (show t1 ++ " /\\ " ++ show t2 ++ " DNE")
+                   (t1 /\? t2)
   infix 2 ==!
   infix 4 \/!, /\!, !/\
   a = tvUn "a"; b = tvUn "b"; c = tvAf "c"; d = tvAf "d"
@@ -997,8 +996,8 @@ uvarsTests = T.test
       ==! (noU, noU, TyVar e, noA)
   , tyRecv (TyVar c) .*. tyRecv (TyVar c) !>:
     tyRecv (TyVar e) .*. tyRecv (TyVar f)
-  , T.assertEqual "'<c `supertype` '<d = ERROR"
-      Nothing (subtype 100 [c] (TyVar c) [d] (TyVar d))
+  , tassertFailure "'<c `supertype` '<d = ERROR"
+                   (subtype 100 [c] (TyVar c) [d] (TyVar d))
   , tyFollow (TyVar a) (TyVar b) >:!
     tyFollow tyUnit (tyRecv tyInt .:.
                      TyMu e (tyFollow tyUnit (tyRecv tyInt .:.
@@ -1016,25 +1015,32 @@ uvarsTests = T.test
   t1 <:! t2 = Left (t1, t2)
   t1 >:! t2 = Right (t1, t2)
   Left (t1, t2) ==! (ta, tb, tc, td) =
-    T.assertEqual (show t1 ++ " `subtype` " ++ show t2)
-      (Right ([ta, tb, tc, td], []))
-      (runEither Left Right $ subtype 100 set t1 [] t2)
+    tassertSuccess (show t1 ++ " `subtype` " ++ show t2)
+                   ([ta, tb, tc, td], [])
+                   (subtype 100 set t1 [] t2)
   Right (t1, t2) ==! (ta, tb, tc, td) =
-    T.assertEqual (show t1 ++ " `supertype` " ++ show t2)
-      (Right ([], [ta, tb, tc, td]))
-      (runEither Left Right $ subtype 100 [] t2 set t1)
+    tassertSuccess (show t1 ++ " `supertype` " ++ show t2)
+                   ([], [ta, tb, tc, td])
+                   (subtype 100 [] t2 set t1)
   t1 !<: t2 =
-    T.assertEqual (show t1 ++ " `subtype` " ++ show t2 ++ " = ERROR")
-                  Nothing (subtype 100 set t1 [] t2)
+    tassertFailure (show t1 ++ " `subtype` " ++ show t2 ++ " = ERROR")
+                   (subtype 100 set t1 [] t2)
   t1 !>: t2 =
-    T.assertEqual (show t1 ++ " `supertype` " ++ show t2 ++ " = ERROR")
-                  Nothing (subtype 100 [] t2 set t1)
+    tassertFailure (show t1 ++ " `supertype` " ++ show t2 ++ " = ERROR")
+                   (subtype 100 [] t2 set t1)
   infix 2 ==!
   infix 4 <:!, !<:, >:!, !>:
   noU = tyBot; noA = tyBot
   set = [a, b, c, d]
   a   = tvUn "a"; b = tvUn "b"; c = tvAf "c"; d = tvAf "d"
   e   = tvAf "e"; f = tvAf "f"
+
+tassertSuccess :: (Eq a, Show a) =>
+                  String -> a -> Either String a -> T.Assertion
+tassertSuccess msg = T.assertEqual msg . Right
+
+tassertFailure :: String -> Either String a -> T.Assertion
+tassertFailure msg = either (\_ -> return ()) (\_ -> T.assertFailure msg)
 
 tests :: IO ()
 tests = do

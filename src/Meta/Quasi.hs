@@ -73,29 +73,31 @@ mkvarP n   = TH.varP (TH.mkName n)
 pa, ty, ex, dc, me, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ
   :: QuasiQuoter
 
-ex  = mkQuasi parseExpr
-dc  = mkQuasi parseDecl
-ty  = mkQuasi parseType
-me  = mkQuasi parseModExp
-pa  = mkQuasi parsePatt
-prQ = mkQuasi parseProg
-tdQ = mkQuasi parseTyDec
-atQ = mkQuasi parseAbsTy
-caQ = mkQuasi parseCaseAlt
-bnQ = mkQuasi parseBinding
-qeQ = mkQuasi parseQExp
-tpQ = mkQuasi parseTyPat
-seQ = mkQuasi parseSigExp
-sgQ = mkQuasi parseSigItem
+ex  = mkQuasi "ex" parseExpr
+dc  = mkQuasi "dc" parseDecl
+ty  = mkQuasi "ty" parseType
+me  = mkQuasi "me" parseModExp
+pa  = mkQuasi "pa" parsePatt
+prQ = mkQuasi "prQ" parseProg
+tdQ = mkQuasi "tdQ" parseTyDec
+atQ = mkQuasi "atQ" parseAbsTy
+caQ = mkQuasi "caQ" parseCaseAlt
+bnQ = mkQuasi "bnQ" parseBinding
+qeQ = mkQuasi "qeQ" parseQExp
+tpQ = mkQuasi "tpQ" parseTyPat
+seQ = mkQuasi "seQ" parseSigExp
+sgQ = mkQuasi "sgQ" parseSigItem
 
 mkQuasi :: forall stx note.
            (Data (note Raw), Data (stx Raw),
             LocAst (N (note Raw) (stx Raw)),
             Data (note Renamed), Data (stx Renamed),
             LocAst (N (note Renamed) (stx Renamed))) =>
+           String ->
            (forall i. Id i => P (N (note i) (stx i))) ->
            QuasiQuoter
-mkQuasi parser = QuasiQuoter qast qast where
+mkQuasi name parser = (newQuasi name) { quoteExp = qast, quotePat = qast }
+  where
   qast s =
     join $
       parseQuasi s $ \iflag lflag ->

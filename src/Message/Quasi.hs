@@ -12,6 +12,7 @@ module Message.Quasi (
 
 import Message.AST
 import Message.Parser
+import Meta.THHelpers
 import PprClass
 import Util
 
@@ -21,9 +22,7 @@ import Language.Haskell.TH.Quote (QuasiQuoter(..))
 import Language.Haskell.TH.Syntax (lift)
 
 msg :: QuasiQuoter
-msg  = QuasiQuoter qexp qpat where
-  qexp s = parseMessageQ s >>= msgAstToExpQ
-  qpat _ = fail "Quasiquoter ‘msg’ does not support patterns"
+msg  = (newQuasi "msg") { quoteExp = parseMessageQ >=> msgAstToExpQ }
 
 msgAstToExpQ :: Message d -> ExpQ
 msgAstToExpQ msg0 = do

@@ -10,12 +10,14 @@ module Syntax.Decl where
 import Syntax.Notable
 import Syntax.Ident (Id, Fv, Dv)
 
-import Data.Data (Data)
+import Data.Data (Data, Typeable1)
 
 data DeclNote i
 data Decl' i
 type Decl i = N (DeclNote i) (Decl' i)
 
+instance Typeable1 DeclNote
+instance Typeable1 Decl'
 instance Id i => Data (DeclNote i)
 instance Id i => Data (Decl' i)
 instance Locatable (DeclNote i)

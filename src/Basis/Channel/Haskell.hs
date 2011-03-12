@@ -6,7 +6,7 @@
 -- 
 -- Maintainer  :  tov@ccs.neu.edu
 -- Stability   :  experimental
--- Portability :  somewhat portable?
+-- Portability :  GHC 6-7
 --
 -- This module provides synchronous channels.  Unlike the channels in
 -- 'Control.Concurrent.Chan', which are unbounded queues on which
@@ -45,7 +45,7 @@ module Basis.Channel.Haskell (
   --   with another.  In particular, we can write code like this:
   --
   --   @
-  --   'Control.Exception.block' $ do
+  --   'Control.Exception.mask_' $ do
   --     msg <- 'readChan' c
   --     'writeIORef' r msg
   --   @
@@ -113,10 +113,12 @@ module Basis.Channel.Haskell (
 ) where
 
 import Control.Concurrent.MVar hiding ( modifyMVar )
-import Control.Exception
 import Control.Monad
 import Data.IORef
 import System.IO.Unsafe ( unsafeInterleaveIO )
+
+import Control.Exception ( finally, onException )
+import Compat ( mask )
 
 ---
 --- Amortized O(1) queues
@@ -196,7 +198,7 @@ getWriters (RQ q) = dequeue q empty
 getWriters (WQ q) = dequeue empty q
 
 clear :: IO a -> IORef (Maybe b) -> IO a
-clear io r = block $ io `finally` writeIORef r Nothing
+clear io r = mask $ \_ -> io `finally` writeIORef r Nothing
 
 -- | Make a new channel.
 newChan :: IO (Chan a)
@@ -355,7 +357,7 @@ swapChan (Chan m) a' = join $ transactMVar m modify
           Just a  -> do
             r'       <- newIORef (Just a')
             confirm' <- newEmptyMVar
-            _        <- block $ do
+            _        <- mask $ \_ -> do
               putMVar confirm ()
               commit (WQ ((r', confirm') <| writers))
             return $ do
@@ -585,7 +587,7 @@ tryWriteList2Chan (Chan m) as0 = do
     loop []     e = return (e, Success (Success (), []))
     loop (a:as) e = do
       case getReaders e of
-        r :< readers -> block $ do
+        r :< readers -> mask $ \_ -> do
           maybereader <- readIORef r
           case maybereader of
             Just reader -> do
@@ -609,64 +611,49 @@ maybeTry io = do
 --- Helpful MVar stuff
 ---
 
-saveBlock :: IO (IO a -> IO a)
-saveBlock  = do
-  b <- blocked
-  case b of
-    True  -> return block
-    False -> return unblock
-
 modifyMVar :: MVar a -> (a -> IO (a, b)) -> IO b
-modifyMVar m io = do
-  restore <- saveBlock
-  block $ do
-    a <- takeMVar m
-    (a',b) <- restore (io a)
-      `onException` putMVar m a
-    putMVar m a'
-    return b
+modifyMVar m io = mask $ \restore -> do
+  a <- takeMVar m
+  (a',b) <- restore (io a)
+    `onException` putMVar m a
+  putMVar m a'
+  return b
 
 -- Control.Concurrent.MVar doesn't have this, but it's pretty useful
 -- for implementing non-blocking operations.
 tryModifyMVar :: MVar a -> (a -> IO (a, TryResult b)) -> IO (TryResult b)
-tryModifyMVar m io = do
-  restore <- saveBlock
-  block $ do
-    maybea <- tryTakeMVar m
-    case maybea of
-      Just a -> do
-        (a',b) <- restore (io a)
-          `onException` putMVar m a
-        putMVar m a'
-        return b
-      Nothing ->
-        return WouldBlock
+tryModifyMVar m io = mask $ \restore -> do
+  maybea <- tryTakeMVar m
+  case maybea of
+    Just a -> do
+      (a',b) <- restore (io a)
+        `onException` putMVar m a
+      putMVar m a'
+      return b
+    Nothing ->
+      return WouldBlock
 
 transactMVar :: MVar a ->
                 (a -> (a -> IO ()) -> IO b) ->
                 IO b
-transactMVar m io = do
-  restore <- saveBlock
-  block $ do
-    a <- takeMVar m
-    r <- newIORef a
-    restore (io a (writeIORef r))
-      `finally` (readIORef r >>= putMVar m)
+transactMVar m io = mask $ \restore -> do
+  a <- takeMVar m
+  r <- newIORef a
+  restore (io a (writeIORef r))
+    `finally` (readIORef r >>= putMVar m)
 
 {-
 tryTransactMVar :: MVar a ->
                    (a -> (a -> IO ()) -> IO (TryResult b)) ->
                    IO (TryResult b)
-tryTransactMVar m io = do
-  restore <- saveBlock
-  block $ do
-    maybea <- tryTakeMVar m
-    case maybea of
-      Just a -> do
-        r <- newIORef a
-        restore (io a (writeIORef r))
-          `finally` (readIORef r >>= putMVar m)
-      Nothing ->
-        return WouldBlock
+tryTransactMVar m io = mask $ \restore -> do
+  maybea <- tryTakeMVar m
+  case maybea of
+    Just a -> do
+      r <- newIORef a
+      restore (io a (writeIORef r))
+        `finally` (readIORef r >>= putMVar m)
+    Nothing ->
+      return WouldBlock
 -}
 

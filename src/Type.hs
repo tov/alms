@@ -1048,6 +1048,7 @@ instance Ppr TyCon where
                             ppr (qRepresent
                                  (denumberQDen
                                   (map qDenOfTyVar tvs) (tcQual tc)))
+      ps :: Ppr a => [a] -> [Doc]
       ps tvs = [ ppr var <> pprPrec (precApp + 1) tv
                | tv <- tvs
                | var <- tcArity tc ]

@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      CPP,
       DeriveDataTypeable,
       RankNTypes,
       TemplateHaskell,
@@ -6,6 +7,8 @@
 module Meta.THHelpers (
   -- * Simplified TH quasiquote
   th,
+  -- * For initializing quasiquoters
+  newQuasi,
   -- * Generic expression/pattern AST construction
   ToSyntax(..),
   -- * Miscellany
@@ -14,6 +17,7 @@ module Meta.THHelpers (
 
 import Lexer (lid, uid)
 import Util
+import Compat (newQuasi)
 
 import Data.Generics (Typeable, Data, everything, mkQ)
 import Language.Haskell.TH
@@ -36,9 +40,7 @@ data HsAst = HsApp HsAst HsAst
 
 -- | The quasiquoter for building TH expressions
 th :: QuasiQuoter
-th = QuasiQuoter qexp qpat where
-  qexp s = parseHs s >>= hsToExpQ
-  qpat _ = fail "Quasiquoter `hs' does not support patterns"
+th  = (newQuasi "th") { quoteExp = parseHs >=> hsToExpQ }
 
 -- | Don't allow HsOr to the left of HsApp:
 hsApp :: HsAst -> HsAst -> HsAst

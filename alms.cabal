@@ -69,6 +69,7 @@ Executable alms
                         Basis.Thread,
                         BasisUtils,
                         Coercion,
+                        Compat,
                         Dynamics,
                         Env,
                         ErrorMessage,

@@ -6,6 +6,8 @@ stamp
 .*.sw?
 Setup
 alms
+alms-6.*
+alms-7.*
 affine
 *.tar.gz
 dist

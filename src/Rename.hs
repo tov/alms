@@ -80,6 +80,10 @@ instance Monad Renaming where
   m >>= k = R (unR m >>= unR . k)
   fail    = renameError . [$msg| $words:1 |]
 
+instance Applicative Renaming where
+  pure  = return
+  (<*>) = ap
+
 instance MonadWriter Module Renaming where
   listen = R . listen . unR
   tell   = R . tell

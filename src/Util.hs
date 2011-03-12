@@ -1,5 +1,8 @@
 -- | Utility functions
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE
+      CPP,
+      FlexibleContexts
+      #-}
 module Util (
   -- * List combinators
   -- ** Shallow mapping
@@ -45,7 +48,16 @@ import Data.Maybe
 import Control.Arrow hiding (loop, (<+>))
 import Control.Monad
 import Control.Applicative (Applicative(..), (<$>), (<$), (<**>))
+
+#if PARSEC_VERSION < 3
+
 import Text.ParserCombinators.Parsec (GenParser)
+-- | Parsec parsers are Applicatives, which lets us write slightly
+--   more pleasant, non-monadic-looking parsers
+instance Applicative (GenParser a b) where
+  pure  = return
+  (<*>) = ap
+#endif
 
 -- | Right-associative monadic fold
 foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a
@@ -221,9 +233,3 @@ instance GSequence [] where
 instance GSequence Maybe where
   gsequence  = maybe (return Nothing) (liftM return)
   gsequence_ = maybe (return ()) (>> return ())
-
--- | Parsec parsers are Applicatives, which lets us write slightly
---   more pleasant, non-monadic-looking parsers
-instance Applicative (GenParser a b) where
-  pure  = return
-  (<*>) = ap

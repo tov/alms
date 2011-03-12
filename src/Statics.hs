@@ -3,7 +3,6 @@
       DeriveDataTypeable,
       FlexibleContexts,
       FlexibleInstances,
-      GeneralizedNewtypeDeriving,
       ImplicitParams,
       MultiParamTypeClasses,
       ParallelListComp,
@@ -201,12 +200,15 @@ instance GenExtend Context SE where
 --   and keeps track of a gensym counter (currently unused).
 newtype TC m a = TC {
   unTC :: RWST Context Module Int (ErrorT AlmsException m) a
-} deriving Functor
+}
 
 instance Monad m => Monad (TC m) where
   return  = TC . return
   m >>= k = TC (unTC m >>= unTC . k)
   fail    = let ?loc = bogus in typeError . [$msg| $words:1 |]
+
+instance Monad m => Functor (TC m) where
+  fmap = liftM
 
 instance Monad m => Applicative (TC m) where
   pure  = return
@@ -473,8 +475,8 @@ tcExpr = tc where
         checkSharing "match or let" (caexpr ca) md
         return (ti, caClause xi' ei' <<@ note)
       tr <- foldM (\ti' ti -> case ti' \/? ti of
-        Just tr' -> return tr'
-        Nothing  -> typeError [$msg|
+        Right tr'          -> return tr'
+        Left (_ :: String) -> typeError [$msg|
           Mismatch in branches of match or let.  Cannot unify:
           <ul>
             <li>$ti
@@ -850,16 +852,15 @@ tcTyDecs tds0 = do
         if or changed
           then loop md'
           else return (tcs, md')
-   in do
-     (tcs, md') <- loop stub
-     forM_ tcs $ \tc -> do
-       case tcNext tc of
-         Nothing      -> return ()
-         Just clauses -> forM_ clauses $ \(tps, rhs) ->
-           tassert (rhs /= tyPatToType (TpApp tc {tcNext = Nothing} tps)) $
-             "Recursive type synonym is not contractive:" !:: tc
-     tell (replaceTyCons tcs md')
-     return tds0
+  (tcs, md') <- loop stub
+  forM_ tcs $ \tc -> do
+    case tcNext tc of
+      Nothing      -> return ()
+      Just clauses -> forM_ clauses $ \(tps, rhs) -> do
+        tassert (rhs /= tyPatToType (TpApp tc {tcNext = Nothing} tps)) $
+          "Recursive type synonym is not contractive:" !:: tc
+  tell (replaceTyCons tcs md')
+  return tds0
   where
     allocStub name params = do
       ix <- newIndex

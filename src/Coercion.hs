@@ -87,7 +87,7 @@ build b recs tfrom tto
                exBVar (lid "x")
 build b recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do
   let recs' = M.insert (tv, tv') Nothing (shadow [tv] [tv'] recs)
-  body <- build b recs' t t' >>! instContract
+  body <- instContract `liftM` build b recs' t t'
   let tv''  = freshTyVar tv (ftv (tv, tv'))
       tstx  = typeToStx' t
       tstx' = typeToStx' t'

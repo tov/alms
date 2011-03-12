@@ -51,9 +51,10 @@ instance Error e => MonadError e (ST s e) where
         liftST_ newUndo
         unST (handler e)
 
-runST :: Error e => (forall s. ST s e a) -> Either e a
+runST :: (Error e, MonadError e m) => (forall s. ST s e a) -> m a
 runST block =
-  Super.runST (evalStateT (runErrorT (unST (transaction block))) (return ()))
+  either throwError return $
+    Super.runST (evalStateT (runErrorT (unST (transaction block))) (return ()))
 
 -- | Run something directly in the underlying ST monad
 liftST :: Error e => Super.ST s a -> ST s e a
