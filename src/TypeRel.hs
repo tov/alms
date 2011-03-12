@@ -404,6 +404,7 @@ subtype limit uvars1 t1i uvars2 t2i =
         | tj       <- ts
         | uj       <- us ]
     --
+    -- XXX This is woefully insufficient
     subkind qd1 qd2 orElse =
       if qd1 <: qd2 then return () else do
         (m1, m2) <- getUVars

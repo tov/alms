@@ -1007,24 +1007,24 @@ opappp p = do
 -- Zero or more of (pat:typ, ...), (), or tyvar, recognizing '|'
 -- to introduce affine arrows
 afargsp :: Id i => P (Bool, Type i -> Type i, Expr i -> Expr i)
-afargsp = loop tyArr where
-  loop arrcon0 = do
-    arrcon <- option arrcon0 $ choice
-      [ tyFun . Just <$> qualbox qExpp, -- XXX update for implicit arrows
+afargsp = choice
+  [ do (tvt, tve) <- tyargp
+       (b, ft, fe) <- afargsp
+       return (b, tvt . ft, tve . fe),
+    do arrcon <- arrconp
+       (b, ft, fe) <- vargp arrcon
+       if b
+          then return (b, ft, fe)
+          else do
+            (b', fts, fes) <- afargsp
+            return (b', ft . fts, fe . fes),
+    return (False, id, id) ]
+  where
+    arrconp = option tyArr $ choice
+      [ tyFun . Just <$> qualbox qExpp,
         do
           reservedOp "|"
           return tyLol ]
-    choice
-      [ do (tvt, tve) <- tyargp
-           (b, ft, fe) <- loop arrcon
-           return (b, tvt . ft, tve . fe),
-        do (b, ft, fe) <- vargp arrcon
-           if b
-              then return (b, ft, fe)
-              else do
-                (b', fts, fes) <- loop arrcon
-                return (b', ft . fts, fe . fes),
-        return (False, id, id) ]
 
 -- One or more of (pat:typ, ...), (), tyvar
 argsp1 :: Id i => P (Bool, Expr i -> Expr i)

@@ -5,7 +5,7 @@ let ap =
 
 let inc2 =
   fun y: int ->
-    let g = (ap :> all 'a 'b. ('a -o 'b) -> 'a -> 'b)
+    let g = (ap :> all 'a 'b. ('a -A> 'b) -> 'a -U> 'b)
             (fun z: int -> z + 1) in
       g (g y)   (* g is used twice here *)
 

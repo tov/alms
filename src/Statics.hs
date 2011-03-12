@@ -401,21 +401,20 @@ hnT  = headNormalizeTypeM 100
 tcType :: (?loc :: Loc, Monad m) =>
           Syntax.Type R -> TC m Type
 tcType stxtype0 = do
-  t <- tc stxtype0
-  -- ioM (hPutStrLn stderr (show t))
+  t <- tc iaeInit stxtype0
   return t
   where
-  tc :: Monad m => Syntax.Type R -> TC m Type
-  tc [$ty| '$tv |] = do
+  tc :: Monad m => CurrentImpArrRule -> Syntax.Type R -> TC m Type
+  tc iae [$ty| '$tv |] = do
     return (TyVar tv)
-  -- XXX implicit arrow
-  tc [$ty| $t1 -[$opt:mq]> $t2 |] = do
-    TyFun <$> maybe (return minBound) qInterpretM mq
-          <*> tc t1
-          <*> tc t2
-  tc [$ty| ($list:ts) $qlid:n |] = do
-    ts'  <- mapM tc ts
+  tc iae [$ty| $t1 -[$opt:mq]> $t2 |] = do
+    qd  <- iaeInterpret iae mq
+    t1' <- tc (iaeLeft iae) t1
+    t2' <- tc (iaeRight iae qd t1') t2
+    return (TyFun qd t1' t2')
+  tc iae [$ty| ($list:ts) $qlid:n |] = do
     tc'  <- find n
+    ts'  <- zipWithM (tc . iaeUnder iae) (tcArity tc') ts
     checkLength (length (tcArity tc'))
     checkBound (tcBounds tc') ts'
     return (tyApp tc' ts')
@@ -432,14 +431,14 @@ tcType stxtype0 = do
                  qualifiers than permitted: |]
           ([$msg| $1 |] (map (qRepresent . qualifier) ts'))
           [$msg| $quals (or less) |]
-  tc [$ty| $quant:u '$tv . $t |] =
-    TyQu u tv <$> tc t
-  tc t0@[$ty| mu '$tv . $t |] = do
+  tc iae [$ty| $quant:u '$tv . $t |] =
+    TyQu u tv <$> tc iae t
+  tc iae t0@[$ty| mu '$tv . $t |] = do
     case unfoldTyMu t of
       (_, N _ (Syntax.TyVar tv')) | tv == tv' ->
         typeError [$msg| Recursive type is not contractive: $t0 |]
       _ -> return ()
-    t' <- tc t
+    t' <- tc iae t
     let actqual = qualConst t'
         expqual = tvqual tv
     tassert (actqual == expqual)
@@ -451,7 +450,7 @@ tcType stxtype0 = do
                 <dt>in type:            <dd>$5:t0
               </dl> |]
     return (TyMu tv t')
-  tc [$ty| $anti:a |] = $antifail
+  tc _ [$ty| $anti:a |] = $antifail
 
 -- | Type check an A expression
 tcExpr :: Monad m => Expr R -> TC m (Type, Expr R)

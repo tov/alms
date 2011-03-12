@@ -1,6 +1,7 @@
 -- | The internal representation of types, created by the type checker
 --   from the syntactic types in 'Syntax.Type'.
 {-# LANGUAGE
+      CPP,
       DeriveDataTypeable,
       DeriveFunctor,
       ViewPatterns,
@@ -47,6 +48,8 @@ module Type (
   vtAppTc, isBotType,
   -- ** Unfolds
   vtFuns, vtQus,
+  -- * Implicit arrow annotations
+  CurrentImpArrRule, ImpArrRule(..),
   -- * Re-exports
   module Syntax.Ident,
   module Syntax.Kind,
@@ -695,18 +698,37 @@ typeToStx'  = typeToStx tyNames0
 --   so that scope is apparent, since internal renaming may result in
 --   different identifiers that print the same
 typeToStx :: TyNames -> Type -> Stx.Type Renamed
-typeToStx tns = typeToStxRule tns (iaeInit :: Rule1)
+typeToStx tns = typeToStxRule tns (iaeInit :: CurrentImpArrPrintingRule)
+
+#ifdef ANNOTATION_RULE
+type CurrentImpArrRule = ANNOTATION_RULE
+#else
+type CurrentImpArrRule = Rule4
+#endif
+
+#ifdef ANNOTATION_PRINTING_RULE
+type CurrentImpArrPrintingRule = ANNOTATION_PRINTING_RULE
+#else
+type CurrentImpArrPrintingRule = CurrentImpArrRule
+#endif
 
 class ImpArrRule a where
   iaeInit      :: a
   iaeLeft      :: a -> a
   iaeRight     :: a -> QDen (TyVar Renamed) -> Type -> a
+  iaeImplied   :: a -> QDen (TyVar Renamed)
+  iaeInterpret :: Monad m =>
+                  a -> Maybe (QExp Renamed) -> m (QDen (TyVar Renamed))
   iaeRepresent :: a -> QDen (TyVar Renamed) -> Maybe (QExp Renamed)
   iaeUnder     :: a -> Variance -> a
   --
   iaeLeft _           = iaeInit
   iaeRight iae _ _    = iae
-  iaeRepresent _      = Just . qRepresent
+  iaeImplied _        = minBound
+  iaeInterpret iae    = maybe (return (iaeImplied iae)) qInterpretM
+  iaeRepresent iae actual
+    | actual == iaeImplied iae = Nothing
+    | otherwise                = Just (qRepresent actual)
   iaeUnder _ _        = iaeInit
 
 -- | Turns annotated arrows into implicit arrows where possible
@@ -745,9 +767,6 @@ data Rule1 = Rule1
 
 instance ImpArrRule Rule1 where
   iaeInit        = Rule1
-  iaeRepresent _ actual
-    | actual == minBound = Nothing
-    | otherwise          = Just (qRepresent actual)
 
 newtype Rule2 = Rule2 { unRule2 :: QDen (TyVar Renamed) }
 
@@ -757,9 +776,7 @@ newtype Rule2 = Rule2 { unRule2 :: QDen (TyVar Renamed) }
 instance ImpArrRule Rule2 where
   iaeInit      = Rule2 minBound
   iaeRight iae _ t = Rule2 (unRule2 iae \/ qualifier t)
-  iaeRepresent iae actual
-    | unRule2 iae == actual = Nothing
-    | otherwise             = Just (qRepresent actual)
+  iaeImplied   = unRule2
 
 -- | Like 'Rule2', but explicit annotations reset the qualifier to
 --   themselves for subsequent arrows.
@@ -770,9 +787,7 @@ instance ImpArrRule Rule3 where
   iaeRight iae actual t
     | unRule3 iae == actual = Rule3 (unRule3 iae \/ qualifier t)
     | otherwise             = Rule3 (actual \/ qualifier t)
-  iaeRepresent iae actual
-    | unRule3 iae == actual = Nothing
-    | otherwise             = Just (qRepresent actual)
+  iaeImplied   = unRule3
 
 -- | Like 'Rule3', but we arrow the implicit qualifer into covariant
 --   type constructors.
@@ -783,9 +798,7 @@ instance ImpArrRule Rule4 where
   iaeRight iae actual t
     | unRule4 iae == actual = Rule4 (unRule4 iae \/ qualifier t)
     | otherwise             = Rule4 (actual \/ qualifier t)
-  iaeRepresent iae actual
-    | unRule4 iae == actual = Nothing
-    | otherwise             = Just (qRepresent actual)
+  iaeImplied   = unRule4
   iaeUnder iae Covariant    = iae
   iaeUnder _   _            = iaeInit
 
@@ -803,10 +816,9 @@ instance ImpArrRule Rule5 where
   iaeRight iae actual t
     | unRule5 iae == actual = Rule5 (unRule5 iae \/ qualifier t) 1
     | otherwise             = Rule5 (actual \/ qualifier t) 1
-  iaeRepresent iae actual
-    | r4Var iae == 1 && unRule5 iae == actual
-                            = Nothing
-    | otherwise             = Just (qRepresent actual)
+  iaeImplied iae
+    | r4Var iae == 1 = unRule5 iae
+    | otherwise      = minBound
   iaeUnder iae var          = Rule5 (unRule5 iae) (var * r4Var iae)
 
 tyPatToStx' :: TyPat -> Stx.TyPat Renamed

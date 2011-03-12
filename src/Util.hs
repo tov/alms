@@ -49,7 +49,7 @@ import Control.Arrow hiding (loop, (<+>))
 import Control.Monad
 import Control.Applicative (Applicative(..), (<$>), (<$), (<**>))
 
-#if PARSEC_VERSION < 3
+#if PARSEC_VERSION == 2
 
 import Text.ParserCombinators.Parsec (GenParser)
 -- | Parsec parsers are Applicatives, which lets us write slightly
