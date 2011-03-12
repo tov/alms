@@ -31,7 +31,9 @@ Description:
 
 Flag editline
   Description: Enable line editing using the editline package
-  Default:     True
+
+Flag parsec3
+  Description: Use version 3 of the parsec package
 
 Flag readline
   Description: Enable line editing using the readline package
@@ -47,7 +49,6 @@ Executable alms
                         syb >= 0.1,
                         pretty >= 1,
                         containers >= 0.1,
-                        parsec == 2.*,
                         mtl >= 1.1,
                         filepath >= 1.1,
                         network >= 2.2,
@@ -122,4 +123,11 @@ Executable alms
     if flag(editline)
       Build-Depends:  editline >= 0.2.1
       CPP-Options:    -DUSE_READLINE=System.Console.Editline.Readline
+
+  if flag(parsec3)
+    Build-Depends:  parsec == 3.*
+    CPP-Options:    -DPARSEC_VERSION=3
+  else
+    Build-Depends:  parsec == 2.*
+    CPP-Options:    -DPARSEC_VERSION=2
 
