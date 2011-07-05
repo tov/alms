@@ -30,7 +30,7 @@ module Statics (
 ) where
 
 import Meta.Quasi
-import Util
+import Util hiding (find)
 import qualified Syntax
 import qualified Syntax.Decl
 import qualified Syntax.Expr
@@ -39,7 +39,7 @@ import qualified Syntax.Patt
 import Syntax hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
                       tyTuple, tyUnit, tyArr, tyApp,
                       TyPat, TyPat'(..))
-import Loc
+import Data.Loc
 import Env as Env
 import Ppr (Ppr, TyNames)
 import Type
@@ -48,13 +48,11 @@ import Coercion (coerceExpression)
 import ErrorMessage
 import Message.AST
 
-import Control.Monad.RWS    as RWS
-import Control.Monad.Error  as Error
+import Prelude ()
 import System.IO (hPutStrLn, stderr)
 import Data.Data (Typeable, Data)
 import Data.Generics (everywhere, mkT)
 import Data.List (transpose, tails)
-import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -972,27 +970,27 @@ topSort :: forall node m a.
            (?loc :: Loc, AlmsMonad m, Ord node, Ppr node) =>
            (a -> (node, S.Set node)) -> [a] -> m [a]
 topSort getEdge edges = do
-  (_, w) <- RWS.execRWST visitAll S.empty S.empty
+  (_, w) <- execRWST visitAll S.empty S.empty
   return w
   where
     visitAll = mapM_ visit (M.keys graph)
     --
-    visit :: node -> RWS.RWST (S.Set node) [a] (S.Set node) m ()
+    visit :: node -> RWST (S.Set node) [a] (S.Set node) m ()
     visit node = do
-      stack <- RWS.ask
+      stack <- ask
       lift $
         tassert (not (node `S.member` stack)) $
           "Unproductive cycle in type definitions via type" !:: node
-      seen <- RWS.get
+      seen <- get
       if node `S.member` seen
         then return ()
         else do
-          RWS.put (S.insert node seen)
+          put (S.insert node seen)
           case M.lookup node graph of
             Just (succs, info) -> do
-              RWS.local (S.insert node) $
+              local (S.insert node) $
                 mapM_ visit succs
-              RWS.tell [info]
+              tell [info]
             Nothing ->
               return ()
     --
@@ -1169,7 +1167,7 @@ tcException :: (?loc :: Loc, Monad m) =>
                Uid R -> Maybe (Syntax.Type R) ->
                TC m (Maybe (Syntax.Type R))
 tcException n mt = do
-  mt' <- gmapM tcType mt
+  mt' <- traverse tcType mt
   bindCon n (maybe tyExn (`tyArr` tyExn) mt')
   return (fmap typeToStx' mt')
 
@@ -1639,7 +1637,7 @@ tyConToDec tn tc = case tc of
   TyCon { tcName = n, tcCons = (ps, alts) }
     | not (isEmpty alts)
     -> tdDat (jname n) ps [ (u, fmap (typeToStx tn) mt)
-                          | (u, mt) <- toList alts ]
+                          | (u, mt) <- Env.toList alts ]
   TyCon { tcName = n }
     ->
     let tyvars = zipWith ($) tvalphabet (tcBounds tc)

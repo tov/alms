@@ -14,9 +14,9 @@ import BasisUtils
 import Syntax
 import Value
 
-import qualified Loc
 import qualified Syntax.Notable
 import qualified Syntax.Decl
+import qualified Data.Loc
 
 instance Valuable S.Socket where
   veq = (==)

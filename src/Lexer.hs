@@ -24,10 +24,11 @@ module Lexer (
 
 import Prec
 import Util
-
-import Data.Char
-import Text.ParserCombinators.Parsec
+import Util.Parsec
 import qualified Token as T
+
+import Prelude ()
+import Data.Char
 
 tok :: T.TokenEnd st => T.TokenParser st
 tok = T.makeTokenParser T.LanguageDef {

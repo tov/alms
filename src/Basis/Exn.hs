@@ -6,8 +6,8 @@ import BasisUtils
 import Value
 import Syntax
 
-import qualified Loc
 import qualified Syntax.Notable
+import qualified Data.Loc
 
 import Control.Exception
 

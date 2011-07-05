@@ -30,11 +30,12 @@ module Syntax.Anti (
   (=::), ($:), (!:), (>:)
 ) where
 
-import Loc as Loc
+import Data.Loc as Loc
 import Meta.THHelpers
 import Syntax.Notable
 import Util
 
+import Prelude ()
 import Data.Generics (Typeable, Data, extQ)
 import Data.List (elemIndex)
 import qualified Data.Map as M

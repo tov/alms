@@ -24,7 +24,7 @@ module Parser (
   pp, pds, pd, pme, ptd, pt, ptp, pqe, pe, px
 ) where
 
-import Util
+import Util hiding (before, lift)
 import Paths
 import Prec
 import Syntax
@@ -32,11 +32,12 @@ import Sigma
 import Lexer
 import ErrorMessage (AlmsException(..), Phase(ParserPhase))
 import qualified Message.AST as Msg
+import Util.Parsec hiding (parse)
 
+import Prelude ()
 import qualified Data.Map as M
 import qualified Data.List as L
 import qualified Language.Haskell.TH as TH
-import Text.ParserCombinators.Parsec hiding (parse)
 import qualified Text.ParserCombinators.Parsec.Error as PE
 import System.IO.Unsafe (unsafePerformIO)
 
@@ -483,7 +484,7 @@ declsp  = antiblep <|> loop
               rel  <- sourceName `liftM` getPosition
               let mcontents = unsafePerformIO $ do
                     mfile <- findAlmsLibRel name rel
-                    gmapM readFile mfile
+                    traverse readFile mfile
               contents <- case mcontents of
                 Just contents -> return contents
                 Nothing       -> fail $ "Could not load: " ++ name

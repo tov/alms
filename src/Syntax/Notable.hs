@@ -6,13 +6,13 @@
       TypeFamilies #-}
 module Syntax.Notable (
   Notable(..), N(..), Located,
-  LocNote(..), module Loc
+  LocNote(..), module Data.Loc
 ) where
 
-import Loc
-import Viewable
-
 import Data.Data
+
+import Data.Loc
+import Util.Viewable
 
 class Notable note where
   newNote   :: note

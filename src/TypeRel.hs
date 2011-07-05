@@ -25,12 +25,9 @@ import ErrorST
 import Ppr ()
 import Type
 import Util
-import Viewable
 
-import qualified Control.Monad.Reader as CMR
-import Control.Monad.Error
+import Prelude ()
 import Data.Generics (Data, everywhere, mkT, extT)
-import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
 
@@ -38,7 +35,7 @@ import qualified Test.HUnit as T
 
 -- | Remove the concrete portions of a type constructor.
 abstractTyCon :: TyCon -> TyCon
-abstractTyCon tc = tc { tcCons = ([], empty), tcNext = Nothing }
+abstractTyCon tc = tc { tcCons = ([], Env.empty), tcNext = Nothing }
 
 -- | A substitution mapping type constructors to other type
 --   constructors
@@ -142,7 +139,7 @@ instance Ord AType where
       TyQu _ _ _    =?= _           = LT
       _             =?= TyQu _ _ _  = GT
 
-type UT s t a = CMR.ReaderT (TCS s t) (ST t String) a
+type UT s t a = ReaderT (TCS s t) (ST t String) a
 
 -- | An environment mapping mu-bound type variables to their
 --   definition for unrolling ('Left') or forall-bound variables
@@ -165,8 +162,8 @@ data TCS s t = TCS {
 }
 
 data Field s t = Field {
-  get    :: TCS s t -> UEnv t,
-  update :: TCS s t -> UEnv t -> TCS s t
+  getF    :: TCS s t -> UEnv t,
+  updateF :: TCS s t -> UEnv t -> TCS s t
 }
 
 env1, env2 :: Field s t
@@ -181,7 +178,7 @@ runUT m set =
     supply <- newSTRef [ f | f <- tvalphabet
                        , f Qu `S.notMember` set
                        , f Qa `S.notMember` set ]
-    CMR.runReaderT m TCS {
+    runReaderT m TCS {
       tcsSeen   = seen,
       tcsSupply = supply,
       tcsLevel  = 1,
@@ -190,7 +187,7 @@ runUT m set =
     }
 
 getVar :: TyVarR -> Field s t -> UT s t (Maybe (UVar t))
-getVar tv field = CMR.asks (M.lookup tv . get field)
+getVar tv field = asks (M.lookup tv . getF field)
 
 -- | To add some unification variables to the scope, run the body,
 --   and return a map containing their lower and upper bounds.
@@ -200,13 +197,13 @@ getVar tv field = CMR.asks (M.lookup tv . get field)
 --   are renamed using fresh type variables.
 withUVars :: [TyVarR] -> Field s t -> UT s t a -> UT s t (a, [Type])
 withUVars tvs field body = do
-  level <- CMR.asks tcsLevel
+  level <- asks tcsLevel
   refs  <- lift $ sequence
     [ do ref <- newTransSTRef (tyBot, tyTop (tvqual tv))
          return (tv, (level, ref))
     | tv <- tvs ]
-  res   <- CMR.local
-    (\st -> update field st (M.fromList refs `M.union` get field st))
+  res   <- local
+    (\st -> updateF field st (M.fromList refs `M.union` getF field st))
     body
   typs  <- sequence
     [ do
@@ -227,7 +224,7 @@ withUVars tvs field body = do
 
 -- | Bump up the quantification nesting level
 incU :: UT s t a -> UT s t a
-incU  = CMR.local (\st -> st { tcsLevel = tcsLevel st + 1 })
+incU  = local (\st -> st { tcsLevel = tcsLevel st + 1 })
 
 -- | Try to assert an upper bound on a unification variable.
 upperBoundUVar :: STRef t (Type, Type) -> Type -> UT s t ()
@@ -250,7 +247,7 @@ lowerBoundUVar ref t = do
 getUVars :: UT s t (TyVarR -> Maybe (Int, STRef t (Type, Type)),
                     TyVarR -> Maybe (Int, STRef t (Type, Type)))
 getUVars = do
-  st <- CMR.ask
+  st <- ask
   return (flip M.lookup (tcsEnv1 st), flip M.lookup (tcsEnv2 st))
 
 -- | Check if two types have been seen before.  If so, return the
@@ -259,7 +256,7 @@ getUVars = do
 --   with the result of the block.
 chkU :: Type -> Type -> s -> UT s t s -> UT s t s
 chkU t1 t2 s body = do
-  st   <- CMR.ask
+  st   <- ask
   let key = (AType t2, AType t1)
       ref = tcsSeen st
   seen <- lift $ readSTRef ref
@@ -273,14 +270,14 @@ chkU t1 t2 s body = do
 
 -- | Flip the left and right sides of the relation in the given block.
 flipU :: UT s t a -> UT s t a
-flipU body = CMR.local flipSt body where
+flipU body = local flipSt body where
   flipSt (TCS seen level supply e1 e2) =
     TCS seen level supply e2 e1
 
 -- | Get a fresh type variable from the supply.
 freshU :: QLit -> UT s t TyVarR
 freshU qlit = do
-  ref <- CMR.ask >>! tcsSupply
+  ref <- ask >>! tcsSupply
   f:supply <- lift $ readSTRef ref
   lift $ writeSTRef ref supply
   return (f qlit)

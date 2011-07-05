@@ -8,7 +8,7 @@ module Coercion  (
   translate, translateDecls, TEnv, tenv0
 ) where
 
-import Loc
+import Data.Loc
 import Meta.Quasi
 import Ppr ()
 import qualified Syntax
@@ -21,6 +21,7 @@ import TypeRel ()
 import Util
 import ErrorMessage
 
+import Prelude ()
 import qualified Data.Map as M
 import qualified Control.Monad.State as CMS
 

@@ -18,11 +18,12 @@ module Meta.THHelpers (
 import Lexer (lid, uid)
 import Util
 import Compat (newQuasi)
+import Util.Parsec
 
+import Prelude ()
 import Data.Generics (Typeable, Data, everything, mkQ)
 import Language.Haskell.TH
 import Language.Haskell.TH.Quote
-import Text.ParserCombinators.Parsec
 import Text.ParserCombinators.Parsec.Language (haskell)
 import Text.ParserCombinators.Parsec.Token
 

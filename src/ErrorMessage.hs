@@ -11,7 +11,7 @@ module ErrorMessage (
   module Message.Quasi,
 ) where
 
-import Loc
+import Data.Loc
 import PprClass
 import Message.AST
 import Message.Render ()
@@ -100,7 +100,7 @@ instance Ppr AlmsException where
      $$
      ppr (Indent msg0)
      where locString   = if isBogus loc
-                           then empty
+                           then mempty
                            else text "at" <+> text (show loc)
            phaseString = case phase of
              ParserPhase   -> "Syntax error"

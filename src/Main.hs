@@ -26,10 +26,11 @@ import BasisUtils (basis2venv, basis2tenv, basis2renv)
 import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
-import Loc (isBogus, initial, bogus)
+import Data.Loc (isBogus, initial, bogus)
 import qualified ErrorMessage as EM
 import qualified Message.AST  as Msg
 
+import Prelude ()
 import Data.Char (isSpace)
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
@@ -239,15 +240,15 @@ interactive opt rs0 = do
                                return st3
 
       in rename (st, ast)
-    getln  = if opt NoLineEdit then getline else readline
     say    = if opt Quiet then const (return ()) else printDoc
-    get    = if opt Quiet then const (getln "") else getln
+    getln' = if opt NoLineEdit then getline else readline
+    getln  = if opt Quiet then const (getln' "") else getln'
     reader :: Int -> ReplState -> IO (Maybe (Int, [Decl Raw]))
     reader row st = loop 1 []
       where
         fixup = unlines . mapTail ("   " ++) . reverse
         loop count acc = do
-          mline <- get (if null acc then "#- " else "#= ")
+          mline <- getln (if null acc then "#- " else "#= ")
           case (mline, acc) of
             (Nothing, [])        -> return Nothing
             (Nothing, (_,err):_) -> do
@@ -276,11 +277,11 @@ interactive opt rs0 = do
     printResult :: ReplState -> Module -> NewValues -> IO ()
     printResult st md00 values = say (withRS st (loop True md00)) where
       loop tl md0 = case md0 of
-        MdNil               -> Ppr.empty
+        MdNil               -> mempty
         MdApp md1 md2       -> loop tl md1 $$ loop tl md2
         MdValue (Var l) t   -> pprValue tl l t (values =..= l)
         MdValue (Con u) t   -> case getExnParam t of
-          Nothing        -> Ppr.empty
+          Nothing        -> mempty
           Just Nothing   -> text "exception"<+>ppr u
           Just (Just t') -> text "exception"<+>ppr u<+>text "of"<+>ppr t'
         MdTycon _ tc        ->
@@ -308,30 +309,30 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
     ris -> mapM_ each ris
   where
     each (SigAt      loc x') =
-      mention "module type" (ppr x') Ppr.empty loc
+      mention "module type" (ppr x') mempty loc
     each (ModuleAt   loc x') =
-      mention "module" (ppr x') Ppr.empty loc
+      mention "module" (ppr x') mempty loc
     each (VariableAt loc x') =
       case getVarInfo x' s of
-        Nothing  -> mention "val" (ppr x') Ppr.empty loc
+        Nothing  -> mention "val" (ppr x') mempty loc
         Just t   -> mention "val" (ppr x') (char ':' <+> ppr t) loc
     each (TyconAt    loc x') =
       case getTypeInfo x' s of
-        Nothing  -> mention "type" (ppr x') Ppr.empty loc
-        Just tc  -> mention "type" Ppr.empty (ppr tc) loc
+        Nothing  -> mention "type" (ppr x') mempty loc
+        Just tc  -> mention "type" mempty (ppr tc) loc
     each (DataconAt  loc x') =
       case getConInfo x' s of
-        Nothing -> mention "val" (ppr x') Ppr.empty loc
+        Nothing -> mention "val" (ppr x') mempty loc
         Just (Left mt) ->
           mention "type" (text "exn")
                   (Ppr.sep [ text "= ...",
                              char '|' <+> ppr x' <+>
                              case mt of
-                               Nothing -> Ppr.empty
+                               Nothing -> mempty
                                Just t  -> text "of" <+> ppr t ])
                   loc
         Just (Right tc) ->
-          mention "type" Ppr.empty (ppr tc) loc
+          mention "type" mempty (ppr tc) loc
     --
     s = rsStatics st
     --

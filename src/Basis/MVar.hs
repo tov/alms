@@ -9,9 +9,9 @@ import Syntax
 import Util
 import Value (Value, Valuable(..))
 
-import qualified Loc
 import qualified Syntax.Notable
 import qualified Syntax.Decl
+import qualified Data.Loc
 
 import qualified Control.Concurrent.MVar as MV
 

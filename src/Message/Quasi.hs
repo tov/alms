@@ -14,8 +14,9 @@ import Message.AST
 import Message.Parser
 import Meta.THHelpers
 import PprClass
-import Util
+import Util hiding (lift)
 
+import Prelude ()
 import qualified Data.Map as M
 import Language.Haskell.TH
 import Language.Haskell.TH.Quote (QuasiQuoter(..))

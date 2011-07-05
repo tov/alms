@@ -26,10 +26,10 @@ module Syntax.Ident (
 
 import Env (Path(..), (:>:)(..))
 import Util
-import Viewable
 import Syntax.Anti
 import Syntax.Kind (QLit(..))
 
+import Prelude ()
 import Data.Char (isAlpha, isDigit)
 import Data.Generics (Typeable(..), Data(..), everywhere, mkT)
 import qualified Data.Map as M

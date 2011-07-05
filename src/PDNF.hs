@@ -20,6 +20,7 @@ module PDNF (
 import Syntax.POClass
 import Util
 
+import Prelude ()
 import Data.Generics (Typeable, Data)
 import Data.List (intersperse, nub, sort)
 import qualified Data.Set as S

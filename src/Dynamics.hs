@@ -27,6 +27,7 @@ import Env
 import Ppr (Ppr(..), Doc, text, precApp)
 import ErrorMessage
 
+import Prelude ()
 import Data.IORef (newIORef, readIORef, writeIORef)
 import Control.Exception (throw)
 
@@ -60,7 +61,7 @@ newtype ExnName = ExnName (Uid R)
   deriving (Eq, Ord)
 
 instance GenEmpty Level where
-  genEmpty = Level empty
+  genEmpty = Level Env.empty
 instance GenLookup Level (Lid R) (IO Value) where
   level =..= k = vlevel level =..= k
 instance GenExtend Level Level where

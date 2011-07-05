@@ -2,7 +2,7 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       TypeFamilies #-}
-module Loc (
+module Data.Loc (
   -- * Type and constructors
   Loc(..),
   initial, spanLocs, mkBogus, bogus,

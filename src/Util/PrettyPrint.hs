@@ -1,6 +1,6 @@
 {- | A layer over 'P.Doc' for propagating context information.  (I think
-     Template Haskell has a version of this. -}
-module PrettyPrint (
+     Template Haskell has a version of this.) -}
+module Util.PrettyPrint (
   -- * Environment-parameterized pretty-printing document
   Doc(..),
   -- ** Environment operations
@@ -15,7 +15,7 @@ module PrettyPrint (
   -- ** Miscellaneous operations
   nest, hang, punctuate,
   -- ** Nullary operations (documents)
-  colon, comma, empty, equals, lbrace, lbrack,
+  colon, comma, equals, lbrace, lbrack,
   lparen, rbrace, rbrack, rparen, semi, space,
   -- *** Unary functions returning documents
   char, double, float, int, integer, ptext, rational, text, zeroWidthText,
@@ -23,11 +23,13 @@ module PrettyPrint (
   toDocIn, isEmptyIn, renderIn, renderStyleIn, fullRenderIn,
   toDoc, isEmpty, render, renderStyle, fullRender,
   -- ** Rendering constants
-  P.Mode(..), P.Style(..), P.TextDetails(..), P.style
+  P.Mode(..), P.Style(..), P.TextDetails(..), P.style,
+  -- * Module exports
+  module Data.Monoid,
 ) where
 
 import qualified Text.PrettyPrint as P
-import Control.Applicative hiding (empty)
+import Control.Applicative
 import Data.Monoid
 
 -- Document parameterized by type @e@.
@@ -123,11 +125,10 @@ rational         = liftD0 . P.rational
 text             = liftD0 . P.text
 zeroWidthText    = liftD0 . P.zeroWidthText
 
-colon, comma, empty, equals, lbrace, lbrack, lparen, rbrace,
+colon, comma, equals, lbrace, lbrack, lparen, rbrace,
   rbrack, rparen, semi, space :: Doc e
 colon   = liftD0 P.colon
 comma   = liftD0 P.comma
-empty   = liftD0 P.empty
 equals  = liftD0 P.equals
 lbrace  = liftD0 P.lbrace
 lbrack  = liftD0 P.lbrack
@@ -178,3 +179,8 @@ fullRender :: Monoid e =>
               (P.TextDetails -> a -> a) -> a ->
               Doc e -> a
 fullRender = fullRenderIn mempty
+
+instance Monoid (Doc e) where
+  mempty   = liftD0 P.empty
+  mappend  = (<>)
+  mconcat  = hcat

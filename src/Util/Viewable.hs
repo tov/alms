@@ -1,8 +1,11 @@
+{-# LANGUAGE
+      TypeFamilies #-}
 -- | Quick and dirty views
-{-# LANGUAGE TypeFamilies #-}
-module Viewable where
+module Util.Viewable where
 
-import Util
+import Control.Arrow
+
+import Data.Perhaps
 
 -- | A viewable type has an associated type at which we view it, and
 --   an operation to view it at that type.
@@ -26,6 +29,10 @@ instance Viewable a => Viewable [a] where
 
 instance Viewable a => Viewable (Maybe a) where
   type View (Maybe a) = Maybe (View a)
+  view = fmap view
+
+instance Viewable a => Viewable (Perhaps a) where
+  type View (Perhaps a) = Perhaps (View a)
   view = fmap view
 
 instance (Viewable a, Viewable b) => Viewable (Either a b) where

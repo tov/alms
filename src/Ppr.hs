@@ -21,8 +21,9 @@ import qualified Syntax.Decl
 import qualified Syntax.Expr
 import qualified Syntax.Notable
 import qualified Syntax.Patt
-import qualified Loc
+import Data.Loc
 
+import Prelude ()
 import Data.List (intersperse)
 
 instance IsInfix (Type i) where
@@ -57,7 +58,7 @@ pprInfix inspect x0
   , p /= Right precBang
     = Just $
         prec (id|||id $ p) $
-          fcat $ mapTail (nest 2) $ loop p empty x0
+          fcat $ mapTail (nest 2) $ loop p mempty x0
   | otherwise
     = Nothing
   where
@@ -239,7 +240,7 @@ pprParamV Invariant tv = ppr tv
 pprParamV v         tv = ppr v <> ppr tv
 
 pprQuals :: QExp i -> Doc
-pprQuals [$qeQ| U |] = empty
+pprQuals [$qeQ| U |] = mempty
 pprQuals qs          = text ":" <+> pprPrec precApp qs
 
 pprAlternatives :: [(Uid i, Maybe (Type i))] -> Doc
@@ -369,7 +370,7 @@ instance Ppr (Expr i) where
         (args, op) = unfoldExTApp e0
     [$ex| Pack[$opt:t1]($t2, $e) |] ->
       prec precApp $
-        text "Pack" <> maybe empty (brackets . ppr0) t1 <+>
+        text "Pack" <> maybe mempty (brackets . ppr0) t1 <+>
         prec precCom (sep [ ppr1 t2 <> comma, ppr e ])
     [$ex| ( $e : $t1 :> $t2 ) |] ->
       prec precCast $
@@ -413,14 +414,14 @@ pprAbs e = prec precDot $
   where (args, body)   = unfoldExAbs e
         argsDoc = case args of
           [Left ([$pa| _ |], [$ty|@! unit |])]
-                        -> parens empty
+                        -> parens mempty
           [Left (x, t)] -> ppr x <+> char ':' <+> pprPrec (precArr + 1) t
           _             -> pprArgList args
 
 pprArgList :: [Either (Patt i, Type i) (TyVar i)] -> Doc
 pprArgList = fsep . map eachArg . combine where
   eachArg (Left ([$pa| _ |], [$ty|@! unit |]))
-                          = parens empty
+                          = parens mempty
   eachArg (Left (x, t))   = parens $
                               ppr0 x
                                 >+> colon <+> ppr0 t

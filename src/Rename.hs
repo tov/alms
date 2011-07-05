@@ -27,7 +27,7 @@ import ErrorMessage
 
 import Meta.Quasi
 import Syntax hiding ((&))
-import qualified Loc
+import Data.Loc
 import qualified Syntax.Decl
 import qualified Syntax.Expr
 import qualified Syntax.Notable
@@ -35,13 +35,10 @@ import qualified Syntax.Patt
 import Util
 import Ppr (Ppr(..))
 
+import Prelude ()
 import qualified Data.List as List
-import Data.Monoid
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Control.Monad.RWS as RWST
-import qualified Control.Monad.State  as M.S
-import Control.Monad.Error as M.E
 
 -- | The type to save the state of the renamer between calls
 data RenameState = RenameState {
@@ -392,7 +389,7 @@ renameMapM f (x:xs) = do
 renameProg :: Prog Raw -> R (Prog Renamed)
 renameProg [$prQ| $list:ds in $opt:me1 |] = do
   (ds', md) <- listen $ renameDecls ds
-  me1' <- inModule md $ gmapM renameExpr me1
+  me1' <- inModule md $ traverse renameExpr me1
   return [$prQ|+ $list:ds' in $opt:me1' |]
 
 -- | Rename a list of declarations and return the environment
@@ -405,7 +402,7 @@ renameDecl :: Decl Raw -> R (Decl Renamed)
 renameDecl d0 = withLoc d0 $ case d0 of
   [$dc| let $x : $opt:mt = $e |] -> do
     x'  <- renamePatt x
-    mt' <- gmapM renameType (fmap closeType mt)
+    mt' <- traverse renameType (fmap closeType mt)
     e'  <- renameExpr (closeExpr e)
     return [$dc|+ let $x' : $opt:mt' = $e' |]
   [$dc| type $list:tds |] -> do
@@ -457,7 +454,7 @@ renameDecl d0 = withLoc d0 $ case d0 of
     return [$dc| local $list:ds1' with $list:ds2' end |]
   [$dc| exception $uid:u of $opt:mt |] -> do
     u'  <- bindDatacon u
-    mt' <- gmapM renameType mt
+    mt' <- traverse renameType mt
     return [$dc|+ exception $uid:u' of $opt:mt' |]
   [$dc| $anti:a |] -> $antifail
 
@@ -497,7 +494,7 @@ renameTyDec mqe (N note td)      = withLoc note $ do
       repeated "Type variable" tv "type parameters" []
   (tvs', mdTvs) <- steal $ mapM bindTyvar tvs
   inModule mdTvs $ do
-    mqe' <- gmapM renameQExp mqe
+    mqe' <- traverse renameQExp mqe
     td'  <- case td of
       TdAbs _ _ variances qe -> do
         qe' <- renameQExp qe
@@ -511,7 +508,7 @@ renameTyDec mqe (N note td)      = withLoc note $ do
         cons' <- forM cons $ \(u, mt) -> withLoc mt $ do
           let u' = uid (unUid u)
           tell (MdDatacon (getLoc mt) u u')
-          mt'   <- gmapM renameType mt
+          mt'   <- traverse renameType mt
           return (u', mt')
         return (tdDat l' tvs' cons')
       TdAnti a -> $antifail
@@ -570,7 +567,7 @@ checkSigDuplicates md = case md of
     MdTyvar   loc tv _   -> mustFail loc "Tyvar"      tv $ getTyvar tv
   where
     mustFail loc kind which check = do
-      failed <- (False <$ check) `M.E.catchError` \_ -> return True
+      failed <- (False <$ check) `catchError` \_ -> return True
       unless failed $ do
         withLoc loc $
           repeated kind which "signature" []
@@ -581,26 +578,26 @@ sealWith = loop Nothing where
     MdNil              -> return ()
     MdApp md1 md2      -> do loop b md1; loop b md2
     MdTycon   _ l _   -> do
-      (l', loc, _) <- find b "type constructor" tycons l
+      (l', loc, _) <- locate b "type constructor" tycons l
       tell (MdTycon loc l l')
     MdVar     _ l _   -> do
-      (l', loc, _) <- find b "variable" vars l
+      (l', loc, _) <- locate b "variable" vars l
       tell (MdVar loc l l')
     MdDatacon _ u _   -> do
-      (u', loc, _) <- find b "data constructor" datacons u
+      (u', loc, _) <- locate b "data constructor" datacons u
       tell (MdDatacon loc u u')
     MdModule  _ u _ md2 -> do
-      (u', loc, (md1, _)) <- find b "module" modules u
+      (u', loc, (md1, _)) <- locate b "module" modules u
       ((), md1') <- steal $ onlyInModule md1 $ loop b md2
       tell (MdModule loc u u' md1')
     MdSig     _ u _ md2 -> do
-      (u', loc, (md1, _)) <- find b "module type" sigs u
+      (u', loc, (md1, _)) <- locate b "module type" sigs u
       ((), _   ) <- steal $ onlyInModule md2 $ loop (Just (Left u)) md1
       ((), md1') <- steal $ onlyInModule md1 $ loop (Just (Right u)) md2
       tell (MdSig loc u u' md1')
     MdTyvar   _ _ _   ->
       renameBug "sealWith" "signature can’t declare type variable"
-  find b what prj ident = do
+  locate b what prj ident = do
     m <- asks prj
     case M.lookup ident m of
       Just ident' -> return ident'
@@ -644,7 +641,7 @@ renameSigItem sg0 = case sg0 of
     return [$sgQ|+ include $se1' |]
   [$sgQ| exception $uid:u of $opt:mt |] -> do
     u'  <- bindDatacon u
-    mt' <- gmapM renameType mt
+    mt' <- traverse renameType mt
     return [$sgQ|+ exception $uid:u' of $opt:mt' |]
   [$sgQ| $anti:a |] -> $antifail
 
@@ -697,7 +694,7 @@ renameExpr e0 = withLoc e0 $ case e0 of
     t' <- renameType t
     return [$ex|+ $e' [$t'] |]
   [$ex| Pack[$opt:mt]($t, $e) |] -> do
-    mt' <- gmapM renameType mt
+    mt' <- traverse renameType mt
     t'  <- renameType t
     e'  <- renameExpr e
     return [$ex|+ Pack[$opt:mt']($t', $e') |]
@@ -761,7 +758,7 @@ renameType t0 = case t0 of
     return [$ty|+ '$tv' |]
   [$ty| $t1 -[$opt:mqe]> $t2 |] -> do
     t1'  <- renameType t1
-    mqe' <- gmapM renameQExp mqe
+    mqe' <- traverse renameQExp mqe
     t2'  <- renameType t2
     return [$ty|+ $t1' -[$opt:mqe']> $t2' |]
   [$ty| $quant:u '$tv. $t |] -> do
@@ -778,9 +775,9 @@ renameType t0 = case t0 of
 renameTyPats :: [TyPat Raw] -> R [TyPat Renamed]
 renameTyPats x00 =
   withLoc x00 $
-    M.S.evalStateT (mapM loop x00) M.empty where
+    evalStateT (mapM loop x00) M.empty where
   loop :: TyPat Raw ->
-          M.S.StateT (M.Map (TyVar Raw) Loc) Renaming (TyPat Renamed)
+          StateT (M.Map (TyVar Raw) Loc) Renaming (TyPat Renamed)
   loop x0 = case x0 of
     [$tpQ| $antiP:a |] -> $antifail
     N note (TpVar tv var) -> do
@@ -792,7 +789,7 @@ renameTyPats x00 =
       return [$tpQ|+ ($list:tps') $qlid:ql' |]
   --
   tyvar :: Loc -> TyVar Raw ->
-           M.S.StateT (M.Map (TyVar Raw) Loc) Renaming (TyVar Renamed)
+           StateT (M.Map (TyVar Raw) Loc) Renaming (TyVar Renamed)
   tyvar loc1 tv = do
     seen <- get
     case M.lookup tv seen of
@@ -823,9 +820,9 @@ renameQExp qe0 = case qe0 of
 renamePatt :: Patt Raw -> R (Patt Renamed)
 renamePatt x00 =
   withLoc x00 $
-    M.S.evalStateT (loop x00) M.empty where
+    evalStateT (loop x00) M.empty where
   loop :: Patt Raw ->
-          M.S.StateT (M.Map (Either (Lid Raw) (TyVar Raw)) Loc)
+          StateT (M.Map (Either (Lid Raw) (TyVar Raw)) Loc)
             Renaming (Patt Renamed)
   loop x0 = case x0 of
     [$pa| _ |] ->

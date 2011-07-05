@@ -13,9 +13,9 @@ import Syntax
 import Util
 import Value (Valuable(..), vinjData, vprjDataM)
 
-import qualified Loc
 import qualified Syntax.Notable
 import qualified Syntax.Decl
+import qualified Data.Loc
 
 instance Valuable IO.Handle where
   veq = (==)

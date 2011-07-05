@@ -5,7 +5,7 @@ module Syntax.POClass (
 
 import Util
 
-import Control.Monad.Error
+import Prelude ()
 import qualified Data.Set as S
 
 -- | Partial orders.

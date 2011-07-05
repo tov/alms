@@ -21,7 +21,7 @@ data RenderContext
     }
 
 rc0 :: RenderContext
-rc0  = RenderContext (-1) 0 empty empty
+rc0  = RenderContext (-1) 0 mempty mempty
 
 getQuotes :: RenderContext -> (String, String)
 getQuotes cxt =
@@ -33,8 +33,8 @@ incQuotes :: RenderContext -> RenderContext
 incQuotes cxt = cxt { rcQtLevel = rcQtLevel cxt + 1 }
 
 clearLeft, clearRight :: RenderContext -> RenderContext
-clearLeft cxt  = cxt { rcLeft = empty }
-clearRight cxt = cxt { rcRight = empty }
+clearLeft cxt  = cxt { rcLeft = mempty }
+clearRight cxt = cxt { rcRight = mempty }
 
 addQuotes :: RenderContext -> Doc -> Doc
 addQuotes cxt doc = rcLeft cxt <> doc <> rcRight cxt
@@ -46,7 +46,7 @@ renderMessageH :: RenderContext -> Message H -> [Doc]
 renderMessageH cxt msg0 = case msg0 of
   Words s     -> renderMessageH cxt (Flow (map Exact (words s)))
   Exact s     -> [addQuotes cxt (text s)]
-  Flow []     -> [addQuotes cxt empty]
+  Flow []     -> [addQuotes cxt mempty]
   Flow [msg'] -> renderMessageH cxt msg'
   Flow (m:ms) -> renderMessageH (clearRight cxt) m ++
                  concatMap (renderMessageH cxt') (init ms) ++

@@ -9,12 +9,12 @@ module Sigma (
 import Syntax
 import Util
 
+import Prelude ()
 import qualified Control.Monad.State as CMS
 import Data.Generics (Data, everywhere, mkT, extT)
 import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
-import Data.Foldable (Foldable, toList)
 
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.  (Boolean specifies whether the result

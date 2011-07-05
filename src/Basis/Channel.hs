@@ -8,9 +8,9 @@ import BasisUtils
 import Syntax
 import Value (Value, Valuable(..))
 
-import qualified Loc
 import qualified Syntax.Notable
 import qualified Syntax.Decl
+import qualified Data.Loc
 
 import qualified Basis.Channel.Haskell as C
 

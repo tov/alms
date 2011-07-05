@@ -17,7 +17,7 @@ module BasisUtils (
   (-:), (-=),
   -- ** Default location for entries
   _loc,
-  module Loc,
+  module Data.Loc,
   -- ** Environment construction
   basis2venv, basis2tenv, basis2renv,
 
@@ -28,6 +28,8 @@ module BasisUtils (
   text, Uid(..),
   module Meta.Quasi,
 ) where
+
+import Prelude ()
 
 import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
@@ -41,7 +43,7 @@ import Syntax
 import qualified Syntax.Notable
 import qualified Syntax.Decl
 import Type (TyCon, tcName)
-import Loc (Loc(Loc), mkBogus, setLoc)
+import Data.Loc (Loc(Loc), mkBogus, setLoc)
 import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
 

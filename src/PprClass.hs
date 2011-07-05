@@ -23,11 +23,11 @@ module PprClass (
   -- ** Instance helpers
   showFromPpr, pprFromShow,
   -- * Re-exports
-  module PrettyPrint
+  module Util.PrettyPrint
 ) where
 
-import PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
-import qualified PrettyPrint as P
+import Util.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
+import qualified Util.PrettyPrint as P
 
 import Syntax.Ident (QLid, Uid, Renamed)
 
@@ -97,7 +97,7 @@ class Ppr p where
   pprStyleList st [] =
     if listStyleDelimitEmpty st
       then listStyleBegin st <> listStyleEnd st
-      else empty
+      else mempty
   pprStyleList st [x] =
     if listStyleDelimitSingleton st
       then listStyleBegin st <> ppr x <> listStyleEnd st
@@ -214,7 +214,7 @@ instance Ppr a => Ppr [a] where
   ppr = pprList
 
 instance Ppr a => Ppr (Maybe a) where
-  pprPrec _ Nothing  = empty
+  pprPrec _ Nothing  = mempty
   pprPrec p (Just a) = pprPrec p a
 
 -- | Class to check if a particular thing will print infix.  Adds

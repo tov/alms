@@ -29,10 +29,9 @@ module Syntax (
   unfoldExAbs, unfoldTyQu, unfoldTyMu,
   unfoldExTApp, unfoldExApp, unfoldTyFun,
   unfoldTupleExpr, unfoldTuplePatt, unfoldSeWith,
-
-  -- * Miscellany
-  module Viewable
 ) where
+
+import Prelude ()
 
 import Syntax.Anti
 import Syntax.POClass
@@ -47,7 +46,6 @@ import Syntax.Decl
 import Syntax.SyntaxTable
 
 import Util
-import Viewable
 
 deriveAntibles syntaxTable
 

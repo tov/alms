@@ -14,7 +14,7 @@ module Env (
   -- ** Key subsumption
   (:>:)(..),
   -- ** Constructors
-  empty, (-:-), (-::-),
+  Env.empty, (-:-), (-::-),
   (-:+-), (-+-), (-\-), (-\\-), (-|-),
   -- ** Destructors
   isEmpty, (-.-),
@@ -23,7 +23,7 @@ module Env (
   -- ** Higher-order destructors
   mapVals, mapValsM, mapAccum, mapAccumM,
   -- ** List conversions
-  toList, fromList, domain, range,
+  Env.toList, fromList, domain, range,
 
   -- * Deep environments
   PEnv(..), Path(..), ROOT(..), (<.>),
@@ -36,6 +36,8 @@ module Env (
   -- * Aliases (why?)
   (=:=), (=::=), (=:+=)
 ) where
+
+import Prelude ()
 
 import Util
 import qualified Data.Map as M
@@ -174,7 +176,7 @@ range    :: Ord k => Env k v -> [v]
 range     = M.elems . unEnv
 
 instance Ord k => Monoid (Env k v) where
-  mempty      = empty
+  mempty      = Env.empty
   mappend m n = Env (M.unionWith (\_ v -> v) (unEnv m) (unEnv n))
 
 instance (Ord k, Show k, Show v) => Show (Env k v) where
@@ -201,7 +203,7 @@ instance (k :>: k') => GenModify (Env k v) k' v where
   genModify e k fv = case e =..= k of
     Nothing -> e
     Just v  -> e =+= k -:- fv v
-instance GenEmpty (Env k v) where genEmpty = empty
+instance GenEmpty (Env k v) where genEmpty = Env.empty
 
 -- | A path environment maps paths of @p@ components to @e@.
 data PEnv p e = PEnv {
@@ -286,7 +288,7 @@ instance Ord p => GenExtend (PEnv p e) (Env p (PEnv p e)) where
   penv =+= e = penv { envenv = envenv penv =+= e }
 
 instance Ord p => GenExtend (PEnv p e) (Env p e) where
-  penv =+= e = penv =+= fmap (PEnv (empty :: Env p (PEnv p e))) e
+  penv =+= e = penv =+= fmap (PEnv (Env.empty :: Env p (PEnv p e))) e
 
 instance GenExtend e e' =>
          GenExtend (PEnv p e) e' where
@@ -298,7 +300,7 @@ instance (Ord p, GenExtend e e) =>
 
 instance (Ord p, Ord k, GenEmpty e, GenExtend e (Env k v)) =>
          GenExtend (PEnv p e) (Env (Path p k) v) where
-  penv =+= env = foldr (flip (=+=)) penv (toList env)
+  penv =+= env = foldr (flip (=+=)) penv (Env.toList env)
 
 instance (Ord p, Ord k, GenEmpty e, GenExtend e (Env k v)) =>
          GenExtend (PEnv p e) (Path p k, v) where

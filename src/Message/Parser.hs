@@ -2,13 +2,14 @@ module Message.Parser (
   parseMessageQ, tokensT, messageP,
 ) where
 
-import Loc
+import Data.Loc
 import Message.AST
 import Util
+import Util.Parsec
 
+import Prelude ()
 import Data.Char
 import Language.Haskell.TH
-import Text.ParserCombinators.Parsec
 
 -- | Given the string representation of a message, parse it,
 --   using the Template Haskell monad to get an initial source

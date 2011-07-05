@@ -37,7 +37,7 @@ import Syntax.Type
 import Syntax.Lit
 import Syntax.Patt
 import {-# SOURCE #-} Syntax.Decl
-import Viewable
+import Util.Viewable
 
 import Meta.DeriveNotable
 

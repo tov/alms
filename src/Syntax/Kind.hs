@@ -26,7 +26,7 @@ import Syntax.POClass
 import {-# SOURCE #-} Syntax.Ident
 import Util
 
-import Control.Monad.Identity (runIdentity)
+import Prelude ()
 import Data.List (elemIndex)
 import Data.Generics (Typeable, Data)
 import qualified Data.Map as M
@@ -162,8 +162,8 @@ numberQDenMap :: Ord tv =>
                  (tv -> QLit) ->
                  M.Map tv Int ->
                  QDen tv -> QDen Int
-numberQDenMap lit m = runIdentity . numberQDenM get [] where
-  get tv = case M.lookup tv m of
+numberQDenMap lit m = runIdentity . numberQDenM getTV [] where
+  getTV tv = case M.lookup tv m of
     Just i  -> return (QDen (PDNF.variable i))
     Nothing -> return (elimQLit minBound maxBound (lit tv))
 

@@ -68,8 +68,8 @@ import Syntax.Kind
 import Syntax.POClass
 import qualified Syntax as Stx
 import Util
-import Viewable
 
+import Prelude ()
 import qualified Control.Monad.Writer as CMW
 import Data.Char (isDigit)
 import Data.Generics (Typeable, Data, everything, mkQ)
@@ -1055,7 +1055,7 @@ instance Ppr TyCon where
     where
       qe :: [TyVarR] -> Doc
       qe tvs = case qDenToLit (tcQual tc) of
-                 Just Qu -> empty
+                 Just Qu -> mempty
                  _       -> colon <+>
                             ppr (qRepresent
                                  (denumberQDen

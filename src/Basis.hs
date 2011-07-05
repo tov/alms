@@ -13,9 +13,9 @@ import Value (Valuable(..), Value(..))
 import Syntax
 import Type
 
-import qualified Loc
 import qualified Syntax.Notable
 import qualified Syntax.Decl
+import qualified Data.Loc
 
 import qualified Basis.IO
 import qualified Basis.Socket

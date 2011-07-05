@@ -35,10 +35,10 @@ import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
 
 import qualified Control.Exception as Exn
 
+import qualified Control.Monad as C.M
+import Prelude ()
 import Foreign.C.Types (CInt)
 import Data.Word (Word32, Word16)
-
-import Control.Monad.State as M.S
 
 -- | The kind of identifiers used
 type R        = Renamed
@@ -335,7 +335,7 @@ enumTypeDecl a =
              c:cs -> Char.toLower c : cs
              _    -> error "(BUG!) bad type name in enumTypeDecl"
 
-newtype Const a b = Const { unConst :: a }
+newtype CONST a b = CONST { unCONST :: a }
 
 -- | Use SYB to attempt to inject a value of a Haskell data type into
 --   an object language value matching the type declaration generated
@@ -356,12 +356,12 @@ vinjData = generic
       AlgConstr    _
         | Just s <- cast datum
                      -> vinj (s :: String)
-        | otherwise  -> c (unConst (gfoldl k z datum))
+        | otherwise  -> c (unCONST (gfoldl k z datum))
     where
       r = toConstr datum
-      k (Const Nothing)  x = Const (Just (vinjData x))
-      k (Const (Just v)) x = Const (Just (vinj (v, vinjData x)))
-      z = const (Const Nothing)
+      k (CONST Nothing)  x = CONST (Just (vinjData x))
+      k (CONST (Just v)) x = CONST (Just (vinj (v, vinjData x)))
+      z = const (CONST Nothing)
       c f = case (showConstr r, f) of
              (s, Just f') | isTuple s
                -> f'
@@ -370,7 +370,7 @@ vinjData = generic
 -- | The partial inverse of 'vinjData'
 vprjDataM :: forall a m. (Data a, Monad m) => Value -> m a
 vprjDataM = generic
-    `ext1RT` (\x -> vprjM x >>= sequence . liftM vprjDataM)
+    `ext1RT` (\x -> vprjM x >>= C.M.sequence . liftM vprjDataM)
     `ext1RT` (\x -> vprjM x >>= maybe (return Nothing) (liftM return)
                                          . liftM vprjDataM)
     `extRT` (vprjM :: Value -> m Int)
@@ -388,25 +388,25 @@ vprjDataM = generic
       Nothing -> fail $ 
                    "(BUG) Couldn't find constructor: " ++ u ++
                    " in " ++ show ty
-      Just c  -> M.S.evalStateT (gunfold k z c) mfields0
+      Just c  -> evalStateT (gunfold k z c) mfields0
     where
       k consmaker = do
-        mfields <- M.S.get
+        mfields <- get
         fields <- case mfields of
           Just fields -> return fields
           Nothing     -> fail "(BUG) ran out of fields"
         field <- case vprjM fields of
           Just (fields', field) -> do
-            M.S.put (Just fields')
+            put (Just fields')
             return field
           Nothing -> do
-            M.S.put Nothing
+            put Nothing
             return fields
         make  <- consmaker
-        mrest <- M.S.get
+        mrest <- get
         field' <- case mrest of
           Just rest -> do
-            M.S.put Nothing
+            put Nothing
             return (vinj (rest, field))
           Nothing   ->
             return field

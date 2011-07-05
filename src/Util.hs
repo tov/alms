@@ -1,25 +1,34 @@
 -- | Utility functions
 {-# LANGUAGE
-      CPP,
-      FlexibleContexts
+      BangPatterns,
+      TypeOperators,
+      UnicodeSyntax
       #-}
 module Util (
-  -- * List combinators
-  -- ** Shallow mapping
-  mapCons, mapHead, mapTail,
-  -- ** Two-list versions
+  -- * Extra collection operations
+  -- ** Shallow mapping of 'Traversable's
+  mapHead, mapTail, mapInit, mapLast,
+  -- ** 'Foldable'/'Applicative' operations
+  allA, anyA,
+  -- ** 2-way 'Foldable' operations
   foldl2, foldr2, all2, any2,
-  -- ** Monadic version
-  foldrM, anyM, allM, anyM2, allM2,
-  concatMapM,
-  -- ** Applicative versions
-  mapA,
-  -- ** Unfold with an accumulator
+  allA2, anyA2,
+  -- ** List operations
+  mapCons, foldM1,
+  lookupWithIndex, listNth, ordNub, partitionJust,
+  -- *** Unfold with an accumulator
   unscanr, unscanl,
-  -- ** Map in CPS
+  -- *** Map in CPS
   mapCont, mapCont_,
-  -- ** Monad generalization of map and sequence
-  GSequence(..),
+
+  -- * Extra monadic operations
+  whenM, unlessM, concatMapM, before,
+
+  -- * Maps for state-like monads
+  mapListen2, mapListen3,
+
+  -- * 'Maybe' and 'Either' operations
+  fromOptA, unEither,
 
   -- * More convenience
   -- ** Maybe functions
@@ -31,67 +40,131 @@ module Util (
   -- ** Monomorphic @ord@ and @chr@
   char2integer, integer2char,
   -- ** For defining 'Ord'
-  thenCmp,
-  -- ** Versions of fmap
+  thenCmp, thenCmpM,
+  -- ** Versions of fmap and compose
   (>>!),
-  (<$$>), (<$$$>), (<$$$$>), (<$$$$$>),
+  (<$$>), (<$$$>), (<$$$$>), (<$$$$$>), (<$$$$$$>),
+  (<$.>), (<$$.>), (<$$$.>), (<$$$$.>),
+  (<->), (<-->), (<--->), (<---->), (<----->),
 
   -- * Re-exports
-  module Data.Maybe,
   module Control.Arrow,
+  module Control.Applicative,
   module Control.Monad,
-  module Control.Applicative
+  module Control.Monad.Error,
+  module Control.Monad.Identity,
+  module Control.Monad.List,
+  module Control.Monad.RWS.Strict,
+  module Control.Monad.Reader,
+  module Control.Monad.State.Strict,
+  module Control.Monad.Trans,
+  module Control.Monad.Writer.Strict,
+  module Data.Foldable,
+  module Data.Function,
+  module Data.Maybe,
+  module Data.Monoid,
+  module Data.Traversable,
+  module Data.Tuple.All,
+  module Data.OptionalClass,
+  module Data.Perhaps,
+  module Util.Viewable,
+  module Prelude,
 ) where
+
+import Prelude hiding ( (=<<), Functor(..), Maybe(..), Monad(..), all,
+                        and, any, concat, concatMap, elem, foldl, foldl1,
+                        foldr, foldr1, mapM, mapM_, maximum, maybe,
+                        minimum, notElem, or, product, sequence, sequence_,
+                        sum )
+
+import Control.Arrow ( Arrow(..), ArrowChoice(..), (>>>), (<<<) )
+import Control.Applicative hiding ( empty )
+import Control.Monad hiding ( forM, forM_, mapM_, mapM, msum,
+                              sequence, sequence_ )
+
+import Control.Monad.Error    ( MonadError(..), ErrorT(..), mapErrorT,
+                                Error(..) )
+import Control.Monad.Identity ( Identity(..) )
+import Control.Monad.List     ( ListT(..), mapListT )
+import Control.Monad.RWS.Strict ( RWST(..), runRWST, execRWST, evalRWST,
+                                  mapRWST )
+import Control.Monad.Reader     ( MonadReader(..), ReaderT(..), mapReaderT,
+                                  asks )
+import Control.Monad.State.Strict ( MonadState(..), StateT(..), evalStateT,
+                                    evalState, gets, modify, mapStateT )
+import Control.Monad.Trans    ( MonadTrans(..), MonadIO(..) )
+import Control.Monad.Writer.Strict ( MonadWriter(..), WriterT(..), execWriter,
+                                     mapWriterT, censor, listens )
 
 import Data.Char (chr, ord)
 import Data.Maybe
-import Control.Arrow hiding (loop, (<+>))
-import Control.Monad
-import Control.Applicative (Applicative(..), (<$>), (<$), (<**>))
+import Data.Monoid
+import Data.Foldable
+import Data.Function ( on )
+import Data.Traversable
+import Data.Tuple.All
 
-#if PARSEC_VERSION == 2
+import Data.OptionalClass
+import Data.Perhaps
+import Util.Viewable
 
-import Text.ParserCombinators.Parsec (GenParser)
--- | Parsec parsers are Applicatives, which lets us write slightly
---   more pleasant, non-monadic-looking parsers
-instance Applicative (GenParser a b) where
-  pure  = return
-  (<*>) = ap
-#endif
+import qualified Data.Set as Set
 
--- | Right-associative monadic fold
-foldrM :: Monad m => (a -> b -> m a) -> a -> [b] -> m a
-foldrM _ z []     = return z
-foldrM f z (b:bs) = foldrM f z bs >>= flip f b
+mapHead, mapTail, mapInit, mapLast ∷ Traversable t ⇒ (a → a) → t a → t a
 
--- | Like 'Prelude.any' with a monadic predicate
-anyM :: Monad m => (a -> m Bool) -> [a] -> m Bool
-anyM p (x:xs) = do
-  b <- p x
-  if b
-    then return True
-    else anyM p xs
-anyM _    _      = return False
+mapHead f = snd . mapAccumL each True where
+  each True x = (False, f x)
+  each _    x = (False, x)
 
--- | Like 'Prelude.all' with a monadic predicate
-allM :: Monad m => (a -> m Bool) -> [a] -> m Bool
-allM p = liftM not . anyM (liftM not . p)
+mapTail f = snd . mapAccumL each True where
+  each True x = (False, x)
+  each _    x = (False, f x)
 
--- | Two-list, monadic 'any'
-anyM2 :: Monad m => (a -> b -> m Bool) -> [a] -> [b] -> m Bool
-anyM2 p as bs = anyM (uncurry p) (zip as bs)
+mapInit f = snd . mapAccumR each True where
+  each True x = (False, x)
+  each _    x = (False, f x)
 
--- | Two-list, monadic 'all'
-allM2 :: Monad m => (a -> b -> m Bool) -> [a] -> [b] -> m Bool
-allM2 p as bs = allM (uncurry p) (zip as bs)
+mapLast f = snd . mapAccumR each True where
+  each True x = (False, f x)
+  each _    x = (False, x)
 
-concatMapM :: Monad m => (a -> m [b]) -> [a] -> m [b]
-concatMapM f xs = concat `liftM` mapM f xs
+-- | 'all' with an applicative predicate
+allA ∷ (Applicative f, Foldable t) ⇒ (a → f Bool) → t a → f Bool
+allA p xs = and <$> traverse p (toList xs)
 
--- | Map an applicative over a list
-mapA         :: Applicative t => (a -> t b) -> [a] -> t [b]
-mapA _ []     = pure []
-mapA f (x:xs) = (:) <$> f x <*> mapA f xs
+-- | 'any' with an applicative predicate
+anyA ∷ (Applicative f, Foldable t) ⇒ (a → f Bool) → t a → f Bool
+anyA p xs = or <$> traverse p (toList xs)
+
+-- | Left-associative fold over two lists
+foldl2 ∷ (Foldable t1, Foldable t2) ⇒
+         (c → a → b → c) → c → t1 a → t2 b → c
+foldl2 f z xs ys = foldl (uncurry . f) z (zip (toList xs) (toList ys))
+
+-- | Right-associative fold over two lists
+foldr2 ∷ (Foldable t1, Foldable t2) ⇒
+         (a → b → c → c) → c → t1 a → t2 b → c
+foldr2 f z xs ys = foldr (uncurry f) z (zip (toList xs) (toList ys))
+
+-- | Two-list 'all'
+all2 :: (Foldable f1, Foldable f2) ⇒
+        (a -> b -> Bool) -> f1 a -> f2 b -> Bool
+all2 p xs ys = and (zipWith p (toList xs) (toList ys))
+
+-- | Two-list 'any'
+any2 :: (Foldable f1, Foldable f2) ⇒
+        (a -> b -> Bool) -> f1 a -> f2 b -> Bool
+any2 p xs ys = or (zipWith p (toList xs) (toList ys))
+
+-- | 'all' for two 'Foldable's with an applicative predicate
+allA2 ∷ (Applicative f, Foldable t1, Foldable t2) ⇒
+        (a → b → f Bool) → t1 a → t2 b → f Bool
+allA2 p xs ys = allA id (zipWith p (toList xs) (toList ys))
+
+-- | 'all' for two 'Foldable's with an applicative predicate
+anyA2 ∷ (Applicative f, Foldable t1, Foldable t2) ⇒
+        (a → b → f Bool) → t1 a → t2 b → f Bool
+anyA2 p xs ys = anyA id (zipWith p (toList xs) (toList ys))
 
 -- | Apply one function to the head of a list and another to the
 --   tail
@@ -99,31 +172,100 @@ mapCons :: (a -> b) -> ([a] -> [b]) -> [a] -> [b]
 mapCons _  _  []     = []
 mapCons fh ft (x:xs) = fh x : ft xs
 
--- | Map a function over only the first element of a list
-mapHead  :: (a -> a) -> [a] -> [a]
-mapHead f = mapCons f id
+-- | Fold over a non-empty 'Foldable' in a monad
+foldM1          ∷ (Foldable t, Monad m) ⇒ (a → a → m a) → t a → m a
+foldM1 f xs0    = loop (toList xs0) where
+  loop []     = fail "foldM1: empty"
+  loop (x:xs) = foldM f x xs
 
--- | Map a function over all but the first element of a list
-mapTail  :: (a -> a) -> [a] -> [a]
-mapTail   = mapCons id . map
+-- | Like 'Data.List.lookup', but returns the index into the list as
+--   well.
+lookupWithIndex ∷ Eq a ⇒ a → [(a, b)] → Maybe (b, Int)
+lookupWithIndex k = loop 0 where
+  loop _   []   = Nothing
+  loop !ix ((k',v):rest)
+    | k == k'   = Just (v, ix)
+    | otherwise = loop (ix + 1) rest
 
--- | Left-associative fold over two lists
-foldl2 :: (c -> a -> b -> c) -> c -> [a] -> [b] -> c
-foldl2 f z (x:xs) (y:ys) = foldl2 f (f z x y) xs ys
-foldl2 _ z _      _      = z
+-- | Safe version of '(Data.List.!!)'
+listNth ∷ Int → [a] → Maybe a
+listNth i = foldr (const . Just) Nothing . drop i
 
--- | Right-associative fold over two lists
-foldr2 :: (a -> b -> c -> c) -> c -> [a] -> [b] -> c
-foldr2 f z (x:xs) (y:ys) = f x y (foldr2 f z xs ys)
-foldr2 _ z _      _      = z
+-- | Like nub, but O(n log n) instead of O(n^2)
+ordNub ∷ Ord a ⇒ [a] → [a]
+ordNub = loop Set.empty where
+  loop seen (x:xs)
+    | x `Set.member` seen = loop seen xs
+    | otherwise           = x : loop (Set.insert x seen) xs
+  loop _    []     = []
 
--- | Two-list 'all'
-all2 :: (a -> b -> Bool) -> [a] -> [b] -> Bool
-all2 p xs ys = and (zipWith p xs ys)
+-- | Partition a list into the portions where the function returns
+--   'Just' and the portions where it returns 'Nothing'
+partitionJust ∷ (a → Maybe b) → [a] → ([a], [b])
+partitionJust f = foldr each ([], []) where
+  each x (xs, ys) = case f x of
+    Nothing → (x:xs, ys)
+    Just y →  (xs, y:ys)
 
--- | Two-list 'any'
-any2 :: (a -> b -> Bool) -> [a] -> [b] -> Bool
-any2 p xs ys = or (zipWith p xs ys)
+-- | Unfold a list, left-to-right, returning the final state
+unscanr :: (b -> Maybe (a, b)) -> b -> ([a], b)
+unscanr f b = case f b of
+  Just (a, b') -> (a : fst rest, snd rest) where rest = unscanr f b'
+  Nothing      -> ([], b)
+
+-- | Unfold a list, right-to-left, returning the final state
+unscanl :: (b -> Maybe (a, b)) -> b -> ([a], b)
+unscanl f = loop [] where
+  loop acc b = case f b of
+    Just (a, b') -> loop (a : acc) b'
+    Nothing      -> (acc, b)
+
+-- | CPS version of 'map'
+mapCont :: (a -> (b -> r) -> r) -> [a] -> ([b] -> r) -> r
+mapCont _ []     k = k []
+mapCont f (x:xs) k = f x $ \x' ->
+                     mapCont f xs $ \xs' ->
+                       k (x' : xs')
+
+-- | CPS version of 'map_'
+mapCont_ :: (a -> r -> r) -> [a] -> r -> r
+mapCont_ _ []     k = k
+mapCont_ f (x:xs) k = f x $ mapCont_ f xs $ k
+
+whenM ∷ Monad m ⇒ m Bool → m () → m ()
+whenM test branch = test >>= flip when branch
+
+unlessM ∷ Monad m ⇒ m Bool → m () → m ()
+unlessM test branch = test >>= flip unless branch
+
+-- | Map and concatenate in a monad.
+concatMapM   ∷ (Foldable t, Monad m, Monoid b) ⇒ (a → m b) → t a → m b
+concatMapM f = foldr (liftM2 mappend . f) (return mempty)
+
+before ∷ Monad m ⇒ m a → (a → m b) → m a
+before m k = do
+  a ← m
+  k a
+  return a
+
+infixl 8 `before`
+
+mapListen2 ∷ Monad m ⇒ (a → m ((b, s), w)) → a → m ((b, w), s)
+mapListen3 ∷ Monad m ⇒ (a → m ((b, s1, s2), w)) → a → m ((b, w), s1, s2)
+
+mapListen2 mapper action = do
+  ((b, s), w) ← mapper action
+  return ((b, w), s)
+
+mapListen3 mapper action = do
+  ((b, s1, s2), w) ← mapper action
+  return ((b, w), s1, s2)
+
+fromOptA ∷ (Applicative f, Optional t) ⇒ f a → t a → f a
+fromOptA def = foldOpt def pure
+
+unEither ∷ Either a a → a
+unEither = either id id
 
 -- | The ASCII value of a character
 char2integer :: Char -> Integer
@@ -140,9 +282,8 @@ splitBy p xs = let (ys, zs) = break p xs
                 in ys : splitBy p (drop 1 zs)
 
 -- | Maybe cons, maybe not
-(?:) :: Maybe a -> [a] -> [a]
-Nothing ?: xs = xs
-Just x  ?: xs = x : xs
+(?:) :: Optional t ⇒ t a -> [a] -> [a]
+(?:)  = foldOpt id (:)
 
 infixr 5 ?:
 
@@ -152,45 +293,20 @@ isLeft _          = False
 isRight (Right _) = True
 isRight _         = False
 
--- | Unfold a list, left-to-right, returning the final state
-unscanr :: (b -> Maybe (a, b)) -> b -> ([a], b)
-unscanr f b = case f b of
-  Just (a, b') -> (a : fst rest, snd rest) where rest = unscanr f b'
-  Nothing      -> ([], b)
-
--- | Unfold a list, right-to-left, returning the final state
-unscanl :: (b -> Maybe (a, b)) -> b -> ([a], b)
-unscanl f = loop [] where
-  loop acc b = case f b of
-    Just (a, b') -> loop (a : acc) b'
-    Nothing      -> (acc, b)
-
 -- | To combine two 'Ordering's in lexigraphic order
 thenCmp :: Ordering -> Ordering -> Ordering
 thenCmp EQ k2 = k2
 thenCmp k1 _  = k1
-infixr 4 `thenCmp`
 
--- | 2nd order fmap
-(<$$>) :: (Functor f, Functor g) => (a -> b) -> f (g a) -> f (g b)
-(<$$>)  = (<$>) . (<$>)
+-- | To combine two actions producing 'Ordering's in lexigraphic order
+thenCmpM ∷ Monad m ⇒ m Ordering → m Ordering → m Ordering
+thenCmpM m1 m2 = do
+  ordering ← m1
+  case ordering of
+    EQ → m2
+    _  → return ordering
 
--- | 3rd order fmap
-(<$$$>) :: (Functor f, Functor g, Functor h) =>
-           (a -> b) -> f (g (h a)) -> f (g (h b))
-(<$$$>)  = (<$$>) . (<$>)
-
--- | 4th order fmap
-(<$$$$>) :: (Functor f, Functor g, Functor h, Functor j) =>
-            (a -> b) -> f (g (h (j a))) -> f (g (h (j b)))
-(<$$$$>)  = (<$$$>) . (<$>)
-
--- | 5th order fmap
-(<$$$$$>) :: (Functor f, Functor g, Functor h, Functor j, Functor k) =>
-             (a -> b) -> f (g (h (j (k a)))) -> f (g (h (j (k b))))
-(<$$$$$>)  = (<$$$$>) . (<$>)
-
-infixl 4 <$$>, <$$$>, <$$$$>, <$$$$$>
+infixr 4 `thenCmp`, `thenCmpM`
 
 -- | @flip fmap@
 (>>!) :: Functor f => f a -> (a -> b) -> f b
@@ -198,38 +314,73 @@ infixl 4 <$$>, <$$$>, <$$$$>, <$$$$$>
 
 infixl 1 >>!
 
--- | CPS version of 'map'
-mapCont :: (a -> (b -> r) -> r) -> [a] -> ([b] -> r) -> r
-mapCont _ []     k = k []
-mapCont f (x:xs) k = f x $ \x' ->
-                     mapCont f xs $ \xs' ->
-                       k (x' : xs')
+(<$$>) ∷ (Functor f, Functor g) ⇒ 
+         (b → c) → g (f b) → g (f c)
+(<$$>) = fmap . fmap
 
--- | CPS version of 'map_'
-mapCont_ :: (a -> r -> r) -> [a] -> r -> r
-mapCont_ _ []     k = k
-mapCont_ f (x:xs) k = f x $ mapCont_ f xs $ k
+(<$$$>) ∷ (Functor f, Functor g, Functor h) ⇒
+          (b → c) → h (g (f b)) →
+          h (g (f c))
+(<$$$>) = fmap . fmap . fmap
 
--- | Generalize 'map' and 'sequence' to a few other monads
-class GSequence m where
-  gsequence   :: Monad m' => m (m' a) -> m' (m a)
-  gsequence_  :: Monad m' => m (m' a) -> m' ()
-  gsequence_ m = gsequence m >> return ()
-  gmapM       :: (Monad m, Monad m') => (a -> m' b) -> m a -> m' (m b)
-  gmapM f      = gsequence . liftM f
-  gmapM_      :: (Monad m, Monad m') => (a -> m' b) -> m a -> m' ()
-  gmapM_ f     = gsequence_ . liftM f
-  gforM       :: (Monad m, Monad m') => m a -> (a -> m' b) -> m' (m b)
-  gforM        = flip gmapM
-  gforM_      :: (Monad m, Monad m') => m a -> (a -> m' b) -> m' ()
-  gforM_       = flip gmapM_
+(<$$$$>) ∷ (Functor f, Functor g, Functor h, Functor i) ⇒
+           (b → c) → i (h (g (f b))) →
+           i (h (g (f c)))
+(<$$$$>) = fmap . fmap . fmap . fmap
 
-instance GSequence [] where
-  gsequence  = sequence
-  gsequence_ = sequence_
-  gmapM      = mapM
-  gmapM_     = mapM_
+(<$$$$$>) ∷ (Functor f, Functor g, Functor h, Functor i, Functor j) ⇒
+            (b → c) → j (i (h (g (f b)))) →
+            j (i (h (g (f c))))
+(<$$$$$>) = fmap . fmap . fmap . fmap . fmap
 
-instance GSequence Maybe where
-  gsequence  = maybe (return Nothing) (liftM return)
-  gsequence_ = maybe (return ()) (>> return ())
+(<$$$$$$>) ∷ (Functor f, Functor g, Functor h,
+              Functor i, Functor j, Functor k) ⇒
+             (b → c) → k (j (i (h (g (f b))))) →
+             k (j (i (h (g (f c)))))
+(<$$$$$$>) = fmap . fmap . fmap . fmap . fmap . fmap
+
+infixl 4 <$$>, <$$$>, <$$$$>, <$$$$$>, <$$$$$$>
+
+(<$.>) ∷ (Arrow (⇝), Functor f) ⇒
+         f (b ⇝ c) → (a ⇝ b) →
+         f (a ⇝ c)
+f <$.> g = (g >>>) <$> f
+
+(<$$.>) ∷ (Arrow (⇝), Functor f, Functor g) ⇒
+          g (f (b ⇝ c)) → (a ⇝ b) →
+          g (f (a ⇝ c))
+f <$$.> g = (g >>>) <$$> f
+
+(<$$$.>) ∷ (Arrow (⇝), Functor f, Functor g, Functor h) ⇒
+           h (g (f (b ⇝ c))) → (a ⇝ b) →
+           h (g (f (a ⇝ c)))
+f <$$$.> g = (g >>>) <$$$> f
+
+(<$$$$.>) ∷ (Arrow (⇝), Functor f, Functor g, Functor h, Functor i) ⇒
+            i (h (g (f (b ⇝ c)))) → (a ⇝ b) →
+            i (h (g (f (a ⇝ c))))
+f <$$$$.> g = (g >>>) <$$$$> f
+
+infixl 4 <$.>, <$$.>, <$$$.>, <$$$$.>
+
+(<->)   ∷ Functor f ⇒ 
+          f (a → b) → a → f b
+f <-> x = ($ x) <$> f
+
+(<-->)   ∷ (Functor f, Functor g) ⇒
+           f (g (a → b)) → a → f (g b)
+f <--> x = (<-> x) <$> f
+
+(<--->)   ∷ (Functor f, Functor g, Functor h) ⇒
+            f (g (h (a → b))) → a → f (g (h b))
+f <---> x = (<--> x) <$> f
+
+(<---->)   ∷ (Functor f, Functor g, Functor h, Functor i) ⇒
+             f (g (h (i (a → b)))) → a → f (g (h (i b)))
+f <----> x = (<---> x) <$> f
+
+(<----->)   ∷ (Functor f, Functor g, Functor h, Functor i, Functor j) ⇒
+              f (g (h (i (j (a → b))))) → a → f (g (h (i (j b))))
+f <-----> x = (<----> x) <$> f
+
+infixl 4 <->, <-->, <--->, <---->, <----->
