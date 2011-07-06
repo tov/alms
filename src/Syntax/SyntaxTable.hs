@@ -31,6 +31,7 @@ litAntis
   & "int"    =:< 'LtInt
   & "flo"    =:< 'LtFloat
   & "float"  =:< 'LtFloat
+  & "char"   =:< 'LtChar
   & "antiL"  =:< 'LtAnti
 pattAntis
   = "patt"   =:! Nothing
@@ -57,8 +58,7 @@ qExpAntis
   = "qexp"   =:! Nothing
   & "qlit"   =:< 'QeLit
   & "qvar"   =:< 'QeVar
-  & "qdisj"  =:< 'QeDisj
-  & "qconj"  =:< 'QeConj
+  & "qjoin"  =:< 'QeJoin
   & "anti"   =:< 'QeAnti
 tyVarAntis
   = "tyvar"  =:! Nothing

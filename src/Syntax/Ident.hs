@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      CPP,
       DeriveDataTypeable,
       FlexibleInstances,
       FunctionalDependencies,
@@ -7,7 +8,8 @@
       ScopedTypeVariables,
       TypeFamilies,
       TypeSynonymInstances,
-      UndecidableInstances #-}
+      UndecidableInstances,
+      UnicodeSyntax #-}
 module Syntax.Ident (
   -- * Identifier classes
   Id(..), Raw(..), Renamed(..), renamed0,
@@ -17,21 +19,27 @@ module Syntax.Ident (
   Path(..),
   Lid(..), Uid(..), BIdent(..),
   Ident, QLid, QUid,
-  TyVar(..), tvUn, tvAf, tvalphabet,
+  TyVar(..), tvUn, tvAf,
+  tvalphabet, freshName, freshNames,
   isOperator, lid, uid, qlid, quid,
   -- * Free and defined vars
+  Occurrence, occToQLit,
   FvMap, Fv(..), Dv(..), ADDITIVE(..),
-  (|*|), (|+|), (|-|), (|--|)
+  (|*|), (|+|), (|-|), (|--|),
+  AnnotTV(..),
 ) where
 
 import Env (Path(..), (:>:)(..))
 import Util
 import Syntax.Anti
+import Syntax.Notable
 import Syntax.Kind (QLit(..))
+import qualified Syntax.Strings as Strings
 
 import Prelude ()
 import Data.Char (isAlpha, isDigit)
 import Data.Generics (Typeable(..), Data(..), everywhere, mkT)
+import qualified Data.List as List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Unsafe.Coerce
@@ -152,12 +160,6 @@ tvUn, tvAf :: Id i => String -> TyVar i
 tvUn s = TV (lid s) Qu
 tvAf s = TV (lid s) Qa
 
-tvalphabet :: Id i => [QLit -> TyVar i]
-tvalphabet  = map (TV . lid) alphabet
-  where
-    alphabet = map return ['a' .. 'z'] ++
-               [ x ++ [y] | x <- alphabet, y <- ['a' .. 'z'] ]
-
 -- | Is the lowercase identifier an infix operator?
 isOperator :: Lid i -> Bool
 isOperator l = case show l of
@@ -219,16 +221,78 @@ instance Id i => (:>:) (BIdent i) (Lid i) where liftKey = Var
 instance Id i => (:>:) (BIdent i) (Uid i) where liftKey = Con
 
 ---
---- Identifier antiquotes
+--- Name generation
 ---
 
+-- | Given a base name, produces the list of names starting with the
+--   base name, then with a prime added, and then with numeric
+--   subscripts increasing from 1.
+namesFrom ∷ String → [String]
+namesFrom s = [ c:n | n ← "" : map numberSubscript [0 ..], c ← s ]
+
+-- | Given a natural number, represent it as a string of number
+--   subscripts.
+numberSubscript ∷ Int → String
+numberSubscript 0  = [head Strings.digits]
+numberSubscript n0
+  | n0 < 0         = error "BUG! numberSubscript requires non-negative Int"
+  | otherwise      = reverse $ List.unfoldr each n0 where
+  each 0 = Nothing
+  each n = Just (Strings.digits !! ones, rest)
+             where (rest, ones) = n `divMod` 10
+
+-- | Clear the primes and subscripts from the end of a name
+clearScripts ∷ String → String
+clearScripts n = case reverse (dropWhile (`elem` scripts) (reverse n)) of
+  [] → n
+  n' → n'
+  where scripts = "'′" ++ Strings.unicodeDigits ++ Strings.asciiDigits
+
+tvalphabet ∷ Id i ⇒ [QLit → TyVar i]
+tvalphabet  = map (TV . lid) (namesFrom Strings.tvNames)
+
+-- | @freshName sugg qlit avoid cands@ attempts to generate a fresh
+--   type variable name as follows:
+--
+--   * if @sugg@ is @Here n@, then it returns @n@ if @n@ is not in
+--     @avoid@, and otherwise subscripts @n@ until if finds a fresh
+--     name.
+--
+--   * Otherwise, return the first name from @cands@ that isn't in
+--     @avoid@.
+--
+freshName ∷ Optional t ⇒ t String → [String] → [String] → String
+freshName pn avoid cands = case coerceOpt pn of
+  Just n
+    | okay n    → n
+    | otherwise → takeFrom (namesFrom (clearScripts n))
+  Nothing       → takeFrom (cands ++ namesFrom "a")
+  where
+    avoidSet = S.fromList (Strings.normalizeChar <$$> avoid)
+    takeFrom = head . filter okay
+    okay n   = S.notMember (Strings.normalizeChar <$> n) avoidSet
+
+-- | Like 'freshName', but produces a list of fresh names
+freshNames ∷ Optional t ⇒ [t String] → [String] → [String] → [String]
+freshNames []       _     _     = []
+freshNames (pn:pns) avoid cands =
+  let n' = freshName pn avoid cands
+   in n' : freshNames pns (n':avoid) cands
+
 ---
---- Free variables
+--- FREE VARIABLES and OCCURRENCE ANALYSIS
 ---
+
+-- | A count of maximum variables occurrences
+type Occurrence = Int
+
+-- | The qualifier bound for a given number of occurrences
+occToQLit ∷ Occurrence → QLit
+occToQLit n = if n > 1 then Qu else Qa
 
 -- | Our free variables function returns not merely a set,
 -- but a map from names to a count of maximum occurrences.
-type FvMap i = M.Map (QLid i) Integer
+type FvMap i = M.Map (QLid i) Occurrence
 
 -- | The free variables analysis
 class Id i => Fv a i | a -> i where
@@ -248,6 +312,12 @@ instance Fv a i => Fv [a] i where
 instance Dv a i => Dv [a] i where
   dv = S.unions . map dv
 
+instance Fv a i => Fv (Maybe a) i where
+  fv = maybe mempty fv
+
+instance Dv a i => Dv (Maybe a) i where
+  dv = maybe mempty dv
+
 newtype ADDITIVE a = ADDITIVE [a]
 
 instance Fv a i => Fv (ADDITIVE a) i where
@@ -263,3 +333,29 @@ instance Fv a i => Fv (ADDITIVE a) i where
 
 (|--|) :: Id i => FvMap i -> S.Set (QLid i) -> FvMap i
 (|--|)  = S.fold M.delete
+
+-- | Find out the free variables of a type annotation.  Minimal
+--   definition: @annotTVs@ or @annotTVsWith@
+class Id i ⇒ AnnotTV a i | a → i where
+  annotTVsWith ∷ Monoid r ⇒
+                 (QLid i → Int → r → r) →
+                 a → M.Map (TyVar i) r
+  annotTVs     ∷ a → S.Set (TyVar i)
+  annotTVs     = M.keysSet . annotTVsWith (\_ _ () → ())
+
+instance (AnnotTV a i, AnnotTV b i) ⇒ AnnotTV (a, b) i where
+  annotTVsWith f (a, b) = annotTVsWith f a `mappend` annotTVsWith f b
+
+instance (AnnotTV a i, AnnotTV b i, AnnotTV c i) ⇒
+         AnnotTV (a, b, c) i where
+  annotTVsWith f (a, b, c) = annotTVsWith f (a, (b, c))
+
+instance AnnotTV a i ⇒ AnnotTV [a] i where
+  annotTVsWith f xs = foldMap (annotTVsWith f) xs
+
+instance AnnotTV a i ⇒ AnnotTV (Maybe a) i where
+  annotTVsWith = maybe M.empty . annotTVsWith
+
+instance AnnotTV a i ⇒ AnnotTV (N note a) i where
+  annotTVsWith = annotTVsWith <$.> dataOf
+

@@ -14,7 +14,7 @@
 module Syntax (
   -- * Identifiers
   module Syntax.Anti,
-  module Syntax.POClass,
+  module Syntax.OrderClasses,
   module Syntax.Notable,
   module Syntax.Ident,
   module Syntax.Kind,
@@ -26,15 +26,15 @@ module Syntax (
   module Syntax.SyntaxTable,
 
   -- * Unfold syntax to lists
-  unfoldExAbs, unfoldTyQu, unfoldTyMu,
-  unfoldExTApp, unfoldExApp, unfoldTyFun,
+  unfoldExAbs, unfoldTyQu, unfoldTyMu, unfoldTyRow,
+  unfoldExApp, unfoldTyFun,
   unfoldTupleExpr, unfoldTuplePatt, unfoldSeWith,
 ) where
 
 import Prelude ()
 
 import Syntax.Anti
-import Syntax.POClass
+import Syntax.OrderClasses
 import Syntax.Notable
 import Syntax.Ident
 import Syntax.Kind
@@ -77,12 +77,11 @@ instance Antible (QUid i) where
 
 -- | Get the list of formal parameters and body of a
 --   lambda/typelambda expression
-unfoldExAbs :: Expr i -> ([Either (Patt i, Type i) (TyVar i)], Expr i)
+unfoldExAbs :: Expr i -> ([Patt i], Expr i)
 unfoldExAbs  = unscanr each where
   each e = case view e of
-    ExAbs x t e' -> Just (Left (x, t), e')
-    ExTAbs tv e' -> Just (Right tv, e')
-    _            -> Nothing
+    ExAbs x e' -> Just (x, e')
+    _          -> Nothing
 
 -- | Get the list of formal parameters and body of a qualified type
 unfoldTyQu  :: Quant -> Type i -> ([TyVar i], Type i)
@@ -96,12 +95,11 @@ unfoldTyMu = unscanr each where
   each (N _ (TyMu x t)) = Just (x, t)
   each _                = Nothing
 
--- | Get the list of actual parameters and body of a type application
-unfoldExTApp :: Expr i -> ([Type i], Expr i)
-unfoldExTApp  = unscanl each where
-  each e = case view e of
-    ExTApp e' t  -> Just (t, e')
-    _            -> Nothing
+-- | Get the list of labels and types in a row type
+unfoldTyRow :: Type i -> ([(BIdent i, Type i)], Type i)
+unfoldTyRow = unscanr each where
+  each (N _ (TyRow i t1 t2)) = Just ((i, t1), t2)
+  each _                     = Nothing
 
 -- | Get the list of actual parameters and body of a value application
 unfoldExApp :: Expr i -> ([Expr i], Expr i)

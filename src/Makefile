@@ -9,11 +9,12 @@ HS_SRC      = *.hs Basis/*.hs Basis/Channel/*.hs Syntax/*.hs \
               Message/*.hs Meta/*.hs
 HSBOOT_SRC  = Syntax/*.hs-boot
 
-HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(NOWARN) $(IMPARR)
+HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(NOWARN) $(IMPARR) $(UNICODE)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 PARSEC  = -DPARSEC_VERSION=3
 # IMPARR  = -DANNOTATION_PRINTING_RULE=Rule0
 NOWARN  = -fno-warn-unused-do-bind -fno-warn-orphans
+UNICODE = -DUNICODE
 
 $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)

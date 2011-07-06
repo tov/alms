@@ -12,6 +12,7 @@ import Data.Generics (Typeable, Data)
 -- | Literals
 data Lit
   = LtInt Integer
+  | LtChar Char
   | LtStr String
   | LtFloat Double
   | LtAnti Anti

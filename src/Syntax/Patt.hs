@@ -5,19 +5,22 @@
       NoMonomorphismRestriction,
       TemplateHaskell,
       TypeFamilies,
-      TypeSynonymInstances #-}
+      TypeSynonymInstances,
+      UnicodeSyntax #-}
 module Syntax.Patt (
   Patt'(..), Patt, PattNote(..), newPatt,
-  paWild, paVar, paCon, paPair, paLit, paAs, paPack, paAnti,
-  dtv
+  paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn, paBang, paAnti,
 ) where
 
+import Util
 import Meta.DeriveNotable
 import Syntax.Notable
 import Syntax.Anti
 import Syntax.Ident
 import Syntax.Lit
+import Syntax.Type
 
+import Prelude ()
 import qualified Data.Set as S
 import Data.Generics (Typeable, Data)
 
@@ -37,8 +40,12 @@ data Patt' i
   | PaLit Lit
   -- | bind an identifer and a pattern (@as@)
   | PaAs (Patt i) (Lid i)
-  -- | existential opening
-  | PaPack (TyVar i) (Patt i)
+  -- | open variant
+  | PaInj (Uid i) (Maybe (Patt i))
+  -- | type annotation on a pattern
+  | PaAnn (Patt i) (Type i)
+  -- | imperative/threaded binding
+  | PaBang (Patt i)
   -- | antiquote
   | PaAnti Anti
   deriving (Typeable, Data)
@@ -48,9 +55,7 @@ data PattNote i
       -- | source location
       ploc_  :: !Loc,
       -- | defined variables
-      pdv_   :: S.Set (Lid i),
-      -- | defined type variables
-      pdtv_  :: S.Set (TyVar i)
+      pdv_   :: S.Set (Lid i)
     }
   deriving (Typeable, Data)
 
@@ -61,61 +66,66 @@ instance Relocatable (PattNote i) where
   setLoc note loc = note { ploc_ = loc }
 
 instance Notable (PattNote i) where
-  newNote = PattNote bogus S.empty S.empty
+  newNote = PattNote bogus S.empty
 
 newPatt :: Id i => Patt' i -> Patt i
 newPatt p0 = flip N p0 $ case p0 of
   PaWild           ->
     newNote {
-      pdv_    = S.empty,
-      pdtv_   = S.empty
+      pdv_    = mempty
     }
   PaVar x          ->
     newNote {
-      pdv_    = S.singleton x,
-      pdtv_   = S.empty
+      pdv_    = S.singleton x
     }
-  PaCon _ Nothing  ->
+  PaCon _ mx       ->
     newNote {
-      pdv_    = S.empty,
-      pdtv_   = S.empty
-    }
-  PaCon _ (Just x) ->
-    newNote {
-      pdv_    = dv x,
-      pdtv_   = dtv x
+      pdv_    = maybe mempty dv mx
     }
   PaPair x y       ->
     newNote {
-      pdv_    = dv x `S.union` dv y,
-      pdtv_   = dtv x `S.union` dtv y
+      pdv_    = dv x `mappend` dv y
     }
   PaLit _          ->
     newNote {
-      pdv_    = S.empty,
-      pdtv_   = S.empty
+      pdv_    = mempty
     }
   PaAs x y         ->
     newNote {
-      pdv_    = S.insert y (dv x),
-      pdtv_   = dtv x
+      pdv_    = S.insert y (dv x)
     }
-  PaPack tv x       ->
+  PaInj _ my       ->
     newNote {
-      pdv_    = dv x,
-      pdtv_   = S.insert tv (dtv x)
+      pdv_    = maybe mempty dv my
+    }
+  PaAnn x _        ->
+    newNote {
+      pdv_    = dv x
+    }
+  PaBang x         ->
+    newNote {
+      pdv_    = dv x
     }
   PaAnti a         ->
     newNote {
-      pdv_    = antierror "dv" a,
-      pdtv_   = antierror "dtv" a
+      pdv_    = antierror "dv" a
     }
 
 instance Id i => Dv (N (PattNote i) a) i where
   dv = pdv_ . noteOf
 
-dtv :: Id i => Patt i -> S.Set (TyVar i)
-dtv = pdtv_ . noteOf
+instance Id i => AnnotTV (Patt' i) i where
+  annotTVsWith f x0 = case x0 of
+    PaWild           → mempty
+    PaVar _          → mempty
+    PaCon _ mx       → annotTVsWith f mx
+    PaPair x y       → annotTVsWith f (x, y)
+    PaLit _          → mempty
+    PaAs x _         → annotTVsWith f x
+    PaInj _ my       → annotTVsWith f my
+    PaAnn x t        → annotTVsWith f (x, t)
+    PaBang x         → annotTVsWith f x
+    PaAnti _         → mempty
 
 deriveNotable 'newPatt (''Id, [0]) ''Patt
 
