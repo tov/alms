@@ -1065,6 +1065,8 @@ pattpP p = mark $ case () of
           paInj <$> varinjp <*> antioptp next,
           next
         ]
+    | p == precBang   →
+        option id (paBang <$ bang) <*> next
     | p == precCom    →
         foldl1 paPair <$> commaSep1 next
     | p > precMax     → choice
@@ -1072,6 +1074,7 @@ pattpP p = mark $ case () of
           paWild <$  reserved "_",
           paVar  <$> varp,
           paCon  <$> quidp <*> pure Nothing,
+          paInj  <$> varinjp <*> pure Nothing,
           paLit  <$> litp,
           antiblep,
           parens (pattpP precMin <|> pure (paCon (Syntax.quid "()") Nothing))
@@ -1187,7 +1190,7 @@ pe   = makeQaD parseExpr
 px  :: String -> Patt Renamed
 px   = makeQaD parsePatt
 
-{-
+-- {-
 deriving instance Show (Expr' i)
 deriving instance Show (CaseAlt' i)
 deriving instance Show (Decl' i)
@@ -1203,7 +1206,7 @@ deriving instance Show (Type' i)
 deriving instance Show (QExp' i)
 deriving instance Show Lit
 instance Show a ⇒ Show (N i a) where showsPrec = showsPrec <$.> view
--}
+-- -}
 
 makeQaD :: P a -> String -> a
 makeQaD parser =
