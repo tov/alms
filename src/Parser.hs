@@ -380,7 +380,7 @@ typep   = typepP precStart
 typepP :: Id i => Int -> P (Type i)
 typepP p = "type" @@ case () of
   _ | p == precStart
-          -> tyrowp1 <|> typepP (p + 1)
+          -> tyrowp1 <|> next
     | p == precDot
           -> do
                tc <- tyQu <$> quantp
@@ -389,10 +389,10 @@ typepP p = "type" @@ case () of
                dot
                t   <- typepP p
                return (foldr tc t tvs)
-             <|> typepP (p + 1)
+             <|> next
     | p == precArr
           -> chainr1last
-               (typepP (p + 1))
+               next
                (choice
                 [ tyArr <$ arrow,
                   tyLol <$ lolli,
@@ -400,28 +400,27 @@ typepP p = "type" @@ case () of
                   tybinopp (Right precArr) ])
                (typepP precStart)
     | p == precTySemi
-          -> chainr1last (typepP (p + 1))
+          -> chainr1last next
                          (tyAppN <$> semis)
                          (typepP precStart)
     | Just (Left _) <- fixities p
-          -> chainl1last (typepP (p + 1))
+          -> chainl1last next
                          (tybinopp (Left p))
                          (typepP precStart)
     | Just (Right _) <- fixities p
-          -> chainr1last (typepP (p + 1))
+          -> chainr1last next
                          (tybinopp (Right p))
                          (typepP precStart)
     | p == precApp -- this case ensures termination
           -> tyarg >>= tyapp'
     | p <  precApp
-          -> typepP (p + 1)
+          -> next
     | otherwise
           -> typepP precStart
   where
   tyarg :: Id i => P [Type i]
-  tyarg  = choice
-           [ (:[]) <$> tyatom,
-             parens $ antiblep <|> commaSep1 (typepP precStart) ]
+  tyarg  = parens (antiblep <|> commaSep1 (typepP precMin))
+       <|> (:[]) <$> tyatom
   --
   tyatom :: Id i => P (Type i)
   tyatom  = tyVar <$> tyvarp
@@ -445,6 +444,8 @@ typepP p = "type" @@ case () of
   tyapp' ts  = do
     tc <- qlidnatp
     tyapp' [tyApp tc ts]
+  --
+  next = typepP (p + 1)
 
 variantp ∷ Id i ⇒ P (Type i)
 variantp = Syntax.tyVariant <$> brackets tyrowp
@@ -1190,7 +1191,7 @@ pe   = makeQaD parseExpr
 px  :: String -> Patt Renamed
 px   = makeQaD parsePatt
 
--- {-
+{-
 deriving instance Show (Expr' i)
 deriving instance Show (CaseAlt' i)
 deriving instance Show (Decl' i)
@@ -1206,7 +1207,7 @@ deriving instance Show (Type' i)
 deriving instance Show (QExp' i)
 deriving instance Show Lit
 instance Show a ⇒ Show (N i a) where showsPrec = showsPrec <$.> view
--- -}
+-}
 
 makeQaD :: P a -> String -> a
 makeQaD parser =
