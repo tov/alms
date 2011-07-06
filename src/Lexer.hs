@@ -11,8 +11,11 @@ module Lexer (
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
-  qualU, qualA, qdisj, qconj,
+  qualU, qualA, qjoin,
   opP,
+  sigilU, sigilA,
+  markCovariant, markContravariant, markInvariant, markOmnivariant,
+  markQCovariant, markQContravariant, markQInvariant,
 
   -- * Token parsers from Parsec
   identifier, reserved, operator, reservedOp, charLiteral,
@@ -36,8 +39,8 @@ tok = T.makeTokenParser T.LanguageDef {
     T.commentEnd     = "*)",
     T.commentLine    = "--",
     T.nestedComments = True,
-    T.identStart     = upper <|> lower <|> oneOf "_",
-    T.identLetter    = alphaNum <|> oneOf "_'",
+    T.identStart     = noλμ $ upper <|> lower <|> oneOf "_",
+    T.identLetter    = alphaNum <|> oneOf "_'′₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹ᵢⱼₐₑₒₓⁱⁿ",
     T.opStart        = satisfy isOpStart,
     T.opLetter       = satisfy isOpLetter,
     T.reservedNames  = ["fun", "λ",
@@ -46,16 +49,18 @@ tok = T.makeTokenParser T.LanguageDef {
                         "try",
                         "local", "open", "exception",
                         "let", "rec", "and", "in",
-                        "Pack",
                         "interface", "abstype", "end",
                         "module", "struct",
                         "sig", "val", "include",
                         "all", "ex", "mu", "μ", "of",
-                        "type", "qualifier"],
+                        "type", "qualifier" ],
     T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
                          "∀", "∃" ],
     T.caseSensitive = True
   }
+  -- 'λ' is not an identifier character, so that we can use it as
+  -- a reserved operator. Otherwise, we'd need a space after it.
+  where noλμ p = notFollowedBy (char 'λ' <|> char 'μ') *> p
 
 isOpStart, isOpLetter :: Char -> Bool
 isOpStart c
@@ -67,6 +72,9 @@ isOpStart c
       MathSymbol            -> True
       CurrencySymbol        -> True
       OtherSymbol           -> True
+      ModifierSymbol        -> True
+      OpenPunctuation       -> True
+      ClosePunctuation      -> True
       _                     -> False
 isOpLetter c
   | isAscii c = c `elem` "!$%&*+-/<=>?@^|~.:"
@@ -77,9 +85,9 @@ isOpLetter c
       MathSymbol            -> True
       CurrencySymbol        -> True
       OtherSymbol           -> True
-      ModifierSymbol        -> True -- not in OpStart
-   -- OpenPunctuation
-   -- ClosePunctuation
+      ModifierSymbol        -> True
+      OpenPunctuation       -> True
+      ClosePunctuation      -> True
    -- InitialQuote
    -- FinalQuote
       _                     -> False
@@ -186,19 +194,19 @@ arrow            = reservedOp "->" <|> reservedOp "→"
 
 -- | The left part of the $-_>$ operator
 funbraceLeft    :: T.TokenEnd st => CharParser st ()
-funbraceLeft     = try (symbol "-") >> return ()
+funbraceLeft     = () <$ symbol "-"
 
 -- | The right part of the $-_>$ operator
 funbraceRight   :: T.TokenEnd st => CharParser st ()
-funbraceRight    = try (symbol ">") >> return ()
+funbraceRight    = () <$ symbol ">"
 
 -- | The left part of the $-[_]>$ operator
 oldFunbraceLeft    :: T.TokenEnd st => CharParser st ()
-oldFunbraceLeft     = try (symbol "-[") >> return ()
+oldFunbraceLeft     = () <$ try (symbol "-[")
 
 -- | The right part of the $-[_]>$ operator
 oldFunbraceRight   :: T.TokenEnd st => CharParser st ()
-oldFunbraceRight    = try (symbol "]>") >> return ()
+oldFunbraceRight    = () <$ try (symbol "]>")
 
 funbraces       :: T.TokenEnd st => CharParser st a -> CharParser st a
 funbraces        = liftM2 (<|>) (between oldFunbraceLeft oldFunbraceRight)
@@ -206,18 +214,18 @@ funbraces        = liftM2 (<|>) (between oldFunbraceLeft oldFunbraceRight)
 
 -- | The left part of the $|[_]$ annotation
 qualboxLeft     :: T.TokenEnd st => CharParser st ()
-qualboxLeft      = try (symbol "|[") >> return ()
+qualboxLeft      = () <$ try (symbol "|[")
 
 -- | The right part of the $|[_]$ annotation
 qualboxRight    :: T.TokenEnd st => CharParser st ()
-qualboxRight     = try (symbol "]") >> return ()
+qualboxRight     = () <$ symbol "]"
 
 qualbox         :: T.TokenEnd st => CharParser st a -> CharParser st a
 qualbox          = between qualboxLeft qualboxRight
 
 -- | The function keyword
 lambda          :: T.TokenEnd st => CharParser st ()
-lambda           = reserved "fun" <|> reservedOp "λ" <|> reservedOp "Λ"
+lambda           = reserved "fun" <|> reservedOp "λ"
 
 -- | The universal quantifier keyword
 forall          :: T.TokenEnd st => CharParser st ()
@@ -255,12 +263,28 @@ qualA    :: T.TokenEnd st => CharParser st ()
 qualA     = reserved "A"
 
 -- | Infix operator for qualifier disjunction
-qdisj           :: T.TokenEnd st => CharParser st ()
-qdisj            = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
+qjoin           :: T.TokenEnd st => CharParser st ()
+qjoin            = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
 
--- | Infix operator for qualifier conjunction
-qconj           :: T.TokenEnd st => CharParser st ()
-qconj            = reservedOp "/\\" <|> reservedOp "⋀"
+-- | Marker for unlimited type variables
+sigilU   :: T.TokenEnd st => CharParser st ()
+sigilU    = () <$ char '\''
+
+-- | Marker for affine type variables
+sigilA   :: T.TokenEnd st => CharParser st ()
+sigilA    = () <$ char '`'
+
+markCovariant, markContravariant, markInvariant, markOmnivariant,
+  markQCovariant, markQContravariant, markQInvariant
+    :: T.TokenEnd st => CharParser st ()
+
+markCovariant        = () <$ char '+'
+markContravariant    = () <$ char '-'
+markInvariant        = () <$ char '='
+markOmnivariant      = () <$ (symbol "*" <|> symbol "±")
+markQCovariant       = () <$ (symbol "⊕" <|> try (symbol "+@"))
+markQContravariant   = () <$ (symbol "⊖" <|> try (symbol "-@"))
+markQInvariant       = () <$ (symbol "⊙" <|> try (symbol "=@"))
 
 -- | Is the string an uppercase identifier?  (Special case: @true@ and
 --   @false@ are consider uppercase.)
@@ -278,6 +302,7 @@ lid              = try $ do
   if isUpperIdentifier s
     then pzero <?> "lowercase identifier"
     else return s
+
 -- | Lex an uppercase identifer
 uid        :: T.TokenEnd st => CharParser st String
 uid              = try $ do

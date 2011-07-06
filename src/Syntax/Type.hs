@@ -21,7 +21,7 @@ module Syntax.Type (
   TyAppN(..),
 
   -- * Built-in types
-  tyUnit, tyTuple, tyUn, tyAf,
+  tyUnit, tyEnd, tyVariant, tyRecord, tyTuple, tyUn, tyAf,
   -- ** Convenience constructors
   tyArr, tyLol,
   tyAll, tyEx,
@@ -116,6 +116,15 @@ instance (TyApp' r i, a ~ Type i) ⇒ TyApp' (a → r) i where
 
 tyUnit        :: Id i => Type i
 tyUnit         = tyAppN "unit"
+
+tyEnd         :: Id i => Type i
+tyEnd          = tyAppN "INTERNALS.Row.end"
+
+tyVariant     :: Id i => Type i -> Type i
+tyVariant      = tyAppN "INTERNALS.Row.variant"
+
+tyRecord      :: Id i => Type i -> Type i
+tyRecord       = tyAppN "INTERNALS.Row.record"
 
 tyTuple       :: Id i => Type i -> Type i -> Type i
 tyTuple        = tyAppN "*"

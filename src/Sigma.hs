@@ -16,6 +16,13 @@ import qualified Data.List as L
 import qualified Data.Map as M
 import qualified Data.Set as S
 
+makeBangPatt, parseBangPatt, exSigma :: a
+
+makeBangPatt  = error "makeBangPatt: unimplemented"
+parseBangPatt = error "parseBangPatt: unimplemented"
+exSigma       = error "exSigma: unimplemented"
+
+{-
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.  (Boolean specifies whether the result
 --   should include the effect variables.)
@@ -516,4 +523,4 @@ exUnit  = exCon (quid "()")
 
 paUnit :: Id i => Patt i
 paUnit  = paCon (quid "()") Nothing
-
+-}

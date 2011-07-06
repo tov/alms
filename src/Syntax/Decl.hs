@@ -60,7 +60,7 @@ data Prog' i = Prog [Decl i] (Maybe (Expr i))
 -- | Declarations
 data Decl' i
   -- | Constant declaration
-  = DcLet (Patt i) (Maybe (Type i)) (Expr i)
+  = DcLet (Patt i) (Expr i)
   -- | Type declaration
   | DcTyp [TyDec i]
   -- | Abstype block declaration
@@ -178,10 +178,10 @@ instance Notable (DeclNote i) where
 
 newDecl :: Id i => Decl' i -> Decl i
 newDecl d0 = flip N d0 $ case d0 of
-  DcLet p1 t2 e3 ->
+  DcLet p1 e2 ->
     newNote {
-      dloc_  = getLoc (p1, t2, e3),
-      dfv_   = fv e3,
+      dloc_  = getLoc (p1, e2),
+      dfv_   = fv e2,
       ddv_   = qdv p1
     }
   DcTyp tds ->
@@ -326,6 +326,6 @@ deriveNotable ''Prog
 -- the final expression with a declaration of variable 'it'.
 prog2decls :: Id i => Prog i -> [Decl i]
 prog2decls (N _ (Prog ds (Just e)))
-  = ds ++ [dcLet (paVar (lid "it")) Nothing e]
+  = ds ++ [dcLet (paVar (lid "it")) e]
 prog2decls (N _ (Prog ds Nothing))
   = ds

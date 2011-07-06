@@ -23,7 +23,7 @@ module Syntax.Expr (
   caClause, caAnti,
   bnBind, bnAnti,
   -- ** Synthetic expression constructors
-  exBVar, exBCon,
+  exId, exBVar, exBCon,
   exChar, exStr, exInt, exFloat,
   exSeq,
   -- ** Optimizing expression constructors
@@ -217,6 +217,9 @@ newCaseAlt ca0 = flip N ca0 $ case ca0 of
 deriveNotable 'newExpr    (''Id, [0]) ''Expr
 deriveNotable 'newCaseAlt (''Id, [0]) ''CaseAlt
 deriveNotable 'newBinding (''Id, [0]) ''Binding
+
+exId   :: Id i => Ident i -> Expr i
+exId    = (exVar ||| exCon <-> Nothing) . view
 
 exBVar :: Id i => Lid i -> Expr i
 exBVar  = exVar . J []
