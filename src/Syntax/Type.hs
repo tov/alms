@@ -17,7 +17,7 @@ module Syntax.Type (
   Annot,
   -- ** Constructors
   tyApp, tyVar, tyFun, tyQu, tyMu, tyRow, tyAnti,
-  tpVar, tpApp, tpAnti,
+  tpVar, tpApp, tpRow, tpAnti,
   TyAppN(..),
 
   -- * Built-in types
@@ -67,6 +67,8 @@ data TyPat' i
   = TpVar (TyVar i) Variance
   -- | type constructor applications
   | TpApp (QLid i) [TyPat i]
+  -- | each element of a row
+  | TpRow (TyVar i) Variance
   -- | antiquotes
   | TpAnti Anti
   deriving (Typeable, Data)
@@ -101,14 +103,14 @@ instance TyApp' r i ⇒ TyAppN (QLid i) r i where
 instance TyApp' r i ⇒ TyAppN (Lid i) r i where
   tyAppN l = tyApp' (J [] l) []
 
-instance TyApp' r i ⇒ TyAppN String r i where
+instance (Id i, TyApp' r i) ⇒ TyAppN String r i where
   tyAppN s = tyApp' (qlid s) []
 
 -- | Helper class for @TyApp'@.
-class Id i ⇒ TyApp' r i | r → i where
+class TyApp' r i | r → i where
   tyApp' ∷ QLid i → [Type i] → r
 
-instance Id i ⇒ TyApp' (Type i) i where
+instance TyApp' (Type i) i where
   tyApp' = tyApp
 
 instance (TyApp' r i, a ~ Type i) ⇒ TyApp' (a → r) i where

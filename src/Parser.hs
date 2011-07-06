@@ -140,14 +140,14 @@ parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
       sharpInfo *>
         many1 (identp
                <|> fmap Var <$> qlidnatp
-               <|> J [] . Var . Syntax.lid <$> (operator <|> semis))
+               <|> J [] . Var . Syntax.lid <$> (operator <|> qjoin))
 
 parseGetPrec :: String -> Maybe [String]
 parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
   where
     parser = finish $
       sharpPrec *>
-        many1 (operator <|> semis)
+        many1 (operator <|> qjoin)
 
 parseInteractive :: Id i => Int -> String -> Either ParseError [Decl i]
 parseInteractive line src = parse p "-" src where
@@ -293,13 +293,12 @@ lidp  = Syntax.lid <$> Lexer.lid
 lidnatp :: Id i => P (Lid i)
 lidnatp = Syntax.lid <$> (Lexer.lid <|> show <$> natural)
       <|> operatorp
-      <|> Syntax.lid <$> try (parens semis)
       <|> antiblep
   <?> "type name"
 
 -- Just operators
 operatorp :: Id i => P (Lid i)
-operatorp  = try (parens operator) >>! Syntax.lid
+operatorp  = try (parens (operator <|> semis)) >>! Syntax.lid
   <?> "operator name"
 
 -- Add a path before something
@@ -401,7 +400,7 @@ typepP p = "type" @@ case () of
                (typepP precStart)
     | p == precTySemi
           -> chainr1last next
-                         (tyAppN <$> semis)
+                         (tyAppN <$> (semis <|> qjoin))
                          (typepP precStart)
     | Just (Left _) <- fixities p
           -> chainl1last next
@@ -459,7 +458,8 @@ tyrowp1 = Syntax.tyRow <$> (Con <$> varinjp)
 
 tyrowp ∷ Id i ⇒ P (Type i)
 tyrowp = "row type" @@
-         tyrowp1
+         antiblep
+     <|> tyrowp1
      <|> Syntax.tyVar <$> tyvarp
      <|> Syntax.tyEnd <$  whiteSpace
 
@@ -468,7 +468,8 @@ recordp = Syntax.tyRecord <$$> braces $
   recrowp <|> Syntax.tyEnd <$ whiteSpace
 
 recrowp ∷ Id i ⇒ P (Type i)
-recrowp = Syntax.tyRow <$> (Var <$> lidp) <* colon
+recrowp = antiblep
+      <|> Syntax.tyRow <$> (Var <$> lidp) <* colon
                        <*> typepP precStart
                        <*> option Syntax.tyEnd (comma *> recrowp)
       <|> Syntax.tyVar <$> tyvarp
@@ -688,6 +689,7 @@ tyDecp = "type declaration" @@ addLoc $ choice
     TpApp (J [] name) ps -> return (name, ps)
     TpApp _ _            -> unexpected "qualified identifier"
     TpVar _ _            -> unexpected "type variable"
+    TpRow _ _            -> unexpected "row type"
     TpAnti _             -> unexpected "antiquote"
   --
   -- Look at the parameters and determine what kind of type declaration
@@ -750,14 +752,15 @@ typatpP p = "type pattern" @@ case () of
           -> chainr1last (typatpP (p + 1))
                          (tpBinOp . J [] . Syntax.lid <$> semis)
                          (typatpP precStart)
-    | Just (Left _) <- fixities p
-          -> chainl1last (typatpP (p + 1))
-                         (tpBinOp . J [] <$> oplevelp (Left p))
-                         (typatpP precStart)
-    | Just (Right _) <- fixities p
-          -> chainr1last (typatpP (p + 1))
-                         (tpBinOp . J [] <$> oplevelp (Right p))
-                         (typatpP precStart)
+    | Just e <- fixities p -> case e of
+        Left _ ->
+          chainl1last (typatpP (p + 1))
+                      (tpBinOp . J [] <$> oplevelp (Left p))
+                      (typatpP precStart)
+        Right _ ->
+          chainr1last (typatpP (p + 1))
+                      (tpBinOp . J [] <$> oplevelp (Right p))
+                      (typatpP precStart)
     | p == precApp -- this case ensures termination
           -> tparg >>= tpapp'
     | p <  precApp
@@ -768,9 +771,8 @@ typatpP p = "type pattern" @@ case () of
   tpBinOp ql tp1 tp2 = tpApp ql [tp1, tp2]
   --
   tparg :: Id i => P [TyPat i]
-  tparg  = choice
-           [ (:[]) <$> tpatom,
-             parens $ antiblep <|> commaSep1 (typatpP precStart) ]
+  tparg  = parens (antiblep <|> commaSep1 (typatpP precMin))
+       <|> (:[]) <$> tpatom
   --
   tpatom :: Id i => P (TyPat i)
   tpatom  = uncurry (flip tpVar) <$> paramVp
@@ -778,10 +780,14 @@ typatpP p = "type pattern" @@ case () of
         <|> antiblep
         <|> tpApp (qlid "U") [] <$ qualU
         <|> tpApp (qlid "A") [] <$ qualA
+        <|> uncurry (flip tpRow) <$ reserved "of" <*> paramVp
+        -- <|> tpvariant
+        -- <|> tprecord
+        <|> parens (typatpP precMin)
         <|> do
               ops <- many1 $ addLoc $
                 oplevelp (Right precBang) >>! tpApp . J []
-              arg <- tpatom <|> parens (typatpP precStart)
+              arg <- tpatom
               return (foldr (\op t -> op [t]) arg ops)
   tpapp' :: Id i => [TyPat i] -> P (TyPat i)
   tpapp' [t] = option t $ do
@@ -790,6 +796,9 @@ typatpP p = "type pattern" @@ case () of
   tpapp' ts  = do
     tc <- qlidnatp
     tpapp' [tpApp tc ts]
+  --
+  tpvariant = pzero
+  tprecord  = pzero
 
 -- | A let or let rec declaration
 letp :: Id i => P (Decl i)
@@ -843,7 +852,7 @@ absTyp  = addLoc $ antiblep <|> do
 
 -- A type declaration parameter, consisting of a variance and a tyvar
 paramVp :: Id i => P (Variance, TyVar i)
-paramVp = (,) <$> variancep <*> tyvarp
+paramVp = try $ (,) <$> variancep <*> tyvarp
 
 -- A variance mark
 variancep :: P Variance
@@ -869,7 +878,7 @@ qualsp    = option minBound $
 qExpp :: Id i => P (QExp i)
 qExpp  = "qualifier expression" @@ qexp where
   qexp  = addLoc $ chainl1 qatom join
-  join  = addLoc $ qeJoin <$ (void comma <|> qjoin)
+  join  = addLoc $ qeJoin <$ (void comma <|> qjoinArr)
   qatom = addLoc $
           qeLit Qu <$  qualU
       <|> qeLit Qa <$  qualA
@@ -1191,7 +1200,7 @@ pe   = makeQaD parseExpr
 px  :: String -> Patt Renamed
 px   = makeQaD parsePatt
 
-{-
+-- {-
 deriving instance Show (Expr' i)
 deriving instance Show (CaseAlt' i)
 deriving instance Show (Decl' i)
@@ -1207,7 +1216,7 @@ deriving instance Show (Type' i)
 deriving instance Show (QExp' i)
 deriving instance Show Lit
 instance Show a ⇒ Show (N i a) where showsPrec = showsPrec <$.> view
--}
+-- -}
 
 makeQaD :: P a -> String -> a
 makeQaD parser =

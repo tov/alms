@@ -6,12 +6,12 @@ module Lexer (
   isUpperIdentifier, lid, uid,
 
   -- * Operators
-  semis, bang, star, slash, plus,
+  semis, bang, star,
   sharpLoad, sharpInfo, sharpPrec,
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
-  qualU, qualA, qjoin,
+  qualU, qualA, qjoin, qjoinArr,
   opP,
   sigilU, sigilA,
   markCovariant, markContravariant, markInvariant, markOmnivariant,
@@ -55,7 +55,7 @@ tok = T.makeTokenParser T.LanguageDef {
                         "all", "ex", "mu", "μ", "of",
                         "type", "qualifier" ],
     T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
-                         "∀", "∃" ],
+                         "∀", "∃", "⋁", "\\/" ],
     T.caseSensitive = True
   }
   -- 'λ' is not an identifier character, so that we can use it as
@@ -243,17 +243,9 @@ mu               = reserved "mu" <|> reservedOp "μ"
 semis           :: T.TokenEnd st => CharParser st String
 semis            = lexeme (many1 (char ';'))
 
--- | @*@, which is reserved in types but not in expressions
+-- | @*@, which gets special treatment for unicode
 star            :: T.TokenEnd st => CharParser st String
 star             = symbol "*" <|> symbol "×"
-
--- | @/@, which is reserved in types but not in expressions
-slash           :: T.TokenEnd st => CharParser st String
-slash            = symbol "/"
-
--- | @+@, which is reserved in types but not in expressions
-plus            :: T.TokenEnd st => CharParser st String
-plus             = symbol "+"
 
 -- | Qualifier @U@ (not reserved)
 qualU    :: T.TokenEnd st => CharParser st ()
@@ -263,8 +255,12 @@ qualA    :: T.TokenEnd st => CharParser st ()
 qualA     = reserved "A"
 
 -- | Infix operator for qualifier disjunction
-qjoin           :: T.TokenEnd st => CharParser st ()
-qjoin            = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
+qjoin           :: T.TokenEnd st => CharParser st String
+qjoin            = "\\/" <$ (reservedOp "\\/" <|> reservedOp "⋁")
+
+-- | Infix operator for qualifier disjunction in type arrows
+qjoinArr        :: T.TokenEnd st => CharParser st ()
+qjoinArr         = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
 
 -- | Marker for unlimited type variables
 sigilU   :: T.TokenEnd st => CharParser st ()
@@ -281,10 +277,10 @@ markCovariant, markContravariant, markInvariant, markOmnivariant,
 markCovariant        = () <$ char '+'
 markContravariant    = () <$ char '-'
 markInvariant        = () <$ char '='
-markOmnivariant      = () <$ (symbol "*" <|> symbol "±")
-markQCovariant       = () <$ (symbol "⊕" <|> try (symbol "+@"))
-markQContravariant   = () <$ (symbol "⊖" <|> try (symbol "-@"))
-markQInvariant       = () <$ (symbol "⊙" <|> try (symbol "=@"))
+markOmnivariant      = () <$ (string "0" <|> string "±")
+markQCovariant       = () <$ (string "⊕" <|> try (string "+@"))
+markQContravariant   = () <$ (string "⊖" <|> try (string "-@"))
+markQInvariant       = () <$ (string "⊙" <|> try (string "=@"))
 
 -- | Is the string an uppercase identifier?  (Special case: @true@ and
 --   @false@ are consider uppercase.)

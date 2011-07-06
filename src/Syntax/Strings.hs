@@ -41,6 +41,9 @@ affine, unlimited,
   covariant, contravariant, invariant, omnivariant,
   qcovariant, qcontravariant, qinvariant ∷ String
 
+{-# INLINE ellipsis #-}
+ellipsis ∷ String
+
 #ifdef UNICODE
 digits = unicodeDigits
 tvNames         = [ 'a' .. 'z' ]
@@ -62,6 +65,7 @@ omnivariant     = "±"
 qcovariant      = "⊕"
 qcontravariant  = "⊖"
 qinvariant      = "⊙"
+ellipsis        = "…"
 #else
 digits = asciiDigits
 tvNames         = [ 'a' .. 'z' ]
@@ -79,10 +83,11 @@ unlimited       = "\'"
 covariant       = "+"
 contravariant   = "-"
 invariant       = "="
-omnivariant     = "*"
+omnivariant     = "0"
 qcovariant      = "+@"
 qcontravariant  = "-@"
 qinvariant      = "=@"
+ellipsis        = "..."
 #endif
 
 {-# INLINE unicodeDigits #-}

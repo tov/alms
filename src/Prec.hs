@@ -24,6 +24,8 @@ precOp ('-':'>':_)    = Right precArr
 precOp ('-':'o':_)    = Right precArr
 precOp "-[]>"         = Right precArr
 precOp (';':_)        = Right precTySemi
+precOp "⋁"            = Right precTySemi
+precOp "\\/"          = Right precTySemi
 precOp "!="           = Left precEq
 precOp (c:cs)
   | c `elem` "=<>|&$" = Left precEq
@@ -46,8 +48,8 @@ precMin, precStart, precMax, precCast,
   precCom, precDot, precExSemi, precTySemi, precEq, precCaret, precArr,
   precPlus, precStar, precAt, precApp, precBang :: Int
 precMin   = -1
-precCom   = -1 -- , '|' for types
-precStart =  0
+precCom   = -1 -- ,
+precStart =  0 -- includes "|" for row types
 precDot   =  1 -- in, else, of, .
 precExSemi=  1 -- ;  (expressions only)
 precCast  =  2 -- :>
@@ -56,7 +58,7 @@ precEq    =  5 -- != = < > | & $ as
 precCaret =  5 -- ^ (infixr)
 precPlus  =  6 -- - +
 precStar  =  7 -- % / *
-precTySemi=  8 -- ;  (types only)
+precTySemi=  8 -- ; "\\/" "⋁" (types only)
 precAt    =  9 -- @ ** (infixr)
 precApp   = 10 -- f x
 precBang  = 11 -- ! ~ ? (prefix)

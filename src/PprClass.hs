@@ -29,6 +29,7 @@ module PprClass (
 import Util.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
 import qualified Util.PrettyPrint as P
 
+import qualified Syntax.Strings as Strings
 import Syntax.Ident (QLid, Uid, Renamed)
 
 import System.IO (Handle, stdout, hPutChar, hPutStr)
@@ -149,7 +150,7 @@ descend :: Doc -> Doc
 descend doc = askD $ \e ->
   case pcDepth e of
     -1 -> doc
-    0  -> text "..."
+    0  -> text Strings.ellipsis
     k  -> localD e { pcDepth = k - 1 } doc
 
 -- | Set the precedence, but check or draw parentheses
