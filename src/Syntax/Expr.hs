@@ -18,7 +18,7 @@ module Syntax.Expr (
   -- subexpressions and perform the free variable analysis
   -- | variables
   exVar, exLit, exCon, exLet, exCase, exLetRec, exLetDecl,
-  exPair, exAbs, exApp, exInj, exCast, exAnti,
+  exPair, exAbs, exApp, exInj, exEmb, exCast, exAnti,
 
   caClause, caAnti,
   bnBind, bnAnti,
@@ -76,7 +76,9 @@ data Expr' i
   -- | application
   | ExApp (Expr i) (Expr i)
   -- | open variant construction
-  | ExInj Bool (Uid i) (Maybe (Expr i))
+  | ExInj (Uid i) (Maybe (Expr i))
+  -- | open variant embedding
+  | ExEmb (Uid i) (Expr i)
   -- | dynamic promotion (True) or static type ascription (False)
   | ExCast (Expr i) (Type i) Bool
   -- | antiquotes
@@ -87,7 +89,6 @@ data Expr' i
 data Binding' i
   = BnBind {
       bnvar  :: Lid i,
-      bntype :: Maybe (Type i),
       bnexpr :: Expr i
     }
   | BnAnti Anti
@@ -175,10 +176,15 @@ newExpr e0 = flip N e0 $ case e0 of
       efv_  = fv e1 |*| fv e2,
       eloc_ = getLoc (e1, e2)
     }
-  ExInj _ _ me2 ->
+  ExInj _ me2 ->
     newNote {
       efv_  = fv me2,
       eloc_ = getLoc me2
+    }
+  ExEmb _ e2 ->
+    newNote {
+      efv_  = fv e2,
+      eloc_ = getLoc e2
     }
   ExCast e1 t2 _ ->
     newNote {
@@ -192,10 +198,10 @@ newExpr e0 = flip N e0 $ case e0 of
 
 newBinding :: Id i => Binding' i -> Binding i
 newBinding b0 = flip N b0 $ case b0 of
-  BnBind x t e ->
+  BnBind x e ->
     newNote {
       efv_  = fv e |-| J [] x,
-      eloc_ = getLoc (t, e)
+      eloc_ = getLoc e
     }
   BnAnti a ->
     newNote {
@@ -304,7 +310,8 @@ syntacticValue e = case view e of
   ExPair e1 e2   → syntacticValue e1 && syntacticValue e2
   ExAbs _ _      → True
   ExApp _ _      → False
-  ExInj _ _ me   → maybe True syntacticValue me
+  ExInj _ me     → maybe True syntacticValue me
+  ExEmb _ e1     → syntacticValue e1
   ExCast e1 _ b  → syntacticValue e1 && not b
   ExAnti a       → antierror "syntacticValue" a
 
@@ -324,7 +331,8 @@ isAnnotated e = case view e of
   ExPair _ _     → False
   ExAbs _ _      → False
   ExApp _ _      → False
-  ExInj _ _ _    → False
+  ExInj _ _      → False
+  ExEmb _ _      → False
   ExCast _ _ _   → True
   ExAnti a       → antierror "syntacticValue" a
 

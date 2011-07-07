@@ -4,6 +4,7 @@ module Lexer (
   T.TokenEnd(..),
   -- * Identifier tokens
   isUpperIdentifier, lid, uid,
+  llabel, ulabel,
 
   -- * Operators
   semis, bang, star,
@@ -11,7 +12,7 @@ module Lexer (
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
-  qualU, qualA, qjoin, qjoinArr,
+  qualU, qualA, qjoin, qjoinArr, ellipsis,
   opP,
   sigilU, sigilA,
   markCovariant, markContravariant, markInvariant, markOmnivariant,
@@ -55,7 +56,7 @@ tok = T.makeTokenParser T.LanguageDef {
                         "all", "ex", "mu", "μ", "of",
                         "type", "qualifier" ],
     T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
-                         "∀", "∃", "⋁", "\\/" ],
+                         "∀", "∃", "⋁", "\\/", "...", "…" ],
     T.caseSensitive = True
   }
   -- 'λ' is not an identifier character, so that we can use it as
@@ -262,6 +263,10 @@ qjoin            = "\\/" <$ (reservedOp "\\/" <|> reservedOp "⋁")
 qjoinArr        :: T.TokenEnd st => CharParser st ()
 qjoinArr         = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
 
+-- | Postfix ellipsis type operator
+ellipsis        :: T.TokenEnd st => CharParser st ()
+ellipsis         = () <$ (reservedOp "..." <|> reservedOp "…")
+
 -- | Marker for unlimited type variables
 sigilU   :: T.TokenEnd st => CharParser st ()
 sigilU    = () <$ char '\''
@@ -306,6 +311,22 @@ uid              = try $ do
   if isUpperIdentifier s
     then return s
     else pzero <?> "uppercase identifier"
+
+-- | Lex a variant label
+llabel     :: T.TokenEnd st => CharParser st String
+llabel           = try $ do
+  c:s <- identifier
+  if isLower c
+    then return (toUpper c : s)
+    else pzero <?> "record field label"
+
+-- | Lex a record label
+ulabel     :: T.TokenEnd st => CharParser st String
+ulabel           = try $ do
+  s@(c:_) <- identifier
+  if isUpper c
+    then return s
+    else pzero <?> "variant constructor label"
 
 -- | Accept an operator having the specified precedence
 opP :: T.TokenEnd st => Prec -> CharParser st String

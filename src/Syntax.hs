@@ -96,7 +96,7 @@ unfoldTyMu = unscanr each where
   each _                = Nothing
 
 -- | Get the list of labels and types in a row type
-unfoldTyRow :: Type i -> ([(BIdent i, Type i)], Type i)
+unfoldTyRow :: Type i -> ([(Uid i, Type i)], Type i)
 unfoldTyRow = unscanr each where
   each (N _ (TyRow i t1 t2)) = Just ((i, t1), t2)
   each _                     = Nothing

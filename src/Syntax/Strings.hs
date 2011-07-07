@@ -13,6 +13,11 @@ digits ∷ [Char]
 -- | Names to give to type variables
 tvNames ∷ [Char]
 
+{-# INLINE fun #-}
+{-# INLINE arrow #-}
+-- | Term keywords
+fun, arrow ∷ String
+
 {-# INLINE all #-}
 {-# INLINE ex #-}
 {-# INLINE mu #-}
@@ -65,7 +70,9 @@ omnivariant     = "±"
 qcovariant      = "⊕"
 qcontravariant  = "⊖"
 qinvariant      = "⊙"
-ellipsis        = "…"
+ellipsis        = "..."
+fun             = "λ"
+arrow           = "→"
 #else
 digits = asciiDigits
 tvNames         = [ 'a' .. 'z' ]
@@ -88,6 +95,8 @@ qcovariant      = "+@"
 qcontravariant  = "-@"
 qinvariant      = "=@"
 ellipsis        = "..."
+fun             = "fun"
+arrow           = "->"
 #endif
 
 {-# INLINE unicodeDigits #-}

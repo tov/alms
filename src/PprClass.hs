@@ -7,9 +7,9 @@ module PprClass (
   -- * Pretty-printing class
   Ppr(..), IsInfix(..), ListStyle(..),
   -- ** Helpers
-  ppr0, ppr1, pprDepth,
+  ppr0, ppr1, pprPrec1, pprDepth,
   -- ** Context operations
-  prec, mapPrec, prec1, descend, atPrec, atDepth,
+  prec, prec0, mapPrec, prec1, descend, atPrec, atDepth,
   askPrec, askDepth,
   trimList, trimCat,
   -- *** For type name shortening
@@ -125,6 +125,10 @@ ppr0       = atPrec 0 . ppr
 ppr1      :: Ppr p => p -> Doc
 ppr1       = prec1 . ppr
 
+-- | Print at one more than the given level.
+pprPrec1  :: Ppr p => Int -> p -> Doc
+pprPrec1   = pprPrec . succ
+
 -- | Print to the given depth.
 pprDepth  :: Ppr p => Int -> p -> Doc
 pprDepth d = atDepth d . ppr
@@ -134,7 +138,16 @@ pprDepth d = atDepth d . ppr
 prec :: Int -> Doc -> Doc
 prec p doc = asksD pcPrec $ \p' ->
   if p' > p
-    then descend $ parens (atPrec (min p 0) doc)
+    then descend $ parens (atPrec p doc)
+    else atPrec p doc
+
+-- | Enter the given precedence level, drawing parentheses if necessary,
+--   and count it as a descent in depth as well. If we enter
+--   parentheses, reset the precedence to 0 at most.
+prec0 :: Int -> Doc -> Doc
+prec0 p doc = asksD pcPrec $ \p' ->
+  if p' > p
+    then descend $ parens (atPrec (p `min` 0) doc)
     else atPrec p doc
 
 -- | Adjust the precedence with the given function.

@@ -22,6 +22,7 @@ module Syntax.Ident (
   TyVar(..), tvUn, tvAf,
   tvalphabet, freshName, freshNames,
   isOperator, lid, uid, qlid, quid,
+  uidToLid, lidToUid,
   -- * Free and defined vars
   Occurrence, occToQLit,
   FvMap, Fv(..), Dv(..), ADDITIVE(..),
@@ -37,7 +38,7 @@ import Syntax.Kind (QLit(..))
 import qualified Syntax.Strings as Strings
 
 import Prelude ()
-import Data.Char (isAlpha, isDigit)
+import Data.Char (isAlpha, isDigit, toUpper, toLower)
 import Data.Generics (Typeable(..), Data(..), everywhere, mkT)
 import qualified Data.List as List
 import qualified Data.Map as M
@@ -155,6 +156,14 @@ lid = Lid trivialId
 
 uid :: Id i => String -> Uid i
 uid = Uid trivialId
+
+uidToLid :: Uid i -> Lid i
+uidToLid (Uid ix s)  = Lid ix (mapHead toLower s)
+uidToLid (UidAnti a) = antierror "uidToLid" a
+
+lidToUid :: Lid i -> Uid i
+lidToUid (Lid ix s)  = Uid ix (mapHead toUpper s)
+lidToUid (LidAnti a) = antierror "lidToUid" a
 
 tvUn, tvAf :: Id i => String -> TyVar i
 tvUn s = TV (lid s) Qu

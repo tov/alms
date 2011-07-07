@@ -21,7 +21,9 @@ module Syntax.Type (
   TyAppN(..),
 
   -- * Built-in types
-  tyUnit, tyEnd, tyVariant, tyRecord, tyTuple, tyUn, tyAf,
+  tyUnit, tyEnd, tyVariant, tyRecord, tyDots, tyTuple, tyUn, tyAf,
+  -- ** Type construtor names
+  tnUnit, tnEnd, tnVariant, tnRecord, tnDots, tnTuple, tnUn, tnAf,
   -- ** Convenience constructors
   tyArr, tyLol,
   tyAll, tyEx,
@@ -57,7 +59,7 @@ data Type' i
   | TyFun  (Maybe (QExp i)) (Type i) (Type i)
   | TyQu   Quant (TyVar i) (Type i)
   | TyMu   (TyVar i) (Type i)
-  | TyRow  (BIdent i) (Type i) (Type i)
+  | TyRow  (Uid i) (Type i) (Type i)
   | TyAnti Anti
   deriving (Typeable, Data)
 
@@ -81,6 +83,14 @@ tyAll, tyEx :: TyVar i -> Type i -> Type i
 tyAll = tyQu Forall
 tyEx  = tyQu Exists
 
+tyArr         :: Type i -> Type i -> Type i
+tyArr          = tyFun Nothing
+
+tyLol         :: Type i -> Type i -> Type i
+tyLol          = tyFun (Just maxBound)
+
+infixr 8 `tyArr`, `tyLol`
+
 instance Show Quant where
   show Forall        = Strings.all
   show Exists        = Strings.ex
@@ -90,7 +100,21 @@ instance Show Quant where
 --- Built-in types
 ---
 
+-- | Names of built-in types
+tnUnit, tnEnd, tnRecord, tnDots, tnTuple, tnUn, tnAf :: String
+
+tnUnit         = "unit"
+tnEnd          = "INTERNALS.Row.end"
+tnVariant      = "INTERNALS.Row.variant"
+tnRecord       = "INTERNALS.Row.record"
+tnDots         = "INTERNALS.Row.dots"
+tnTuple        = "*"
+tnUn           = "U"
+tnAf           = "A"
+
 --- Convenience constructors
+
+-- Types
 
 -- | Class defining variadic function 'tyAppN' for constructing
 --   type constructor applications.
@@ -117,33 +141,28 @@ instance (TyApp' r i, a ~ Type i) ⇒ TyApp' (a → r) i where
   tyApp' ql ts t = tyApp' ql (ts++[t])
 
 tyUnit        :: Id i => Type i
-tyUnit         = tyAppN "unit"
+tyUnit         = tyAppN tnUnit
 
 tyEnd         :: Id i => Type i
-tyEnd          = tyAppN "INTERNALS.Row.end"
+tyEnd          = tyAppN tnEnd
 
 tyVariant     :: Id i => Type i -> Type i
-tyVariant      = tyAppN "INTERNALS.Row.variant"
+tyVariant      = tyAppN tnVariant
 
 tyRecord      :: Id i => Type i -> Type i
-tyRecord       = tyAppN "INTERNALS.Row.record"
+tyRecord       = tyAppN tnRecord
+
+tyDots        :: Id i => Type i -> Type i
+tyDots         = tyAppN tnDots
 
 tyTuple       :: Id i => Type i -> Type i -> Type i
-tyTuple        = tyAppN "*"
+tyTuple        = tyAppN tnTuple
 
 tyUn          :: Id i => Type i
-tyUn           = tyAppN "U"
+tyUn           = tyAppN tnUn
 
 tyAf          :: Id i => Type i
-tyAf           = tyAppN "A"
-
-tyArr         :: Type i -> Type i -> Type i
-tyArr          = tyFun Nothing
-
-tyLol         :: Type i -> Type i -> Type i
-tyLol          = tyFun (Just maxBound)
-
-infixr 8 `tyArr`, `tyLol`
+tyAf           = tyAppN tnAf
 
 ---
 --- Type annotations

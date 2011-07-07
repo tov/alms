@@ -26,7 +26,7 @@ import qualified Syntax.Patt
 import Data.Loc
 
 import Prelude ()
-import Data.List (intersperse, sortBy)
+import Data.List (sortBy)
 
 instance IsInfix (Type i) where
   isInfix [ty| ($_, $_) $lid:n |] = isOperator n
@@ -78,18 +78,19 @@ pprInfix inspect x0
     _     -> space <> text s <> space
 
 instance Ppr (Type i) where
-  -- pprPrec p (TyFun q t1 t2)
   ppr [ty| $t1 -> $t2 |]
             = prec precArr $
               sep [ ppr1 t1, text Strings.uArrow <+> pprRight t2 ]
   ppr [ty| $t1 -[$q]> $t2 |]
             = prec precArr $
               sep [ ppr1 t1,
-                    text "-" <> ppr0 q <> text ">" <+> pprRight t2 ]
+                    text Strings.arrowPre <> ppr0 q <>
+                    text Strings.arrowPost <+> pprRight t2 ]
   ppr [ty| [ $t ] |]
                     = atPrec precStart $
                         pprVariantRow (lbrack <+>) t (<+> rbrack)
   ppr [ty| { $t } |] = pprRecordType t
+  ppr [ty| $t ... |] = prec precApp $ sep [ ppr t, text Strings.ellipsis ]
   ppr t@[ty| ($list:ts) $qlid:n |]
     | Just doc <- pprInfix unfoldType t
                     = doc
@@ -151,7 +152,8 @@ pprRecordType t = case items' ++ end' of
          mapInit (<> comma) $
            docs
   where
-    (items, end) = unfoldTyRow t
+    (uitems, end) = unfoldTyRow t
+    items         = first uidToLid <$> uitems
     items' = [ ppr ni <> colon <+> ppr1 ti
              | (ni, ti) ← sortBy (compare`on`show.fst) items ]
     end'   = case end of
@@ -164,6 +166,9 @@ instance Ppr (TyPat i) where
     _ | Just doc <- pprInfix unfoldTyPat tp0
                        -> doc
     N _ (TpVar tv var) -> pprParamV var tv
+    N _ (TpRow tv var) -> pprParamV var tv <+> text Strings.ellipsis
+    [tpQ| [ $tp ] |]   -> lbrack <+> ppr0 tp <+> rbrack
+    [tpQ| { $tp } |]   -> lbrace <+> ppr0 tp <+> rbrace
     [tpQ| $qlid:ql |]  -> ppr ql
     [tpQ| ($list:tps) $qlid:ql |]
                        -> prec precApp $ sep [ppr tps, ppr ql]
@@ -180,7 +185,6 @@ instance Ppr (QExp i) where
   ppr [qeQ| $qe1, $qe2 |] = ppr qe1 <> comma <> ppr qe2
   ppr [qeQ| $anti:a |]    = ppr a
 
-{-
 instance Ppr (Prog i) where
   ppr [prQ| $list:ms |]       = vcat (map ppr0 ms)
   ppr [prQ| $expr:e |]        = ppr e
@@ -188,13 +192,13 @@ instance Ppr (Prog i) where
                                  (text "in" >+> ppr e)
 
 instance Ppr (Decl i) where
-  ppr [dc| let $x = $e |] = sep
-    [ text "let" <+> ppr x,
-      nest 2 $ equals <+> ppr e ]
-  ppr [dc| let $x : $t = $e |] = sep
-    [ text "let" <+> ppr x,
-      nest 2 $ colon <+> ppr t,
-      nest 4 $ equals <+> ppr e ]
+  ppr [dc| let $lid:x = $e |] =
+    prec precDot $
+      pprLet (text "let" <+> ppr x) e False
+  ppr [dc| let $x = $e |] =
+    prec precDot $
+      text "let" <+> ppr x <+> equals
+        >+> ppr e
   ppr [dc| type $list:tds |] = pprTyDecs tds
   ppr [dc| abstype $list:ats0 with $list:ds end |] =
     case ats0 of
@@ -271,13 +275,11 @@ pprProto n ps = ppr (tpApp (J [] n) ps)
 
 pprProtoV :: Lid i -> [Variance] -> [TyVar i] -> Doc
 pprProtoV n vs tvs = pprProto n (zipWith tpVar tvs vs)
--}
 
 pprParamV :: Variance -> TyVar i -> Doc
 pprParamV Invariant tv = ppr tv
 pprParamV v         tv = ppr v <> ppr tv
 
-{-
 pprQuals :: QExp i -> Doc
 pprQuals [qeQ| U |] = mempty
 pprQuals qs          = text ":" <+> pprPrec precApp qs
@@ -348,21 +350,32 @@ instance Ppr (SigItem i) where
 instance Ppr (Expr i) where
   ppr e0 = case e0 of
     _ | Just doc <- pprInfix unfoldExpr e0
-                     -> doc
-    [ex| $id:x |]   -> ppr x
-    [ex| $lit:lt |] -> ppr lt
+                       -> doc
+    [ex| $qlid:x |]    -> ppr x
+    [ex| $lit:lt |]    -> ppr lt
+    [ex| $quid:x |]    -> ppr x
+    [ex| $quid:x $e |] -> prec precApp (sep [ ppr x, ppr1 e ])
+    [ex| `$uid:x |]    -> char '`' <> ppr x
+    [ex| `$uid:x $e |] -> prec precApp (sep [ char '`' <> ppr x, ppr1 e ])
+    [ex| #$uid:x $e |] -> prec precApp (sep [ char '#' <> ppr x, ppr1 e ])
     [ex| if $ec then $et else $ef |] ->
       prec precDot $
         sep [ text "if" <+> ppr ec,
               nest 2 $ text "then" <+> ppr0 et,
               nest 2 $ text "else" <+> ppr ef ]
     [ex| $_; $_ |] ->
-      prec precDot $
+      prec precExSemi $
         sep (unfold e0)
       where unfold [ex| $e1; $e2 |] = ppr1 e1 <> semi : unfold e2
             unfold e                 = [ ppr0 e ]
+    [ex| let $lid:x = $e1 in $e2 |] ->
+      prec precDot $
+        hangLet (pprLet (text "let" <+> ppr x) e1 True) e2
     [ex| let $x = $e1 in $e2 |] ->
-      pprLet (ppr x) e1 e2
+      prec precDot $
+        hangLet (text "let" <+> ppr x <+> equals
+                  >+> ppr e1 <+> text "in")
+                e2
     [ex| match $e1 with $list:clauses |] ->
       prec precDot $
         vcat (sep [ text "match",
@@ -370,7 +383,7 @@ instance Ppr (Expr i) where
                     text "with" ] : map alt clauses)
       where
         alt (N _ (CaClause xi ei)) =
-          hang (char '|' <+> ppr xi <+> text "->")
+          hang (char '|' <+> ppr xi <+> text Strings.arrow)
                 4
                 (ppr ei)
         alt (N _ (CaAnti a))      = char '|' <+> ppr a
@@ -378,39 +391,30 @@ instance Ppr (Expr i) where
       prec precDot $
         text "let" <+>
         vcat (zipWith each ("rec" : repeat "and") bs) $$
-        text "in" <+> ppr e2
+        nest 1 (text "in" <+> ppr e2)
           where
-            each kw (N _ (BnBind x t e)) =
-              -- This could be better by pulling some args out.
-              hang (hang (text kw <+> ppr x)
-                         6
-                         (colon <+> ppr t <+> equals))
-                   2
-                   (ppr e)
-            each kw (N _ (BnAnti a)) = text kw <+> ppr a
+            each kw (N _ (BnBind x e)) = pprLet (text kw <+> ppr x) e True
+            each kw (N _ (BnAnti a))   = text kw <+> ppr a
     [ex| let $decl:d in $e2 |] ->
       prec precDot $
-        text "let" <+> ppr0 d $$
-        (text "in" >+> ppr e2)
+        hangLet
+          (text "let" <+> ppr0 d <+> text "in")
+          e2
     [ex| ($e1, $e2) |] ->
       prec precCom $
         sep [ ppr e1 <> comma, ppr1 e2 ]
-    [ex| fun $_ : $_ -> $_ |] -> pprAbs e0
+    [ex| λ $_ → $_ |]  ->
+      prec precDot $
+        hang
+          (text Strings.fun <+>
+           fsep (pprPrec precApp <$> args) <+>
+           text Strings.arrow)
+          2
+          (ppr body)
+        where (args, body) = unfoldExAbs e0
     [ex| $e1 $e2 |]
           -> prec precApp $
                sep [ ppr e1, ppr1 e2 ]
-    [ex| fun '$_ -> $_ |] -> pprAbs e0
-    [ex| $_ [$_] |] ->
-      prec precTApp $
-        cat [ ppr op,
-              brackets . fsep . punctuate comma $
-                map (pprPrec precCom) args ]
-      where 
-        (args, op) = unfoldExTApp e0
-    [ex| Pack[$opt:t1]($t2, $e) |] ->
-      prec precApp $
-        text "Pack" <> maybe mempty (brackets . ppr0) t1 <+>
-        prec precCom (sep [ ppr1 t2 <> comma, ppr e ])
     [ex| ( $e : $t1 :> $t2 ) |] ->
       prec precCast $
         atPrec (precCast + 2) $
@@ -433,47 +437,34 @@ instance Ppr (Expr i) where
     unfoldExpr [ex| $name:x $e1 |]       = Just (e1, x, Nothing)
     unfoldExpr _                          = Nothing
 
-pprLet :: Doc -> Expr i -> Expr i -> Doc
-pprLet pat e1 e2 = prec precDot $
-  hang (text "let" <+> pat <+> pprArgList args <+> equals
-          >+> ppr body <+> text "in")
-       (if isLet (view e2)
-          then 0
-          else 2)
-       (ppr e2)
+-- | Print a let expression, indenting the body only if the body is
+--   not another let expression.
+hangLet ∷ Doc → Expr i → Doc
+hangLet doc e2 = hang doc (if (isLet e2) then 0 else 2) (ppr e2)
   where
-    (args, body) = unfoldExAbs e1
-    isLet (ExCase _ [_]) = True
-    isLet _              = False
+  isLet [ex| $_; $_ |]                = False
+  isLet [ex| let $_ = $_ in $_ |]     = True
+  isLet [ex| let rec $list:_ in $_ |] = True
+  isLet _                             = False
 
-pprAbs :: Expr i -> Doc
-pprAbs e = prec precDot $
-    text "fun" <+> argsDoc <+> text "->"
-      >+> ppr body
-  where (args, body)   = unfoldExAbs e
-        argsDoc = case args of
-          [Left ([pa| _ |], [ty|@! unit |])]
-                        -> parens mempty
-          [Left (x, t)] -> ppr x <+> colon <+> pprPrec (precArr + 1) t
-          _             -> pprArgList args
+-- | Print the binding and rhs of a let
+pprLet :: Doc -> Expr i -> Bool -> Doc
+pprLet doc e1 withIn =
+  doc <+>
+  nest 2 (fsep (pprPrec precApp <$> args)) <+>
+  maybe mempty (nest 2 . (colon <+>) . ppr0) mannot <+> equals
+    >+> ppr rhs <+> if withIn then text "in" else mempty
+  where
+    (args, rhs, mannot) = resugarLet e1
 
-pprArgList :: [Either (Patt i, Type i) (TyVar i)] -> Doc
-pprArgList = fsep . map eachArg . combine where
-  eachArg (Left ([pa| _ |], [ty|@! unit |]))
-                          = parens mempty
-  eachArg (Left (x, t))   = parens $
-                              ppr0 x
-                                >+> colon <+> ppr0 t
-  eachArg (Right tvs)     = brackets .
-                              sep .
-                                punctuate comma $
-                                  map ppr tvs
-  --
-  combine :: [Either a b] -> [Either a [b]]
-  combine  = foldr each [] where
-    each (Right b) (Right bs : es) = Right (b : bs) : es
-    each (Right b) es              = Right [b] : es
-    each (Left a)  es              = Left a : es
+-- | Given the rhs of a let expression, pull out the arguments and
+--   any result-type annotation.
+resugarLet ∷ Expr i → ([Patt i], Expr i, Maybe (Type i))
+resugarLet e =
+  let (args, rhs0)  = unfoldExAbs e
+   in case rhs0 of
+        [ex| $e' : $t |] → (args, e', Just t)
+        _                → (args, rhs0, Nothing)
 
 instance Ppr (Patt i) where
   ppr [pa| _ |]             = text "_"
@@ -486,11 +477,20 @@ instance Ppr (Patt i) where
   ppr [pa| $lit:lt |]       = ppr lt
   ppr [pa| $x as $lid:l |]  = prec precDot $
                                  ppr1 x <+> text "as" <+> ppr l
-    where pair = [ ppr1 tv <> comma, ppr x ]
+  ppr [pa| `$uid:u |]       = char '`' <> ppr u
+  ppr [pa| `$uid:u $x |]    = prec precApp $
+                                char '`' <> ppr u <+> ppr1 x
+  ppr [pa| ! $x |]          = prec precBang $
+                                char '!' <> ppr1 x
+  ppr [pa| $x : $t |]       = prec precCast $
+                                hang (ppr x)
+                                     2
+                                     (colon <+> ppr0 t)
   ppr [pa| $anti:a |]       = ppr a
 
 instance Ppr Lit where
   ppr (LtInt i)   = integer i
+  ppr (LtChar c)  = text (show c)
   ppr (LtFloat f) = double f
   ppr (LtStr s)   = text (show s)
   ppr (LtAnti a)  = ppr a
@@ -516,16 +516,13 @@ unfoldPTAH (PTAHBranch (J [] l) [a])
   = Just (PTAHLeaf a, unLid l, Nothing)
 unfoldPTAH _
   = Nothing
--}
 
 pprTyApp :: Ppr a => QLid i -> [a] -> Doc
-pprTyApp ql ts = undefined {- XXX
+pprTyApp ql ts
   | Just doc <- pprInfix unfoldPTAH (PTAHBranch ql ts)
                = doc
 pprTyApp ql [] = ppr ql
 pprTyApp ql ts = prec precApp $ sep [ ppr ts, ppr ql ]
--}
-{-
 
 --
 -- Instances
@@ -537,13 +534,10 @@ instance Show (TyDec i)  where showsPrec = showFromPpr
 instance Show (Expr i)   where showsPrec = showFromPpr
 instance Show (Patt i)   where showsPrec = showFromPpr
 instance Show Lit        where showsPrec = showFromPpr
--}
 instance Show (Type i)   where showsPrec = showFromPpr
 instance Show (TyPat i)  where showsPrec = showFromPpr
 instance Show (QExp i)   where showsPrec = showFromPpr
-{-
 instance Show (SigItem i)where showsPrec = showFromPpr
--}
 
 instance Ppr Loc       where pprPrec = pprFromShow
 instance Ppr QLit      where pprPrec = pprFromShow

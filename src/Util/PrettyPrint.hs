@@ -78,6 +78,9 @@ liftDList f ds = Doc (\e -> f [ d e | Doc d <- ds ])
 (<+>)  = liftD2 (P.<+>)
 (<>)   = liftD2 (P.<>)
 
+infixl 5 $$, $+$
+infixl 6 <+>, <>
+
 braces, brackets, doubleQuotes, parens, quotes :: Doc e -> Doc e
 braces       = liftD P.braces
 brackets     = liftD P.brackets
