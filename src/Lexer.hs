@@ -29,7 +29,7 @@ module Lexer (
 import Prec
 import Util
 import Util.Parsec
-import qualified Token as T
+import qualified Util.Token as T
 
 import Prelude ()
 import Data.Char

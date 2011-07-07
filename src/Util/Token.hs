@@ -23,7 +23,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Token
+module Util.Token
                   ( TokenEnd (..)
                   , LanguageDef (..)
                   , TokenParser (..)
