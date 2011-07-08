@@ -58,7 +58,6 @@ qExpAntis
   = "qexp"   =:! Nothing
   & "qlit"   =:< 'QeLit
   & "qvar"   =:< 'QeVar
-  & "qjoin"  =:< 'QeJoin
   & "anti"   =:< 'QeAnti
 tyVarAntis
   = "tyvar"  =:! Nothing

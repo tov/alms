@@ -13,8 +13,6 @@
 module Syntax.Type (
   -- * Types
   Quant(..), Type'(..), Type, TyPat'(..), TyPat,
-  -- ** Type annotations
-  Annot,
   -- ** Constructors
   tyApp, tyVar, tyFun, tyQu, tyMu, tyRow, tyAnti,
   tpVar, tpApp, tpRow, tpAnti,
@@ -163,38 +161,6 @@ tyUn           = tyAppN tnUn
 
 tyAf          :: Id i => Type i
 tyAf           = tyAppN tnAf
-
----
---- Type annotations
----
-
--- | A type annotation is merely a syntactic type
-type Annot i = Type i
-
-instance Id i ⇒ AnnotTV (QExp' i) i where
-  annotTVsWith f qe0 = case qe0 of
-    QeLit _        → mempty
-    QeVar tv       → M.singleton tv mempty
-    QeJoin qe1 qe2 → annotTVsWith f (qe1, qe2)
-    QeAnti _       → mempty
-
-instance Id i ⇒ AnnotTV (Type' i) i where
-  annotTVsWith f t0 = case t0 of
-    TyApp ql ts    →
-      mconcat
-        [ f ql ix <$> annotTVsWith f t
-        | t  ← ts
-        | ix ← [ 1 .. ] ]
-    TyVar tv       → M.singleton tv mempty
-    TyFun qe t1 t2 →
-      let t1m = f (qlid "->") 1 <$> annotTVsWith f t1
-          qem = f (qlid "->") 2 <$> annotTVsWith f qe
-          t2m = f (qlid "->") 3 <$> annotTVsWith f t2
-       in t1m `mappend` qem `mappend` t2m
-    TyQu _ tv t    → M.delete tv (annotTVsWith f t)
-    TyMu tv t      → M.delete tv (annotTVsWith f t)
-    TyRow _ t1 t2  → annotTVsWith f (t1, t2)
-    TyAnti _       → mempty
 
 ---
 --- Debugging

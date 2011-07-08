@@ -11,7 +11,7 @@ module Syntax.Kind (
   -- ** Qualifier expressions
   QExp, QExp'(..), qeLit, qeVar, qeAnti, qeJoin,
   -- ** Qualifier operations
-  (\-\), elimQLit,
+  (\-\), elimQLit, qLitSigil,
   -- ** Variance operations
   isQVariance,
 
@@ -251,6 +251,10 @@ _  \-\ _  = Qu
 elimQLit ∷ a → a → QLit → a
 elimQLit u _ Qu = u
 elimQLit _ a Qa = a
+
+qLitSigil ∷ QLit → String
+qLitSigil Qu = Strings.unlimited
+qLitSigil Qa = Strings.affine
 
 --
 -- Variances

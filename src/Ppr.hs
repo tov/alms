@@ -380,21 +380,12 @@ instance Ppr (Expr i) where
       prec precDot $
         vcat (sep [ text "match",
                     nest 2 $ ppr0 e1,
-                    text "with" ] : map alt clauses)
-      where
-        alt (N _ (CaClause xi ei)) =
-          hang (char '|' <+> ppr xi <+> text Strings.arrow)
-                4
-                (ppr ei)
-        alt (N _ (CaAnti a))      = char '|' <+> ppr a
+                    text "with" ] : map ppr clauses)
     [ex| let rec $list:bs in $e2 |] ->
       prec precDot $
         text "let" <+>
-        vcat (zipWith each ("rec" : repeat "and") bs) $$
+        vcat (zipWith pprBinding ("rec" : repeat "and") bs) $$
         nest 1 (text "in" <+> ppr e2)
-          where
-            each kw (N _ (BnBind x e)) = pprLet (text kw <+> ppr x) e True
-            each kw (N _ (BnAnti a))   = text kw <+> ppr a
     [ex| let $decl:d in $e2 |] ->
       prec precDot $
         hangLet
@@ -407,7 +398,7 @@ instance Ppr (Expr i) where
       prec precDot $
         hang
           (text Strings.fun <+>
-           fsep (pprPrec precApp <$> args) <+>
+           fsep (pprPrec1 precApp <$> args) <+>
            text Strings.arrow)
           2
           (ppr body)
@@ -437,6 +428,17 @@ instance Ppr (Expr i) where
     unfoldExpr [ex| $name:x $e1 |]       = Just (e1, x, Nothing)
     unfoldExpr _                          = Nothing
 
+pprBinding :: String -> Binding i -> Doc
+pprBinding kw [bnQ| $lid:x = $e |] = pprLet (text kw <+> ppr x) e True
+pprBinding kw [bnQ| $antiB:a |]    = text kw <+> ppr a
+
+instance Ppr (CaseAlt i) where
+  ppr [caQ| $xi -> $ei |] =
+    hang (char '|' <+> ppr xi <+> text Strings.arrow)
+         4
+         (ppr ei)
+  ppr [caQ| $antiC:a |]   = char '|' <+> ppr a
+
 -- | Print a let expression, indenting the body only if the body is
 --   not another let expression.
 hangLet ∷ Doc → Expr i → Doc
@@ -451,7 +453,7 @@ hangLet doc e2 = hang doc (if (isLet e2) then 0 else 2) (ppr e2)
 pprLet :: Doc -> Expr i -> Bool -> Doc
 pprLet doc e1 withIn =
   doc <+>
-  nest 2 (fsep (pprPrec precApp <$> args)) <+>
+  nest 2 (fsep (pprPrec1 precApp <$> args)) <+>
   maybe mempty (nest 2 . (colon <+>) . ppr0) mannot <+> equals
     >+> ppr rhs <+> if withIn then text "in" else mempty
   where

@@ -114,18 +114,5 @@ newPatt p0 = flip N p0 $ case p0 of
 instance Id i => Dv (N (PattNote i) a) i where
   dv = pdv_ . noteOf
 
-instance Id i => AnnotTV (Patt' i) i where
-  annotTVsWith f x0 = case x0 of
-    PaWild           → mempty
-    PaVar _          → mempty
-    PaCon _ mx       → annotTVsWith f mx
-    PaPair x y       → annotTVsWith f (x, y)
-    PaLit _          → mempty
-    PaAs x _         → annotTVsWith f x
-    PaInj _ my       → annotTVsWith f my
-    PaAnn x t        → annotTVsWith f (x, t)
-    PaBang x         → annotTVsWith f x
-    PaAnti _         → mempty
-
 deriveNotable 'newPatt (''Id, [0]) ''Patt
 

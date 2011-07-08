@@ -66,12 +66,15 @@ parse   :: P a -> SourceName -> String -> Either ParseError a
 parse p  = runParser p state0
 
 -- | Run a parser on the given string in quasiquote mode
-parseQuasi :: String -> (Maybe Char -> Maybe TH.Name -> P a) -> TH.Q a
+parseQuasi :: String ->
+              (String -> String -> Maybe TH.Name -> P a) ->
+              TH.Q a
 parseQuasi str p = do
-  setter <- TH.location >>! mkSetter
+  loc <- fromTHLoc <$> TH.location
   let parser = do
-        setter
-        iflag <- optionMaybe (char '+')
+        setPosition (toSourcePos loc)
+        iflag <- (++) <$> option "" (string "+")
+                      <*> option "" (string "'")
         lflag <- choice [
                    do char '@'
                       choice [ char '=' >> identp_no_ws >>! Just,
@@ -79,12 +82,9 @@ parseQuasi str p = do
                    char '!' >> return Nothing,
                    return (Just "_loc")
                  ]
-        p iflag (fmap TH.mkName lflag)
-  case runParser parser state0 { stAnti = True } "<quasi>" str of
-    Left e  -> fail (show e)
-    Right a -> return a
-  where
-  mkSetter = setPosition . toSourcePos . fromTHLoc
+        p (file loc) iflag (fmap TH.mkName lflag)
+  either (fail . show) return $
+    runParser parser state0 { stAnti = True } "<quasi>" str
 
 -- | REPL-level commands
 data REPLCommand
@@ -363,10 +363,10 @@ identp = antiblep
 
 -- Type variables
 tyvarp :: Id i => P (TyVar i)
-tyvarp  = try
-           (sigilU *> (antiblep <|> TV <$> lidp <*> pure Qu)
-        <|> sigilA *> (antiblep <|> TV <$> lidp <*> pure Qa))
-  <?> "type variable"
+tyvarp  = try $ "type variable" @@
+            sigilU *> tv Qu
+        <|> sigilA *> tv Qa
+  where tv q = antiblep <|> TV <$> lidp <*> pure q <*> pure bogus
 
 -- open variant injection constructor
 varinjp ∷ Id i ⇒ P (Uid i)
@@ -903,9 +903,9 @@ qExpp  = "qualifier expression" @@ qexp where
       <|> qeLid    <$> lidp
       <|> antiblep
       <|> parens qexp
-  qeLid = qeVar . (TV <-> Qa)
-  clean (TV _ Qu) = minBound
-  clean tv        = qeVar tv
+  qeLid = qeVar . (TV <-> Qa <-> bogus)
+  clean (TV _ Qu _) = minBound
+  clean tv          = qeVar tv
 
 altsp :: Id i => P [(Uid i, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
@@ -1038,7 +1038,8 @@ exprpP p = mark $ case () of
 
 -- Parse a match clause
 casealtp :: Id i => P (CaseAlt i)
-casealtp  = caClause <$> pattp <* arrow <*> exprp
+casealtp  = "match clause" @@ antiblep <|>
+  caClause <$> pattp <* arrow <*> exprp
 
 -- Parse a single let rec binding
 bindingp :: Id i => P (Binding i)
@@ -1231,6 +1232,7 @@ deriving instance Show (SigItem' i)
 deriving instance Show (Patt' i)
 deriving instance Show (Type' i)
 deriving instance Show (QExp' i)
+deriving instance Show (Prog' i)
 deriving instance Show Lit
 instance Show a ⇒ Show (N i a) where showsPrec = showsPrec <$.> view
 -}

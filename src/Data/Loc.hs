@@ -10,7 +10,7 @@ module Data.Loc (
   isBogus, startOfLoc, endOfLoc,
 
   -- * Generic function for clearing source locations everywhere
-  scrub,
+  scrub, scrubWhen,
 
   -- * For locating things
   -- ** Datatype interface
@@ -189,9 +189,14 @@ a <<@ b = setLoc a (getLoc b)
 
 -- | Bogosify all source locations (as far as SYB can find them)
 scrub :: Data a => a -> a
-scrub a = everywhere (mkT bogosify) a where
-  bogosify :: Loc -> Loc
-  bogosify  = const bogus
+scrub = scrubWhen (const True)
+
+-- | Bogosify all source locations satisfying a predicate
+--   (as far as SYB can find them)
+scrubWhen :: Data a => (Loc -> Bool) -> a -> a
+scrubWhen p a = everywhere (mkT bogosify) a where
+  bogosify loc | p loc     = bogus
+               | otherwise = loc
 
 instance Show Loc where
   showsPrec _ loc

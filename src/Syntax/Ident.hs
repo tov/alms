@@ -21,13 +21,13 @@ module Syntax.Ident (
   Ident, QLid, QUid,
   TyVar(..), tvUn, tvAf,
   tvalphabet, freshName, freshNames,
-  isOperator, lid, uid, qlid, quid,
+  isOperator,
+  lid, uid, renLid, renUid, qlid, quid,
   uidToLid, lidToUid,
   -- * Free and defined vars
   Occurrence, occToQLit,
   FvMap, Fv(..), Dv(..), ADDITIVE(..),
   (|*|), (|+|), (|-|), (|--|),
-  AnnotTV(..),
 ) where
 
 import Env (Path(..), (:>:)(..))
@@ -146,16 +146,31 @@ type Ident i = Path (Uid i) (BIdent i)
 data TyVar i
   = TV {
       tvname :: !(Lid i),
-      tvqual :: !QLit
+      tvqual :: !QLit,
+      tvloc  :: !Loc
     }
   | TVAnti Anti
   deriving (Eq, Ord, Typeable, Data)
+
+instance Locatable (TyVar i) where
+  getLoc TV { tvloc = loc } = loc
+  getLoc _                  = bogus
+
+instance Relocatable (TyVar i) where
+  setLoc tv@TV { } loc = tv { tvloc = loc }
+  setLoc tv        _   = tv
 
 lid :: Id i => String -> Lid i
 lid = Lid trivialId
 
 uid :: Id i => String -> Uid i
 uid = Uid trivialId
+
+renLid :: i -> Lid i0 -> Lid i
+renLid = Lid <$.> unLid
+
+renUid :: i -> Uid i0 -> Uid i
+renUid = Uid <$.> unUid
 
 uidToLid :: Uid i -> Lid i
 uidToLid (Uid ix s)  = Lid ix (mapHead toLower s)
@@ -166,8 +181,8 @@ lidToUid (Lid ix s)  = Uid ix (mapHead toUpper s)
 lidToUid (LidAnti a) = antierror "lidToUid" a
 
 tvUn, tvAf :: Id i => String -> TyVar i
-tvUn s = TV (lid s) Qu
-tvAf s = TV (lid s) Qa
+tvUn s = TV (lid s) Qu bogus
+tvAf s = TV (lid s) Qa bogus
 
 -- | Is the lowercase identifier an infix operator?
 isOperator :: Lid i -> Bool
@@ -213,9 +228,9 @@ instance Show (BIdent i) where
   showsPrec p (Con k) = showsPrec p k
 
 instance Show (TyVar i) where
-  showsPrec _ (TV x Qu)  = showChar '\''  . shows x
-  showsPrec _ (TV x Qa)  = showChar '`' . shows x
-  showsPrec _ (TVAnti a) = showChar '\'' . shows a
+  showsPrec _ (TV x Qu _)  = showString Strings.unlimited . shows x
+  showsPrec _ (TV x Qa _)  = showString Strings.affine . shows x
+  showsPrec _ (TVAnti a)   = showString Strings.affine . shows a
 
 instance Viewable (Path (Uid i) (BIdent i)) where
   type View (Ident i) = Either (QLid i) (QUid i)
@@ -257,7 +272,7 @@ clearScripts n = case reverse (dropWhile (`elem` scripts) (reverse n)) of
   n' → n'
   where scripts = "'′" ++ Strings.unicodeDigits ++ Strings.asciiDigits
 
-tvalphabet ∷ Id i ⇒ [QLit → TyVar i]
+tvalphabet ∷ Id i ⇒ [QLit → Loc → TyVar i]
 tvalphabet  = map (TV . lid) (namesFrom Strings.tvNames)
 
 -- | @freshName sugg qlit avoid cands@ attempts to generate a fresh
@@ -342,29 +357,4 @@ instance Fv a i => Fv (ADDITIVE a) i where
 
 (|--|) :: Id i => FvMap i -> S.Set (QLid i) -> FvMap i
 (|--|)  = S.fold M.delete
-
--- | Find out the free variables of a type annotation.  Minimal
---   definition: @annotTVs@ or @annotTVsWith@
-class Id i ⇒ AnnotTV a i | a → i where
-  annotTVsWith ∷ Monoid r ⇒
-                 (QLid i → Int → r → r) →
-                 a → M.Map (TyVar i) r
-  annotTVs     ∷ a → S.Set (TyVar i)
-  annotTVs     = M.keysSet . annotTVsWith (\_ _ () → ())
-
-instance (AnnotTV a i, AnnotTV b i) ⇒ AnnotTV (a, b) i where
-  annotTVsWith f (a, b) = annotTVsWith f a `mappend` annotTVsWith f b
-
-instance (AnnotTV a i, AnnotTV b i, AnnotTV c i) ⇒
-         AnnotTV (a, b, c) i where
-  annotTVsWith f (a, b, c) = annotTVsWith f (a, (b, c))
-
-instance AnnotTV a i ⇒ AnnotTV [a] i where
-  annotTVsWith f xs = foldMap (annotTVsWith f) xs
-
-instance AnnotTV a i ⇒ AnnotTV (Maybe a) i where
-  annotTVsWith = maybe M.empty . annotTVsWith
-
-instance AnnotTV a i ⇒ AnnotTV (N note a) i where
-  annotTVsWith = annotTVsWith <$.> dataOf
 

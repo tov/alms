@@ -22,13 +22,22 @@ import qualified Language.Haskell.TH as TH
 import Language.Haskell.TH.Quote (QuasiQuoter(..))
 
 toAstQ :: (Data a, ToSyntax b) => a -> TH.Q b
-toAstQ x = whichS' (toExpQ x) (toPatQ x)
+toAstQ x = whichS' (toExpQ False x) (toPatQ False x)
 
-toExpQ :: Data a => a -> TH.ExpQ
-toExpQ  = dataToExpQ antiExp moduleQuals
+toAstQ' :: (Data a, ToSyntax b) => a -> TH.Q b
+toAstQ' x = whichS' (toExpQ True x) (toPatQ True x)
 
-toPatQ :: Data a => a -> TH.PatQ
-toPatQ  = dataToPatQ antiPat moduleQuals
+toExpQ :: Data a => Bool -> a -> TH.ExpQ
+toExpQ False x = dataToExpQ antiExp moduleQuals x
+toExpQ True  x = do
+  TH.AppE _ stx <- dataToExpQ antiExp moduleQuals x
+  return stx
+
+toPatQ :: Data a => Bool -> a -> TH.PatQ
+toPatQ False x = dataToPatQ antiPat moduleQuals x
+toPatQ True  x = do
+  TH.ConP _ [_, stx] <- dataToPatQ antiPat moduleQuals x
+  return stx
 
 moduleQuals :: [(String, String)]
 moduleQuals  = [ ("Syntax.Type", "Syntax") ]
@@ -100,15 +109,25 @@ mkQuasi name parser = (newQuasi name) { quoteExp = qast, quotePat = qast }
   where
   qast s =
     join $
-      parseQuasi s $ \iflag lflag ->
+      parseQuasi s $ \filename iflag lflag ->
         case iflag of
-          Just '+' -> do
+          "+'" -> do
             stx <- parser :: P (N (note Renamed) (stx Renamed))
-            convert lflag stx
+            convert' filename stx
+          "+" -> do
+            stx <- parser :: P (N (note Renamed) (stx Renamed))
+            convert filename lflag stx
+          "'" -> do
+            stx <- parser :: P (N (note Raw) (stx Raw))
+            convert' filename stx
           _        -> do
             stx <- parser :: P (N (note Raw) (stx Raw))
-            convert lflag stx
-  convert flag stx = return $ maybe toAstQ toLocAstQ flag (scrub stx)
+            convert filename lflag stx
+  convert filename flag stx =
+    return . maybe toAstQ toLocAstQ flag $
+               scrubWhen (\loc -> file loc == filename) stx
+  convert' filename stx = do
+    return . toAstQ' $ scrubWhen (\loc -> file loc == filename) stx
 
 deriveLocAsts 'toAstQ syntaxTable
 

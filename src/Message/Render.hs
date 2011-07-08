@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      CPP,
       FlexibleInstances,
       GADTs,
       ParallelListComp,
@@ -26,8 +27,21 @@ rc0  = RenderContext (-1) 0 mempty mempty
 getQuotes :: RenderContext -> (String, String)
 getQuotes cxt =
   if even (rcQtLevel cxt)
+#ifdef UNICODE
     then ("‘", "’")
     else ("“", "”")
+#else
+    then ("'", "'")
+    else ("\"", "\"")
+#endif
+
+bullet :: Char
+#if UNICODE
+bullet  = '•'
+#else
+bullet  = '-'
+#endif
+
 
 incQuotes :: RenderContext -> RenderContext
 incQuotes cxt = cxt { rcQtLevel = rcQtLevel cxt + 1 }
@@ -84,7 +98,7 @@ renderMessage cxt msg0 = case msg0 of
                       | i    <- [ 1 .. ] ]
       where len  = length msgs
             dent = length (show len)
-    Bulleted  -> vcat [ text " •" <+> nest 3 (renderMessage cxt msg')
+    Bulleted  -> vcat [ space <> char bullet <+> nest 3 (renderMessage cxt msg')
                       | msg' <- msgs ]
     Separated -> vcat (punctuate (char '\n')
                                  (map (renderMessage cxt) msgs))
