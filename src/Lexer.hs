@@ -7,16 +7,17 @@ module Lexer (
   llabel, ulabel,
 
   -- * Operators
+  opP,
   semis, bang, star,
   sharpLoad, sharpInfo, sharpPrec,
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
   qualU, qualA, qjoin, qjoinArr, ellipsis,
-  opP,
+  variantInj, variantEmb,
   sigilU, sigilA,
   markCovariant, markContravariant, markInvariant, markOmnivariant,
-  markQCovariant, markQContravariant, markQInvariant,
+  markQVariant,
 
   -- * Token parsers from Parsec
   identifier, reserved, operator, reservedOp, charLiteral,
@@ -267,25 +268,30 @@ qjoinArr         = reservedOp "," <|> reservedOp "\\/" <|> reservedOp "⋁"
 ellipsis        :: T.TokenEnd st => CharParser st ()
 ellipsis         = () <$ (reservedOp "..." <|> reservedOp "…")
 
+-- | Marker for open variant injection
+variantInj      :: T.TokenEnd st => CharParser st ()
+variantInj       = () <$ symbol "`"
+
+-- | Marker for open variant embedding
+variantEmb      :: T.TokenEnd st => CharParser st ()
+variantEmb       = () <$ symbol "#"
+
 -- | Marker for unlimited type variables
 sigilU   :: T.TokenEnd st => CharParser st ()
-sigilU    = () <$ char '\''
+sigilU    = () <$ symbol "'"
 
 -- | Marker for affine type variables
 sigilA   :: T.TokenEnd st => CharParser st ()
-sigilA    = () <$ char '`'
+sigilA    = () <$ symbol "`"
 
 markCovariant, markContravariant, markInvariant, markOmnivariant,
-  markQCovariant, markQContravariant, markQInvariant
-    :: T.TokenEnd st => CharParser st ()
+  markQVariant :: T.TokenEnd st => CharParser st ()
 
-markCovariant        = () <$ char '+'
-markContravariant    = () <$ char '-'
-markInvariant        = () <$ char '='
-markOmnivariant      = () <$ (string "0" <|> string "±")
-markQCovariant       = () <$ (string "⊕" <|> try (string "+@"))
-markQContravariant   = () <$ (string "⊖" <|> try (string "-@"))
-markQInvariant       = () <$ (string "⊙" <|> try (string "=@"))
+markCovariant        = () <$ symbol "+"
+markContravariant    = () <$ symbol "-"
+markInvariant        = () <$ symbol "="
+markOmnivariant      = () <$ symbol "0"
+markQVariant         = () <$ symbol "Q"
 
 -- | Is the string an uppercase identifier?  (Special case: @true@ and
 --   @false@ are consider uppercase.)
@@ -312,7 +318,7 @@ uid              = try $ do
     then return s
     else pzero <?> "uppercase identifier"
 
--- | Lex a variant label
+-- | Lex a record label
 llabel     :: T.TokenEnd st => CharParser st String
 llabel           = try $ do
   c:s <- identifier
@@ -320,7 +326,7 @@ llabel           = try $ do
     then return (toUpper c : s)
     else pzero <?> "record field label"
 
--- | Lex a record label
+-- | Lex a variant label
 ulabel     :: T.TokenEnd st => CharParser st String
 ulabel           = try $ do
   s@(c:_) <- identifier

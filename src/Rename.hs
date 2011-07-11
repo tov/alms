@@ -1021,6 +1021,7 @@ renamingEnterScope u r =
     Just (_, _, (_, e'))
             -> r { savedEnv = e `mappend` e' }
 
+{-
 -- | Test runner for renaming an expression
 _re :: Expr Raw -> IO (Expr Renamed)
 _re e = fst <$> runRenamingM True bogus renameState0 (renameExpr e)
@@ -1030,4 +1031,5 @@ _rd :: Decl Raw -> IO (Decl Renamed)
 _rd d = fst <$> runRenamingM True bogus renameState0 (renameDecl d)
 
 _loc = initial "<interactive>"
+-}
 

@@ -370,12 +370,12 @@ tyvarp  = try $ "type variable" @@
 
 -- open variant injection constructor
 varinjp ∷ Id i ⇒ P (Uid i)
-varinjp = try (char '`' *> ulabelp)
+varinjp = try (variantInj *> ulabelp)
   <?> "open variant constructor"
 
 -- open variant embedding constructor
 varembp ∷ Id i ⇒ P (Uid i)
-varembp = try (char '#' *> ulabelp)
+varembp = try (variantEmb *> ulabelp)
   <?> "open variant constructor"
 
 oplevelp :: Id i => Prec -> P (Lid i)
@@ -872,18 +872,14 @@ paramVp = try $ (,) <$> variancep <*> tyvarp
 
 -- A variance mark
 variancep :: P Variance
-variancep =
-  choice
-    -- Q-variances need to come first because they are longer
-    -- and unprotected
-    [ QCovariant     <$ markQCovariant
-    , QContravariant <$ markQContravariant
-    , QInvariant     <$ markQInvariant
-    , Covariant      <$ markCovariant
-    , Contravariant  <$ markContravariant
-    , Invariant      <$ markInvariant
-    , Omnivariant    <$ markOmnivariant
-    , pure Invariant ]
+variancep = do
+    qvariance ← option Invariant (QInvariant <$ markQVariant)
+    sign      ← option Invariant $ choice
+      [ Covariant     <$ markCovariant
+      , Contravariant <$ markContravariant
+      , Omnivariant   <$ markOmnivariant
+      , Invariant     <$ markInvariant ]
+    return (qvariance ⊓ sign)
   <?> "variance marker"
 
 -- A qualifier annotation for a type declaration
