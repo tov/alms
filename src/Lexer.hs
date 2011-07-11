@@ -29,8 +29,8 @@ module Lexer (
 
 import Prec
 import Util
-import Util.Parsec
-import qualified Util.Token as T
+import Alt.Parsec
+import qualified Alt.Token as T
 
 import Prelude ()
 import Data.Char

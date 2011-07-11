@@ -33,7 +33,7 @@ import Syntax
 import Lexer
 import ErrorMessage (AlmsException(..), Phase(ParserPhase))
 import qualified Message.AST as Msg
-import Util.Parsec hiding (parse)
+import Alt.Parsec hiding (parse)
 
 import Prelude ()
 import qualified Data.Map as M

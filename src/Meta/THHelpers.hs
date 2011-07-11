@@ -18,7 +18,7 @@ module Meta.THHelpers (
 import Lexer (lid, uid)
 import Util
 import Compat (newQuasi)
-import Util.Parsec
+import Alt.Parsec
 
 import Prelude ()
 import Data.Generics (Typeable, Data, everything, mkQ)

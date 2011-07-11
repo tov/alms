@@ -23,7 +23,7 @@
 --
 -----------------------------------------------------------------------------
 
-module Util.Token
+module Alt.Token
                   ( TokenEnd (..)
                   , LanguageDef (..)
                   , TokenParser (..)

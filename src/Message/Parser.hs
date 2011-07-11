@@ -5,7 +5,7 @@ module Message.Parser (
 import Data.Loc
 import Message.AST
 import Util
-import Util.Parsec
+import Alt.Parsec
 
 import Prelude ()
 import Data.Char

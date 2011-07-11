@@ -1,6 +1,6 @@
 {- | A layer over 'P.Doc' for propagating context information.  (I think
      Template Haskell has a version of this.) -}
-module Util.PrettyPrint (
+module Alt.PrettyPrint (
   -- * Environment-parameterized pretty-printing document
   Doc(..),
   -- ** Environment operations

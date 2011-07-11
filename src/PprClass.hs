@@ -23,11 +23,11 @@ module PprClass (
   -- ** Instance helpers
   showFromPpr, pprFromShow,
   -- * Re-exports
-  module Util.PrettyPrint
+  module Alt.PrettyPrint
 ) where
 
-import Util.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
-import qualified Util.PrettyPrint as P
+import Alt.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
+import qualified Alt.PrettyPrint as P
 
 import qualified Syntax.Strings as Strings
 import Syntax.Ident (QLid, Uid, Renamed)
