@@ -251,15 +251,17 @@ pprExcDec u (Just t) =
 
 instance Ppr (TyDec i) where
   ppr td = case view td of
-    TdAbs n ps vs qs  -> pprProtoV n vs ps >?> pprQuals qs
-    TdSyn n [(ps,t)]  -> pprProto n ps >+> equals <+> ppr t
-    TdSyn n cs        -> vcat [ char '|' <+> each ci | ci <- cs ]
+    TdAbs n ps vs gs qs -> pprProtoV n vs ps
+                             >?> pprGuards gs
+                             >?> pprQuals qs
+    TdSyn n [(ps,t)]    -> pprProto n ps >+> equals <+> ppr t
+    TdSyn n cs          -> vcat [ char '|' <+> each ci | ci <- cs ]
       where
         each (ps, rhs) = pprProto n ps
                            >+> equals <+> ppr rhs
-    TdDat n ps alts   -> pprProtoV n (repeat Invariant) ps
-                           >?> pprAlternatives alts
-    TdAnti a          -> ppr a
+    TdDat n ps alts     -> pprProtoV n (repeat Invariant) ps
+                             >?> pprAlternatives alts
+    TdAnti a            -> ppr a
 
 pprAbsTy :: AbsTy i -> Doc
 pprAbsTy at = case view at of
@@ -279,6 +281,10 @@ pprProtoV n vs tvs = pprProto n (zipWith tpVar tvs vs)
 pprParamV :: Variance -> TyVar i -> Doc
 pprParamV Invariant tv = ppr tv
 pprParamV v         tv = ppr v <> ppr tv
+
+pprGuards :: [TyVar i] -> Doc
+pprGuards []  = mempty
+pprGuards tvs = brackets $ text "rec" <+> fsep (ppr <$> tvs)
 
 pprQuals :: QExp i -> Doc
 pprQuals [qeQ| U |] = mempty

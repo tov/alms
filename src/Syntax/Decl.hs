@@ -129,6 +129,8 @@ data TyDec' i
       tdParams    :: [TyVar i],
       -- | The variance of each parameter
       tdVariances :: [Variance],
+      -- | Which the parameters guard equirecursion?
+      tdGuards    :: [TyVar i],
       -- | Whether each parameter contributes to the qualifier
       tdQual      :: QExp i
     }

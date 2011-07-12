@@ -40,6 +40,8 @@ module Type.Internal (
   tyFun, tyArr, tyLol, tyTuple, tyQLit,
   tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
   (.->.), (.→.), (.-*.), (.*.),
+  -- *** For testing
+  tcCycle,
 
   -- * Standard forms
   standardizeType, standardizeQuals,
@@ -131,8 +133,10 @@ data TyCon
       tcName      ∷ !(QLid R),
       -- | Variances for parameters, and correct length
       tcArity     ∷ ![Variance],
-      -- | Bounds for parameters (may be infinite)
+      -- | Bounds for parameters
       tcBounds    ∷ ![QLit],
+      -- | Guards recursive types
+      tcGuards    ∷ ![Bool],
       -- | Qualifier as a function of parameters
       tcQual      ∷ !(QExp Int),
       -- | For pattern-matchable types, the data constructors,
@@ -173,8 +177,13 @@ instance ExtTC TyCon where
 instance ExtTC r ⇒ ExtTC (QLid Renamed → r) where
   extTC tc x = extTC (tc { tcName = x })
 
-instance (v ~ Variance, ExtTC r) ⇒ ExtTC ([(QLit, v)] → r) where
-  extTC tc x = extTC (tc { tcArity = map snd x, tcBounds = map fst x })
+instance (v ~ Variance, ql ~ QLit, ExtTC r) ⇒
+         ExtTC ([(v, ql, Bool)] → r) where
+  extTC tc x = extTC tc {
+                 tcArity  = sel1 <$> x,
+                 tcBounds = sel2 <$> x,
+                 tcGuards = sel3 <$> x
+               }
 
 instance (tv ~ Int, ExtTC r) ⇒ ExtTC (QExp tv → r) where
   extTC tc x = extTC (tc { tcQual = x })
@@ -192,13 +201,14 @@ instance ExtTC r ⇒ ExtTC (Maybe [([TyPat], Type Empty)] → r) where
 mkTC ∷ ExtTC r ⇒ Int → QLid Renamed → r
 mkTC i ql
   = extTC TyCon {
-    tcId     = i,
-    tcName   = ql,
-    tcArity  = [],
-    tcBounds = [],
-    tcQual   = minBound,
-    tcCons   = Env.empty,
-    tcNext   = Nothing
+    tcId        = i,
+    tcName      = ql,
+    tcArity     = [],
+    tcBounds    = [],
+    tcGuards    = [],
+    tcQual      = minBound,
+    tcCons      = Env.empty,
+    tcNext      = Nothing
   }
 
 internalTC ∷ ExtTC r ⇒ Int → String → r
@@ -207,20 +217,27 @@ internalTC i s = mkTC i (J [] (Lid (Ren_ i) s))
 tcUnit, tcInt, tcChar, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun ∷ TyCon
 
-tcFun        = internalTC (-1) "→"   (QeU (S.singleton 1))
-                                      [(Qa, -1), (Qa, 2), (Qa, 1)]
-tcUnit       = internalTC (-2) "unit" (Env.fromList [(uid "()", Nothing)])
+tcFun        = internalTC (-1) "→"      (qvarexp 1)
+                                        [(Contravariant, Qa, False),
+                                         (QCovariant,    Qa, False),
+                                         (Covariant,     Qa, False)]
+tcUnit       = internalTC (-2) "unit"   (Env.fromList [(uid "()", Nothing)])
 tcInt        = internalTC (-3) "int"
 tcChar       = internalTC (-4) "char"
 tcFloat      = internalTC (-5) "float"
 tcString     = internalTC (-6) "string"
-tcExn        = internalTC (-7) "exn" QeA
+tcExn        = internalTC (-7) "exn"    QeA
 tcUn         = internalTC (-8) "U"
-tcAf         = internalTC (-9) "A"   QeA
-tcJoin       = internalTC (-10) "\\/" (QeU (S.fromList [0,1]))
-                                      [(Qa, 1), (Qa, 1)]
-tcTuple      = internalTC (-11) "*"   (QeU (S.fromList [0,1]))
-                                      [(Qa, 1), (Qa, 1)]
+tcAf         = internalTC (-9) "A"      QeA
+tcJoin       = internalTC (-10) "\\/"   (qvarexp 0 ⊔ qvarexp 1)
+                                        [(Covariant,     Qa, False),
+                                         (Covariant,     Qa, False)]
+tcTuple      = internalTC (-11) "*"     (qvarexp 0 ⊔ qvarexp 1)
+                                        [(Covariant,     Qa, False),
+                                         (Covariant,     Qa, False)]
+
+tcCycle      ∷ TyCon
+tcCycle      = internalTC (-51) "cycle" [(Invariant,     Qa, True)]
 
 ---
 --- Convenience constructors

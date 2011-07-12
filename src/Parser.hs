@@ -675,11 +675,11 @@ tyDecp = "type declaration" @@ addLoc $ choice
           reservedOp "=" *>
              (tdDat name tvs <$> altsp
               <|> tryTySyn name ps)
-          <|> tdAbs name tvs arity <$> qualsp
+          <|> finishTyAbs name tvs arity
         -- Must be a synonym or an abstract type
         Just (_, tvs, arity) ->
           reservedOp "=" *> tryTySyn name ps
-          <|> tdAbs name tvs arity <$> qualsp
+          <|> finishTyAbs name tvs arity
         -- Must be a type function
         Nothing ->
           reservedOp "=" *> tryTySyn name ps
@@ -700,6 +700,10 @@ tyDecp = "type declaration" @@ addLoc $ choice
       ti <- typep
       return (ps', ti)
     return (tdSyn name ((ps,t):alts))
+  --
+  finishTyAbs name tvs arity = do
+    guards ← option [] $ brackets $ reserved "rec" *> many1 tyvarp
+    tdAbs name tvs arity guards <$> qualsp
   --
   -- A type declaration needs to give an unqualified name for the type
   -- being defined.  This checks that and splits into the name and the

@@ -160,7 +160,7 @@ tyConToStx tn tc =
   in
   case tc of
   _ | tc == tcExn
-    → Stx.tdAbs (Stx.lid "exn") [] [] maxBound
+    → Stx.tdAbs (Stx.lid "exn") [] [] [] maxBound
   TyCon { tcNext = Just clauses }
     → Stx.tdSyn n
                 [ second (`doType` rhs) (tyPatsToStx tn [] ps)
@@ -169,8 +169,8 @@ tyConToStx tn tc =
     | not (Env.isEmpty alts)
     → Stx.tdDat n tvs
                 (second (doType tvs <$>) <$> Env.toList alts)
-  TyCon { tcArity = arity, tcQual = qual }
-    → Stx.tdAbs n tvs arity $
+  TyCon { tcArity = arity, tcQual = qual, tcGuards = guards }
+    → Stx.tdAbs n tvs arity (fst <$> filter snd (zip tvs guards)) $
         case qual of
           QeA     → Stx.qeLit Qa
           QeU ixs →
