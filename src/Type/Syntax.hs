@@ -19,7 +19,8 @@ import Type.Internal
 import Type.ArrowAnnotations
 import Type.TyVar
 import qualified Syntax as Stx
-import PprClass (TyNames, tyNames0, tnLookup)
+import PprClass (TyNames, tyNames0, tnLookup, Ppr(..), showFromPpr)
+import Ppr ()
 
 import Prelude ()
 import qualified Data.Set as S
@@ -176,4 +177,13 @@ tyConToStx tn tc =
             case fst <$> filter ((`S.member` ixs) . snd) (zip tvs [0..]) of
               []   → Stx.qeLit Qu
               tvs' → foldr1 Stx.qeJoin (Stx.qeVar <$> tvs')
+
+
+instance Tv tv ⇒ Ppr (Type tv) where ppr = ppr . typeToStx'
+instance Ppr TyPat where ppr = ppr . fst . tyPatToStx'
+instance Ppr TyCon where ppr = ppr . tyConToStx'
+
+instance Tv tv ⇒ Show (Type tv) where showsPrec = showFromPpr
+instance Show TyPat where showsPrec = showFromPpr
+instance Show TyCon where showsPrec = showFromPpr
 
