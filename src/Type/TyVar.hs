@@ -1,14 +1,20 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       DeriveFunctor,
+      FlexibleInstances,
       FunctionalDependencies,
       MultiParamTypeClasses,
+      ParallelListComp,
+      UndecidableInstances,
       UnicodeSyntax
     #-}
 module Type.TyVar (
   -- * Type variable observations
   Tv(..), Kind(..), Flavor(..),
   tvFlavorIs, tvKindIs, uglyTvName,
+  -- * Free type variables
+  Ftv(..), VarMap,
+  FtvTree(..), foldFtvTree,
 ) where
 
 import Util
@@ -156,4 +162,39 @@ class Ord tv ⇒ Ftv a tv | a → tv where
   ftvG           = ftvFold (\v _ → M.insert v False) (True <$) M.empty
   ftvSet         = ftvFold (const . S.insert) id S.empty
   ftvList        = S.toAscList . ftvSet
+
+instance Ord tv ⇒ Ftv (Type tv) tv where
+  ftvTree = foldType
+              (mkQuF (\_ _ → id))
+              (mkBvF (\_ _ _ → mempty))
+              FTSingle
+              (\tc trees → FTBranch
+                 [ FTVariance (* var) $
+                     if guard then FTGuard tree else tree
+                 | tree  ← trees
+                 | var   ← tcArity tc
+                 | guard ← tcGuards tc ])
+              (\_ σ1 σ2 → FTBranch [FTGuard σ1, σ2])
+              (mkMuF (\_ → id))
+
+instance Ftv a tv ⇒ Ftv [a] tv where
+  ftvTree = foldMap ftvTree
+
+instance Ftv a tv ⇒ Ftv (M.Map k a) tv where
+  ftvTree = ftvTree . M.elems
+
+instance (Ftv a tv, Ftv b tv) ⇒ Ftv (a, b) tv where
+  ftvTree (a, b) = ftvTree a `mappend` ftvTree b
+
+instance (Ftv a tv, Ftv b tv, Ftv c tv) ⇒ Ftv (a, b, c) tv where
+  ftvTree (a, b, c) = mconcat [ftvTree a, ftvTree b, ftvTree c]
+
+instance (Ftv a tv, Ftv b tv, Ftv c tv, Ftv d tv) ⇒ Ftv (a, b, c, d) tv where
+  ftvTree (a, b, c, d) = mconcat [ftvTree a, ftvTree b, ftvTree c, ftvTree d]
+
+instance Ftv a tv ⇒ Ftv (Maybe a) tv where
+  ftvTree = maybe mempty ftvTree
+
+instance (Ftv a tv, Ftv b tv) ⇒ Ftv (Either a b) tv where
+  ftvTree = either ftvTree ftvTree
 
