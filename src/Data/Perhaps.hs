@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      DeriveDataTypeable,
       DeriveFunctor,
       UnicodeSyntax
   #-}
@@ -19,6 +20,7 @@ import Control.Monad.Fix
 import Data.Monoid
 
 import Data.OptionalClass
+import Data.Generics (Typeable, Data)
 
 -- | This is like @Maybe@, except all values of the type compare as
 --   equal, which is useful for “suggestions” in the syntax that have
@@ -26,7 +28,7 @@ import Data.OptionalClass
 data Perhaps a
   = Nope
   | Here a
-  deriving Functor
+  deriving (Functor, Typeable, Data)
 
 instance Optional Perhaps where
   foldOpt = perhaps

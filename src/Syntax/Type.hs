@@ -40,7 +40,6 @@ import qualified Syntax.Strings as Strings
 
 import Prelude ()
 import Data.Generics (Typeable, Data)
-import qualified Data.Map as M
 
 -- | Type quantifers
 data Quant = Forall | Exists | QuantAnti Anti

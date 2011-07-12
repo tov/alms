@@ -10,7 +10,7 @@
       PatternGuards,
       ScopedTypeVariables,
       TypeFamilies #-}
-module Type (
+module Type {-(
   -- * Representation of types
   Type(..), TyCon(..), TyVarR, TyPat(..), tyApp,
   -- * Type reduction
@@ -59,79 +59,30 @@ module Type (
   dumpType,
   tcSend, tcRecv, tcSelect, tcFollow, tcSemi, tcDual,
   tySend, tyRecv, tyDual, tySelect, tyFollow, tySemi, (.:.),
-) where
+)-} where
 
+import Util
+import Data.Empty
 import qualified Env
+import qualified Syntax as Stx
+import Syntax.Ident hiding (TyVar)
+import Syntax.Kind hiding (QExp)
+{-
 import Ppr
-import Syntax.Ident
-import Syntax.Kind
 import Syntax.POClass
 import qualified Syntax as Stx
-import Util
 
 import Prelude ()
 import qualified Control.Monad.Writer as CMW
 import Data.Char (isDigit)
-import Data.Generics (Typeable, Data, everything, mkQ)
+-}
+import Data.Generics (Typeable, Data) -- , everything, mkQ)
+{-
 import qualified Data.Map as M
+-}
 import qualified Data.Set as S
 
--- | All tyvars are renamed by this point
-type TyVarR = TyVar Renamed
-
--- | The internal representation of a type
-data Type
-  -- | A type variable
-  = TyVar TyVarR
-  -- | The application of a type constructor (possibly nullary); the
-  --   third field caches the next head-reduction step if the type
-  --   is not head-normal -- note that substitution invalidates this
-  --   cache.  Use 'tyApp' to construct a type application that
-  --   (re)initializes the cache.
-  | TyApp TyCon [Type] (ReductionState Type)
-  -- | An arrow type, including qualifier expression
-  | TyFun (QDen TyVarR) Type Type
-  -- | A quantified (all or ex) type
-  | TyQu  Stx.Quant TyVarR Type
-  -- | A recursive (mu) type
-  | TyMu  TyVarR Type
-  deriving (Typeable, Data)
-
--- | Information about a type constructor
-data TyCon
-  = TyCon {
-      -- | Unique ID
-      tcId        :: Int,
-      -- | Printable name
-      tcName      :: (QLid Renamed),
-      -- | Variances for parameters, and correct length
-      tcArity     :: [Variance],
-      -- | Bounds for parameters (may be infinite)
-      tcBounds    :: [QLit],
-      -- | Qualifier as a function of parameters
-      tcQual      :: (QDen Int),
-      -- | For pattern-matchable types, the data constructors
-      tcCons      :: ([TyVarR], Env.Env (Uid Renamed) (Maybe Type)),
-      -- | For type operators, the next head reduction
-      tcNext      :: Maybe [([TyPat], Type)]
-    }
-  deriving (Typeable, Data)
-
--- | A type pattern, for defining type operators
-data TyPat
-  -- | A type variable, matching any type and binding
-  = TpVar TyVarR
-  -- | A type application node, matching the given constructor
-  --   and its parameters
-  | TpApp TyCon [TyPat]
-  deriving (Typeable, Data)
-
-instance Eq TyCon where
-  tc == tc'  =  tcId tc == tcId tc'
-
-instance Ord TyCon where
-  compare tc tc'  = compare (tcName tc) (tcName tc')
-
+{-
 instance Ppr Type   where
   ppr t = askTyNames (\tn -> ppr (typeToStx tn t))
 instance Ppr TyPat where
@@ -352,22 +303,9 @@ tyrename tv = tysubst tv . TyVar
 ---
 --- Type reduction
 ---
+-}
 
--- | As we head-reduce a type, it can be in one of four states:
-data ReductionState t
-  -- | The type is head-normal -- that is, its head constructor is
-  --   not a type synonym/operator
-  = Done
-  -- | The type has a next head-reduction step
-  | Next t
-  -- | The type may reduce further in the future, but right now it
-  --   has a pattern match that depends on the value of a type variable
-  | Blocked
-  -- | The type's head constructor is a synonym/operator, but it
-  --   can never take a step, due to a failed pattern match
-  | Stuck
-  deriving (Eq, Ord, Show, Functor, Typeable, Data)
-
+{-
 -- | Helper type for 'tyApp'
 type MatchResult t = Either (ReductionState t) ([TyVarR], [Type])
 
@@ -700,37 +638,6 @@ typeToStx'  = typeToStx tyNames0
 typeToStx :: TyNames -> Type -> Stx.Type Renamed
 typeToStx tns = typeToStxRule tns (iaeInit :: CurrentImpArrPrintingRule)
 
-#ifdef ANNOTATION_RULE
-type CurrentImpArrRule = ANNOTATION_RULE
-#else
-type CurrentImpArrRule = Rule4
-#endif
-
-#ifdef ANNOTATION_PRINTING_RULE
-type CurrentImpArrPrintingRule = ANNOTATION_PRINTING_RULE
-#else
-type CurrentImpArrPrintingRule = CurrentImpArrRule
-#endif
-
-class ImpArrRule a where
-  iaeInit      :: a
-  iaeLeft      :: a -> a
-  iaeRight     :: a -> QDen (TyVar Renamed) -> Type -> a
-  iaeImplied   :: a -> QDen (TyVar Renamed)
-  iaeInterpret :: Monad m =>
-                  a -> Maybe (QExp Renamed) -> m (QDen (TyVar Renamed))
-  iaeRepresent :: a -> QDen (TyVar Renamed) -> Maybe (QExp Renamed)
-  iaeUnder     :: a -> Variance -> a
-  --
-  iaeLeft _           = iaeInit
-  iaeRight iae _ _    = iae
-  iaeImplied _        = minBound
-  iaeInterpret iae    = maybe (return (iaeImplied iae)) qInterpretM
-  iaeRepresent iae actual
-    | actual == iaeImplied iae = Nothing
-    | otherwise                = Just (qRepresent actual)
-  iaeUnder _ _        = iaeInit
-
 -- | Turns annotated arrows into implicit arrows where possible
 typeToStxRule :: ImpArrRule iae => TyNames -> iae -> Type -> Stx.Type Renamed
 typeToStxRule f iae0 = loop (S.empty, M.empty) iae0 where
@@ -754,72 +661,6 @@ typeToStxRule f iae0 = loop (S.empty, M.empty) iae0 where
                 else tv
      in (tv', (S.insert (unLid (tvname tv')) seen,
                M.insert tv tv' remap))
-
--- | Print all arrow annotations explicitly
-data Rule0 = Rule0
-
-instance ImpArrRule Rule0 where
-  iaeInit                = Rule0
-  iaeRepresent _ actual  = Just (qRepresent actual)
-
--- | Annotation ‘U’ is implicit for unlabeled arrows.
-data Rule1 = Rule1
-
-instance ImpArrRule Rule1 where
-  iaeInit        = Rule1
-
-newtype Rule2 = Rule2 { unRule2 :: QDen (TyVar Renamed) }
-
--- | Implicit annotation is lub of qualifiers of prior curried
---   arguments.  Explicit annotations have no effect on subsequent
---   arrows.
-instance ImpArrRule Rule2 where
-  iaeInit      = Rule2 minBound
-  iaeRight iae _ t = Rule2 (unRule2 iae \/ qualifier t)
-  iaeImplied   = unRule2
-
--- | Like 'Rule2', but explicit annotations reset the qualifier to
---   themselves for subsequent arrows.
-newtype Rule3 = Rule3 { unRule3 :: QDen (TyVar Renamed) }
-
-instance ImpArrRule Rule3 where
-  iaeInit      = Rule3 minBound
-  iaeRight iae actual t
-    | unRule3 iae == actual = Rule3 (unRule3 iae \/ qualifier t)
-    | otherwise             = Rule3 (actual \/ qualifier t)
-  iaeImplied   = unRule3
-
--- | Like 'Rule3', but we arrow the implicit qualifer into covariant
---   type constructors.
-newtype Rule4 = Rule4 { unRule4 :: QDen (TyVar Renamed) }
-
-instance ImpArrRule Rule4 where
-  iaeInit      = Rule4 minBound
-  iaeRight iae actual t
-    | unRule4 iae == actual = Rule4 (unRule4 iae \/ qualifier t)
-    | otherwise             = Rule4 (actual \/ qualifier t)
-  iaeImplied   = unRule4
-  iaeUnder iae Covariant    = iae
-  iaeUnder _   _            = iaeInit
-
--- | Like 'Rule4', but we carry the implicit quantifier into ALL type
---   constructors and only use it when we arrive at an arrow in a
---   positive position wrt the surrounding arrow.
-data Rule5
-  = Rule5 {
-      unRule5 :: !(QDen (TyVar Renamed)),
-      r4Var   :: !Variance
-    }
-
-instance ImpArrRule Rule5 where
-  iaeInit      = Rule5 minBound 1
-  iaeRight iae actual t
-    | unRule5 iae == actual = Rule5 (unRule5 iae \/ qualifier t) 1
-    | otherwise             = Rule5 (actual \/ qualifier t) 1
-  iaeImplied iae
-    | r4Var iae == 1 = unRule5 iae
-    | otherwise      = minBound
-  iaeUnder iae var          = Rule5 (unRule5 iae) (var * r4Var iae)
 
 tyPatToStx' :: TyPat -> Stx.TyPat Renamed
 tyPatToStx'  = tyPatToStx tyNames0
@@ -1066,3 +907,4 @@ instance Ppr TyCon where
                | var <- tcArity tc ]
 
 instance Show TyCon where showsPrec = showFromPpr
+-}

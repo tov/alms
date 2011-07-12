@@ -272,8 +272,8 @@ clearScripts n = case reverse (dropWhile (`elem` scripts) (reverse n)) of
   n' → n'
   where scripts = "'′" ++ Strings.unicodeDigits ++ Strings.asciiDigits
 
-tvalphabet ∷ Id i ⇒ [QLit → Loc → TyVar i]
-tvalphabet  = map (TV . lid) (namesFrom Strings.tvNames)
+tvalphabet ∷ [String]
+tvalphabet = namesFrom Strings.tvNames
 
 -- | @freshName sugg qlit avoid cands@ attempts to generate a fresh
 --   type variable name as follows:

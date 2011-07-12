@@ -40,7 +40,8 @@ toPatQ True  x = do
   return stx
 
 moduleQuals :: [(String, String)]
-moduleQuals  = [ ("Syntax.Type", "Syntax") ]
+moduleQuals  = [ ("Syntax.Type",        "Syntax"),
+                 ("Syntax.Kind",        "Syntax") ]
 
 antiExp :: Data a => a -> Maybe TH.ExpQ
 antiExp  = antiGen

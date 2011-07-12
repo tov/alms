@@ -87,9 +87,9 @@ import Control.Monad.Error    ( MonadError(..), ErrorT(..), mapErrorT,
 import Control.Monad.Identity ( Identity(..) )
 import Control.Monad.List     ( ListT(..), mapListT )
 import Control.Monad.RWS.Strict ( RWST(..), runRWST, execRWST, evalRWST,
-                                  mapRWST )
+                                  mapRWST, evalRWS )
 import Control.Monad.Reader     ( MonadReader(..), ReaderT(..), mapReaderT,
-                                  asks )
+                                  asks, runReader )
 import Control.Monad.State.Strict ( MonadState(..), StateT(..), evalStateT,
                                     evalState, gets, modify, mapStateT )
 import Control.Monad.Trans    ( MonadTrans(..), MonadIO(..) )
