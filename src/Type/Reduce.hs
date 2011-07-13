@@ -6,7 +6,8 @@
       UnicodeSyntax
     #-}
 module Type.Reduce (
-  headNormalizeTypeK, headNormalizeType, headReduceType,
+  headNormalizeTypeK, headNormalizeType,
+  headReduceType, ReductionState(..),
   reductionSequence, reductionSequence'
 ) where
 
