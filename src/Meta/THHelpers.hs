@@ -94,7 +94,7 @@ hsToExpQ hs0 = do
 
 -- | Qualify a string literal with 
 qstringL :: String -> Lit
-qstringL s = stringL ("Syntax." ++ s)
+qstringL s = stringL ("AST." ++ s)
 
 -- | Does the given AST contain an antiquote named '_'?  If so, we
 --   create an implicit parameter and fill it in there.

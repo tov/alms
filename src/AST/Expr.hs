@@ -6,7 +6,7 @@
       TypeFamilies,
       TypeSynonymInstances,
       UnicodeSyntax #-}
-module Syntax.Expr (
+module AST.Expr (
   -- * Expressions
   Expr'(..), Expr, ExprNote(..), newExpr,
   -- ** Letrec and case
@@ -34,13 +34,13 @@ module Syntax.Expr (
 ) where
 
 import Util
-import Syntax.Notable
-import Syntax.Anti
-import Syntax.Ident
-import Syntax.Type
-import Syntax.Lit
-import Syntax.Patt
-import {-# SOURCE #-} Syntax.Decl
+import AST.Notable
+import AST.Anti
+import AST.Ident
+import AST.Type
+import AST.Lit
+import AST.Patt
+import {-# SOURCE #-} AST.Decl
 
 import Meta.DeriveNotable
 

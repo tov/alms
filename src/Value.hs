@@ -29,7 +29,7 @@ import qualified Data.Char as Char
 import Data.Generics
 
 import Util
-import Syntax (Uid(..), Type, Renamed, uid)
+import AST (Uid(..), Type, Renamed, uid)
 import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             prec, prec1, ppr1, atPrec, precCom, precApp)
 

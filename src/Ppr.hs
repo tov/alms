@@ -15,14 +15,14 @@ module Ppr (
 import Meta.Quasi
 import PprClass
 import Prec
-import Syntax
+import AST
 import Util
 
-import qualified Syntax.Strings as Strings
-import qualified Syntax.Decl
-import qualified Syntax.Expr
-import qualified Syntax.Notable
-import qualified Syntax.Patt
+import qualified AST.Strings as Strings
+import qualified AST.Decl
+import qualified AST.Expr
+import qualified AST.Notable
+import qualified AST.Patt
 import Data.Loc
 
 import Prelude ()

@@ -1,11 +1,11 @@
 {-# LANGUAGE
       DeriveDataTypeable,
       TemplateHaskell #-}
-module Syntax.Lit (
+module AST.Lit (
   Lit(..)
 ) where
 
-import Syntax.Anti
+import AST.Anti
 
 import Data.Generics (Typeable, Data)
 

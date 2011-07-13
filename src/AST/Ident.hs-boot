@@ -1,4 +1,4 @@
-module Syntax.Ident where
+module AST.Ident where
 
 import Data.Data (Data, Typeable1)
 

@@ -7,7 +7,7 @@ module Meta.DeriveNotable (
   deriveNotable
 ) where
 
-import Syntax.Notable
+import AST.Notable
 import Meta.THHelpers
 
 import Data.Char (toLower)

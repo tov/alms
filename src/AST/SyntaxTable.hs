@@ -1,18 +1,18 @@
 {-# LANGUAGE
       RankNTypes,
       TemplateHaskell #-}
-module Syntax.SyntaxTable where
+module AST.SyntaxTable where
 
 import Meta.THHelpers
-import Syntax.Anti
-import Syntax.Notable
-import Syntax.Ident
-import Syntax.Kind
-import Syntax.Type
-import Syntax.Lit
-import Syntax.Patt
-import Syntax.Expr
-import Syntax.Decl
+import AST.Anti
+import AST.Notable
+import AST.Ident
+import AST.Kind
+import AST.Type
+import AST.Lit
+import AST.Patt
+import AST.Expr
+import AST.Decl
 
 import qualified Data.Map as M
 import qualified Language.Haskell.TH as TH

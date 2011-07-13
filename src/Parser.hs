@@ -29,7 +29,7 @@ module Parser (
 import Util hiding (before, lift)
 import Paths
 import Prec
-import Syntax
+import AST
 import Lexer
 import ErrorMessage (AlmsException(..), Phase(ParserPhase))
 import qualified Message.AST as Msg
@@ -140,7 +140,7 @@ parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
       sharpInfo *>
         many1 (identp
                <|> fmap Var <$> qlidnatp
-               <|> J [] . Var . Syntax.lid <$> (operator <|> qjoin))
+               <|> J [] . Var . AST.lid <$> (operator <|> qjoin))
 
 parseGetPrec :: String -> Maybe [String]
 parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
@@ -278,39 +278,39 @@ antilist1p sep p  = antiblep
 
 -- Just uppercase identifiers
 uidp :: Id i => P (Uid i)
-uidp  = Syntax.uid <$> Lexer.uid
+uidp  = AST.uid <$> Lexer.uid
     <|> antiblep
   <?> "uppercase identifier"
 
 -- Just lowercase identifiers
 lidp :: Id i => P (Lid i)
-lidp  = Syntax.lid <$> Lexer.lid
+lidp  = AST.lid <$> Lexer.lid
     <|> antiblep
   <?> "lowercase identifier"
 
 -- Just uppercase row labels
 ulabelp :: Id i => P (Uid i)
-ulabelp  = Syntax.uid <$> Lexer.ulabel
+ulabelp  = AST.uid <$> Lexer.ulabel
     <|> antiblep
   <?> "variant constructor label"
 
 -- Just lowercase row labels
 llabelp :: Id i => P (Uid i)
-llabelp  = Syntax.uid <$> Lexer.llabel
+llabelp  = AST.uid <$> Lexer.llabel
     <|> antiblep
   <?> "record field label"
 
 -- Lowercase identifiers or naturals
 --  - tycon declarations
 lidnatp :: Id i => P (Lid i)
-lidnatp = Syntax.lid <$> (Lexer.lid <|> show <$> natural)
+lidnatp = AST.lid <$> (Lexer.lid <|> show <$> natural)
       <|> operatorp
       <|> antiblep
   <?> "type name"
 
 -- Just operators
 operatorp :: Id i => P (Lid i)
-operatorp  = try (parens (operator <|> semis)) >>! Syntax.lid
+operatorp  = try (parens (operator <|> semis)) >>! AST.lid
   <?> "operator name"
 
 -- Add a path before something
@@ -379,7 +379,7 @@ varembp = try (variantEmb *> ulabelp)
   <?> "open variant constructor"
 
 oplevelp :: Id i => Prec -> P (Lid i)
-oplevelp  = (<?> "operator") . liftM Syntax.lid . opP
+oplevelp  = (<?> "operator") . liftM AST.lid . opP
 
 quantp :: P Quant
 quantp  = Forall <$ forall
@@ -466,32 +466,32 @@ typepP p = "type" @@ case () of
   next = typepP (p + 1)
 
 variantp ∷ Id i ⇒ P (Type i)
-variantp = Syntax.tyVariant <$> brackets tyrowp
+variantp = AST.tyVariant <$> brackets tyrowp
 
 tyrowp1 ∷ Id i ⇒ P (Type i)
-tyrowp1 = Syntax.tyRow <$> varinjp
-                       <*> option Syntax.tyUnit
+tyrowp1 = AST.tyRow <$> varinjp
+                       <*> option AST.tyUnit
                              (reserved "of" *> typepP precStart)
-                       <*> option Syntax.tyEnd
+                       <*> option AST.tyEnd
                              (reservedOp "|" *> tyrowp)
 
 tyrowp ∷ Id i ⇒ P (Type i)
 tyrowp = "row type" @@
          antiblep
      <|> tyrowp1
-     <|> Syntax.tyVar <$> tyvarp
-     <|> Syntax.tyEnd <$  whiteSpace
+     <|> AST.tyVar <$> tyvarp
+     <|> AST.tyEnd <$  whiteSpace
 
 recordp ∷ Id i ⇒ P (Type i)
-recordp = Syntax.tyRecord <$$> braces $
-  recrowp <|> Syntax.tyEnd <$ whiteSpace
+recordp = AST.tyRecord <$$> braces $
+  recrowp <|> AST.tyEnd <$ whiteSpace
 
 recrowp ∷ Id i ⇒ P (Type i)
 recrowp = antiblep
-      <|> Syntax.tyRow <$> llabelp <* colon
+      <|> AST.tyRow <$> llabelp <* colon
                        <*> typepP precStart
-                       <*> option Syntax.tyEnd (comma *> recrowp)
-      <|> Syntax.tyVar <$> tyvarp
+                       <*> option AST.tyEnd (comma *> recrowp)
+      <|> AST.tyVar <$> tyvarp
 
 tybinopp :: Id i => Prec -> P (Type i -> Type i -> Type i)
 tybinopp p = try $ do
@@ -752,7 +752,7 @@ tyAppp wrap param oper suffix = choice [
     n <- choice [ semis, operator ]
     when (n == "-" || precOp n == Right precBang) pzero
     p2 <- param
-    return ([p1, p2], oper (Syntax.lid n)),
+    return ([p1, p2], oper (AST.lid n)),
   -- normal postfix application
   do
     ps   <- wrap (delimList punit parens comma param)
@@ -773,7 +773,7 @@ typatpP :: Id i => Int -> P (TyPat i)
 typatpP p = "type pattern" @@ case () of
   _ | p == precTySemi
           -> chainr1last (typatpP (p + 1))
-                         (tpBinOp . J [] . Syntax.lid <$> semis)
+                         (tpBinOp . J [] . AST.lid <$> semis)
                          (typatpP precStart)
     | Just e <- fixities p -> case e of
         Left _ ->
@@ -837,7 +837,7 @@ letp  = do
       let names    = map (bnvar . dataOf) bindings
           namesExp = foldl1 exPair (map exBVar names)
           namesPat = foldl1 paPair (map paVar names)
-          tempVar  = Syntax.lid "#letrec"
+          tempVar  = AST.lid "#letrec"
           decls0   = [ dcLet (paVar tempVar) $
                          exLetRec bindings namesExp ]
           decls1   = [ dcLet (paVar (bnvar binding)) $
@@ -977,13 +977,13 @@ exprpP p = mark $ case () of
            exCase (exApp (exVar tryQ)
                          (exAbs paWild e1)) $
              caClause (paCon (quid "Right")
-                             (Just (paVar (Syntax.lid "x"))))
+                             (Just (paVar (AST.lid "x"))))
                       (exVar (qlid "x"))
              :
              clauses ++
              [caClause
                 (paCon (quid "Left")
-                       (Just (paVar (Syntax.lid "e"))))
+                       (Just (paVar (AST.lid "e"))))
                 (exApp (exVar (qlid "INTERNALS.Exn.raise"))
                        (exVar (qlid "e")))
               ],
@@ -1025,7 +1025,7 @@ exprpP p = mark $ case () of
           exCon <$> quidp <*> pure Nothing,
           exLit <$> litp,
           antiblep,
-          parens (exprpP precMin <|> pure (exBCon (Syntax.uid "()") Nothing))
+          parens (exprpP precMin <|> pure (exBCon (AST.uid "()") Nothing))
         ]
     | Just (Left _) <- fixities p ->
         chainl1last next (opappp (Left p)) exprp
@@ -1105,7 +1105,7 @@ pattpP p = mark $ case () of
           paInj  <$> varinjp <*> pure Nothing,
           paLit  <$> litp,
           antiblep,
-          parens (pattpP precMin <|> pure (paCon (Syntax.quid "()") Nothing))
+          parens (pattpP precMin <|> pure (paCon (AST.quid "()") Nothing))
         ]
     | otherwise     → next
   where

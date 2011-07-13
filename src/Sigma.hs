@@ -6,7 +6,7 @@ module Sigma (
   makeBangPatt, parseBangPatt, exSigma
 ) where
 
-import Syntax
+import AST
 import Util
 
 import Prelude ()

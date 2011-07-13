@@ -18,11 +18,11 @@ module Dynamics (
 import Meta.Quasi
 import Value
 import Util
-import Syntax
-import qualified Syntax.Decl
-import qualified Syntax.Expr
-import qualified Syntax.Notable
-import qualified Syntax.Patt
+import AST
+import qualified AST.Decl
+import qualified AST.Expr
+import qualified AST.Notable
+import qualified AST.Patt
 import Env
 import Ppr (Ppr(..), Doc, text, precApp)
 import ErrorMessage

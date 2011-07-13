@@ -13,7 +13,7 @@
       UnicodeSyntax
       #-}
 -- | The internal representation of types, created by the type checker
---   from the syntactic types in 'Syntax.Type'.
+--   from the syntactic types in 'AST.Type'.
 module Type.Internal (
   -- * Data definitions
   -- ** Types
@@ -67,9 +67,9 @@ import Util
 import Util.MonadRef
 import Data.Empty
 import qualified Env
-import Syntax.OrderClasses
-import Syntax.Ident hiding (TyVar)
-import Syntax.Kind hiding (QExp)
+import AST.OrderClasses
+import AST.Ident hiding (TyVar)
+import AST.Kind hiding (QExp)
 
 import Prelude ()
 import Control.Monad.ST

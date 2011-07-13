@@ -10,11 +10,11 @@ module Basis (
 import Util
 import BasisUtils
 import Value (Valuable(..), Value(..))
-import Syntax
+import AST
 import Type
 
-import qualified Syntax.Notable
-import qualified Syntax.Decl
+import qualified AST.Notable
+import qualified AST.Decl
 import qualified Data.Loc
 
 import qualified Basis.IO

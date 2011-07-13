@@ -5,12 +5,12 @@ module Basis.MVar (entries) where
 
 import Data.Typeable (Typeable)
 import BasisUtils
-import Syntax
+import AST
 import Util
 import Value (Value, Valuable(..))
 
-import qualified Syntax.Notable
-import qualified Syntax.Decl
+import qualified AST.Notable
+import qualified AST.Decl
 import qualified Data.Loc
 
 import qualified Control.Concurrent.MVar as MV

@@ -18,7 +18,7 @@ import qualified Env
 import Type.Internal
 import Type.ArrowAnnotations
 import Type.TyVar
-import qualified Syntax as Stx
+import qualified AST
 import PprClass (TyNames, tyNames0, tnLookup, Ppr(..), showFromPpr)
 import Ppr ()
 
@@ -30,7 +30,7 @@ data Context rule tv
   = Context {
       tyNames  ∷ TyNames,
       arrRule  ∷ rule tv,
-      tvEnv    ∷ [[Stx.TyVar R]]
+      tvEnv    ∷ [[AST.TyVar R]]
     }
 
 -- | The default initial printing context
@@ -43,34 +43,34 @@ context0
     }
 
 -- | Represent a type value as a pre-syntactic type, for printing
-typeToStx' ∷ Tv tv ⇒ Type tv → Stx.Type R
+typeToStx' ∷ Tv tv ⇒ Type tv → AST.Type R
 typeToStx' = typeToStx context0
 
 -- | Turns annotated arrows into implicit arrows where possible
 typeToStx ∷ (Tv tv, ImpArrRule rule) ⇒
-            Context rule tv → Type tv → Stx.Type R
+            Context rule tv → Type tv → AST.Type R
 typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
   loop (TyVar tv0)           = do
     δ  ← asks tvEnv
-    return (Stx.tyVar (getTV δ tv0))
+    return (AST.tyVar (getTV δ tv0))
   loop (TyQu quant αs σ) =
     withFresh αs $ \αs' → do
       σ' ← loop σ
-      return (foldr (Stx.tyQu (quantToStx quant)) σ' αs')
+      return (foldr (AST.tyQu (quantToStx quant)) σ' αs')
   loop (TyMu n σ) =
     withFresh [(n, Qa)] $ \αs' → do
       σ' ← loop σ
-      return (foldr Stx.tyMu σ' αs')
+      return (foldr AST.tyMu σ' αs')
   loop (TyRow lab σ1 σ2) =
-    Stx.tyRow lab <$> loop σ1 <*> loop σ2
+    AST.tyRow lab <$> loop σ1 <*> loop σ2
   loop (TyApp tc [σ1, qe, σ2]) | tc == tcFun =
-    Stx.tyFun <$> represent qe
+    AST.tyFun <$> represent qe
               <*> local (\cxt → cxt { arrRule = iaeLeft (arrRule cxt) })
                     (loop σ1)
               <*> local (\cxt → cxt { arrRule = iaeRight (arrRule cxt) (qualifier qe) σ1 })
                     (loop σ2)
   loop (TyApp tc σs) = do
-    Stx.tyApp <$> bestName tyNames tc <*> sequence
+    AST.tyApp <$> bestName tyNames tc <*> sequence
       [ local (\cxt → cxt { arrRule = iaeUnder (arrRule cxt) variance })
           (loop σ)
       | σ        ← σs
@@ -79,38 +79,38 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
   withFresh αs k = do
     δ ← asks tvEnv
     let names  = fst <$> αs
-        seen   = Stx.unLid . Stx.tvname <$> concat δ
-        names' = Stx.freshNames names seen Stx.tvalphabet
-        αs'    = zipWith3 Stx.TV (Stx.lid <$> names')
+        seen   = AST.unLid . AST.tvname <$> concat δ
+        names' = AST.freshNames names seen AST.tvalphabet
+        αs'    = zipWith3 AST.TV (AST.lid <$> names')
                                  (snd <$> αs)
-                                 (repeat Stx.bogus)
+                                 (repeat AST.bogus)
     local (\cxt → cxt { tvEnv = αs' : δ }) (k αs')
   --
   getTV _ (Free tv)
-    = Stx.TV (Stx.lid (uglyTvName tv)) (fromMaybe Qa (tvQual tv)) Stx.bogus
+    = AST.TV (AST.lid (uglyTvName tv)) (fromMaybe Qa (tvQual tv)) AST.bogus
   getTV δ (Bound i j n)
     | rib:_ ← drop i δ, tv:_  ← drop j rib
     = tv
     | otherwise
-    = Stx.tvAf ('?' : fromPerhaps "" n)
+    = AST.tvAf ('?' : fromPerhaps "" n)
   --
   represent qe = do
     cxt ← ask
     return (iaeRepresent (getTV (tvEnv cxt)) (arrRule cxt)
-                         (qualifierEnv (Stx.tvqual <$$> tvEnv cxt) qe))
+                         (qualifierEnv (AST.tvqual <$$> tvEnv cxt) qe))
 
 -- | Represent a type value as a pre-syntactic type, for printing
-tyPatToStx' ∷ TyPat → (Stx.TyPat R, [Stx.TyVar R])
+tyPatToStx' ∷ TyPat → (AST.TyPat R, [AST.TyVar R])
 tyPatToStx' = tyPatToStx tyNames0 []
 
 -- | Turn an internal type pattern into a syntactic type pattern
-tyPatToStx ∷ TyNames → [(Stx.TyVar R, Variance)] → TyPat →
-             (Stx.TyPat R, [Stx.TyVar R])
+tyPatToStx ∷ TyNames → [(AST.TyVar R, Variance)] → TyPat →
+             (AST.TyPat R, [AST.TyVar R])
 tyPatToStx tn0 tvs0 tp0 = evalRWS (loop tp0) tn0 (extendTyPatNames tvs0)
   where
-  loop (TpVar _)      = fresh Stx.tpVar
-  loop (TpApp tc tps) = Stx.tpApp <$> bestName id tc <*> mapM loop tps
-  loop (TpRow _)      = fresh Stx.tpRow
+  loop (TpVar _)      = fresh AST.tpVar
+  loop (TpApp tc tps) = AST.tpApp <$> bestName id tc <*> mapM loop tps
+  loop (TpRow _)      = fresh AST.tpRow
   --
   fresh mk = do
     (tv, variance):tvs ← get
@@ -120,8 +120,8 @@ tyPatToStx tn0 tvs0 tp0 = evalRWS (loop tp0) tn0 (extendTyPatNames tvs0)
 
 -- | Turn a list of internal type pattern into a list of syntactic type
 --   patterns
-tyPatsToStx ∷ TyNames → [(Stx.TyVar R, Variance)] → [TyPat] →
-              ([Stx.TyPat R], [Stx.TyVar R])
+tyPatsToStx ∷ TyNames → [(AST.TyVar R, Variance)] → [TyPat] →
+              ([AST.TyPat R], [AST.TyVar R])
 tyPatsToStx tn0 tvs0 tps0 = loop (extendTyPatNames tvs0) tps0 where
   loop _   []       = ([], [])
   loop tvs (tp:tps) =
@@ -129,54 +129,54 @@ tyPatsToStx tn0 tvs0 tps0 = loop (extendTyPatNames tvs0) tps0 where
         (tps', tvss') = loop (drop (length tvs') tvs) tps
      in (tp':tps', tvs'++tvss')
 
-extendTyPatNames ∷ [(Stx.TyVar R, Variance)] → [(Stx.TyVar R, Variance)]
+extendTyPatNames ∷ [(AST.TyVar R, Variance)] → [(AST.TyVar R, Variance)]
 extendTyPatNames tvs0 =
-  tvs0 ++ [ (Stx.tvAf name, maxBound)
-          | name ← Stx.tvalphabet
-          , name `notElem` map (Stx.unLid . Stx.tvname . fst) tvs0 ]
+  tvs0 ++ [ (AST.tvAf name, maxBound)
+          | name ← AST.tvalphabet
+          , name `notElem` map (AST.unLid . AST.tvname . fst) tvs0 ]
 
 -- | Externalize a quantifier
-quantToStx ∷ Quant → Stx.Quant
-quantToStx Forall = Stx.Forall
-quantToStx Exists = Stx.Exists
+quantToStx ∷ Quant → AST.Quant
+quantToStx Forall = AST.Forall
+quantToStx Exists = AST.Exists
 
 -- | Look up the best printing name for a type.
-bestName ∷ MonadReader r m ⇒ (r → TyNames) → TyCon → m (Stx.QLid R)
+bestName ∷ MonadReader r m ⇒ (r → TyNames) → TyCon → m (AST.QLid R)
 bestName getter tc = do
   tn ← asks getter
   return (tnLookup tn (tcId tc) (tcName tc))
 
-tyConToStx' ∷ TyCon → Stx.TyDec R
+tyConToStx' ∷ TyCon → AST.TyDec R
 tyConToStx' = tyConToStx tyNames0
 
-tyConToStx ∷ TyNames → TyCon → Stx.TyDec R
+tyConToStx ∷ TyNames → TyCon → AST.TyDec R
 tyConToStx tn tc =
   let
-  n          = Stx.jname (tcName tc)
-  tvs        = zipWith3 Stx.TV (Stx.lid <$> Stx.tvalphabet)
+  n          = AST.jname (tcName tc)
+  tvs        = zipWith3 AST.TV (AST.lid <$> AST.tvalphabet)
                                (tcBounds tc)
-                               (repeat Stx.bogus)
+                               (repeat AST.bogus)
   doType tvs = typeToStx context0 { tyNames = tn, tvEnv = [tvs] }
   in
   case tc of
   _ | tc == tcExn
-    → Stx.tdAbs (Stx.lid "exn") [] [] [] maxBound
+    → AST.tdAbs (AST.lid "exn") [] [] [] maxBound
   TyCon { tcNext = Just clauses }
-    → Stx.tdSyn n
+    → AST.tdSyn n
                 [ second (`doType` rhs) (tyPatsToStx tn [] ps)
                 | (ps, rhs) ← clauses ]
   TyCon { tcCons = alts }
     | not (Env.isEmpty alts)
-    → Stx.tdDat n tvs
+    → AST.tdDat n tvs
                 (second (doType tvs <$>) <$> Env.toList alts)
   TyCon { tcArity = arity, tcQual = qual, tcGuards = guards }
-    → Stx.tdAbs n tvs arity (fst <$> filter snd (zip tvs guards)) $
+    → AST.tdAbs n tvs arity (fst <$> filter snd (zip tvs guards)) $
         case qual of
-          QeA     → Stx.qeLit Qa
+          QeA     → AST.qeLit Qa
           QeU ixs →
             case fst <$> filter ((`S.member` ixs) . snd) (zip tvs [0..]) of
-              []   → Stx.qeLit Qu
-              tvs' → foldr1 Stx.qeJoin (Stx.qeVar <$> tvs')
+              []   → AST.qeLit Qu
+              tvs' → foldr1 AST.qeJoin (AST.qeVar <$> tvs')
 
 
 instance Tv tv ⇒ Ppr (Type tv) where ppr = ppr . typeToStx'

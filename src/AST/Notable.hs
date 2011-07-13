@@ -4,7 +4,7 @@
       GeneralizedNewtypeDeriving,
       DeriveFunctor,
       TypeFamilies #-}
-module Syntax.Notable (
+module AST.Notable (
   Notable(..), N(..), Located,
   LocNote(..), module Data.Loc
 ) where

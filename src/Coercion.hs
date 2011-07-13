@@ -11,11 +11,11 @@ module Coercion  (
 import Data.Loc
 import Meta.Quasi
 import Ppr ()
-import qualified Syntax
-import qualified Syntax.Expr
-import qualified Syntax.Notable
-import qualified Syntax.Patt
-import Syntax hiding (Type, Type'(..))
+import qualified AST
+import qualified AST.Expr
+import qualified AST.Notable
+import qualified AST.Patt
+import AST hiding (Type, Type'(..))
 import Type
 import TypeRel ()
 import Util
@@ -83,7 +83,7 @@ build b recs tfrom tto
                foldr (\tv0 acc -> exTAbs tv0 . acc) id tvs $
                exAbsVar' (lid "x") (typeToStx' t1') $
                instContract body `exApp`
-               foldl (\acc tv0 -> exTApp acc (Syntax.tyVar tv0))
+               foldl (\acc tv0 -> exTApp acc (AST.tyVar tv0))
                      (exBVar (lid "f")) tvs `exApp`
                exBVar (lid "x")
 build b recs (view -> TyQu Exists tv t) (view -> TyQu Exists tv' t') = do

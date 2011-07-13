@@ -10,7 +10,7 @@
       TypeFamilies,
       UndecidableInstances,
       UnicodeSyntax #-}
-module Syntax.Type (
+module AST.Type (
   -- * Types
   Quant(..), Type'(..), Type, TyPat'(..), TyPat,
   -- ** Constructors
@@ -32,11 +32,11 @@ module Syntax.Type (
 
 import Util
 import Meta.DeriveNotable
-import Syntax.Notable
-import Syntax.Anti
-import Syntax.Kind
-import Syntax.Ident
-import qualified Syntax.Strings as Strings
+import AST.Notable
+import AST.Anti
+import AST.Kind
+import AST.Ident
+import qualified AST.Strings as Strings
 
 import Prelude ()
 import Data.Generics (Typeable, Data)

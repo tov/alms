@@ -9,12 +9,12 @@ import qualified IO
 
 import Data.Data (Typeable, Data)
 import BasisUtils
-import Syntax
+import AST
 import Util
 import Value (Valuable(..), vinjData, vprjDataM)
 
-import qualified Syntax.Notable
-import qualified Syntax.Decl
+import qualified AST.Notable
+import qualified AST.Decl
 import qualified Data.Loc
 
 instance Valuable IO.Handle where

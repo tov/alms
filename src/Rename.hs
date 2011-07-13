@@ -27,13 +27,13 @@ module Rename (
 import ErrorMessage
 
 import Meta.Quasi
-import Syntax hiding ((&))
+import AST hiding ((&))
 import Data.Loc
 import TypeAnnotation
-import qualified Syntax.Decl
-import qualified Syntax.Expr
-import qualified Syntax.Notable
-import qualified Syntax.Patt
+import qualified AST.Decl
+import qualified AST.Expr
+import qualified AST.Notable
+import qualified AST.Patt
 import Util
 import Ppr (Ppr(..))
 

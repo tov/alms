@@ -5,7 +5,7 @@
       PatternGuards,
       RankNTypes,
       TemplateHaskell #-}
-module Syntax.Anti (
+module AST.Anti (
   -- * Representation of antiquotes
   Anti(..),
   -- ** Raising errors when encountering antiquotes
@@ -32,7 +32,7 @@ module Syntax.Anti (
 
 import Data.Loc as Loc
 import Meta.THHelpers
-import Syntax.Notable
+import AST.Notable
 import Util
 
 import Prelude ()

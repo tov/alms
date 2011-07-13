@@ -4,9 +4,9 @@ module Basis.Exn ( entries ) where
 
 import BasisUtils
 import Value
-import Syntax
+import AST
 
-import qualified Syntax.Notable
+import qualified AST.Notable
 import qualified Data.Loc
 
 import Control.Exception

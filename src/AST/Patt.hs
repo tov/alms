@@ -7,18 +7,18 @@
       TypeFamilies,
       TypeSynonymInstances,
       UnicodeSyntax #-}
-module Syntax.Patt (
+module AST.Patt (
   Patt'(..), Patt, PattNote(..), newPatt,
   paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn, paBang, paAnti,
 ) where
 
 import Util
 import Meta.DeriveNotable
-import Syntax.Notable
-import Syntax.Anti
-import Syntax.Ident
-import Syntax.Lit
-import Syntax.Type
+import AST.Notable
+import AST.Anti
+import AST.Ident
+import AST.Lit
+import AST.Type
 
 import Prelude ()
 import qualified Data.Set as S

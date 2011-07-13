@@ -14,7 +14,7 @@ module Meta.Quasi (
 import Meta.QuoteData
 import Meta.THHelpers
 import Parser
-import Syntax
+import AST
 import Util
 
 import Data.Generics
@@ -40,8 +40,8 @@ toPatQ True  x = do
   return stx
 
 moduleQuals :: [(String, String)]
-moduleQuals  = [ ("Syntax.Type",        "Syntax"),
-                 ("Syntax.Kind",        "Syntax") ]
+moduleQuals  = [ ("AST.Type",        "AST"),
+                 ("AST.Kind",        "AST") ]
 
 antiExp :: Data a => a -> Maybe TH.ExpQ
 antiExp  = antiGen

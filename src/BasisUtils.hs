@@ -39,9 +39,9 @@ import Parser (ptd)
 import Ppr (ppr, pprPrec, text, precApp)
 import Rename
 import Statics (S, env0, runTC, tcMapM, addVal, addDecl, addType, addMod)
-import Syntax
-import qualified Syntax.Notable
-import qualified Syntax.Decl
+import AST
+import qualified AST.Notable
+import qualified AST.Decl
 import Type (TyCon, tcName)
 import Data.Loc (Loc(Loc), mkBogus, setLoc)
 import Util
@@ -137,7 +137,7 @@ submod :: String -> [Entry Raw] -> Entry Raw
 submod  = ModEn . uid
 
 -- | Creates a primitve type entry, binding a name to a type tag
---   (which is usually defined in Syntax.hs)
+--   (which is usually defined in AST.hs)
 primtype  :: String -> TyCon -> Entry Raw
 primtype   = TypEn . lid
 

@@ -14,7 +14,7 @@ module TypeAnnotation (
 ) where
 
 import Util
-import Syntax
+import AST
 import Meta.Quasi
 
 import Prelude ()

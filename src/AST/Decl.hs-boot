@@ -5,10 +5,10 @@
       TypeFamilies,
       TypeSynonymInstances #-}
 {-# OPTIONS_GHC -w #-}
-module Syntax.Decl where
+module AST.Decl where
 
-import Syntax.Notable
-import Syntax.Ident (Id, Fv, Dv)
+import AST.Notable
+import AST.Ident (Id, Fv, Dv)
 
 import Data.Data (Data, Typeable1)
 

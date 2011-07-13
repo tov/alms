@@ -11,11 +11,11 @@ import qualified Network.Socket as S
 
 import Basis.IO ()
 import BasisUtils
-import Syntax
+import AST
 import Value
 
-import qualified Syntax.Notable
-import qualified Syntax.Decl
+import qualified AST.Notable
+import qualified AST.Decl
 import qualified Data.Loc
 
 instance Valuable S.Socket where

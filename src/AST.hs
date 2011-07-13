@@ -5,25 +5,23 @@
       TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 -- |
--- This module provides syntax and basic syntax operations for
--- the implementation of the language from the paper "Stateful Contracts
--- for Affine Types".
+-- This module provides abstract syntax and basic syntax operations.
 --
 -----------------------------------------------------------------------------
 
-module Syntax (
+module AST (
   -- * Identifiers
-  module Syntax.Anti,
-  module Syntax.OrderClasses,
-  module Syntax.Notable,
-  module Syntax.Ident,
-  module Syntax.Kind,
-  module Syntax.Type,
-  module Syntax.Lit,
-  module Syntax.Patt,
-  module Syntax.Expr,
-  module Syntax.Decl,
-  module Syntax.SyntaxTable,
+  module AST.Anti,
+  module AST.OrderClasses,
+  module AST.Notable,
+  module AST.Ident,
+  module AST.Kind,
+  module AST.Type,
+  module AST.Lit,
+  module AST.Patt,
+  module AST.Expr,
+  module AST.Decl,
+  module AST.SyntaxTable,
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldTyMu, unfoldTyRow,
@@ -33,17 +31,17 @@ module Syntax (
 
 import Prelude ()
 
-import Syntax.Anti
-import Syntax.OrderClasses
-import Syntax.Notable
-import Syntax.Ident
-import Syntax.Kind
-import Syntax.Type
-import Syntax.Lit
-import Syntax.Patt
-import Syntax.Expr
-import Syntax.Decl
-import Syntax.SyntaxTable
+import AST.Anti
+import AST.OrderClasses
+import AST.Notable
+import AST.Ident
+import AST.Kind
+import AST.Type
+import AST.Lit
+import AST.Patt
+import AST.Expr
+import AST.Decl
+import AST.SyntaxTable
 
 import Util
 

@@ -4,11 +4,11 @@
 module Basis.Thread (entries) where
 
 import BasisUtils
-import Syntax
+import AST
 import Value (Vinj(..))
 
-import qualified Syntax.Notable
-import qualified Syntax.Decl
+import qualified AST.Notable
+import qualified AST.Decl
 import qualified Data.Loc
 
 import qualified Control.Concurrent as CC

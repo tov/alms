@@ -2,7 +2,7 @@
       FlexibleInstances,
       UndecidableInstances,
       UnicodeSyntax #-}
-module Syntax.OrderClasses (
+module AST.OrderClasses (
   -- * Lattices
   Lattice(..), BoundedLattice(..),
   -- ** Dual lattices

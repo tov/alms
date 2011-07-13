@@ -11,7 +11,7 @@ import PprClass
 import Rename (RenameState, RenamingInfo(..),
                getRenamingInfo, renamingEnterScope)
 import Statics (S, getTypeInfo, staticsEnterScope)
-import Syntax.Ident
+import AST.Ident
 import Type
 import Util
 

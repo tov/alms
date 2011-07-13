@@ -6,7 +6,7 @@
       TemplateHaskell,
       TypeFamilies,
       TypeSynonymInstances #-}
-module Syntax.Decl (
+module AST.Decl (
   -- * Declarations
   Decl'(..), Decl, DeclNote(..), newDecl,
   -- ** Type declarations
@@ -32,13 +32,13 @@ module Syntax.Decl (
 ) where
 
 import Meta.DeriveNotable
-import Syntax.Notable
-import Syntax.Anti
-import Syntax.Kind
-import Syntax.Ident
-import Syntax.Type
-import Syntax.Patt
-import Syntax.Expr
+import AST.Notable
+import AST.Anti
+import AST.Kind
+import AST.Ident
+import AST.Type
+import AST.Patt
+import AST.Expr
 
 import Data.Generics (Typeable(..), Data(..))
 import qualified Data.Set as S

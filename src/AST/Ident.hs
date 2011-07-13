@@ -10,7 +10,7 @@
       TypeSynonymInstances,
       UndecidableInstances,
       UnicodeSyntax #-}
-module Syntax.Ident (
+module AST.Ident (
   -- * Identifier classes
   Id(..), Raw(..), Renamed(..), renamed0,
   -- ** Dirty tricks
@@ -32,10 +32,10 @@ module Syntax.Ident (
 
 import Env (Path(..), (:>:)(..))
 import Util
-import Syntax.Anti
-import Syntax.Notable
-import Syntax.Kind (QLit(..))
-import qualified Syntax.Strings as Strings
+import AST.Anti
+import AST.Notable
+import AST.Kind (QLit(..))
+import qualified AST.Strings as Strings
 
 import Prelude ()
 import Data.Char (isAlpha, isDigit, toUpper, toLower)

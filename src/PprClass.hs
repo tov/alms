@@ -29,8 +29,8 @@ module PprClass (
 import Alt.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
 import qualified Alt.PrettyPrint as P
 
-import qualified Syntax.Strings as Strings
-import Syntax.Ident (QLid, Uid, Renamed)
+import qualified AST.Strings as Strings
+import AST.Ident (QLid, Uid, Renamed)
 
 import System.IO (Handle, stdout, hPutChar, hPutStr)
 

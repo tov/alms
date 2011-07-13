@@ -31,12 +31,12 @@ module Statics (
 
 import Meta.Quasi
 import Util hiding (find)
-import qualified Syntax
-import qualified Syntax.Decl
-import qualified Syntax.Expr
-import qualified Syntax.Notable
-import qualified Syntax.Patt
-import Syntax hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
+import qualified AST
+import qualified AST.Decl
+import qualified AST.Expr
+import qualified AST.Notable
+import qualified AST.Patt
+import AST hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
                       tyTuple, tyUnit, tyArr, tyApp,
                       TyPat, TyPat'(..))
 import Data.Loc
@@ -397,12 +397,12 @@ hnT  = headNormalizeTypeM 100
 
 -- | Check type for closed-ness and and defined-ness, and add info
 tcType :: (?loc :: Loc, Monad m) =>
-          Syntax.Type R -> TC m Type
+          AST.Type R -> TC m Type
 tcType stxtype0 = do
   t <- tc iaeInit stxtype0
   return t
   where
-  tc :: Monad m => CurrentImpArrRule -> Syntax.Type R -> TC m Type
+  tc :: Monad m => CurrentImpArrRule -> AST.Type R -> TC m Type
   tc iae [$ty| '$tv |] = do
     return (TyVar tv)
   tc iae [$ty| $t1 -[$opt:mq]> $t2 |] = do
@@ -433,7 +433,7 @@ tcType stxtype0 = do
     TyQu u tv <$> tc iae t
   tc iae t0@[$ty| mu '$tv . $t |] = do
     case unfoldTyMu t of
-      (_, N _ (Syntax.TyVar tv')) | tv == tv' ->
+      (_, N _ (AST.TyVar tv')) | tv == tv' ->
         typeError [$msg| Recursive type is not contractive: $t0 |]
       _ -> return ()
     t' <- tc iae t
@@ -1000,7 +1000,7 @@ topSort getEdge edges = do
                        | info <- edges ]
 
 -- | The (unqualified) tycons that appear in a syntactic type
-tyConsOfType :: Syntax.Type R -> S.Set (Lid R)
+tyConsOfType :: AST.Type R -> S.Set (Lid R)
 tyConsOfType [$ty| ($list:ts) $qlid:n |] =
   case n of
     J [] l -> S.singleton l
@@ -1013,8 +1013,8 @@ tyConsOfType [$ty| $quant:_ '$_. $t |] = tyConsOfType t
 tyConsOfType [$ty| mu '$_. $t |]       = tyConsOfType t
 tyConsOfType [$ty| $anti:a |]          = $antierror
 
-tcTyPat :: Monad m => Syntax.TyPat R -> TC m TyPat
-tcTyPat (N note (Syntax.TpVar tv var))    = do
+tcTyPat :: Monad m => AST.TyPat R -> TC m TyPat
+tcTyPat (N note (AST.TpVar tv var))    = do
   let ?loc = getLoc note
   tassert (var == Invariant)
     [$msg| Type pattern variable $tv has a variance annotation
@@ -1115,8 +1115,8 @@ tcSigItem sg0 = case sg0 of
 
 -- | Run a computation in the context of a let declaration
 tcLet :: (?loc :: Loc, Monad m) =>
-         Patt R -> Maybe (Syntax.Type R) -> Expr R ->
-         TC m (Patt R, Maybe (Syntax.Type R), Expr R)
+         Patt R -> Maybe (AST.Type R) -> Expr R ->
+         TC m (Patt R, Maybe (AST.Type R), Expr R)
 tcLet x mt e = do
   tassert (S.null (dtv x)) $
     "Attempt to unpack existential in top-level binding:" !:: x
@@ -1164,8 +1164,8 @@ tcLocal ds1 ds2 = do
 
 -- | Run a computation in the context of a new exception variant
 tcException :: (?loc :: Loc, Monad m) =>
-               Uid R -> Maybe (Syntax.Type R) ->
-               TC m (Maybe (Syntax.Type R))
+               Uid R -> Maybe (AST.Type R) ->
+               TC m (Maybe (AST.Type R))
 tcException n mt = do
   mt' <- traverse tcType mt
   bindCon n (maybe tyExn (`tyArr` tyExn) mt')
@@ -1583,7 +1583,7 @@ linearize md1             = (md1 :)
 ---
 
 -- | Add the type of a value binding
-addVal :: Monad m => Lid R -> Syntax.Type R -> TC m ()
+addVal :: Monad m => Lid R -> AST.Type R -> TC m ()
 addVal x t = do
   let ?loc = mkBogus "<addVal>"
   t' <- tcType t

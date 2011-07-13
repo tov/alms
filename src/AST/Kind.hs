@@ -5,7 +5,7 @@
       TypeFamilies,
       TypeSynonymInstances,
       UnicodeSyntax #-}
-module Syntax.Kind (
+module AST.Kind (
   -- * Qualifiers and variance
   QLit(..), Variance(..),
   -- ** Qualifier expressions
@@ -20,11 +20,11 @@ module Syntax.Kind (
 
 import Util
 import Meta.DeriveNotable
-import Syntax.OrderClasses
-import Syntax.Anti
-import Syntax.Notable
-import {-# SOURCE #-} Syntax.Ident
-import qualified Syntax.Strings as Strings
+import AST.OrderClasses
+import AST.Anti
+import AST.Notable
+import {-# SOURCE #-} AST.Ident
+import qualified AST.Strings as Strings
 
 import Prelude ()
 import Data.Generics (Typeable, Data)

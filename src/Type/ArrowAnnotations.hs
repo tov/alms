@@ -14,8 +14,8 @@ module Type.ArrowAnnotations (
 
 import Util
 import Meta.Quasi
-import qualified Syntax.Notable
-import qualified Syntax
+import qualified AST.Notable
+import qualified AST
 import Type.Internal
 
 import Prelude ()
@@ -37,22 +37,22 @@ type CurrentImpArrPrintingRule = CurrentImpArrRule
 
 -- | Interpret an explicit external qualifier as an internal one
 qInterpret ∷ (Ord tv, Monad m) ⇒
-             (Syntax.TyVar R → m (TyVar tv)) →
-             Syntax.QExp R → m (QExpV tv)
+             (AST.TyVar R → m (TyVar tv)) →
+             AST.QExp R → m (QExpV tv)
 qInterpret resolve = loop where
   loop [qeQ| $qlit:ql |]    = return (qlitexp ql)
   loop [qeQ| `$tv |]        = qvarexp `liftM` resolve tv
   loop [qeQ| $qe1 ⋁ $qe2 |] = (⊔) `liftM` loop qe1 `ap` loop qe2
-  loop [qeQ| $anti:a |]     = $(Syntax.antifail)
+  loop [qeQ| $anti:a |]     = $(AST.antifail)
 
 -- | Represent an internal qualifier as an explicit external one
-qRepresent ∷ (TyVar tv → Syntax.TyVar R) →
-             QExpV tv → Syntax.QExp R
+qRepresent ∷ (TyVar tv → AST.TyVar R) →
+             QExpV tv → AST.QExp R
 qRepresent _      QeA       = [qeQ|+! A |]
 qRepresent rename (QeU tvs)
   | S.null tvs              = [qeQ|+! U |]
   | otherwise               =
-      foldr1 Syntax.qeJoin (Syntax.qeVar . rename <$> S.toList tvs)
+      foldr1 AST.qeJoin (AST.qeVar . rename <$> S.toList tvs)
 
 -- | Interface to rules for implicit annotation of arrows
 class ImpArrRule rule where
@@ -68,12 +68,12 @@ class ImpArrRule rule where
   -- | Interpret the given implicit qualifier into an explicit qualifier
   --   at the given point
   iaeInterpret ∷ (Ord tv, Monad m) ⇒
-                 (Syntax.TyVar R → m (TyVar tv)) →
-                 rule tv → Maybe (Syntax.QExp R) → m (QExpV tv)
+                 (AST.TyVar R → m (TyVar tv)) →
+                 rule tv → Maybe (AST.QExp R) → m (QExpV tv)
   -- | Represent the given explicit qualifier as an implicit one
   iaeRepresent ∷ Eq tv ⇒
-                 (TyVar tv → Syntax.TyVar R) →
-                 rule tv → QExpV tv → Maybe (Syntax.QExp R)
+                 (TyVar tv → AST.TyVar R) →
+                 rule tv → QExpV tv → Maybe (AST.QExp R)
   -- | Update the state under the given variance
   iaeUnder     ∷ rule tv → Variance → rule tv
   --

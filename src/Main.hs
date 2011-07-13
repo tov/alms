@@ -23,7 +23,7 @@ import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv, basis2renv)
-import Syntax (Prog, Decl, TyDec, BIdent(..), prog2decls,
+import AST (Prog, Decl, TyDec, BIdent(..), prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
 import Data.Loc (isBogus, initial, bogus)

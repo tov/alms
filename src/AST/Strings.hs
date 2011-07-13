@@ -3,7 +3,7 @@
       UnicodeSyntax
     #-}
 -- | Hard-coded strings that depend on whether we're doing unicode.
-module Syntax.Strings where
+module AST.Strings where
 
 {-# INLINE digits #-}
 -- | Subscript numerals for type variables

@@ -1,5 +1,5 @@
 -- | The internal representation of types, created by the type checker
---   from the syntactic types in 'Syntax.Type'.
+--   from the syntactic types in 'AST.Type'.
 {-# LANGUAGE
       UnicodeSyntax
     #-}
