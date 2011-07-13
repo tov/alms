@@ -24,7 +24,7 @@ import Control.Monad.ST (runST)
 --   type variables are substituted
 standardizeMus ∷ Ord tv ⇒ Type tv → Type tv
 standardizeMus σ00 = runST $ do
-  counter ← newRef 0
+  counter ← newRef (0 ∷ Int)
   let loop g0 σ0 = do
         case M.lookup σ0 g0 of
           Just (i, used') → do

@@ -304,8 +304,8 @@ syntacticValue e = case view e of
   ExCase _ _     → False
   ExLetRec bs e2 → all eachBinding bs && syntacticValue e2 where
     eachBinding bn = case view bn of
-      BnBind { bnexpr = e } → syntacticValue e
-      BnAnti a              → antierror "syntacticValue" a
+      BnBind { bnexpr = e' } → syntacticValue e'
+      BnAnti a               → antierror "syntacticValue" a
   ExLetDecl _ _  → False
   ExPair e1 e2   → syntacticValue e1 && syntacticValue e2
   ExAbs _ _      → True
@@ -324,8 +324,8 @@ isAnnotated e = case view e of
   ExLet _ _ e2   → isAnnotated e2
   ExCase _ cs    → all eachClause cs where
     eachClause c = case view c of
-      CaClause { caexpr = e } → isAnnotated e
-      CaAnti a                → antierror "isAnnotated" a
+      CaClause { caexpr = e' } → isAnnotated e'
+      CaAnti a                 → antierror "isAnnotated" a
   ExLetRec _ e2  → isAnnotated e2
   ExLetDecl _ e2 → isAnnotated e2
   ExPair _ _     → False

@@ -9,7 +9,7 @@
       RelaxedPolyRec,
       TemplateHaskell,
       TypeSynonymInstances #-}
-module Rename (
+module Statics.Rename (
   -- * The renaming monad and runners
   Renaming, runRenaming, runRenamingM,
   renameMapM,
@@ -612,20 +612,20 @@ renameTyDec mqe (N note td)      = withLoc note $ do
 
 renameModExp :: ModExp Raw -> R (ModExp Renamed)
 renameModExp me0 = withLoc me0 $ case me0 of
-  [me| struct $list:ds end |] -> do
+  [meQ| struct $list:ds end |] -> do
     ds' <- renameDecls ds
-    return [me|+ struct $list:ds' end |]
-  [me| $quid:qu $list:_ |] -> do
+    return [meQ|+ struct $list:ds' end |]
+  [meQ| $quid:qu $list:_ |] -> do
     (qu', md, _) <- getModule qu
     let qls = getAllVariables md
     tell md
-    return [me|+ $quid:qu' $list:qls |]
-  [me| $me1 : $se2 |] -> do
+    return [meQ|+ $quid:qu' $list:qls |]
+  [meQ| $me1 : $se2 |] -> do
     (me1', md1) <- steal $ renameModExp me1
     (se2', md2) <- steal $ renameSigExp se2
     onlyInModule md1 $ sealWith md2
-    return [me| $me1' : $se2' |]
-  [me| $anti:a |] -> $antifail
+    return [meQ| $me1' : $se2' |]
+  [meQ| $anti:a |] -> $antifail
 
 renameSigExp :: SigExp Raw -> R (SigExp Renamed)
 renameSigExp se0 = withLoc se0 $ case se0 of
@@ -1022,6 +1022,7 @@ renamingEnterScope u r =
     Just (_, _, (_, e'))
             -> r { savedEnv = e `mappend` e' }
 
+{-
 -- | Test runner for renaming an expression
 _re :: Expr Raw -> IO (Expr Renamed)
 _re e = fst <$> runRenamingM True bogus renameState0 (renameExpr e)
@@ -1030,5 +1031,7 @@ _re e = fst <$> runRenamingM True bogus renameState0 (renameExpr e)
 _rd :: Decl Raw -> IO (Decl Renamed)
 _rd d = fst <$> runRenamingM True bogus renameState0 (renameDecl d)
 
+_loc :: Loc
 _loc = initial "<interactive>"
+-}
 

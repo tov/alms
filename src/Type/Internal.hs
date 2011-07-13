@@ -58,7 +58,7 @@ module Type.Internal (
 
   -- * Locally nameless
   openTy, openTyN, closeTy, lcTy, lcTyK,
-  closeWith, closeRec, closeWithQuals, closeWithNames,
+  closeRec, closeQuant,
 
   module Data.Empty,
 ) where
@@ -240,7 +240,7 @@ tcTuple      = internalTC (-11) "*"     (qvarexp 0 ⊔ qvarexp 1)
                                         [(Covariant,     Qa, False),
                                          (Covariant,     Qa, False)]
 
-tcCycle, tcConst, tcIdent ∷ TyCon
+tcCycle, tcConst, tcIdent, tcConsTup ∷ TyCon
 tcCycle      = internalTC (-51) "cycle" [(Invariant,     Qa, True)]
 tcConst      = internalTC (-52) "const" [(Omnivariant, Qa, False)]
                  [([TpVar Nope], tyUnit)]
@@ -677,24 +677,16 @@ closeTy k vs σ0 = case σ0 of
     this = closeTy k vs
     next = closeTy (k + 1) vs
 
--- | Add the given quantifier while binding the given list of variables
-closeWith ∷ Ord tv ⇒ Quant → [tv] → Type tv → Type tv
-closeWith = closeWithNames []
-
 -- | Build a recursive type by closing and binding the given variable
-closeRec ∷ Ord a ⇒ a → Type a → Type a
-closeRec a t = TyMu Nope (closeTy 0 [a] t)
+closeRec ∷ Ord tv ⇒ tv → Type tv → Type tv
+closeRec α σ = TyMu Nope (closeTy 0 [α] σ)
 
 -- | Add the given quantifier while binding the given list of variables
-closeWithQuals ∷ Ord a ⇒ [QLit] → Quant → [a] → Type a → Type a
-closeWithQuals qls = closeWithNames (map (Nope,) qls)
-
--- | Add the given quantifier while binding the given list of variables
-closeWithNames ∷ Ord tv ⇒
-                 [(Name, QLit)] → Quant → [tv] → Type tv → Type tv
-closeWithNames _   _ []  ρ = ρ
-closeWithNames pns q tvs ρ = standardizeType (TyQu q pns' (closeTy 0 tvs ρ))
-  where pns' = take (length tvs) (pns ++ repeat (Nope, maxBound))
+closeQuant ∷ Ord tv ⇒ Quant → [(tv, QLit)] → Type tv → Type tv
+closeQuant qu αqs ρ = standardizeType (TyQu qu nqs (closeTy 0 αs ρ))
+  where
+    αs  = fst <$> αqs
+    nqs = zip (repeat Nope) (snd <$> αqs)
 
 -- | Is the given type locally closed to level k?  A type is locally closed
 --   if none of its bound variables point to quantifiers "outside" the

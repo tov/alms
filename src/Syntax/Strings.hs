@@ -24,13 +24,14 @@ fun, arrow ∷ String
 -- | Quantifiers
 all, ex, mu ∷ String
 
+{-# INLINE product #-}
 {-# INLINE uArrow #-}
 {-# INLINE aArrow #-}
 {-# INLINE arrowPre #-}
 {-# INLINE arrowPost #-}
 {-# INLINE join #-}
 -- | Infix type constructors
-uArrow, aArrow, arrowPre, arrowPost, join ∷ String
+product, uArrow, aArrow, arrowPre, arrowPost, join ∷ String
 
 {-# INLINE affine #-}
 {-# INLINE unlimited #-}

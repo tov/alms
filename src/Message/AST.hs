@@ -24,8 +24,15 @@ data Message d where
   Showable  :: Show a => a -> Message d
   AntiMsg   :: String -> String -> Message d
 
-data H
-data V
+-- | 'H' and 'V' need constructors or pattern matching on
+--   @'Message' 'H'@ gives non-exhaustiveness warnings for unreachable
+--   cases.
+data H = H
+data V = V
+
+-- | Don't warn about the fact that 'H' and 'V' aren't used.
+_don'tWarnAbout :: (H, V)
+_don'tWarnAbout  = (H, V)
 
 -- | Types of lists
 data StackStyle

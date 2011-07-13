@@ -98,7 +98,7 @@ instance Show Quant where
 ---
 
 -- | Names of built-in types
-tnUnit, tnEnd, tnRecord, tnDots, tnTuple, tnUn, tnAf :: String
+tnUnit, tnEnd, tnVariant, tnRecord, tnDots, tnTuple, tnUn, tnAf :: String
 
 tnUnit         = "unit"
 tnEnd          = "INTERNALS.Row.end"

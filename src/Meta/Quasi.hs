@@ -7,8 +7,8 @@
       TemplateHaskell,
       TypeSynonymInstances #-}
 module Meta.Quasi (
-  pa, ty, ex, dc, me,
-  prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ,
+  pa, ty, ex, dc,
+  prQ, tdQ, atQ, caQ, bnQ, meQ, qeQ, tpQ, seQ, sgQ,
 ) where
 
 import Meta.QuoteData
@@ -80,14 +80,14 @@ mkvarP n   = TH.varP (TH.mkName n)
 --- Quasiquoters
 ---
 
-pa, ty, ex, dc, me, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ
+pa, ty, ex, dc, meQ, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ
   :: QuasiQuoter
 
 ex  = mkQuasi "ex" parseExpr
 dc  = mkQuasi "dc" parseDecl
 ty  = mkQuasi "ty" parseType
-me  = mkQuasi "me" parseModExp
 pa  = mkQuasi "pa" parsePatt
+meQ = mkQuasi "meQ" parseModExp
 prQ = mkQuasi "prQ" parseProg
 tdQ = mkQuasi "tdQ" parseTyDec
 atQ = mkQuasi "atQ" parseAbsTy

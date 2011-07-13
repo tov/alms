@@ -183,10 +183,10 @@ instance Ord tv ⇒ Ftv (Type tv) tv where
               FTSingle
               (\tc trees → FTBranch
                  [ FTVariance (* var) $
-                     if guard then FTGuard tree else tree
-                 | tree  ← trees
-                 | var   ← tcArity tc
-                 | guard ← tcGuards tc ])
+                     if guarded then FTGuard tree else tree
+                 | tree    ← trees
+                 | var     ← tcArity tc
+                 | guarded ← tcGuards tc ])
               (\_ σ1 σ2 → FTBranch [FTGuard σ1, σ2])
               (mkMuF (\_ → id))
 

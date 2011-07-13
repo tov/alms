@@ -300,17 +300,17 @@ pprAlternatives (a:as) = sep $
 
 pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
 pprModExp add modexp = case modexp of
-  [me| $quid:n |] -> add (ppr n)
-  [me| $quid:n $list:qls |] ->
+  [meQ| $quid:n |] -> add (ppr n)
+  [meQ| $quid:n $list:qls |] ->
     add (ppr n) <+>
     brackets (fsep (punctuate comma (map ppr qls)))
-  [me| struct $list:ds end |] ->
+  [meQ| struct $list:ds end |] ->
     add (text "struct")
     $$ nest 2 (vcat (map ppr0 ds))
     $$ text "end"
-  [me| $me1 : $se2 |] ->
+  [meQ| $me1 : $se2 |] ->
     pprSigExp (pprModExp add me1 <+> colon <+>) se2
-  [me| $anti:a |] -> add (ppr a)
+  [meQ| $anti:a |] -> add (ppr a)
 
 pprSigExp :: (Doc -> Doc) -> SigExp i -> Doc
 pprSigExp add se0 = body >+> withs where

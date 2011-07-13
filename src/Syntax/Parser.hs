@@ -894,8 +894,8 @@ qualsp    = option minBound $
 -- A qualifier expression
 qExpp :: Id i => P (QExp i)
 qExpp  = "qualifier expression" @@ qexp where
-  qexp  = addLoc $ chainl1 qatom join
-  join  = addLoc $ qeJoin <$ (void comma <|> qjoinArr)
+  qexp  = addLoc $
+            chainl1 qatom (addLoc $ qeJoin <$ (void comma <|> qjoinArr))
   qatom = addLoc $
           qeLit Qu <$  qualU
       <|> qeLit Qa <$  qualA

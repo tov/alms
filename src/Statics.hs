@@ -1190,19 +1190,19 @@ tcSig u se0 = do
 -- | Type check a module body
 tcModExp :: (?loc :: Loc, Monad m) =>
             ModExp R -> TC m (ModExp R)
-tcModExp [$me| struct $list:ds end |] = do
+tcModExp [$meQ| struct $list:ds end |] = do
   ds' <- tcDecls ds
-  return [$me| struct $list:ds' end |]
-tcModExp [$me| $quid:n $list:qls |] = do
+  return [$meQ| struct $list:ds' end |]
+tcModExp [$meQ| $quid:n $list:qls |] = do
   (md, _) <- find n
   tell md
-  return [$me| $quid:n $list:qls |]
-tcModExp [$me| $me1 : $se2 |] = do
+  return [$meQ| $quid:n $list:qls |]
+tcModExp [$meQ| $me1 : $se2 |] = do
   (me1', md1) <- steal $ tcModExp me1
   (se2', md2) <- steal $ tcSigExp se2
   ascribeSignature md1 md2
-  return [$me| $me1' : $se2' |]
-tcModExp [$me| $anti:a |] = $antifail
+  return [$meQ| $me1' : $se2' |]
+tcModExp [$meQ| $anti:a |] = $antifail
 
 -- | Run a computation in the context of an abstype block
 tcAbsTy :: (?loc :: Loc, Monad m) =>

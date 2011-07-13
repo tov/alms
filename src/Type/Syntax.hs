@@ -152,11 +152,11 @@ tyConToStx' = tyConToStx tyNames0
 tyConToStx ∷ TyNames → TyCon → AST.TyDec R
 tyConToStx tn tc =
   let
-  n          = AST.jname (tcName tc)
-  tvs        = zipWith3 AST.TV (AST.lid <$> AST.tvalphabet)
-                               (tcBounds tc)
-                               (repeat AST.bogus)
-  doType tvs = typeToStx context0 { tyNames = tn, tvEnv = [tvs] }
+  n             = AST.jname (tcName tc)
+  tvs           = zipWith3 AST.TV (AST.lid <$> AST.tvalphabet)
+                                  (tcBounds tc)
+                                  (repeat AST.bogus)
+  doType envTvs = typeToStx context0 { tyNames = tn, tvEnv = [envTvs] }
   in
   case tc of
   _ | tc == tcExn

@@ -6,17 +6,17 @@ GHCI     = ghci
 EXE      = alms
 EXAMPLES = ../examples
 SRC      = $(HS_SRC) $(HSBOOT_SRC)
-HS_SRC      = *.hs \
-	      Alt/*.hs \
-              AST/*.hs \
-              Basis/*.hs \
-              Basis/Channel/*.hs \
-              Data/*.hs \
-              Message/*.hs \
-              Meta/*.hs \
-              Syntax/*.hs \
-              Type/*.hs \
-              Util/*.hs
+HS_SRC   = *.hs \
+           Alt/*.hs \
+           AST/*.hs \
+           Basis/*.hs \
+           Basis/Channel/*.hs \
+           Data/*.hs \
+           Message/*.hs \
+           Meta/*.hs \
+           Syntax/*.hs \
+           Type/*.hs \
+           Util/*.hs
 HSBOOT_SRC  = AST/*.hs-boot
 
 HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(NOWARN) $(IMPARR) $(UNICODE)
@@ -30,7 +30,7 @@ UNICODE = -DUNICODE
 $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
 
-%.hi:
+%.hi: $(HS_SRC) $(HSBOOT_SRC)
 	$(GHC) --make $*.hs $(HCOPTS)
 
 %.i:
@@ -39,6 +39,12 @@ $(EXE) $(EXE)-%: $(SRC)
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 $(EXE)-6.%:   PARSEC  = -DPARSEC_VERSION=2
+
+not-compiled:
+	@find . -name \*.hs | sed 's@^\./@@' | while read hs; do \
+		hi=`echo $$hs | sed 's/hs$$/hi/'`; \
+		test -f $$hi || echo $$hs; \
+	done
 
 clean:
 	$(RM) $(HS_SRC:.hs=.hi) $(HS_SRC:.hs=.o)

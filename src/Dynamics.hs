@@ -121,17 +121,17 @@ evalLocal ds ds'  env0 = do
   return (env2 =+= scope)
 
 evalModExp :: ModExp R -> E -> IO Scope
-evalModExp [$me| struct $list:ds end |]  env = do
+evalModExp [$meQ| struct $list:ds end |]  env = do
   scope:_ <- evalDecls ds (genEmpty:env)
   return scope
-evalModExp [$me| $quid:n $list:_ |]      env = do
+evalModExp [$meQ| $quid:n $list:_ |]      env = do
   case env =..= n of
     Just scope -> return scope
     Nothing    -> runtimeBug _loc "evalModExp" $
       "Unknown module: ‘" ++ show n ++ "’"
-evalModExp [$me| $me1 : $_ |]            env = do
+evalModExp [$meQ| $me1 : $_ |]            env = do
   evalModExp me1 env
-evalModExp [$me| $anti:a |]              _   = $antifail
+evalModExp [$meQ| $anti:a |]              _   = $antifail
 
 evalExn :: Uid R -> Maybe (Type R) -> DDecl
 evalExn _ _ env = return env
