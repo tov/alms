@@ -2,14 +2,25 @@
 ## preferred way to build, but sometimes this is convenient.
 
 GHC      = ghc
+GHCI     = ghci
 EXE      = alms
 EXAMPLES = ../examples
 SRC      = $(HS_SRC) $(HSBOOT_SRC)
-HS_SRC      = *.hs Basis/*.hs Basis/Channel/*.hs Syntax/*.hs \
-              Message/*.hs Meta/*.hs
-HSBOOT_SRC  = Syntax/*.hs-boot
+HS_SRC      = *.hs \
+	      Alt/*.hs \
+              AST/*.hs \
+              Basis/*.hs \
+              Basis/Channel/*.hs \
+              Data/*.hs \
+              Message/*.hs \
+              Meta/*.hs \
+              Syntax/*.hs \
+              Type/*.hs \
+              Util/*.hs
+HSBOOT_SRC  = AST/*.hs-boot
 
 HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(NOWARN) $(IMPARR) $(UNICODE)
+HIOPTS  = $(NOWARN) $(IMPARR) $(UNICODE)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 PARSEC  = -DPARSEC_VERSION=3
 # IMPARR  = -DANNOTATION_PRINTING_RULE=Rule0
@@ -18,6 +29,12 @@ UNICODE = -DUNICODE
 
 $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
+
+%.hi:
+	$(GHC) --make $*.hs $(HCOPTS)
+
+%.i:
+	$(GHCI) $* $(HIOPTS)
 
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline

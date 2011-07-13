@@ -10,7 +10,7 @@ module Coercion  (
 
 import Data.Loc
 import Meta.Quasi
-import Ppr ()
+import Syntax.Ppr ()
 import qualified AST
 import qualified AST.Expr
 import qualified AST.Notable

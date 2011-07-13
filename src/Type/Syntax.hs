@@ -19,8 +19,8 @@ import Type.Internal
 import Type.ArrowAnnotations
 import Type.TyVar
 import qualified AST
-import PprClass (TyNames, tyNames0, tnLookup, Ppr(..), showFromPpr)
-import Ppr ()
+import Syntax.PprClass (TyNames, tyNames0, tnLookup, Ppr(..), showFromPpr)
+import Syntax.Ppr ()
 
 import Prelude ()
 import qualified Data.Set as S

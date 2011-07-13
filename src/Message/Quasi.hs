@@ -13,7 +13,7 @@ module Message.Quasi (
 import Message.AST
 import Message.Parser
 import Meta.THHelpers
-import PprClass
+import Syntax.PprClass
 import Util hiding (lift)
 
 import Prelude ()
@@ -70,7 +70,7 @@ msgAstToExpQ msg0 = do
         where each (s,msg') = [| ($(lift s), $(loop msg')) |]
       Indent msg' -> [| Indent $(loop msg') |]
       Printable d a
-                  -> [| Exact $(lift (show (PprClass.pprDepth d a))) |]
+                  -> [| Exact $(lift (show (pprDepth d a))) |]
       Showable a  -> [| Exact $(lift (show a)) |]
       AntiMsg tag name -> case tag of
         "words"   -> [| Words $var |]

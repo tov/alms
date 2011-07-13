@@ -18,7 +18,7 @@ module Type.TyVar (
 ) where
 
 import Util
-import PprClass
+import Syntax.PprClass
 import Type.Internal
 
 import Prelude ()

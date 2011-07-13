@@ -41,7 +41,7 @@ import AST hiding (Type, Type'(..), tyAll, tyEx, tyUn, tyAf,
                       TyPat, TyPat'(..))
 import Data.Loc
 import Env as Env
-import Ppr (Ppr, TyNames)
+import Syntax.Ppr (Ppr, TyNames)
 import Type
 import TypeRel
 import Coercion (coerceExpression)

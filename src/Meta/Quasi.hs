@@ -13,7 +13,7 @@ module Meta.Quasi (
 
 import Meta.QuoteData
 import Meta.THHelpers
-import Parser
+import Syntax.Parser
 import AST
 import Util
 

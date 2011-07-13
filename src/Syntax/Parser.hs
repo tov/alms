@@ -6,7 +6,7 @@
       TypeSynonymInstances,
       UnicodeSyntax #-}
 -- | Parser
-module Parser (
+module Syntax.Parser (
   -- * The parsing monad
   P, parse,
   -- ** Errors
@@ -28,9 +28,9 @@ module Parser (
 
 import Util hiding (before, lift)
 import Paths
-import Prec
 import AST
-import Lexer
+import Syntax.Prec
+import Syntax.Lexer as Lexer
 import ErrorMessage (AlmsException(..), Phase(ParserPhase))
 import qualified Message.AST as Msg
 import Alt.Parsec hiding (parse)

@@ -10,9 +10,7 @@
 -----------------------------------------------------------------------------
 
 module AST (
-  -- * Identifiers
   module AST.Anti,
-  module AST.OrderClasses,
   module AST.Notable,
   module AST.Ident,
   module AST.Kind,
@@ -22,6 +20,7 @@ module AST (
   module AST.Expr,
   module AST.Decl,
   module AST.SyntaxTable,
+  module Data.Lattice,
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldTyMu, unfoldTyRow,
@@ -32,7 +31,6 @@ module AST (
 import Prelude ()
 
 import AST.Anti
-import AST.OrderClasses
 import AST.Notable
 import AST.Ident
 import AST.Kind
@@ -42,6 +40,7 @@ import AST.Patt
 import AST.Expr
 import AST.Decl
 import AST.SyntaxTable
+import Data.Lattice
 
 import Util
 

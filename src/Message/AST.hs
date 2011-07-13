@@ -8,7 +8,7 @@ module Message.AST (
   wordsMsg, quoteMsg, pprMsg, showMsg, emptyMsg,
 ) where
 
-import PprClass
+import Syntax.PprClass
 
 -- | Simple message markup
 data Message d where

@@ -35,7 +35,7 @@ import Util
 import AST.Anti
 import AST.Notable
 import AST.Kind (QLit(..))
-import qualified AST.Strings as Strings
+import qualified Syntax.Strings as Strings
 
 import Prelude ()
 import Data.Char (isAlpha, isDigit, toUpper, toLower)

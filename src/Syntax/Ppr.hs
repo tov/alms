@@ -5,20 +5,20 @@
       TypeSynonymInstances,
       UnicodeSyntax
     #-}
-module Ppr (
+module Syntax.Ppr (
   pprTyApp,
   -- * Re-exports
-  module PprClass,
-  module Prec
+  module Syntax.PprClass,
+  module Syntax.Prec
 ) where
 
 import Meta.Quasi
-import PprClass
-import Prec
+import Syntax.PprClass
+import Syntax.Prec
 import AST
 import Util
 
-import qualified AST.Strings as Strings
+import qualified Syntax.Strings as Strings
 import qualified AST.Decl
 import qualified AST.Expr
 import qualified AST.Notable

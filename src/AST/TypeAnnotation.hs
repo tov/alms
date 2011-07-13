@@ -9,7 +9,7 @@
       UnicodeSyntax
       #-}
 -- | For treating syntactic types as type annotations.
-module TypeAnnotation (
+module AST.TypeAnnotation (
   Annot, HasAnnotations(..),
 ) where
 

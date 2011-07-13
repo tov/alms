@@ -24,7 +24,7 @@ import qualified AST.Expr
 import qualified AST.Notable
 import qualified AST.Patt
 import Env
-import Ppr (Ppr(..), Doc, text, precApp)
+import Syntax.Ppr (Ppr(..), Doc, text, precApp)
 import ErrorMessage
 
 import Prelude ()

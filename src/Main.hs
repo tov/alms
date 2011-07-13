@@ -6,11 +6,11 @@ module Main (
 ) where
 
 import Util
-import Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
+import Syntax.Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
             ($$), nest, printDoc, hPrintDoc)
-import qualified Ppr
-import Parser (parseFile, REPLCommand(..), parseCommand)
-import Prec (precOp)
+import qualified Syntax.Ppr
+import Syntax.Parser (parseFile, REPLCommand(..), parseCommand)
+import Syntax.Prec (precOp)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
 import Printing (addTyNameContext)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg,

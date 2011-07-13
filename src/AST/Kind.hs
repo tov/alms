@@ -20,11 +20,11 @@ module AST.Kind (
 
 import Util
 import Meta.DeriveNotable
-import AST.OrderClasses
+import Data.Lattice
 import AST.Anti
 import AST.Notable
 import {-# SOURCE #-} AST.Ident
-import qualified AST.Strings as Strings
+import qualified Syntax.Strings as Strings
 
 import Prelude ()
 import Data.Generics (Typeable, Data)

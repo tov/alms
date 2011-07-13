@@ -29,13 +29,13 @@ import ErrorMessage
 import Meta.Quasi
 import AST hiding ((&))
 import Data.Loc
-import TypeAnnotation
+import AST.TypeAnnotation
 import qualified AST.Decl
 import qualified AST.Expr
 import qualified AST.Notable
 import qualified AST.Patt
 import Util
-import Ppr (Ppr(..))
+import Syntax.Ppr (Ppr(..))
 
 import Prelude ()
 import qualified Data.Map as M

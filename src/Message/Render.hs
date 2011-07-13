@@ -6,10 +6,10 @@
       QuasiQuotes
       #-}
 module Message.Render (
-  module PprClass
+  module Syntax.PprClass
 ) where
 
-import PprClass
+import Syntax.PprClass
 import Message.AST
 
 -- | Context for message rendering

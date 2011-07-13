@@ -39,8 +39,8 @@ import Util.MonadRef
 import Util.Trace
 import Data.Loc (bogus)
 import ErrorMessage
-import PprClass as Ppr
-import Prec (precEq)
+import Syntax.PprClass as Ppr
+import Syntax.Prec (precEq)
 import Rank (Rank)
 import qualified Rank
 import Type.Internal

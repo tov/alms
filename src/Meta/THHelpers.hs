@@ -15,7 +15,7 @@ module Meta.THHelpers (
   buildContext, typeOfTyVarBndr, conName,
 ) where
 
-import Lexer (lid, uid)
+import Syntax.Lexer (lid, uid)
 import Util
 import Compat (newQuasi)
 import Alt.Parsec

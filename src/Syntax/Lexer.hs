@@ -1,5 +1,5 @@
 -- | Lexer setup for parsec
-module Lexer (
+module Syntax.Lexer (
   -- * Class for saving pre-whitespace position
   T.TokenEnd(..),
   -- * Identifier tokens
@@ -27,7 +27,7 @@ module Lexer (
   colon, dot, semiSep, semiSep1, commaSep, commaSep1
 ) where
 
-import Prec
+import Syntax.Prec
 import Util
 import Alt.Parsec
 import qualified Alt.Token as T

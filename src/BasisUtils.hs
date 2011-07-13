@@ -35,8 +35,8 @@ import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
 import ErrorMessage (AlmsMonad)
 import Meta.Quasi
-import Parser (ptd)
-import Ppr (ppr, pprPrec, text, precApp)
+import Syntax.Parser (ptd)
+import Syntax.Ppr (ppr, pprPrec, text, precApp)
 import Rename
 import Statics (S, env0, runTC, tcMapM, addVal, addDecl, addType, addMod)
 import AST

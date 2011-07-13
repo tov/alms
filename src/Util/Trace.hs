@@ -18,7 +18,7 @@ module Util.Trace (
 ) where
 
 import Util
-import PprClass as Ppr
+import Syntax.PprClass as Ppr
 
 import Prelude ()
 import Data.IORef

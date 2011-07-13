@@ -36,7 +36,7 @@ import AST.Notable
 import AST.Anti
 import AST.Kind
 import AST.Ident
-import qualified AST.Strings as Strings
+import qualified Syntax.Strings as Strings
 
 import Prelude ()
 import Data.Generics (Typeable, Data)

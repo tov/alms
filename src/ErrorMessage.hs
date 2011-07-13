@@ -13,7 +13,7 @@ module ErrorMessage (
 ) where
 
 import Data.Loc
-import PprClass
+import Syntax.PprClass
 import Message.AST
 import Message.Render ()
 import Message.Quasi

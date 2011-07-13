@@ -30,7 +30,7 @@ import Data.Generics
 
 import Util
 import AST (Uid(..), Type, Renamed, uid)
-import Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
+import Syntax.Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             prec, prec1, ppr1, atPrec, precCom, precApp)
 
 import qualified Control.Exception as Exn

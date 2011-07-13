@@ -66,8 +66,8 @@ module Type.Internal (
 import Util
 import Util.MonadRef
 import Data.Empty
+import Data.Lattice
 import qualified Env
-import AST.OrderClasses
 import AST.Ident hiding (TyVar)
 import AST.Kind hiding (QExp)
 

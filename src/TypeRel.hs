@@ -22,7 +22,7 @@ module TypeRel (
 
 import Env
 import ErrorST
-import Ppr ()
+import Syntax.Ppr ()
 import Type
 import Util
 

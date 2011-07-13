@@ -1,7 +1,7 @@
 {-# LANGUAGE
       FlexibleInstances
       #-}
-module PprClass (
+module Syntax.PprClass (
   -- * Documents
   Doc,
   -- * Pretty-printing class
@@ -29,7 +29,7 @@ module PprClass (
 import Alt.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
 import qualified Alt.PrettyPrint as P
 
-import qualified AST.Strings as Strings
+import qualified Syntax.Strings as Strings
 import AST.Ident (QLid, Uid, Renamed)
 
 import System.IO (Handle, stdout, hPutChar, hPutStr)

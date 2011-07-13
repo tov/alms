@@ -6,7 +6,7 @@ module Rank (
 ) where
 
 import Data.Monoid
-import PprClass as Ppr
+import Syntax.PprClass as Ppr
 
 data Rank
   = Finite !Int

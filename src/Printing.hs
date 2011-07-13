@@ -7,7 +7,7 @@ module Printing (
 ) where
 
 import Data.List (tails)
-import PprClass
+import Syntax.PprClass
 import Rename (RenameState, RenamingInfo(..),
                getRenamingInfo, renamingEnterScope)
 import Statics (S, getTypeInfo, staticsEnterScope)

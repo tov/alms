@@ -2,7 +2,7 @@
 --
 -- We use operator precedences from Ocaml.  The precence and
 -- associativity of an operator is determined by its first character.
-module Prec (
+module Syntax.Prec (
   Prec, precOp, fixities,
   -- * Precedences for reserved operators needed by the parser
   precMin, precStart, precMax, precCast,
