@@ -7,7 +7,7 @@
 module ErrorMessage (
   AlmsException(..), Phase(..),
   MonadAlmsError(..), finallyAlms, mapAlmsException,
-  almsBug, (!::), appendToMessage,
+  throw, almsBug, (!::), appendToMessage,
   wordsMsg, quoteMsg, pprMsg, showMsg, emptyMsg,
   module Message.Quasi,
 ) where
@@ -19,7 +19,7 @@ import Message.Render ()
 import Message.Quasi
 
 import Data.Typeable (Typeable)
-import Control.Exception (Exception, throwIO, catch)
+import Control.Exception (Exception, throwIO, throw, catch)
 
 import Control.Monad.Trans.Identity as Identity
 import Control.Monad.Trans.Maybe as Maybe

@@ -101,11 +101,11 @@ class Ppr p where
       else mempty
   pprStyleList st [x] =
     if listStyleDelimitSingleton st
-      then listStyleBegin st <> ppr x <> listStyleEnd st
+      then listStyleBegin st <> ppr0 x <> listStyleEnd st
       else ppr x
   pprStyleList st xs  =
     listStyleBegin st <>
-      listStyleJoiner st (punctuate (listStylePunct st) (map ppr xs))
+      listStyleJoiner st (punctuate (listStylePunct st) (map ppr0 xs))
     <> listStyleEnd st
   --
   listStyle _ = ListStyle {
@@ -226,6 +226,9 @@ fcat = trimCat P.fcat
 
 instance Ppr a => Ppr [a] where
   ppr = pprList
+
+instance (Ppr a, Ppr b) => Ppr (a, b) where
+  ppr (a, b) = parens (fsep [ ppr0 a <> comma, ppr0 b ])
 
 instance Ppr a => Ppr (Maybe a) where
   pprPrec _ Nothing  = mempty

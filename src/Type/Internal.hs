@@ -35,13 +35,15 @@ module Type.Internal (
   -- ** Built-in
   tcUnit, tcInt, tcChar, tcFloat, tcString, tcExn, tcTuple, tcFun,
   tcUn, tcAf, tcJoin,
+  -- ** Convenient constructors
+  fvTy, bvTy,
   -- ** Pre-constructed types
   tyNulOp, tyUnOp, tyBinOp,
   tyFun, tyArr, tyLol, tyTuple, tyQLit,
   tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
   (.->.), (.→.), (.-*.), (.*.),
   -- *** For testing
-  tcCycle,
+  tcCycle, tcConst, tcIdent, tcConsTup,
 
   -- * Standard forms
   standardizeType, standardizeQuals,
@@ -77,6 +79,10 @@ import qualified Data.List as List
 import qualified Data.Map  as M
 import qualified Data.Set  as S
 
+---
+--- DATA TYPES
+---
+
 -- | Everything should be renamed by now
 type R = Renamed
 
@@ -89,7 +95,7 @@ data TyVar tv
   = Free !tv
   -- | A bound type variable
   | Bound !Int !Int !Name
-  deriving (Eq, Ord, Typeable, Data)
+  deriving (Eq, Ord, Functor, Typeable, Data)
 
 -- | Quantifiers
 data Quant
@@ -97,7 +103,7 @@ data Quant
   = Forall
   -- | Existential quantifier
   | Exists
-  deriving (Eq, Typeable, Data)
+  deriving (Eq, Ord, Typeable, Data)
 
 -- | The internal representation of a type
 data Type tv
@@ -111,7 +117,7 @@ data Type tv
   | TyRow !(Uid R) !(Type tv) !(Type tv)
   -- | The application of a type constructor (possibly nullary).
   | TyApp !TyCon ![Type tv]
-  deriving (Typeable, Data)
+  deriving (Functor, Typeable, Data)
 
 -- | Internal qualifier expressions
 data QExp tv
@@ -192,11 +198,9 @@ instance (a ~ Type Empty, i ~ Renamed, ExtTC r) ⇒
          ExtTC (Env.Env (Uid i) (Maybe a) → r) where
   extTC tc x = extTC (tc { tcCons = x })
 
-instance ExtTC r ⇒ ExtTC ([([TyPat], Type Empty)] → r) where
+instance (t ~ Type Empty, ExtTC r) ⇒
+         ExtTC ([([TyPat], t)] → r) where
   extTC tc x = extTC (tc { tcNext = Just x })
-
-instance ExtTC r ⇒ ExtTC (Maybe [([TyPat], Type Empty)] → r) where
-  extTC tc x = extTC (tc { tcNext = x })
 
 mkTC ∷ ExtTC r ⇒ Int → QLid Renamed → r
 mkTC i ql
@@ -236,12 +240,34 @@ tcTuple      = internalTC (-11) "*"     (qvarexp 0 ⊔ qvarexp 1)
                                         [(Covariant,     Qa, False),
                                          (Covariant,     Qa, False)]
 
-tcCycle      ∷ TyCon
+tcCycle, tcConst, tcIdent ∷ TyCon
 tcCycle      = internalTC (-51) "cycle" [(Invariant,     Qa, True)]
-
+tcConst      = internalTC (-52) "const" [(Omnivariant, Qa, False)]
+                 [([TpVar Nope], tyUnit)]
+tcIdent      = internalTC (-53) "ident" (qvarexp 0)
+                                        [(Covariant, Qa, False)]
+                 [([TpVar Nope], TyVar (Bound 0 0 Nope))]
+tcConsTup    = internalTC (-54) "cons"  (qvarexp 0 ⊔ qvarexp 1)
+                                        [(Covariant, Qa, False),
+                                         (Covariant, Qa, False)]
+                 [([TpVar Nope, TpApp tcTuple [TpVar Nope, TpVar Nope]],
+                   TyApp tcTuple [TyApp tcConsTup [TyVar (Bound 0 0 Nope),
+                                                   TyVar (Bound 0 1 Nope)],
+                                  TyVar (Bound 0 2 Nope)]),
+                  ([TpVar Nope, TpVar Nope],
+                   TyApp tcTuple [TyVar (Bound 0 0 Nope),
+                                  TyVar (Bound 0 1 Nope)])]
 ---
 --- Convenience constructors
 ---
+
+-- | Make a free type variable into a type
+fvTy ∷ tv → Type tv
+fvTy = TyVar . Free
+
+-- | Make a bound type variable type
+bvTy ∷ Optional f ⇒ Int → Int → f String → Type tv
+bvTy i j n = TyVar (Bound i j (foldOpt Nope Here n))
 
 -- | Make a type from a nullary type constructor
 tyNulOp ∷ TyCon → Type tv
@@ -344,8 +370,6 @@ instance Qualifier (Type tv) tv where
     bumpQExp (QeU tvs)     = QeU (S.map (bumpVar (-1)) tvs)
     bumpVar _ (Free r)     = Free r
     bumpVar k (Bound i j n)= Bound (i + k) j n
-
-
 
 instance Qualifier (QExpV tv) tv where
   qualToType QeA       = TyApp tcAf []

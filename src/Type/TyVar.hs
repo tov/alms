@@ -38,6 +38,11 @@ data Kind
   | KdQual
   deriving (Eq, Typeable, Data)
 
+instance Ppr Kind where
+  ppr KdType = char '*'
+  ppr KdQual = char 'Q'
+instance Show Kind where showsPrec = showFromPpr
+
 -- | Flavors of type variables
 data Flavor
   -- | unification variables
@@ -47,6 +52,9 @@ data Flavor
   -- | universal skolems
   | Skolem
   deriving (Eq, Typeable, Data)
+
+instance Ppr Flavor where ppr = char . flavorSigil
+instance Show Flavor where showsPrec = showFromPpr
 
 -- | Type variable observations
 class (Ftv tv tv, Show tv, Ppr tv) ⇒ Tv tv where
@@ -58,12 +66,15 @@ class (Ftv tv tv, Show tv, Ppr tv) ⇒ Tv tv where
   tvFlavor      ∷ tv → Flavor
   -- | Possibly a qualifier bound
   tvQual        ∷ tv → Maybe QLit
+  -- | A description
+  tvDescr       ∷ tv → Doc
 
 instance Tv Empty where
   tvUniqueID    = elimEmpty
   tvKind        = elimEmpty
   tvFlavor      = elimEmpty
   tvQual        = elimEmpty
+  tvDescr       = elimEmpty
 
 instance Ftv Empty Empty where ftvTree = elimEmpty
 instance Ppr Empty       where ppr = elimEmpty
@@ -78,11 +89,13 @@ tvKindIs kind v = tvKind v == kind
 
 -- | When all else fails, we can print a type variable like this
 uglyTvName ∷ Tv tv ⇒ tv → String
-uglyTvName tv = sigil : '.' : show (tvUniqueID tv) where
-  sigil = case tvFlavor tv of
-    Universal   → '?'
-    Existential → '#'
-    Skolem      → '$'
+uglyTvName tv = flavorSigil (tvFlavor tv) : '.' : show (tvUniqueID tv) where
+
+-- | A character denoting a flavor
+flavorSigil ∷ Flavor → Char
+flavorSigil Universal   = '?'
+flavorSigil Existential = '#'
+flavorSigil Skolem      = '$'
 
 ---
 --- FREE TYPE VARIABLES
