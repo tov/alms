@@ -38,7 +38,7 @@ headNormalizeTypeK k0 σ0 = loop k0 (reductionSequence σ0) where
             "got empty reduction sequence"
   loop _ [σ]    = σ
   loop 0 (σ:_)  = throw $
-    AlmsException StaticsPhase bogus
+    AlmsError StaticsPhase bogus
       [msg|
         Reduction of type $q:σ0 has not converged after $k0
         steps; stopped at $q:σ.

@@ -31,7 +31,7 @@ import Paths
 import AST
 import Syntax.Prec
 import Syntax.Lexer as Lexer
-import ErrorMessage (AlmsException(..), Phase(ParserPhase))
+import ErrorMessage (AlmsError(..), Phase(ParserPhase))
 import qualified Message.AST as Msg
 import Alt.Parsec hiding (parse)
 
@@ -91,7 +91,7 @@ data REPLCommand
   = GetInfoCmd [Ident Raw]
   | GetPrecCmd [String]
   | DeclsCmd [Decl Raw]
-  | ParseError AlmsException
+  | ParseError AlmsError
 
 -- | Parse a line typed into the REPL
 parseCommand :: Int -> String -> String -> REPLCommand
@@ -105,12 +105,12 @@ parseCommand row line cmd =
         Left err  -> ParseError (almsParseError err)
 
 -- | Given a file name and source, parse it
-parseFile :: Id i => String -> String -> Either AlmsException (Prog i)
+parseFile :: Id i => String -> String -> Either AlmsError (Prog i)
 parseFile  = (almsParseError +++ id) <$$> parse parseProg
 
-almsParseError :: ParseError -> AlmsException
+almsParseError :: ParseError -> AlmsError
 almsParseError e =
-  AlmsException ParserPhase (fromSourcePos (errorPos e)) message
+  AlmsError ParserPhase (fromSourcePos (errorPos e)) message
   where
     message =
       Msg.Stack Msg.Broken [

@@ -14,6 +14,7 @@ HS_SRC   = *.hs \
            Data/*.hs \
            Message/*.hs \
            Meta/*.hs \
+           Statics/*.hs \
            Syntax/*.hs \
            Type/*.hs \
            Util/*.hs
@@ -34,7 +35,7 @@ $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) --make $*.hs $(HCOPTS)
 
 %.i:
-	$(GHCI) $* $(HIOPTS)
+	$(GHCI) \*$* $(HIOPTS) -XQuasiQuotes
 
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline

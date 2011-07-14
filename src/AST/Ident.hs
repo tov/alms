@@ -45,12 +45,14 @@ import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Unsafe.Coerce
 
-class Data i => Id i where
+class (IsBogus i, Data i) => Id i where
   -- The trivial identity tag, used when the identity tag is
   -- insufficient to distinguish different thing
   trivialId :: i
+  trivialId  = bogus
   -- Check for triviality
   isTrivial :: i -> Bool
+  isTrivial  = isBogus
   -- Compare two identifiers, given a secondary criterion to use if
   -- necessary
   compareId :: i -> i -> Ordering -> Ordering
@@ -61,18 +63,26 @@ data Raw = Raw_
 newtype Renamed = Ren_ Int
   deriving (Data, Typeable, Enum, Eq, Ord)
 
+instance Bogus Raw where
+  bogus     = Raw_
+
+instance IsBogus Raw where
+  isBogus _ = True
+
+instance Id Raw where
+  compareId _ _ = id
+
 instance Show Renamed where
   showsPrec p (Ren_ z) = showsPrec p z
 
-instance Id Raw where
-  trivialId     = Raw_
-  isTrivial     = const True
-  compareId _ _ = id
+instance Bogus Renamed where
+  bogus   = Ren_ 0
+
+instance IsBogus Renamed where
+  isBogus (Ren_ 0) = True
+  isBogus _        = False
 
 instance Id Renamed where
-  trivialId          = Ren_ 0
-  isTrivial (Ren_ 0) = True
-  isTrivial (Ren_ _) = False
   compareId (Ren_ 0) (Ren_ 0) next = next
   compareId (Ren_ 0) _        _    = LT
   compareId _        (Ren_ 0) _    = GT
@@ -113,6 +123,9 @@ instance Id i => Ord (Lid i) where
   LidAnti a `compare` _         = antierror "Lid#compare" a
   _         `compare` LidAnti a = antierror "Lid#compare" a
 
+instance Id i => Bogus (Lid i) where
+  bogus = Lid bogus "<bogus>"
+
 -- | uppercase identifiers (modules, datacons)
 data Uid i
   = Uid {
@@ -130,10 +143,16 @@ instance Id i => Ord (Uid i) where
   UidAnti a `compare` _         = antierror "Uid#compare" a
   _         `compare` UidAnti a = antierror "Uid#compare" a
 
+instance Id i => Bogus (Uid i) where
+  bogus = Uid bogus "<bogus>"
+
 -- | bare (unqualified) identifers
 data BIdent i = Var { unVar :: !(Lid i) }
               | Con { unCon :: !(Uid i) }
   deriving (Eq, Ord, Typeable, Data)
+
+instance Id i => Bogus (BIdent i) where
+  bogus = Var bogus
 
 -- | path-qualified uppercase identifiers
 type QUid i = Path (Uid i) (Uid i)
@@ -159,6 +178,9 @@ instance Locatable (TyVar i) where
 instance Relocatable (TyVar i) where
   setLoc tv@TV { } loc = tv { tvloc = loc }
   setLoc tv        _   = tv
+
+instance Id i => Bogus (TyVar i) where
+  bogus = TV bogus Qa bogus
 
 lid :: Id i => String -> Lid i
 lid = Lid trivialId

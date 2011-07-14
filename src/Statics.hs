@@ -197,7 +197,7 @@ instance GenExtend Context SE where
 -- | The type checking monad reads an environment, writes a module,
 --   and keeps track of a gensym counter (currently unused).
 newtype TC m a = TC {
-  unTC :: RWST Context Module Int (ErrorT AlmsException m) a
+  unTC :: RWST Context Module Int (ErrorT AlmsError m) a
 }
 
 instance Monad m => Monad (TC m) where
@@ -221,7 +221,7 @@ instance Monad m => MonadReader Context (TC m) where
   ask     = TC ask
   local f = TC . local f . unTC
 
-instance Monad m => MonadError AlmsException (TC m) where
+instance Monad m => MonadError AlmsError (TC m) where
   throwError = TC . throwError
   catchError body handler =
     TC (catchError (unTC body) (unTC . handler))
@@ -232,7 +232,7 @@ instance Monad m => AlmsMonad (TC m) where
 
 -- | Generate a type error.
 typeError :: (AlmsMonad m, ?loc :: Loc) => Message V -> m a
-typeError msg0 = throwAlms (AlmsException StaticsPhase ?loc msg0)
+typeError msg0 = throwAlms (AlmsError StaticsPhase ?loc msg0)
 
 -- | Indicate a type checker bug.
 typeBug :: AlmsMonad m => String -> String -> m a
@@ -569,7 +569,7 @@ tcExpr = tc where
       tassgot (castableType t2')
         "Coercion (:>)" t1 "function type"
       e1'' <- coerceExpression (e1' <<@ e0) t1 t2'
-        `catchAlms` \AlmsException { exnMessage = m } ->
+        `catchAlms` \AlmsError { exnMessage = m } ->
           typeError [$msg|
             Cannot constructor coercion
             <dl>

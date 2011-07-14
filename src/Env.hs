@@ -236,6 +236,9 @@ newtype ROOT e = ROOT { unROOT :: e }
 instance Ord p => Functor (PEnv p) where
   fmap f (PEnv envs vals) = PEnv (fmap (fmap f) envs) (f vals)
 
+instance Bogus k => Bogus (Path p k) where
+  bogus = J [] bogus
+
 instance (Show p, Show k) => Show (Path p k) where
   showsPrec _ (J ps k) = foldr (\p r -> shows p . ('.':) . r) (shows k) ps
 

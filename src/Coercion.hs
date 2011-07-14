@@ -119,7 +119,7 @@ build _ _    t t' =
   if t <: t'
     then let tstx' = typeToStx' t' in
          return [$ex|+ INTERNALS.Contract.any [$tstx'] |]
-    else CMS.lift . throwAlms $ AlmsException StaticsPhase bogus [$msg|
+    else CMS.lift . throwAlms $ AlmsError StaticsPhase bogus [$msg|
         <dl>
           <dt>from type: <dd>$t
           <dt>to type:   <dd>$t'.

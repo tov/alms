@@ -284,7 +284,7 @@ instance MonadAlmsError m ⇒ MonadAlmsError (SubstT s m) where
   throwAlms      = SubstT <$> throwAlms
   catchAlms m h  = SubstT (catchAlms (unSubstT m) (unSubstT . h))
 
-instance MonadAlmsError m ⇒ MonadError AlmsException (SubstT s m) where
+instance MonadAlmsError m ⇒ MonadError AlmsError (SubstT s m) where
   throwError     = throwAlms
   catchError     = catchAlms
 
@@ -395,15 +395,15 @@ substState0 = SubstState 0 0
 -- | Run a substitution computation, but not inheriting exception
 --   handling
 runSubstErrorT ∷ Monad m ⇒
-                 SubstState → SubstT r (ErrorT AlmsException m) a →
-                 m (Either AlmsException (a, SubstState))
+                 SubstState → SubstT r (ErrorT AlmsError m) a →
+                 m (Either AlmsError (a, SubstState))
 runSubstErrorT = runErrorT <$$> runSubstT
 
 -- | The type of a generic substitution computation
 type Subst a  = ∀ s m. (MonadRef s m, MonadAlmsError m) ⇒ SubstT s m a
 
 -- | Run a substitution computation in a pure context
-runSubst ∷ SubstState → Subst a → Either AlmsException (a, SubstState)
+runSubst ∷ SubstState → Subst a → Either AlmsError (a, SubstState)
 runSubst st0 m = runST (runSubstErrorT st0 m)
 
 -- | For lifting through 'SubstT'

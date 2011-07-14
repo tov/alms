@@ -57,21 +57,25 @@ renameState0  = RenameState {
 }
 
 -- | Generate a renamer error.
-renameError :: Message V -> R a
+renameErrorStop :: Message V -> R a
+renameErrorStop msg0 = do
+  throwAlms (AlmsError RenamerPhase bogus msg0)
+
+-- | Generate a renamer error, but keep going.
+renameError :: Bogus a => Message V -> R a
 renameError msg0 = do
-  loc <- R (asks location)
-  throwAlms (AlmsException RenamerPhase loc msg0)
+  reportAlms_ (AlmsError RenamerPhase bogus msg0)
+  return bogus
 
 renameBug :: String -> String -> R a
 renameBug culprit msg0 = do
-  loc <- R (asks location)
-  throwAlms (almsBug RenamerPhase loc culprit msg0)
+  throwAlms (almsBug RenamerPhase culprit msg0)
 
 -- | The renaming monad: Reads a context, writes a module, and
 --   keeps track of a renaming counter state.
 newtype Renaming a = R {
-  unR :: RWST Context Module RState (Either AlmsException) a
-} deriving Functor
+  unR :: RWST Context Module RState (AlmsErrorT Identity) a
+} deriving (Functor, MonadAlmsError)
 
 -- | The threaded state of the renamer.
 newtype RState = RState {
@@ -82,7 +86,7 @@ newtype RState = RState {
 instance Monad Renaming where
   return  = R . return
   m >>= k = R (unR m >>= unR . k)
-  fail    = renameError . [msg| $words:1 |]
+  fail    = renameErrorStop . [msg| $words:1 |]
 
 instance Applicative Renaming where
   pure  = return
@@ -97,14 +101,9 @@ instance MonadReader Env Renaming where
   ask     = R (asks env)
   local f = R . local (\cxt -> cxt { env = f (env cxt) }) . unR
 
-instance MonadError AlmsException Renaming where
-  throwError = R . throwError
-  catchError body handler =
-    R (catchError (unR body) (unR . handler))
-
-instance MonadAlmsError Renaming where
-  throwAlms = throwError
-  catchAlms = catchError
+instance MonadError [AlmsError] Renaming where
+  throwError = throwAlmsList
+  catchError = catchAlms
 
 -- | The renaming environment
 data Env = Env {
@@ -131,38 +130,40 @@ data Module
   | MdTyvar   !Loc !(TyVar Raw) !(TyVar Renamed)
   deriving Show
 
+instance Bogus Module where bogus = MdNil
+
 -- | The renaming context, which includes the environment (which is
 --   persistant), and other information with is not
 data Context = Context {
   env      :: !Env,
   allocate :: !Bool,
-  location :: !Loc,
   inExpr   :: !Bool
 }
 
 -- | Run a renaming computation
 runRenaming :: Bool -> Loc -> RenameState -> Renaming a ->
-               Either AlmsException (a, RenameState)
+               Either [AlmsError] (a, RenameState)
 runRenaming nonTrivial loc saved action = do
-  (result, rstate, md) <-
-    runRWST (unR action)
-      Context {
-        env      = savedEnv saved,
-        allocate = nonTrivial,
-        location = loc,
-        inExpr   = False
-      }
-      RState {
-        rsCounter = savedCounter saved
-      }
-  let env' = savedEnv saved `mappend` envify md
-  return (result, RenameState env' (rsCounter rstate))
+  runIdentity $
+    runAlmsErrorT $ do
+      (result, rstate, md) <-
+        runRWST (withLocation loc (unR action))
+          Context {
+            env      = savedEnv saved,
+            allocate = nonTrivial,
+            inExpr   = False
+          }
+          RState {
+            rsCounter = savedCounter saved
+          }
+      let env' = savedEnv saved `mappend` envify md
+      return (result, RenameState env' (rsCounter rstate))
 
 -- | Run a renaming computation
 runRenamingM :: MonadAlmsError m =>
                 Bool -> Loc -> RenameState -> Renaming a ->
                 m (a, RenameState)
-runRenamingM = unTryAlms . return <$$$$> runRenaming
+runRenamingM = either throwAlmsList return <$$$$> runRenaming
 
 -- | Alias
 type R a  = Renaming a
@@ -172,6 +173,8 @@ instance Monoid Env where
   mappend (Env a1 a2 a3 a4 a5 a6) (Env b1 b2 b3 b4 b5 b6) =
     Env (a1 & b1) (a2 & b2) (a3 & b3) (a4 & b4) (a5 & b5) (a6 & b6)
       where a & b = M.union b a
+
+instance Bogus Env where bogus = mempty
 
 instance Monoid Module where
   mempty  = MdNil
@@ -199,11 +202,6 @@ envify (MdTyvar loc tv tv')
 withContext :: (Context -> R a) -> R a
 withContext  = R . (ask >>=) . fmap unR
 
--- | Run in the context of a given source location
-withLoc :: Locatable loc => loc -> R a -> R a
-withLoc loc =
-  R . local (\cxt -> cxt { location = location cxt <<@ loc }) .  unR
-
 -- | Append a module to the current environment
 inModule :: Module -> R a -> R a
 inModule m = local (\e -> e `mappend` envify m)
@@ -229,7 +227,7 @@ don'tAllocate :: R a -> R a
 don'tAllocate = R . local (\cxt -> cxt { allocate = False }) . unR
 
 -- | Generate an unbound name error
-unbound :: Ppr a => String -> a -> R b
+unbound :: (Ppr a, Bogus b) => String -> a -> R b
 unbound ns a =
   renameError [msg| $words:ns not in scope: $q:a |]
 
@@ -252,12 +250,12 @@ repeatedMsg what a inwhat locs =
     slocs = map [msg| $show:1 |] locs
 
 -- | Generate an error about a name declared twice
-repeated :: Ppr a => String -> a -> String -> [Loc] -> R b
+repeated :: (Ppr a, Bogus b) => String -> a -> String -> [Loc] -> R b
 repeated what a inwhat locs =
   renameError $ repeatedMsg what [msg| $q:a |] inwhat locs
 
 -- | Generate an error about a name declared twice
-repeatedTVs :: [TyVar i] -> String -> R b
+repeatedTVs :: Bogus b => [TyVar i] -> String -> R b
 repeatedTVs []  _             = renameBug "repatedTVs" "got empty list"
 repeatedTVs tvs@(tv:_) inwhat =
   let quals  = ordNub (tvqual <$> tvs)
@@ -317,7 +315,7 @@ envLookup prj = loop [] where
     Nothing               -> Left (Just (J (reverse ms') m))
 
 -- | Look up something in the environment
-getGenericFull :: (Ord k, Show k) =>
+getGenericFull :: (Ord k, Show k, Bogus k') =>
               String -> (Env -> M.Map k k') ->
               Path (Uid Raw) k -> R (Path (Uid Renamed) k')
 getGenericFull what prj qx = do
@@ -328,7 +326,7 @@ getGenericFull what prj qx = do
     Left (Just m) -> unbound "Module" m
 
 -- | Look up something in the environment
-getGeneric :: (Ord (f Raw), Show (f Raw)) =>
+getGeneric :: (Ord (f Raw), Show (f Raw), Bogus i, Bogus (f Renamed)) =>
               String -> (Env -> EnvMap f i) ->
               Path (Uid Raw) (f Raw) -> R (Path (Uid Renamed) (f Renamed))
 getGeneric = liftM (fmap (\(qx', _, _) -> qx')) <$$$> getGenericFull
@@ -408,7 +406,7 @@ bindGeneric ren build x = do
     Just a  -> $antifail
     Nothing -> return ()
   new <- newRenamed
-  loc <- R (asks location)
+  loc <- getLocation
   let x' = ren new x
   tell (build loc x x')
   return x'
@@ -494,7 +492,7 @@ renameDecls  = renameMapM renameDecl
 
 -- | Rename a declaration and return the environment that it binds
 renameDecl :: Decl Raw -> R (Decl Renamed)
-renameDecl d0 = withLoc d0 $ case d0 of
+renameDecl d0 = withLocation d0 $ case d0 of
   [dc| let $x = $e |] -> do
     x'  <- renamePatt x
     e'  <- renameExpr e
@@ -505,7 +503,7 @@ renameDecl d0 = withLoc d0 $ case d0 of
   [dc| abstype $list:ats with $list:ds end |] -> do
     let bindEach [atQ| $anti:a |] = $antifail
         bindEach (N _ (AbsTy _ _ [tdQ| $anti:a |])) = $antifail
-        bindEach (N note at) = withLoc note $ do
+        bindEach (N note at) = withLocation note $ do
           let l = tdName (dataOf (atdecl at))
           bindTycon l
           return (l, getLoc note)
@@ -517,7 +515,7 @@ renameDecl d0 = withLoc d0 $ case d0 of
     (ats', mdD) <-
       steal $
         inModule mdT $
-          forM ats $ \at -> withLoc at $ case dataOf at of
+          forM ats $ \at -> withLocation at $ case dataOf at of
             AbsTy variances qe td -> do
               (Just qe', td') <- renameTyDec (Just qe) td
               return (absTy variances qe' td' <<@ at)
@@ -557,7 +555,7 @@ renameDecl d0 = withLoc d0 $ case d0 of
 renameTyDecs :: [TyDec Raw] -> R [TyDec Renamed]
 renameTyDecs tds = do
   let bindEach [tdQ| $anti:a |] = $antifail
-      bindEach (N note td)       = withLoc note $ do
+      bindEach (N note td)       = withLocation note $ do
         bindTycon (tdName td)
         return (tdName td, getLoc note)
   (llocs, md) <- listen $ mapM bindEach tds
@@ -570,18 +568,18 @@ renameTyDecs tds = do
 renameTyDec :: Maybe (QExp Raw) -> TyDec Raw ->
                R (Maybe (QExp Renamed), TyDec Renamed)
 renameTyDec _   (N _ (TdAnti a)) = $antierror
-renameTyDec mqe (N note (TdSyn l clauses)) = withLoc note $ do
+renameTyDec mqe (N note (TdSyn l clauses)) = withLocation note $ do
   case mqe of
     Nothing -> return ()
     Just _  ->
       renameBug "renameTyDec" "can’t rename QExp in context of type synonym"
   J [] l' <- getTycon (J [] l)
-  clauses' <- forM clauses $ \(ps, rhs) -> withLoc ps $ do
+  clauses' <- forM clauses $ \(ps, rhs) -> withLocation ps $ do
     (ps', md) <- steal $ renameTyPats ps
     rhs' <- inModule md $ renameType rhs
     return (ps', rhs')
   return (Nothing, tdSyn l' clauses' <<@ note)
-renameTyDec mqe (N note td)      = withLoc note $ do
+renameTyDec mqe (N note td)      = withLocation note $ do
   J [] l' <- getTycon (J [] (tdName td))
   let tvs = tdParams td
   case unique tvname tvs of
@@ -601,7 +599,7 @@ renameTyDec mqe (N note td)      = withLoc note $ do
           Nothing -> return ()
           Just (u, _) ->
             repeated "Data constructor" u "type declaration" []
-        cons' <- forM cons $ \(u, mt) -> withLoc mt $ do
+        cons' <- forM cons $ \(u, mt) -> withLocation mt $ do
           let u' = uid (unUid u)
           tell (MdDatacon (getLoc mt) u u')
           mt'   <- traverse renameType mt
@@ -611,7 +609,7 @@ renameTyDec mqe (N note td)      = withLoc note $ do
     return (mqe', td' <<@ note)
 
 renameModExp :: ModExp Raw -> R (ModExp Renamed)
-renameModExp me0 = withLoc me0 $ case me0 of
+renameModExp me0 = withLocation me0 $ case me0 of
   [meQ| struct $list:ds end |] -> do
     ds' <- renameDecls ds
     return [meQ|+ struct $list:ds' end |]
@@ -628,7 +626,7 @@ renameModExp me0 = withLoc me0 $ case me0 of
   [meQ| $anti:a |] -> $antifail
 
 renameSigExp :: SigExp Raw -> R (SigExp Renamed)
-renameSigExp se0 = withLoc se0 $ case se0 of
+renameSigExp se0 = withLocation se0 $ case se0 of
   [seQ| sig $list:sgs end |] -> do
     (sgs', md) <- listen $ don'tAllocate $ renameMapM renameSigItem sgs
     onlyInModule mempty $ checkSigDuplicates md
@@ -665,7 +663,7 @@ checkSigDuplicates md = case md of
     mustFail loc kind which check = do
       failed <- (False <$ check) `catchError` \_ -> return True
       unless failed $ do
-        withLoc loc $
+        withLocation loc $
           repeated kind which "signature" []
 
 sealWith :: Module -> R ()
@@ -743,7 +741,7 @@ renameSigItem sg0 = case sg0 of
 
 -- | Rename an expression
 renameExpr :: Expr Raw -> R (Expr Renamed)
-renameExpr e00 = withLoc e00 . withAnnotationTVs e00 $ loop e00 where
+renameExpr e00 = withLocation e00 . withAnnotationTVs e00 $ loop e00 where
   loop e0 = case e0 of
     [ex| $qlid:ql |] -> do
       ql' <- getVar ql
@@ -810,7 +808,7 @@ renameLit lit0 = case lit0 of
 
 -- | Rename a case alternative
 renameCaseAlt :: CaseAlt Raw -> R (CaseAlt Renamed)
-renameCaseAlt ca0 = withLoc ca0 $ case ca0 of
+renameCaseAlt ca0 = withLocation ca0 $ case ca0 of
   [caQ| $x -> $e |] -> do
     (x', md) <- steal $ renamePatt x
     e' <- inModule md $ renameExpr e
@@ -828,12 +826,12 @@ renameBindings bns = do
     Nothing          -> return ()
     Just (x, locs) ->
       repeated "Variable binding for" x "let-rec" (sel1 <$> locs)
-  let bindEach rest (l,x,e) = withLoc l $ do
+  let bindEach rest (l,x,e) = withLocation l $ do
         x' <- bindVar x
         return ((l,x',e):rest)
   (lxes', md) <- steal $ foldM bindEach [] lxes
   bns' <- inModule md $
-            forM (reverse lxes') $ \(l,x',e) -> withLoc l $ do
+            forM (reverse lxes') $ \(l,x',e) -> withLocation l $ do
               let _loc = l
               e'  <- renameExpr e
               return [bnQ|+ $lid:x' = $e' |]
@@ -872,7 +870,7 @@ renameType t0 = case t0 of
 -- | Rename a type pattern
 renameTyPats :: [TyPat Raw] -> R [TyPat Renamed]
 renameTyPats x00 =
-  withLoc x00 $
+  withLocation x00 $
     evalStateT (mapM loop x00) M.empty where
   loop :: TyPat Raw ->
           StateT (M.Map (Lid Raw) (TyVar Raw, Loc)) Renaming (TyPat Renamed)
@@ -885,7 +883,7 @@ renameTyPats x00 =
       tv' <- tyvar (getLoc note) tv
       return (tpRow tv' var <<@ note)
     [tpQ| ($list:tps) $qlid:ql |] -> do
-      ql'  <- lift (withLoc _loc (getTycon ql))
+      ql'  <- lift (withLocation _loc (getTycon ql))
       tps' <- mapM loop tps
       return [tpQ|+ ($list:tps') $qlid:ql' |]
   --
@@ -918,7 +916,7 @@ renameQExp qe0 = case qe0 of
 -- | Rename a pattern
 renamePatt :: Patt Raw -> R (Patt Renamed)
 renamePatt x00 =
-  withLoc x00 $
+  withLocation x00 $
     evalStateT (loop x00) M.empty where
   loop :: Patt Raw ->
           StateT (M.Map (Either (Lid Raw) (TyVar Raw)) Loc)
@@ -964,7 +962,7 @@ renamePatt x00 =
       Just loc2 -> lift (repeated "Variable" l "pattern" [loc1, loc2])
       Nothing   -> do
         put (M.insert (Left l) loc1 seen)
-        lift (withLoc loc1 (bindVar l))
+        lift (withLocation loc1 (bindVar l))
 
 -- | Univerally-quantify all free type variables
 closeType :: Type Raw -> Type Raw
@@ -978,14 +976,14 @@ addVal = bindVar
 
 addType l i = do
   let l' = renLid i l
-  loc <- R $ asks location
+  loc <- getLocation
   tell (MdTycon loc l l')
   return l'
 
 addMod u body = do
   let u' = uid (unUid u)
   (a, md) <- steal body
-  loc <- R $ asks location
+  loc <- getLocation
   tell (MdModule loc u u' md)
   return (u', a)
 
@@ -1022,16 +1020,14 @@ renamingEnterScope u r =
     Just (_, _, (_, e'))
             -> r { savedEnv = e `mappend` e' }
 
-{-
 -- | Test runner for renaming an expression
-_re :: Expr Raw -> IO (Expr Renamed)
-_re e = fst <$> runRenamingM True bogus renameState0 (renameExpr e)
+re :: Expr Raw -> Either [AlmsError] (Expr Renamed)
+re e = fst <$> runRenaming True bogus renameState0 (renameExpr e)
 
 -- | Test runner for renaming an declaration
-_rd :: Decl Raw -> IO (Decl Renamed)
-_rd d = fst <$> runRenamingM True bogus renameState0 (renameDecl d)
+rd :: Decl Raw -> Either [AlmsError] (Decl Renamed)
+rd d = fst <$> runRenaming True bogus renameState0 (renameDecl d)
 
 _loc :: Loc
 _loc = initial "<interactive>"
--}
 

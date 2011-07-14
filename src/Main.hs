@@ -173,7 +173,7 @@ handleExns body (st, handler) =
     `Exn.catches`
     [ Exn.Handler $ \e@(VExn { }) -> do
         prog <- getProgName
-        continue $ EM.AlmsException
+        continue $ EM.AlmsError
                      (EM.OtherError ("Uncaught exception"))
                      bogus
                      (Msg.Table [
@@ -182,14 +182,14 @@ handleExns body (st, handler) =
                      ]),
       Exn.Handler continue,
       Exn.Handler $ \err ->
-        continue $ EM.AlmsException EM.DynamicsPhase bogus $
+        continue $ EM.AlmsError EM.DynamicsPhase bogus $
           Msg.Flow [Msg.Words (errorString err)],
       Exn.Handler $ \(Exn.SomeException err) ->
-        continue $ EM.AlmsException EM.DynamicsPhase bogus $
+        continue $ EM.AlmsError EM.DynamicsPhase bogus $
           Msg.Flow [Msg.Words (show err)] ]
   where
     continue err = do
-      hPrintDoc stderr (withRS st (ppr (err :: EM.AlmsException)))
+      hPrintDoc stderr (withRS st (ppr (err :: EM.AlmsError)))
       handler
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()

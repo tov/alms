@@ -25,6 +25,8 @@ module Data.Loc (
   toSourcePos, fromSourcePos, fromSourcePosSpan, fromTHLoc
 ) where
 
+import Util.Bogus
+
 import Data.Generics (Typeable, Data, everywhere, mkT)
 import Text.ParserCombinators.Parsec.Pos
 import qualified Language.Haskell.TH as TH
@@ -83,20 +85,19 @@ fromTHLoc loc = Loc (TH.loc_filename loc)
 initial :: String -> Loc
 initial = fromSourcePos . initialPos
 
--- | The bogus location.
---   (Avoids need for @Maybe Loc@ and lifting)
-bogus   :: Loc
-bogus    = mkBogus "<bogus>"
-
 -- | A named bogus location; useful to provide default locations
 --   for generated code without losing real locations.
 mkBogus :: String -> Loc
 mkBogus s = Loc s (-1) (-1) (-1) (-1)
 
--- | Is the location bogus?
-isBogus :: Loc -> Bool
-isBogus (Loc _ (-1) _ _ _) = True
-isBogus _                  = False
+-- | The bogus location.
+--   (Avoids need for @Maybe Loc@ and lifting)
+instance Bogus Loc where
+  bogus    = mkBogus "<bogus>"
+
+instance IsBogus Loc where
+  isBogus (Loc _ (-1) _ _ _) = True
+  isBogus _                  = False
 
 -- | A value with a location attached
 {-

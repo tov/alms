@@ -67,6 +67,7 @@ module Util (
   module Data.Tuple.All,
   module Data.OptionalClass,
   module Data.Perhaps,
+  module Util.Bogus,
   module Util.Viewable,
   module Prelude,
 ) where
@@ -106,6 +107,7 @@ import Data.Tuple.All
 
 import Data.OptionalClass
 import Data.Perhaps
+import Util.Bogus
 import Util.Viewable
 
 import qualified Data.Set as Set
