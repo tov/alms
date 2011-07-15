@@ -71,7 +71,7 @@ majorReductionSequence ∷ Type tv → [Type tv]
 majorReductionSequence = clean . reductionSequence where
   clean []        = []
   clean (σ:σs)    = σ : cleanWith σ σs
-  cleanWith σ@(TyApp tc _) (σ'@(TyApp tc' _) : σs)
+  cleanWith σ@(TyApp tc _) ((TyApp tc' _) : σs)
     | tc == tc'  = cleanWith σ σs
   cleanWith _ σs = clean σs
 

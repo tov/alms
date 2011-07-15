@@ -380,3 +380,24 @@ instance Fv a i => Fv (ADDITIVE a) i where
 (|--|) :: Id i => FvMap i -> S.Set (QLid i) -> FvMap i
 (|--|)  = S.fold M.delete
 
+{-
+class (Typeable a, Data a, Eq a, Ord a, Bogus a, Id i) ⇒
+      Ident a i | a → i where
+  idUnique      ∷ a → i
+  idName        ∷ a → String
+  mkId          ∷ String → a
+  mkIdTag       ∷ String → i → a
+  mkQId         ∷ String → Path (Uid i) a
+
+newtype TypId i = TypId { unTypId ∷ Lid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+newtype VarId i = VarId { unVarId ∷ Lid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+newtype ConId i = ConId { unConId ∷ Uid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+newtype ModId i = ModId { unModId ∷ Uid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+newtype SigId i = SigId { unSigId ∷ Uid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+
+-}

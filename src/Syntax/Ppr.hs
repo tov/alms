@@ -312,6 +312,9 @@ pprModExp add modexp = case modexp of
     pprSigExp (pprModExp add me1 <+> colon <+>) se2
   [meQ| $anti:a |] -> add (ppr a)
 
+instance Ppr (SigExp i) where
+  ppr = pprSigExp id
+
 pprSigExp :: (Doc -> Doc) -> SigExp i -> Doc
 pprSigExp add se0 = body >+> withs where
   (wts, se1) = unfoldSeWith se0

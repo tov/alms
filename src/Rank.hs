@@ -5,7 +5,6 @@ module Rank (
   Rank, zero, infinity, inc
 ) where
 
-import Data.Monoid
 import Syntax.PprClass as Ppr
 
 data Rank
@@ -18,10 +17,6 @@ instance Show Rank where
   show Infinity   = "∞"
 
 instance Ppr Rank where ppr = Ppr.text . show
-
-instance Monoid Rank where
-  mempty  = Finite 0
-  mappend = min
 
 instance Bounded Rank where
   minBound = Finite 0

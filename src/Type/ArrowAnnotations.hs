@@ -21,6 +21,8 @@ import Type.Internal
 import Prelude ()
 import qualified Data.Set as S
 
+type R = AST.Renamed
+
 -- | The rule for parsing arrows
 #ifdef ANNOTATION_RULE
 type CurrentImpArrRule = ANNOTATION_RULE

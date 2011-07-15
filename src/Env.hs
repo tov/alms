@@ -30,7 +30,7 @@ module Env (
 
   -- * Generalized environments
   GenEmpty(..),
-  GenExtend(..), (=++=), GenModify(..), GenRemove(..),
+  GenExtend(..), (=++=),
   GenLookup(..),
 
   -- * Aliases (why?)
@@ -194,15 +194,9 @@ instance (Ord k, Show k, Show v) => Show (Env k v) where
 infix 6 =:=, =::=, =:+=
 infixl 6 =.=, =..=
 infixr 5 =+=, =++=
-infixl 5 =\=, =\\=
 
 instance (k :>: k') => GenExtend (Env k v) (Env k' v)    where (=+=) = (-+-)
-instance Ord k      => GenRemove (Env k v) k             where (=\=) = (-\-)
 instance (k :>: k') => GenLookup (Env k v) k' v          where (=..=) = (-.-)
-instance (k :>: k') => GenModify (Env k v) k' v where
-  genModify e k fv = case e =..= k of
-    Nothing -> e
-    Just v  -> e =+= k -:- fv v
 instance GenEmpty (Env k v) where genEmpty = Env.empty
 
 -- | A path environment maps paths of @p@ components to @e@.
@@ -267,9 +261,6 @@ instance (GenEmpty e, GenExtend e e') => GenExtend [e] e' where
 
 instance GenEmpty e => GenEmpty [e] where
   genEmpty = [genEmpty]
-
-instance GenRemove e k => GenRemove [e] k where
-  e =\= k = map (=\= k) e
 
 -- | A generalization of environment union.  If the environments
 --   have different types, we assume the right type may be lifted
@@ -348,85 +339,12 @@ instance (Ord p, GenLookup e k v) =>
   penv =..= J path k = penv =..= path >>= (=.= k)
 
 instance GenLookup e k v => GenLookup (ROOT (PEnv p e)) k v where
-  ROOT penv =..= k = valenv penv =..= k    
+  ROOT penv =..= k = valenv penv =..= k
 
 -- alias for looking up a simple key
 (=.=) :: GenLookup e k v => PEnv p e -> k -> Maybe v
 (=.=)  = (=..=) . ROOT
 
--- | Generalization of a value update operation
---
--- We can modify a nested env at
---
---  * one path component
---
---  * a path to a nested env
---
---  * a path to an env
---
---  * a path to a key
---
---  * a single key (ROOT)
-class GenModify e k v where
-  genModify :: e -> k -> (v -> v) -> e
-
-instance Ord p => GenModify (PEnv p e) p (PEnv p e) where
-  genModify penv p f  =  genModify penv [p] f
-
-instance Ord p => GenModify (PEnv p e) [p] (PEnv p e) where
-  genModify penv [] f     = f penv
-  genModify penv (p:ps) f = case envenv penv =..= p of
-    Nothing    -> penv
-    Just penv' -> penv =+= p =:= genModify penv' ps f
-
-instance Ord p => GenModify (PEnv p e) [p] e where
-  genModify penv path fe = genModify penv path fpenv where
-    fpenv      :: PEnv p e -> PEnv p e
-    fpenv penv' = penv' { valenv = fe (valenv penv') }
-
-instance (Ord p, GenModify e k v) =>
-         GenModify (PEnv p e) (Path p k) v where
-  genModify penv (J path k) fv = genModify penv path fe where
-    fe  :: e -> e
-    fe e = genModify e k fv
-
-instance GenModify e k v => GenModify (ROOT (PEnv p e)) k v where
-  genModify (ROOT penv) k fv = ROOT (penv { valenv = fe (valenv penv) })
-    where
-    fe  :: e -> e
-    fe e = genModify e k fv
-
--- | Generalization class for key removal
---
--- We can remove at
---
---  * a single path component
---
---  * a path to a key
---
---  * a path to a path
---
---  * a single key (using 'ROOT')
-class GenRemove e k where
-  (=\=)  :: e -> k -> e
-  (=\\=) :: e -> S.Set k -> e
-  e =\\= set = foldl (=\=) e (S.toList set)
-
-instance Ord p => GenRemove (PEnv p e) p where
-  penv =\= p = penv { envenv = envenv penv =\= p }
-
-instance (Ord p, GenRemove e k) => GenRemove (PEnv p e) (Path p k) where
-  penv =\= J path k = genModify penv path fe where
-    fe :: e -> e
-    fe  = (=\= k)
-
-instance Ord p => GenRemove (PEnv p e) (Path p p) where
-  penv =\= J path p = genModify penv path fpenv where
-    fpenv :: PEnv p e -> PEnv p e
-    fpenv  = (=\= p)
-
-instance GenRemove e k => GenRemove (ROOT (PEnv p e)) k where
-  ROOT penv =\= k = ROOT (penv { valenv = valenv penv =\= k })
 
 -- | Generalization of the empty environment
 class GenEmpty e where

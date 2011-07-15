@@ -13,9 +13,14 @@ import Syntax.Ppr
 import Prelude ()
 import qualified Data.Set as S
 
-instance Tv tv ⇒ Ppr (Type tv) where ppr = ppr . typeToStx'
-instance Ppr TyPat where ppr = ppr . fst . tyPatToStx'
-instance Ppr TyCon where ppr = ppr . tyConToStx'
+instance Tv tv ⇒ Ppr (Type tv) where
+  ppr τ = askTyNames $ \tn → ppr (typeToStx t2sContext0 { t2sTyNames = tn } τ)
+
+instance Ppr TyPat where
+  ppr tp = askTyNames $ \tn → ppr (fst (tyPatToStx tn [] tp))
+
+instance Ppr TyCon where
+  ppr tc = askTyNames $ \tn → ppr (tyConToStx tn tc)
 
 instance Tv tv ⇒ Ppr (QExp tv) where
   ppr QeA        = char 'A'

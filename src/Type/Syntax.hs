@@ -6,7 +6,8 @@
 -- | For converting internal types back to syntactic types
 module Type.Syntax (
   -- * Types to syntax
-  Context(..), typeToStx, typeToStx',
+  typeToStx, typeToStx',
+  T2SContext(..), t2sContext0, TyNames(..), tyNames0,
   -- * Patterns to syntax
   tyPatToStx, tyPatToStx',
   -- * Type constructors to type declarations
@@ -19,38 +20,40 @@ import Type.Internal
 import Type.ArrowAnnotations
 import Type.TyVar
 import qualified AST
-import Syntax.PprClass (TyNames, tyNames0, tnLookup)
+import Syntax.PprClass (TyNames(..), tyNames0)
 
 import Prelude ()
 import qualified Data.Set as S
 
+type R = AST.Renamed
+
 -- | Context for printing types and type patterns
-data Context rule tv
-  = Context {
-      tyNames  ∷ TyNames,
-      arrRule  ∷ rule tv,
-      tvEnv    ∷ [[AST.TyVar R]]
+data T2SContext rule tv
+  = T2SContext {
+      t2sTyNames  ∷ TyNames,
+      t2sArrRule  ∷ rule tv,
+      t2sTvEnv    ∷ [[AST.TyVar R]]
     }
 
 -- | The default initial printing context
-context0 ∷ Context CurrentImpArrPrintingRule tv
-context0
-  = Context {
-      tyNames  = tyNames0,
-      arrRule  = iaeInit,
-      tvEnv    = []
+t2sContext0 ∷ T2SContext CurrentImpArrPrintingRule tv
+t2sContext0
+  = T2SContext {
+      t2sTyNames  = tyNames0,
+      t2sArrRule  = iaeInit,
+      t2sTvEnv    = []
     }
 
 -- | Represent a type value as a pre-syntactic type, for printing
 typeToStx' ∷ Tv tv ⇒ Type tv → AST.Type R
-typeToStx' = typeToStx context0
+typeToStx' = typeToStx t2sContext0
 
 -- | Turns annotated arrows into implicit arrows where possible
 typeToStx ∷ (Tv tv, ImpArrRule rule) ⇒
-            Context rule tv → Type tv → AST.Type R
+            T2SContext rule tv → Type tv → AST.Type R
 typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
   loop (TyVar tv0)           = do
-    δ  ← asks tvEnv
+    δ  ← asks t2sTvEnv
     return (AST.tyVar (getTV δ tv0))
   loop (TyQu quant αs σ) =
     withFresh αs $ \αs' → do
@@ -64,27 +67,27 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
     AST.tyRow lab <$> loop σ1 <*> loop σ2
   loop (TyApp tc [σ1, qe, σ2]) | tc == tcFun =
     AST.tyFun <$> represent qe
-              <*> local (\cxt → cxt { arrRule = iaeLeft (arrRule cxt) })
+              <*> local (\cxt → cxt { t2sArrRule = iaeLeft (t2sArrRule cxt) })
                     (loop σ1)
-              <*> local (\cxt → cxt { arrRule = iaeRight (arrRule cxt)
+              <*> local (\cxt → cxt { t2sArrRule = iaeRight (t2sArrRule cxt)
                                                          (qualifier qe) σ1 })
                     (loop σ2)
   loop (TyApp tc σs) = do
-    AST.tyApp <$> bestName tyNames tc <*> sequence
-      [ local (\cxt → cxt { arrRule = iaeUnder (arrRule cxt) variance })
+    AST.tyApp <$> bestName t2sTyNames tc <*> sequence
+      [ local (\cxt → cxt { t2sArrRule = iaeUnder (t2sArrRule cxt) variance })
           (loop σ)
       | σ        ← σs
       | variance ← tcArity tc ]
   --
   withFresh αs k = do
-    δ ← asks tvEnv
+    δ ← asks t2sTvEnv
     let names  = fst <$> αs
         seen   = AST.unLid . AST.tvname <$> concat δ
         names' = AST.freshNames names seen AST.tvalphabet
         αs'    = zipWith3 AST.TV (AST.lid <$> names')
                                  (snd <$> αs)
                                  (repeat AST.bogus)
-    local (\cxt → cxt { tvEnv = αs' : δ }) (k αs')
+    local (\cxt → cxt { t2sTvEnv = αs' : δ }) (k αs')
   --
   getTV _ (Free tv)
     = AST.TV (AST.lid (uglyTvName tv)) (fromMaybe Qa (tvQual tv)) AST.bogus
@@ -96,8 +99,8 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
   --
   represent qe = do
     cxt ← ask
-    return (iaeRepresent (getTV (tvEnv cxt)) (arrRule cxt)
-                         (qualifierEnv (AST.tvqual <$$> tvEnv cxt) qe))
+    return (iaeRepresent (getTV (t2sTvEnv cxt)) (t2sArrRule cxt)
+                         (qualifierEnv (AST.tvqual <$$> t2sTvEnv cxt) qe))
 
 -- | Represent a type value as a pre-syntactic type, for printing
 tyPatToStx' ∷ TyPat → (AST.TyPat R, [AST.TyVar R])
@@ -141,7 +144,7 @@ quantToStx Forall = AST.Forall
 quantToStx Exists = AST.Exists
 
 -- | Look up the best printing name for a type.
-bestName ∷ MonadReader r m ⇒ (r → TyNames) → TyCon → m (AST.QLid R)
+bestName ∷ MonadReader r m ⇒ (r → TyNames) → TyCon → m TypId
 bestName getter tc = do
   tn ← asks getter
   return (tnLookup tn (tcId tc) (tcName tc))
@@ -156,7 +159,7 @@ tyConToStx tn tc =
   tvs           = zipWith3 AST.TV (AST.lid <$> AST.tvalphabet)
                                   (tcBounds tc)
                                   (repeat AST.bogus)
-  doType envTvs = typeToStx context0 { tyNames = tn, tvEnv = [envTvs] }
+  doType envTvs = typeToStx t2sContext0 { t2sTyNames = tn, t2sTvEnv = [envTvs] }
   in
   case tc of
   _ | tc == tcExn
