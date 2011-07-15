@@ -250,8 +250,8 @@ instance Show (BIdent i) where
   showsPrec p (Con k) = showsPrec p k
 
 instance Show (TyVar i) where
-  showsPrec _ (TV x Qu _)  = showString Strings.unlimited . shows x
-  showsPrec _ (TV x Qa _)  = showString Strings.affine . shows x
+  showsPrec _ (TV x Qu _)  = showString Strings.unlimited . showString (unLid x)
+  showsPrec _ (TV x Qa _)  = showString Strings.affine . showString (unLid x)
   showsPrec _ (TVAnti a)   = showString Strings.affine . shows a
 
 instance Viewable (Path (Uid i) (BIdent i)) where

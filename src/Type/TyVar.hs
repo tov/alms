@@ -79,6 +79,15 @@ instance Tv Empty where
 instance Ftv Empty Empty where ftvTree = elimEmpty
 instance Ppr Empty       where ppr = elimEmpty
 
+instance Tv Int where
+  tvUniqueID    = id
+  tvKind _      = KdType
+  tvFlavor _    = Skolem
+  tvQual _      = Nothing
+  tvDescr       = ppr
+
+instance Ftv Int Int where ftvTree = FTSingle
+
 -- | Check the flavor of a type variable
 tvFlavorIs ∷ Tv tv ⇒ Flavor → tv → Bool
 tvFlavorIs flavor v = tvFlavor v == flavor
@@ -89,7 +98,7 @@ tvKindIs kind v = tvKind v == kind
 
 -- | When all else fails, we can print a type variable like this
 uglyTvName ∷ Tv tv ⇒ tv → String
-uglyTvName tv = flavorSigil (tvFlavor tv) : '.' : show (tvUniqueID tv) where
+uglyTvName tv = flavorSigil (tvFlavor tv) : show (tvUniqueID tv) where
 
 -- | A character denoting a flavor
 flavorSigil ∷ Flavor → Char
@@ -189,6 +198,12 @@ instance Ord tv ⇒ Ftv (Type tv) tv where
                  | guarded ← tcGuards tc ])
               (\_ σ1 σ2 → FTBranch [FTGuard σ1, σ2])
               (mkMuF (\_ → id))
+
+instance Ord tv ⇒ Ftv (QExp tv) tv where
+  ftvTree QeA      = FTBranch []
+  ftvTree (QeU αs) = FTBranch (FTSingle <$> S.toList αs)
+  ftvSet QeA       = S.empty
+  ftvSet (QeU αs)  = αs
 
 instance Ftv a tv ⇒ Ftv [a] tv where
   ftvTree = foldMap ftvTree

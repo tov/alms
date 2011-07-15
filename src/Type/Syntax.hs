@@ -19,8 +19,7 @@ import Type.Internal
 import Type.ArrowAnnotations
 import Type.TyVar
 import qualified AST
-import Syntax.PprClass (TyNames, tyNames0, tnLookup, Ppr(..), showFromPpr)
-import Syntax.Ppr ()
+import Syntax.PprClass (TyNames, tyNames0, tnLookup)
 
 import Prelude ()
 import qualified Data.Set as S
@@ -67,7 +66,8 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
     AST.tyFun <$> represent qe
               <*> local (\cxt → cxt { arrRule = iaeLeft (arrRule cxt) })
                     (loop σ1)
-              <*> local (\cxt → cxt { arrRule = iaeRight (arrRule cxt) (qualifier qe) σ1 })
+              <*> local (\cxt → cxt { arrRule = iaeRight (arrRule cxt)
+                                                         (qualifier qe) σ1 })
                     (loop σ2)
   loop (TyApp tc σs) = do
     AST.tyApp <$> bestName tyNames tc <*> sequence
@@ -178,12 +178,4 @@ tyConToStx tn tc =
               []   → AST.qeLit Qu
               tvs' → foldr1 AST.qeJoin (AST.qeVar <$> tvs')
 
-
-instance Tv tv ⇒ Ppr (Type tv) where ppr = ppr . typeToStx'
-instance Ppr TyPat where ppr = ppr . fst . tyPatToStx'
-instance Ppr TyCon where ppr = ppr . tyConToStx'
-
-instance Tv tv ⇒ Show (Type tv) where showsPrec = showFromPpr
-instance Show TyPat where showsPrec = showFromPpr
-instance Show TyCon where showsPrec = showFromPpr
 

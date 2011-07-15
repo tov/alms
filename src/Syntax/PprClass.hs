@@ -20,19 +20,26 @@ module Syntax.PprClass (
   vcat, sep, cat, fsep, fcat,
   -- * Renderers
   render, renderS, printDoc, printPpr, hPrintDoc, hPrintPpr,
+  -- ** Instantiations of several context-sensitive functions
+  --    with the zero context
+  isEmpty, renderStyle, fullRender,
   -- ** Instance helpers
   showFromPpr, pprFromShow,
   -- * Re-exports
   module Alt.PrettyPrint
 ) where
 
-import Alt.PrettyPrint hiding (Doc(..), render, vcat, sep, cat, fsep, fcat)
+import Alt.PrettyPrint hiding ( Doc(..),
+                                render, isEmpty, renderStyle, fullRender,
+                                vcat, sep, cat, fsep, fcat )
 import qualified Alt.PrettyPrint as P
 
 import qualified Syntax.Strings as Strings
 import AST.Ident (QLid, Uid, Renamed)
 
 import System.IO (Handle, stdout, hPutChar, hPutStr)
+import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- | Context for pretty-printing.
 data PprContext
@@ -224,15 +231,31 @@ cat  = trimCat P.cat
 fsep = trimCat P.fsep
 fcat = trimCat P.fcat
 
+instance Ppr a => Ppr (Maybe a) where
+  pprPrec _ Nothing  = mempty
+  pprPrec p (Just a) = pprPrec p a
+
 instance Ppr a => Ppr [a] where
   ppr = pprList
 
 instance (Ppr a, Ppr b) => Ppr (a, b) where
-  ppr (a, b) = parens (fsep [ ppr0 a <> comma, ppr0 b ])
+  ppr (a, b) = parens (sep (punctuate comma [ppr0 a, ppr0 b]))
 
-instance Ppr a => Ppr (Maybe a) where
-  pprPrec _ Nothing  = mempty
-  pprPrec p (Just a) = pprPrec p a
+instance (Ppr a, Ppr b, Ppr c) => Ppr (a, b, c) where
+  ppr (a,b,c) =
+    parens (sep (punctuate comma [ppr0 a, ppr0 b, ppr0 c]))
+
+instance (Ppr a, Ppr b, Ppr c, Ppr d) => Ppr (a, b, c, d) where
+  ppr (a,b,c,d) =
+    parens (sep (punctuate comma [ppr0 a, ppr0 b, ppr0 c, ppr0 d]))
+
+instance (Ppr k, Ppr v) => Ppr (M.Map k v) where
+  ppr m = braces . fsep . punctuate comma $
+    [ ppr0 k <> colon <+> ppr0 v
+    | (k, v) <- M.toList m ]
+
+instance Ppr a => Ppr (S.Set a) where
+  ppr = braces . fsep . punctuate comma . map ppr0 . S.toList
 
 -- | Class to check if a particular thing will print infix.  Adds
 --   an operation to print at the given precedence only if the given
@@ -246,12 +269,13 @@ class Ppr a => IsInfix a where
       then ppr a
       else ppr0 a
 
+instance Ppr Bool      where pprPrec = pprFromShow
 instance Ppr Int       where ppr = int
 instance Ppr Integer   where ppr = integer
 instance Ppr Double    where ppr = double
 
 instance Ppr Char where
-  ppr            = text . show
+  pprPrec        = pprFromShow
   pprStyleList _ = text
 
 instance Ppr (P.Doc PprContext)  where ppr = id
@@ -267,6 +291,20 @@ renderS doc rest = fullRenderIn pprContext0 PageMode 80 1.1 each rest doc
 -- Render a document in the preferred style
 render :: Doc -> String
 render doc = renderS doc ""
+
+-- Is the document empty (in 'pprContext0')?
+isEmpty :: Doc -> Bool
+isEmpty  = isEmptyIn pprContext0
+
+-- Render in the given style (in 'pprContext0')
+renderStyle :: Style -> Doc -> String
+renderStyle = renderStyleIn pprContext0
+
+-- Render with the given parameters (in 'pprContext0')
+fullRender :: Mode -> Int -> Float ->
+              (TextDetails -> a -> a) -> a ->
+              Doc -> a
+fullRender = fullRenderIn pprContext0
 
 -- Render and display a document in the preferred style
 printDoc :: Doc -> IO ()

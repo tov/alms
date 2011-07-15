@@ -6,20 +6,21 @@
       UnicodeSyntax
     #-}
 module Type.Reduce (
+  matchTyCons,
   headNormalizeTypeK, headNormalizeType,
   headReduceType, ReductionState(..),
-  reductionSequence, reductionSequence'
+  majorReductionSequence, reductionSequence, reductionSequence'
 ) where
 
 import Util
-import ErrorMessage
+import Error
 import Type.Internal
 import Type.TyVar (Tv)
-import Type.Syntax ()
-import Data.Loc (bogus)
+import Type.Ppr ()
 
 import Prelude ()
 import Data.Generics (Typeable, Data)
+import qualified Data.List as List
 
 instance Tv tv ⇒ Viewable (Type tv) where
   type View (Type tv) = Type tv
@@ -34,7 +35,7 @@ headNormalizeType = last . reductionSequence
 headNormalizeTypeK ∷ Tv tv ⇒ Int → Type tv → Type tv
 headNormalizeTypeK k0 σ0 = loop k0 (reductionSequence σ0) where
   loop _ []     = throw $
-    almsBug StaticsPhase bogus "headNormalizeTypeK"
+    almsBug StaticsPhase "headNormalizeTypeK"
             "got empty reduction sequence"
   loop _ [σ]    = σ
   loop 0 (σ:_)  = throw $
@@ -44,6 +45,35 @@ headNormalizeTypeK k0 σ0 = loop k0 (reductionSequence σ0) where
         steps; stopped at $q:σ.
       |]
   loop k (_:σs) = loop (k - 1) σs
+
+-- | Given two types, try to reduce them to a pair with a common
+--   head constructor.
+matchTyCons ∷ Type tv → Type tv → Maybe (Type tv, Type tv)
+matchTyCons σ1 σ2 =
+  List.find sameTyCon
+            (allPairsBFS (majorReductionSequence σ1)
+                         (majorReductionSequence σ2))
+  where
+    sameTyCon (TyApp tc _, TyApp tc' _) = tc == tc'
+    sameTyCon _                         = False
+
+-- | Returns all pairs of a pair of lists, breadth first
+allPairsBFS ∷ [a] → [b] → [(a, b)]
+allPairsBFS xs0 ys0 = loop [(xs0, ys0)] where
+  loop []   = []
+  loop xsys = [ (x, y) | (x:_, y:_) ← xsys ]
+           ++ loop (take 1 [ (xs, ys) | (xs, _:ys) ← xsys ]
+                        ++ [ (xs, ys) | (_:xs, ys) ← xsys ])
+
+-- | A major reduction sequence is a reduction sequence filtered
+--   to show only changes in the head constructor.
+majorReductionSequence ∷ Type tv → [Type tv]
+majorReductionSequence = clean . reductionSequence where
+  clean []        = []
+  clean (σ:σs)    = σ : cleanWith σ σs
+  cleanWith σ@(TyApp tc _) (σ'@(TyApp tc' _) : σs)
+    | tc == tc'  = cleanWith σ σs
+  cleanWith _ σs = clean σs
 
 -- | The reduction sequence of a type
 reductionSequence ∷ Type tv → [Type tv]
@@ -107,5 +137,5 @@ headReduceType σ0 = case σ0 of
       Done            → Left Stuck
       rs              → Left rs
   patt (TpRow _)      _           = throw $
-    almsBug StaticsPhase bogus "headReduceType"
+    almsBug StaticsPhase "headReduceType"
       "Row patterns are not yet implemented."

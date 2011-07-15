@@ -45,7 +45,7 @@ import Syntax.Ppr (Ppr, TyNames)
 import Type
 import TypeRel
 import Coercion (coerceExpression)
-import ErrorMessage
+import Error
 import Message.AST
 
 import Prelude ()

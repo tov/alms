@@ -25,7 +25,7 @@ import qualified AST.Notable
 import qualified AST.Patt
 import Env
 import Syntax.Ppr (Ppr(..), Doc, text, precApp)
-import ErrorMessage
+import Error
 
 import Prelude ()
 import Data.IORef (newIORef, readIORef, writeIORef)

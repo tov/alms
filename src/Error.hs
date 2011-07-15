@@ -9,7 +9,7 @@
       UndecidableInstances,
       UnicodeSyntax
       #-}
-module ErrorMessage (
+module Error (
   AlmsError(..), Phase(..),
   almsBug, (!::), appendToMessage,
   wordsMsg, quoteMsg, pprMsg, showMsg, emptyMsg,

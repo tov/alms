@@ -33,7 +33,7 @@ import Prelude ()
 
 import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
-import ErrorMessage (AlmsMonad)
+import Error (AlmsMonad)
 import Meta.Quasi
 import Syntax.Parser (ptd)
 import Syntax.Ppr (ppr, pprPrec, text, precApp)

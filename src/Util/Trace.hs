@@ -64,6 +64,7 @@ trace      =
     then traceLow
     else \_ → return ()
 
+{-# INLINE traceLow #-}
 traceLow   ∷ (TraceMessage a, MonadTrace m) ⇒ a → m ()
 traceLow a = do
   n0 ← getTraceIndent

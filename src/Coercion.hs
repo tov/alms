@@ -19,7 +19,7 @@ import AST hiding (Type, Type'(..))
 import Type
 import TypeRel ()
 import Util
-import ErrorMessage
+import Error
 
 import Prelude ()
 import qualified Data.Map as M

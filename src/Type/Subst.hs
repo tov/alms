@@ -23,9 +23,9 @@ module Type.Subst (
   whileChanging, iterChanging, (>=>!), collectTVs_,
 
   -- * A 'MonadSubst' implementation
-  SubstT, SubstState, substState0,
+  SubstT, TV, SubstState, substState0,
   -- ** Running
-  runSubstT, runSubstErrorT,
+  runSubstT, runEitherSubstT,
   Subst, runSubst,
   mapSubstT,
 
@@ -37,15 +37,14 @@ module Type.Subst (
 import Util
 import Util.MonadRef
 import Util.Trace
-import Data.Loc (bogus)
-import ErrorMessage
+import Error
 import Syntax.PprClass as Ppr
 import Syntax.Prec (precEq)
 import Rank (Rank)
 import qualified Rank
 import Type.Internal
 import Type.TyVar
-import Type.Syntax ()
+import Type.Ppr ()
 
 import Prelude ()
 import Control.Monad.ST (runST)
@@ -103,7 +102,7 @@ instance NewTV String         where newTVArg = upd4 . text
 instance NewTV ()             where newTVArg = const id
 
 substBug        ∷ MonadSubst tv r m ⇒ String → String → m a
-substBug        = throwAlms <$$> almsBug StaticsPhase bogus
+substBug        = throwAlms <$$> almsBug StaticsPhase
 
 -- Allocate a new, empty (unifiable) type variable
 newTV           ∷ MonadSubst tv r m ⇒ m tv
@@ -281,11 +280,14 @@ instance Monad m ⇒ MonadTrace (SubstT s m) where
   putTraceIndent n = SubstT (modify (\sts → sts { stsTrace = n }))
 
 instance MonadAlmsError m ⇒ MonadAlmsError (SubstT s m) where
-  throwAlms      = SubstT <$> throwAlms
-  catchAlms m h  = SubstT (catchAlms (unSubstT m) (unSubstT . h))
+  getLocation       = lift getLocation
+  catchAlms m h     = SubstT (catchAlms (unSubstT m) (unSubstT . h))
+  withLocation_ loc = SubstT . withLocation_ loc . unSubstT
+  bailoutAlms_      = lift bailoutAlms_
+  reportAlms_       = lift <$> reportAlms_
 
-instance MonadAlmsError m ⇒ MonadError AlmsError (SubstT s m) where
-  throwError     = throwAlms
+instance MonadAlmsError m ⇒ MonadError [AlmsError] (SubstT s m) where
+  throwError     = throwAlmsList
   catchError     = catchAlms
 
 instance MonadRef r m ⇒ MonadRef r (SubstT r m) where
@@ -394,17 +396,17 @@ substState0 = SubstState 0 0
 
 -- | Run a substitution computation, but not inheriting exception
 --   handling
-runSubstErrorT ∷ Monad m ⇒
-                 SubstState → SubstT r (ErrorT AlmsError m) a →
-                 m (Either AlmsError (a, SubstState))
-runSubstErrorT = runErrorT <$$> runSubstT
+runEitherSubstT ∷ Monad m ⇒
+                 SubstState → SubstT r (AlmsErrorT m) a →
+                 m (Either [AlmsError] (a, SubstState))
+runEitherSubstT = runAlmsErrorT <$$> runSubstT
 
 -- | The type of a generic substitution computation
 type Subst a  = ∀ s m. (MonadRef s m, MonadAlmsError m) ⇒ SubstT s m a
 
 -- | Run a substitution computation in a pure context
-runSubst ∷ SubstState → Subst a → Either AlmsError (a, SubstState)
-runSubst st0 m = runST (runSubstErrorT st0 m)
+runSubst ∷ SubstState → Subst a → Either [AlmsError] (a, SubstState)
+runSubst st0 m = runST (runEitherSubstT st0 m)
 
 -- | For lifting through 'SubstT'
 mapSubstT ∷ (Functor t1, Functor t2) ⇒
@@ -435,13 +437,18 @@ instance Substitutable a m ⇒ Substitutable (Maybe a) m where
   subst     = mapM subst
   substHead = mapM substHead
 
+instance (Substitutable a m, Substitutable b m) ⇒
+         Substitutable (a, b) m where
+  subst (a, b)     = liftM2 (,) (subst a) (subst b)
+  substHead (a, b) = liftM2 (,) (substHead a) (substHead b)
+
 instance MonadSubst tv r m ⇒ Substitutable (Type tv) m where
-  subst = foldType (mkQuF ((<$>) <$$> TyQu))
-                   (mkBvF (return <$$$> bvTy))
-                   ((>>= either (return . fvTy) subst) . readTV)
-                   (\tc → TyApp tc <$$> sequence)
-                   (liftA2 <$> TyRow)
-                   (mkMuF ((<$>) <$> TyMu))
+  subst = foldTypeM (mkQuF (return <$$$> TyQu))
+                    (mkBvF (return <$$$> bvTy))
+                    ((>>= either (return . fvTy) subst) . readTV)
+                    (return <$$> TyApp)
+                    (return <$$$> TyRow)
+                    (mkMuF (return <$$> TyMu))
   substHead (TyVar (Free r)) = derefTV r
   substHead σ                = return σ
 

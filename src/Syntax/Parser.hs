@@ -31,7 +31,7 @@ import Paths
 import AST
 import Syntax.Prec
 import Syntax.Lexer as Lexer
-import ErrorMessage (AlmsError(..), Phase(ParserPhase))
+import Error (AlmsError(..), Phase(ParserPhase))
 import qualified Message.AST as Msg
 import Alt.Parsec hiding (parse)
 

@@ -10,6 +10,7 @@
       TupleSections,
       TypeFamilies,
       TypeSynonymInstances,
+      UndecidableInstances,
       UnicodeSyntax
       #-}
 -- | The internal representation of types, created by the type checker
@@ -28,7 +29,7 @@ module Type.Internal (
   R, Name,
 
   -- * Qualifiers
-  Qualifier(..), qlitexp, qvarexp, extractQual,
+  Qualifier(..), qlitexp, qvarexp, extractQual, liftVQExp, mapQExp,
 
   -- * Type constructors
   mkTC,
@@ -50,7 +51,7 @@ module Type.Internal (
 
   -- * Unfolds and folds
   -- ** Type folding
-  foldType, mkBvF, mkQuF, mkMuF,
+  foldType, foldTypeM, foldTypeEnv, mkBvF, mkQuF, mkMuF,
   -- ** Unfolds
   unfoldQu, unfoldRow, unfoldMu,
   -- ** Row operations
@@ -351,6 +352,12 @@ class Qualifier q tv | q → tv where
   qualifierEnv   = const qualifier
   qualifier      = qualifierEnv []
 
+instance Qualifier QLit tv where
+  qualToType Qa     = tyAf
+  qualToType Qu     = tyUn
+  qualifier Qa      = QeA
+  qualifier Qu      = QeU S.empty
+
 instance Qualifier (Type tv) tv where
   qualToType        = id
   qualifierEnv env0 = foldTypeEnv env0 fquant fbvar ffvar fcon frow frec
@@ -379,6 +386,10 @@ instance Qualifier (QExpV tv) tv where
                                 (TyVar <$> S.toList tvs)
   qualifier = id
 
+instance Qualifier (S.Set tv) tv where
+  qualifier αs   = QeU (S.mapMonotonic Free αs)
+  qualToType αs  = qualToType (QeU (S.mapMonotonic Free αs))
+
 -- | Make a qualifier expression from a single literal
 qlitexp ∷ QLit → QExp tv
 qlitexp Qa = QeA
@@ -394,6 +405,16 @@ extractQual ∷ Ord tv ⇒ QExp Int → [QExp tv] → QExp tv
 extractQual QeA      _   = QeA
 extractQual (QeU zs) qes = bigJoin (fst <$> filter ((`elem` zs) . snd)
                                                    (zip qes [0 ..]))
+
+-- | Lift a free-variable q-expression to a 'QExpV'
+liftVQExp ∷ QExp tv → QExpV tv
+liftVQExp QeA           = QeA
+liftVQExp (QeU αs)      = QeU (S.mapMonotonic Free αs)
+
+-- | Modify the set of a 'QeU' 'QExp"
+mapQExp ∷ (S.Set tv → S.Set tv') → QExp tv → QExp tv'
+mapQExp _ QeA      = QeA
+mapQExp f (QeU αs) = QeU (f αs)
 
 ---
 --- Folds and unfolds
@@ -477,6 +498,30 @@ mkQuF f q αs k = k [ (0, j) | j ← [0 .. length αs - 1] ] (f q αs)
 mkMuF ∷ (Name → r → s) →
         (∀a. Name → ((Int, Int) → (r → s) → a) → a)
 mkMuF f pn k = k (0, 0) (f pn)
+
+foldTypeM ∷ (Monad m, Ord tv) ⇒
+            -- | For quantifiers
+            (∀a. Quant → [(Name, QLit)] → ([s] → (r → m r) → a) → a) →
+            -- | For bound variables
+            ((Int, Int) → Name → Maybe s → m r) →
+            -- | For free variables
+            (tv → m r) →
+            -- | For constructor applications
+            (TyCon → [r] → m r) →
+            -- | For row type labels
+            (Uid R → r → r → m r) →
+            -- | For recursive types
+            (∀a. Name → (s → (r → m r) → a) → a) →
+            -- | Type to fold
+            Type tv →
+            m r
+foldTypeM fquant fbvar ffvar fapp frow frec =
+  foldType (\qu ns k → fquant qu ns (\s k' → k s (>>= k')))
+           fbvar
+           ffvar
+           (\tc mrs → sequence mrs >>= fapp tc)
+           (\lab mr1 mr2 → mr1 >>= \r1 → mr2 >>= frow lab r1)
+           (\n k → frec n (\s k' → k s (>>= k')))
 
 --
 -- Other unfolds

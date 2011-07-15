@@ -3,7 +3,7 @@
     #-}
 -- | A wrapper around the fgs graph library.
 module Alt.Graph (
-  ShowGraph(..),
+  Gr, ShowGraph(..),
   trcnr, untransitive, nmLab, labelNode, labScc,
   pathScc, erdffWith, xpdffWith, xpdfWith,
   labComponents, labNodeEdges,

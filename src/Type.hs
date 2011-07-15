@@ -6,6 +6,7 @@
 module Type (
   module Type.ArrowAnnotations,
   module Type.Internal,
+  -- instances only: module Type.Ppr,
   module Type.Recursive,
   module Type.Reduce,
   module Type.Subst,
@@ -15,6 +16,7 @@ module Type (
 
 import Type.ArrowAnnotations
 import Type.Internal
+import Type.Ppr ()
 import Type.Recursive (standardizeMus)
 import Type.Reduce
 import Type.Subst

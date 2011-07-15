@@ -27,7 +27,7 @@ import AST (Prog, Decl, TyDec, BIdent(..), prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
 import Data.Loc (isBogus, initial, bogus)
-import qualified ErrorMessage as EM
+import qualified Error as EM
 import qualified Message.AST  as Msg
 
 import Prelude ()

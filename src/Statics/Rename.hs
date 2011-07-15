@@ -24,7 +24,7 @@ module Statics.Rename (
   renamingEnterScope,
 ) where
 
-import ErrorMessage
+import Error
 
 import Meta.Quasi
 import AST hiding ((&))
