@@ -43,6 +43,8 @@ moduleQuals :: [(String, String)]
 moduleQuals  = [ ("AST.Type",        "AST"),
                  ("AST.Kind",        "AST"),
                  ("AST.Patt",        "AST"),
+                 ("AST.Expr",        "AST"),
+                 ("AST.Decl",        "AST"),
                  ("AST.Notable",     "AST") ]
 
 antiExp :: Data a => a -> Maybe TH.ExpQ

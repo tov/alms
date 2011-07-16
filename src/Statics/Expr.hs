@@ -17,7 +17,6 @@ module Statics.Expr {-(
 
 import Util
 import qualified AST
-import qualified AST.Patt
 import AST.TypeAnnotation
 import Meta.Quasi
 import qualified Rank
@@ -35,12 +34,22 @@ import qualified Data.Set as S
 tcExpr ∷ MonadConstraint tv r m ⇒
          Δ tv → Γ tv → AST.Expr R → m (AST.Expr R, Type tv)
 tcExpr δ γ e = withTVsOf δ γ e $ \δ' → do
-  infer δ' γ e Nothing
+  infer (request Forall Exists) δ' γ e Nothing
 
 infer  ∷ MonadConstraint tv r m ⇒
-         Δ tv → Γ tv → AST.Expr R → Maybe (Type tv) →
+         Request tv → Δ tv → Γ tv → AST.Expr R → Maybe (Type tv) →
          m (AST.Expr R, Type tv)
-infer δ γ e0 mσ0 = undefined
+infer φ0 δ γ e0 mσ0 = do
+  traceN 1 (TraceIn ("infer", φ0, γ, e0, mσ0))
+  mσ ← mapM subst mσ0
+  let φ = maybe id prenexFlavors mσ φ0
+  σ ← case e0 of
+    [ex| λ $vid:x → $e |]               → do
+      [mσ1, _, mσ2]     ← splitCon (<:) mσ tcFun "application expression"
+      undefined -- XXX
+
+  traceN 1 (TraceOut ("infer", σ))
+  return σ
 
 ---
 --- MISCELLANEOUS HELPERS
@@ -276,17 +285,17 @@ Instantiates both ∀ and ∃ to univars:
   (λx.x) : ∃α. C α → C α  ⇒       (λ(x:C β). (x:C β)) : ∃α. C α → C α
 -}
 splitCon ∷ MonadConstraint tv r m ⇒
-           -- | Who's asking?
-           String →
            -- | Unifier for type variables forced to a shape
            (Type tv → Type tv → m ()) →
            -- | Type to split
            Maybe (Type tv) →
            -- | Expected type
            TyCon →
+           -- | Who's asking?
+           String →
            m ([Maybe (Type tv)])
-splitCon _   _    Nothing  tc = return (Nothing <$ tcArity tc)
-splitCon who (<*) (Just σ) tc = do
+splitCon _    Nothing  tc _  = return (Nothing <$ tcArity tc)
+splitCon (<*) (Just σ) tc who = do
   traceN 4 ("splitCon", who, σ, tc)
   ρ ← instAllEx True False σ
   loop ρ
@@ -309,17 +318,17 @@ splitCon who (<*) (Just σ) tc = do
 -- | Like 'splitCon', but for rows.
 --   PRECONDITION: σ is fully substituted.
 splitRow ∷ MonadConstraint tv r m ⇒
-           -- | Who is asking?
-           String →
            -- | Coercion to unify type variable with required shape
            (Type tv → Type tv → m ()) →
            -- | The type to split
            Maybe (Type tv) →
            -- | The row label that we're expecting
            RowLabel →
+           -- | Who is asking?
+           String →
            m (Maybe (Type tv), Maybe (Type tv))
-splitRow _   _    Nothing  _    = return (Nothing, Nothing)
-splitRow who (<*) (Just σ) lab = do
+splitRow _    Nothing  _   _   = return (Nothing, Nothing)
+splitRow (<*) (Just σ) lab who = do
   traceN 4 ("splitRow", who, σ, lab)
   ρ ← instAllEx True False σ
   loop ρ
