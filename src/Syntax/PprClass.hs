@@ -35,7 +35,7 @@ import Alt.PrettyPrint hiding ( Doc(..),
 import qualified Alt.PrettyPrint as P
 
 import qualified Syntax.Strings as Strings
-import AST.Ident (QLid, Uid, Renamed)
+import AST.Ident (QTypId, ModId, Renamed)
 
 import System.IO (Handle, stdout, hPutChar, hPutStr)
 import qualified Data.Map as M
@@ -51,8 +51,8 @@ data PprContext
 
 data TyNames =
   TyNames {
-    tnLookup   :: Int -> QLid Renamed -> QLid Renamed,
-    tnEnter    :: Uid Renamed -> TyNames
+    tnLookup   :: Int -> QTypId Renamed -> QTypId Renamed,
+    tnEnter    :: ModId Renamed -> TyNames
   }
 
 -- | Default context
@@ -198,12 +198,12 @@ askTyNames   :: (TyNames -> Doc) -> Doc
 askTyNames    = asksD pcTyName
 
 -- | Render a document with a module opened
-enterTyNames :: Uid Renamed -> Doc -> Doc
+enterTyNames :: ModId Renamed -> Doc -> Doc
 enterTyNames u doc = askTyNames $ \tn ->
   setTyNames (tnEnter tn u) doc
 
 -- | Look up a type name in the rendering context
-lookupTyNames :: Int -> QLid Renamed -> (QLid Renamed -> Doc) -> Doc
+lookupTyNames :: Int -> QTypId Renamed -> (QTypId Renamed -> Doc) -> Doc
 lookupTyNames tag ql kont = askTyNames $ \tn ->
   kont (tnLookup tn tag ql)
 

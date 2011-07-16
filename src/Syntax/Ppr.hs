@@ -55,7 +55,7 @@ pprInfix inspect x0
             fsep (mapTail (nest 2) $ map text ops)
             <> pprPrec precBang x
   | Just (_, op, Just _) <- inspect x0
-  , isOperator (lid op :: Lid Raw)
+  , isOperator (ident op :: Lid Raw)
   , p <- precOp op
   , p /= Right precBang
     = Just $
@@ -91,7 +91,7 @@ instance Ppr (Type i) where
                         pprVariantRow (lbrack <+>) t (<+> rbrack)
   ppr [ty| { $t } |] = pprRecordType t
   ppr [ty| $t ... |] = prec precApp $ sep [ ppr t, text Strings.ellipsis ]
-  ppr t@[ty| ($list:ts) $qlid:n |]
+  ppr t@[ty| ($list:ts) $qtid:n |]
     | Just doc <- pprInfix unfoldType t
                     = doc
     | null ts       = ppr n
@@ -169,8 +169,8 @@ instance Ppr (TyPat i) where
     N _ (TpRow tv var) -> pprParamV var tv <+> text Strings.ellipsis
     [tpQ| [ $tp ] |]   -> lbrack <+> ppr0 tp <+> rbrack
     [tpQ| { $tp } |]   -> lbrace <+> ppr0 tp <+> rbrace
-    [tpQ| $qlid:ql |]  -> ppr ql
-    [tpQ| ($list:tps) $qlid:ql |]
+    [tpQ| $qtid:ql |]  -> ppr ql
+    [tpQ| ($list:tps) $qtid:ql |]
                        -> prec precApp $ sep [ppr tps, ppr ql]
     [tpQ| $antiP:a |]  -> ppr a
 
@@ -272,10 +272,10 @@ pprAbsTy at = case view at of
   AbsTy _ _ td -> ppr td -- shouldn't happen (yet)
   AbsTyAnti a -> ppr a
 
-pprProto  :: Lid i -> [TyPat i] -> Doc
+pprProto  :: TypId i -> [TyPat i] -> Doc
 pprProto n ps = ppr (tpApp (J [] n) ps)
 
-pprProtoV :: Lid i -> [Variance] -> [TyVar i] -> Doc
+pprProtoV :: TypId i -> [Variance] -> [TyVar i] -> Doc
 pprProtoV n vs tvs = pprProto n (zipWith tpVar tvs vs)
 
 pprParamV :: Variance -> TyVar i -> Doc
@@ -290,7 +290,7 @@ pprQuals :: QExp i -> Doc
 pprQuals [qeQ| U |] = mempty
 pprQuals qs          = text ":" <+> pprPrec precApp qs
 
-pprAlternatives :: [(Uid i, Maybe (Type i))] -> Doc
+pprAlternatives :: [(ConId i, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals
 pprAlternatives (a:as) = sep $
   equals <+> alt a : [ char '|' <+> alt a' | a' <- as ]
@@ -300,8 +300,8 @@ pprAlternatives (a:as) = sep $
 
 pprModExp :: (Doc -> Doc) -> ModExp i -> Doc
 pprModExp add modexp = case modexp of
-  [meQ| $quid:n |] -> add (ppr n)
-  [meQ| $quid:n $list:qls |] ->
+  [meQ| $qmid:n |] -> add (ppr n)
+  [meQ| $qmid:n $list:qls |] ->
     add (ppr n) <+>
     brackets (fsep (punctuate comma (map ppr qls)))
   [meQ| struct $list:ds end |] ->
@@ -319,15 +319,15 @@ pprSigExp :: (Doc -> Doc) -> SigExp i -> Doc
 pprSigExp add se0 = body >+> withs where
   (wts, se1) = unfoldSeWith se0
   body       = case se1 of
-    [seQ| $quid:n |] -> add (ppr n)
-    [seQ| $quid:n $list:qls |] ->
+    [seQ| $qsid:n |] -> add (ppr n)
+    [seQ| $qsid:n $list:qls |] ->
       add (ppr n) <+>
       brackets (fsep (punctuate comma (map ppr qls)))
     [seQ| sig $list:sgs end |] ->
       add (text "sig")
       $$ nest 2 (vcat (map ppr0 sgs))
       $$ text "end"
-    [seQ| $_ with type $list:_ $qlid:_ = $_ |] ->
+    [seQ| $_ with type $list:_ $qtid:_ = $_ |] ->
       error "BUG! can't happen in pprSigExp"
     [seQ| $anti:a |] -> add (ppr a)
   withs      =
@@ -360,10 +360,10 @@ instance Ppr (Expr i) where
   ppr e0 = case e0 of
     _ | Just doc <- pprInfix unfoldExpr e0
                        -> doc
-    [ex| $qlid:x |]    -> ppr x
+    [ex| $qvid:x |]    -> ppr x
     [ex| $lit:lt |]    -> ppr lt
-    [ex| $quid:x |]    -> ppr x
-    [ex| $quid:x $e |] -> prec precApp (sep [ ppr x, ppr1 e ])
+    [ex| $qcid:x |]    -> ppr x
+    [ex| $qcid:x $e |] -> prec precApp (sep [ ppr x, ppr1 e ])
     [ex| `$uid:x |]    -> char '`' <> ppr x
     [ex| `$uid:x $e |] -> prec precApp (sep [ char '`' <> ppr x, ppr1 e ])
     [ex| #$uid:x $e |] -> prec precApp (sep [ char '#' <> ppr x, ppr1 e ])
@@ -480,8 +480,8 @@ resugarLet e =
 instance Ppr (Patt i) where
   ppr [pa| _ |]             = text "_"
   ppr [pa| $lid:l |]        = ppr l
-  ppr [pa| $quid:qu |]      = ppr qu
-  ppr [pa| $quid:qu $x |]   = prec precApp $
+  ppr [pa| $qcid:qu |]      = ppr qu
+  ppr [pa| $qcid:qu $x |]   = prec precApp $
                                  ppr qu <+> ppr1 x
   ppr [pa| ($x, $y) |]      = prec precCom $
                                  ppr x <> comma <+> ppr1 y
@@ -512,7 +512,7 @@ instance Ppr Lit where
 --
 
 data PprTyAppHelper i a
-  = PTAHBranch (QLid i) [a]
+  = PTAHBranch (QTypId i) [a]
   | PTAHLeaf   a
 
 instance Ppr a => Ppr (PprTyAppHelper i a) where
@@ -522,13 +522,13 @@ instance Ppr a => Ppr (PprTyAppHelper i a) where
 unfoldPTAH :: PprTyAppHelper i a ->
               Maybe (PprTyAppHelper i a, String, Maybe (PprTyAppHelper i a))
 unfoldPTAH (PTAHBranch (J [] l) [a, b])
-  = Just (PTAHLeaf a, unLid l, Just (PTAHLeaf b))
+  = Just (PTAHLeaf a, unLid (unTypId l), Just (PTAHLeaf b))
 unfoldPTAH (PTAHBranch (J [] l) [a])
-  = Just (PTAHLeaf a, unLid l, Nothing)
+  = Just (PTAHLeaf a, unLid (unTypId l), Nothing)
 unfoldPTAH _
   = Nothing
 
-pprTyApp :: Ppr a => QLid i -> [a] -> Doc
+pprTyApp :: Ppr a => QTypId i -> [a] -> Doc
 pprTyApp ql ts
   | Just doc <- pprInfix unfoldPTAH (PTAHBranch ql ts)
                = doc
@@ -556,6 +556,11 @@ instance Ppr Variance  where pprPrec = pprFromShow
 instance Ppr Quant     where pprPrec = pprFromShow
 instance Ppr (Lid i)   where pprPrec = pprFromShow
 instance Ppr (Uid i)   where pprPrec = pprFromShow
+instance Ppr (TypId i) where pprPrec = pprFromShow
+instance Ppr (VarId i) where pprPrec = pprFromShow
+instance Ppr (ConId i) where pprPrec = pprFromShow
+instance Ppr (ModId i) where pprPrec = pprFromShow
+instance Ppr (SigId i) where pprPrec = pprFromShow
 instance Ppr (BIdent i)where pprPrec = pprFromShow
 instance Ppr (TyVar i) where pprPrec = pprFromShow
 instance Ppr Anti      where pprPrec = pprFromShow

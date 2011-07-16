@@ -51,7 +51,7 @@ type TyPat i = Located TyPat' i
 -- | Types are parameterized by [@i@], the type of information
 --   associated with each tycon
 data Type' i
-  = TyApp  (QLid i) [Type i]
+  = TyApp  (QTypId i) [Type i]
   | TyVar  (TyVar i)
   | TyFun  (Maybe (QExp i)) (Type i) (Type i)
   | TyQu   Quant (TyVar i) (Type i)
@@ -65,7 +65,7 @@ data TyPat' i
   -- | type variables
   = TpVar (TyVar i) Variance
   -- | type constructor applications
-  | TpApp (QLid i) [TyPat i]
+  | TpApp (QTypId i) [TyPat i]
   -- | each element of a row
   | TpRow (TyVar i) Variance
   -- | antiquotes
@@ -118,18 +118,18 @@ tnAf           = "A"
 class TyApp' r i ⇒ TyAppN n r i | r → i where
   tyAppN ∷ n → r
 
-instance TyApp' r i ⇒ TyAppN (QLid i) r i where
+instance TyApp' r i ⇒ TyAppN (Path (ModId i) (TypId i)) r i where
   tyAppN ql = tyApp' ql []
 
-instance TyApp' r i ⇒ TyAppN (Lid i) r i where
+instance TyApp' r i ⇒ TyAppN (TypId i) r i where
   tyAppN l = tyApp' (J [] l) []
 
-instance (Id i, TyApp' r i) ⇒ TyAppN String r i where
-  tyAppN s = tyApp' (qlid s) []
+instance (Tag i, TyApp' r i) ⇒ TyAppN String r i where
+  tyAppN s = tyApp' (qident s) []
 
 -- | Helper class for @TyApp'@.
 class TyApp' r i | r → i where
-  tyApp' ∷ QLid i → [Type i] → r
+  tyApp' ∷ QTypId i → [Type i] → r
 
 instance TyApp' (Type i) i where
   tyApp' = tyApp
@@ -137,28 +137,28 @@ instance TyApp' (Type i) i where
 instance (TyApp' r i, a ~ Type i) ⇒ TyApp' (a → r) i where
   tyApp' ql ts t = tyApp' ql (ts++[t])
 
-tyUnit        :: Id i => Type i
+tyUnit        :: Tag i => Type i
 tyUnit         = tyAppN tnUnit
 
-tyEnd         :: Id i => Type i
+tyEnd         :: Tag i => Type i
 tyEnd          = tyAppN tnEnd
 
-tyVariant     :: Id i => Type i -> Type i
+tyVariant     :: Tag i => Type i -> Type i
 tyVariant      = tyAppN tnVariant
 
-tyRecord      :: Id i => Type i -> Type i
+tyRecord      :: Tag i => Type i -> Type i
 tyRecord       = tyAppN tnRecord
 
-tyDots        :: Id i => Type i -> Type i
+tyDots        :: Tag i => Type i -> Type i
 tyDots         = tyAppN tnDots
 
-tyTuple       :: Id i => Type i -> Type i -> Type i
+tyTuple       :: Tag i => Type i -> Type i -> Type i
 tyTuple        = tyAppN tnTuple
 
-tyUn          :: Id i => Type i
+tyUn          :: Tag i => Type i
 tyUn           = tyAppN tnUn
 
-tyAf          :: Id i => Type i
+tyAf          :: Tag i => Type i
 tyAf           = tyAppN tnAf
 
 ---
@@ -166,7 +166,7 @@ tyAf           = tyAppN tnAf
 ---
 
 -- | Noisy type printer for debugging
-dumpType :: Id i => Int -> Type i -> IO ()
+dumpType :: Tag i => Int -> Type i -> IO ()
 dumpType i0 nt0 = do
   putStr (replicate i0 ' ')
   noIndent i0 nt0

@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      FlexibleInstances,
       RankNTypes,
       TemplateHaskell,
       TypeFamilies,
@@ -46,12 +47,12 @@ import Util
 
 deriveAntibles syntaxTable
 
--- These should be generated:
 instance Antible (Prog i) where
   injAnti _ = error "BUG! injAnti: Cannot inject into Prog"
   prjAnti   = const Nothing
   dictOf    = const noAntis
 
+-- These should be generated:
 instance Antible (Ident i) where
   injAnti                = J [] . Var . injAnti
   prjAnti (J [] (Var l)) = prjAnti l
@@ -69,6 +70,36 @@ instance Antible (QUid i) where
   prjAnti (J [] i) = prjAnti i
   prjAnti _        = Nothing
   dictOf           = const quidAntis
+
+instance Antible (QTypId i) where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qtypIdAntis
+
+instance Antible (QVarId i) where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qvarIdAntis
+
+instance Antible (QConId i) where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qconIdAntis
+
+instance Antible (QModId i) where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qmodIdAntis
+
+instance Antible (QSigId i) where
+  injAnti          = J [] . injAnti
+  prjAnti (J [] i) = prjAnti i
+  prjAnti _        = Nothing
+  dictOf           = const qsigIdAntis
 
 -- Unfolding various sequences
 
@@ -126,7 +157,7 @@ unfoldTuplePatt  = unscanl each where
     _            -> Nothing
 
 -- | Get all the "with type" clauses on a signature expression
-unfoldSeWith :: SigExp i -> ([(QLid i, [TyVar i], Type i)], SigExp i)
+unfoldSeWith :: SigExp i -> ([(QTypId i, [TyVar i], Type i)], SigExp i)
 unfoldSeWith  = unscanl each where
   each p = case view p of
     SeWith se ql tvs t -> Just ((ql, tvs, t), se)

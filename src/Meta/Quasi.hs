@@ -104,7 +104,7 @@ mkQuasi :: forall stx note.
             Data (note Renamed), Data (stx Renamed),
             LocAst (N (note Renamed) (stx Renamed))) =>
            String ->
-           (forall i. Id i => P (N (note i) (stx i))) ->
+           (forall i. Tag i => P (N (note i) (stx i))) ->
            QuasiQuoter
 mkQuasi name parser = (newQuasi name) { quoteExp = qast, quotePat = qast }
   where

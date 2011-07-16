@@ -26,7 +26,7 @@ exSigma       = error "exSigma: unimplemented"
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.  (Boolean specifies whether the result
 --   should include the effect variables.)
-exSigma :: Id i =>
+exSigma :: Tag i =>
            Bool ->
            (Patt i -> Expr i -> a) ->
            Patt i -> Expr i -> a
@@ -40,7 +40,7 @@ exSigma ret binder patt body =
 
 -- | To lift a binder to bind effect variables rather than
 --   normal variables.
-exAddSigma :: Id i =>
+exAddSigma :: Tag i =>
               Bool ->
               ([Lid i] -> Patt i -> Expr i -> a) ->
               S.Set (Lid i) -> Patt i -> Expr i -> a
@@ -203,7 +203,7 @@ exAddSigma ret binder env patt body =
     [assuming no shadowing]
 -}
 
-transform :: Id i => S.Set (Lid i) -> Expr i -> ([Lid i], Expr i)
+transform :: Tag i => S.Set (Lid i) -> Expr i -> ([Lid i], Expr i)
 transform env = loop where
   capture e1
     | vars <- [ v | J [] v <- M.keys (fv e1),
@@ -358,19 +358,19 @@ transform env = loop where
       | vars <- []
         -> (vars, e +:: vars)
 
-(+:+)   :: Id i => Expr i -> [Expr i] -> Expr i
+(+:+)   :: Tag i => Expr i -> [Expr i] -> Expr i
 (+:+)    = foldl exPair
 
-(+::)   :: Id i => Expr i -> [Lid i] -> Expr i
+(+::)   :: Tag i => Expr i -> [Lid i] -> Expr i
 e +:: vs = e +:+ map exBVar vs
 
-(-:-)   :: Id i => Patt i -> [Patt i] -> Patt i
+(-:-)   :: Tag i => Patt i -> [Patt i] -> Patt i
 (-:-)    = foldl paPair
 
-(-::)   :: Id i => Patt i -> [Lid i] -> Patt i
+(-::)   :: Tag i => Patt i -> [Lid i] -> Patt i
 p -:: vs = p -:- map paVar vs
 
-r1, r2 :: Id i => Lid i
+r1, r2 :: Tag i => Lid i
 r1 = lid "r1.!"
 r2 = lid "r2.!"
 
@@ -385,10 +385,10 @@ expr2vs e = case view e of
   _ -> mzero
 -}
 
-makeBangPatt :: Id i => Patt i -> Patt i
+makeBangPatt :: Tag i => Patt i -> Patt i
 makeBangPatt p = paCon (J [] (uid "!")) (Just p)
 
-parseBangPatt :: Id i => Patt i -> Maybe (Patt i)
+parseBangPatt :: Tag i => Patt i -> Maybe (Patt i)
 parseBangPatt (dataOf -> PaCon (J [] (Uid i "!")) mp)
   | isTrivial i = mp
 parseBangPatt _ = Nothing
@@ -403,7 +403,7 @@ disjoint s1 s2 = S.null (s1 `S.intersection` s2)
 
 -- | Transform an expression into a pattern, if possible, using only
 --   the specified variables and type variables
-expr2patt :: Id i =>
+expr2patt :: Tag i =>
              S.Set (Lid i) -> S.Set (TyVar i) -> Expr i -> Maybe (Patt i)
 expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
   loop e = case view e of
@@ -444,7 +444,7 @@ expr2patt vs0 tvs0 e0 = CMS.evalStateT (loop e0) (vs0, tvs0) where
       else mzero
 
 -- | Transform a pattern to an expression.
-patt2expr :: Id i => Patt i -> Expr i
+patt2expr :: Tag i => Patt i -> Expr i
 patt2expr p = case dataOf p of
   PaWild         -> exUnit
   PaVar l        -> exBVar l
@@ -463,7 +463,7 @@ patt2expr p = case dataOf p of
   PaAnti a       -> antierror "exSigma" a
 
 -- | Transform a pattern to a flattened pattern.
-flatpatt :: Id i => Patt i -> Patt i
+flatpatt :: Tag i => Patt i -> Patt i
 flatpatt p0 = case loop p0 of
                 []   -> paUnit
                 p:ps -> foldl paPair p ps
@@ -489,7 +489,7 @@ ren = everywhere (mkT eachRaw `extT` eachRen) where
   each (Lid _ s)   = lid (s ++ "!")
   each (LidAnti a) = LidAnti a
 
-renOnly :: (Data a, Id i) => S.Set (Lid i) -> a -> a
+renOnly :: (Data a, Tag i) => S.Set (Lid i) -> a -> a
 renOnly set = everywhere (mkT each) where
   each l | l `S.member` set = lid (unLid l ++ "!")
          | otherwise        = l
@@ -506,10 +506,10 @@ remove set = everywhere (mkT expr `extT` patt) where
   expr e               = e
   -}
 
-kill :: (Id i, Foldable f) => f (Lid i) -> Expr i -> Expr i
+kill :: (Tag i, Foldable f) => f (Lid i) -> Expr i -> Expr i
 kill  = translate paVar (const exUnit)
 
-translate :: (Id i, Foldable f) =>
+translate :: (Tag i, Foldable f) =>
              (Lid i -> Patt i) -> (Lid i -> Expr i) ->
              f (Lid i) -> Expr i -> Expr i
 translate mkpatt mkexpr set =
@@ -518,9 +518,9 @@ translate mkpatt mkexpr set =
     v:vs -> exLet' (mkpatt v -:- map mkpatt vs)
                    (mkexpr v +:+ map mkexpr vs)
 
-exUnit :: Id i => Expr i
+exUnit :: Tag i => Expr i
 exUnit  = exCon (quid "()")
 
-paUnit :: Id i => Patt i
+paUnit :: Tag i => Patt i
 paUnit  = paCon (quid "()") Nothing
 -}

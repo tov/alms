@@ -22,7 +22,11 @@ litAntis, pattAntis,
   typeAntis, tyPatAntis, quantAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   sigExpAntis, sigItemAntis,
-  lidAntis, uidAntis, qlidAntis, quidAntis, idAntis, noAntis
+  lidAntis, uidAntis,
+  typIdAntis, varIdAntis, conIdAntis, modIdAntis, sigIdAntis,
+  qlidAntis, quidAntis,
+  qtypIdAntis, qvarIdAntis, qconIdAntis, qmodIdAntis, qsigIdAntis,
+  idAntis, noAntis
     :: AntiDict
 
 litAntis
@@ -82,20 +86,58 @@ sigItemAntis
   & "anti"   =:< 'SgAnti
 lidAntis
   = "lid"    =:  Nothing
-  & "name"   =:  Just (\v -> varS 'lid [varS v []]
-                    `whichS` conS 'Lid [wildS, varS v []])
+  & "name"   =:•• (['ident], ['Lid])
   & "antiLid"=:< 'LidAnti
 uidAntis
   = "uid"    =:  Nothing
-  & "uname"  =:  Just (\v -> varS 'uid [varS v []]
-                    `whichS` conS 'Uid [wildS, varS v []])
+  & "uname"  =:•• (['ident], ['Uid])
   & "antiUid"=:< 'LidAnti
+typIdAntis
+  = "tid"    =:  Nothing
+  & "lid"    =:< 'TypId
+  & "lname"  =:•• (['ident], ['TypId, 'Lid])
+  & "antiTI" =:• ['TypId, 'LidAnti]
+varIdAntis
+  = "vid"    =:  Nothing
+  & "lid"    =:< 'VarId
+  & "lname"  =:•• (['ident], ['VarId, 'Lid])
+  & "antiVI" =:• ['VarId, 'LidAnti]
+conIdAntis
+  = "cid"    =:  Nothing
+  & "uid"    =:< 'ConId
+  & "uname"  =:•• (['ident], ['ConId, 'Uid])
+  & "antiCI" =:• ['ConId, 'UidAnti]
+modIdAntis
+  = "mid"    =:  Nothing
+  & "uid"    =:< 'ModId
+  & "uname"  =:•• (['ident], ['SigId, 'Uid])
+  & "antiMI" =:• ['ModId, 'UidAnti]
+sigIdAntis
+  = "sid"    =:  Nothing
+  & "uid"    =:< 'SigId
+  & "uname"  =:•• (['ident], ['SigId, 'Uid])
+  & "antiSI" =:• ['SigId, 'UidAnti]
 qlidAntis
   = "qlid"   =:  Nothing
-  & "qname"  =:  appFun 'qlid -- error in pattern context
+  & "qname"  =:  appFun 'qident -- error in pattern context
 quidAntis
   = "quid"   =:  Nothing
-  & "quname" =:  appFun 'quid -- error in pattern context
+  & "quname" =:  appFun 'qident -- error in pattern context
+qtypIdAntis
+  = "qtid"   =:  Nothing
+  & "qname"  =:  appFun 'qident -- error in pattern context
+qvarIdAntis
+  = "qvid"   =:  Nothing
+  & "qname"  =:  appFun 'qident -- error in pattern context
+qconIdAntis
+  = "qcid"   =:  Nothing
+  & "quname" =:  appFun 'qident -- error in pattern context
+qmodIdAntis
+  = "qmid"   =:  Nothing
+  & "quname" =:  appFun 'qident -- error in pattern context
+qsigIdAntis
+  = "qsid"   =:  Nothing
+  & "quname" =:  appFun 'qident -- error in pattern context
 idAntis
   = "id"     =:  Nothing
 noAntis
@@ -106,27 +148,37 @@ appFun n = Just (\v -> varS n [varS v []])
 
 syntaxTable :: SyntaxTable
 syntaxTable =
-  [ ''Prog    =:: 'Prog                       !: 'newN       >: (''Id, [0])
+  [ ''Prog    =:: 'Prog                       !: 'newN       >: (''Tag, [0])
   , ''Lit     =:: 'LtAnti    $: 'litAntis
-  , ''Patt    =:: 'PaAnti    $: 'pattAntis    !: 'newPatt    >: (''Id, [0])
-  , ''Expr    =:: 'ExAnti    $: 'exprAntis    !: 'newExpr    >: (''Id, [0])
-  , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding >: (''Id, [0])
-  , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt >: (''Id, [0])
+  , ''Patt    =:: 'PaAnti    $: 'pattAntis    !: 'newPatt    >: (''Tag, [0])
+  , ''Expr    =:: 'ExAnti    $: 'exprAntis    !: 'newExpr    >: (''Tag, [0])
+  , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding >: (''Tag, [0])
+  , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt >: (''Tag, [0])
   , ''Type    =:: 'TyAnti    $: 'typeAntis    !: 'newN
   , ''TyPat   =:: 'TpAnti    $: 'tyPatAntis   !: 'newN
   , ''Quant   =:: 'QuantAnti $: 'quantAntis
   , ''QExp    =:: 'QeAnti    $: 'qExpAntis    !: 'newN
   , ''TyVar   =:: 'TVAnti    $: 'tyVarAntis
-  , ''Decl    =:: 'DcAnti    $: 'declAntis    !: 'newDecl    >: (''Id, [0])
+  , ''Decl    =:: 'DcAnti    $: 'declAntis    !: 'newDecl    >: (''Tag, [0])
   , ''TyDec   =:: 'TdAnti    $: 'tyDecAntis   !: 'newN
   , ''AbsTy   =:: 'AbsTyAnti $: 'absTyAntis   !: 'newN
-  , ''ModExp  =:: 'MeAnti    $: 'modExpAntis  !: 'newModExp  >: (''Id, [0])
-  , ''SigExp  =:: 'SeAnti    $: 'sigExpAntis  !: 'newSigExp  >: (''Id, [0])
-  , ''SigItem =:: 'SgAnti    $: 'sigItemAntis !: 'newSigItem >: (''Id, [0])
+  , ''ModExp  =:: 'MeAnti    $: 'modExpAntis  !: 'newModExp  >: (''Tag, [0])
+  , ''SigExp  =:: 'SeAnti    $: 'sigExpAntis  !: 'newSigExp  >: (''Tag, [0])
+  , ''SigItem =:: 'SgAnti    $: 'sigItemAntis !: 'newSigItem >: (''Tag, [0])
   , ''Lid     =:: 'LidAnti   $: 'lidAntis
   , ''Uid     =:: 'UidAnti   $: 'uidAntis
+  , ''TypId   =:: ['TypId, 'LidAnti] $: 'typIdAntis
+  , ''VarId   =:: ['VarId, 'LidAnti] $: 'varIdAntis
+  , ''ConId   =:: ['ConId, 'UidAnti] $: 'conIdAntis
+  , ''ModId   =:: ['ModId, 'UidAnti] $: 'modIdAntis
+  , ''SigId   =:: ['SigId, 'UidAnti] $: 'sigIdAntis
   , ''QLid    =:: '()
   , ''QUid    =:: '()
+  , ''QTypId  =:: '()
+  , ''QVarId  =:: '()
+  , ''QConId  =:: '()
+  , ''QModId  =:: '()
+  , ''QSigId  =:: '()
   , ''Ident   =:: '()
   ]
 

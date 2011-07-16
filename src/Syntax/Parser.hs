@@ -105,7 +105,7 @@ parseCommand row line cmd =
         Left err  -> ParseError (almsParseError err)
 
 -- | Given a file name and source, parse it
-parseFile :: Id i => String -> String -> Either AlmsError (Prog i)
+parseFile :: Tag i => String -> String -> Either AlmsError (Prog i)
 parseFile  = (almsParseError +++ id) <$$> parse parseProg
 
 almsParseError :: ParseError -> AlmsError
@@ -139,8 +139,7 @@ parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
     parser = finish $
       sharpInfo *>
         many1 (identp
-               <|> fmap Var <$> qlidnatp
-               <|> J [] . Var . AST.lid <$> (operator <|> qjoin))
+               <|> J [] . Var . ident <$> (operator <|> qjoin))
 
 parseGetPrec :: String -> Maybe [String]
 parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
@@ -149,7 +148,7 @@ parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
       sharpPrec *>
         many1 (operator <|> qjoin)
 
-parseInteractive :: Id i => Int -> String -> Either ParseError [Decl i]
+parseInteractive :: Tag i => Int -> String -> Either ParseError [Decl i]
 parseInteractive line src = parse p "-" src where
   p = do
     pos <- getPosition
@@ -276,110 +275,144 @@ antilist1p       :: Antible a => P b -> P a -> P [a]
 antilist1p sep p  = antiblep
                 <|> sepBy1 (antiblep <|> p) sep
 
+antilistp :: Antible a => P b -> P a -> P [a]
+antilistp  = option [] <$$> antilist1p
+
 -- Just uppercase identifiers
-uidp :: Id i => P (Uid i)
-uidp  = AST.uid <$> Lexer.uid
+uidp :: Tag i => P (Uid i)
+uidp  = ident <$> Lexer.uid
     <|> antiblep
   <?> "uppercase identifier"
 
 -- Just lowercase identifiers
-lidp :: Id i => P (Lid i)
-lidp  = AST.lid <$> Lexer.lid
+lidp :: Tag i => P (Lid i)
+lidp  = ident <$> Lexer.lid
     <|> antiblep
   <?> "lowercase identifier"
 
 -- Just uppercase row labels
-ulabelp :: Id i => P (Uid i)
-ulabelp  = AST.uid <$> Lexer.ulabel
+ulabelp :: Tag i => P (Uid i)
+ulabelp  = ident <$> Lexer.ulabel
     <|> antiblep
   <?> "variant constructor label"
 
 -- Just lowercase row labels
-llabelp :: Id i => P (Uid i)
-llabelp  = AST.uid <$> Lexer.llabel
+llabelp :: Tag i => P (Uid i)
+llabelp  = ident <$> Lexer.llabel
     <|> antiblep
   <?> "record field label"
 
+-- Infix operator at the given precdence
+oplevelp :: Tag i => Prec -> P (Lid i)
+oplevelp p = ident <$> opP p
+  <?> "infix operator"
+
+-- Just parenthesized operators
+operatorp :: Tag i => P (Lid i)
+operatorp  = ident <$> try (parens (operator <|> semis))
+  <?> "operator name"
+
 -- Lowercase identifiers or naturals
 --  - tycon declarations
-lidnatp :: Id i => P (Lid i)
-lidnatp = AST.lid <$> (Lexer.lid <|> show <$> natural)
+lidnatp :: Tag i => P (Lid i)
+lidnatp = ident <$> (Lexer.lid <|> show <$> natural)
       <|> operatorp
       <|> antiblep
   <?> "type name"
 
--- Just operators
-operatorp :: Id i => P (Lid i)
-operatorp  = try (parens (operator <|> semis)) >>! AST.lid
-  <?> "operator name"
+-- Type identifiers (unqualified)
+typidp :: Tag i => P (TypId i)
+typidp  = antiblep
+      <|> TypId <$> (lidnatp <|> operatorp)
+  <?> "type constructor"
+
+-- Infix type identifiers
+typopp  :: Tag i => Prec → P (TypId i)
+typopp p = TypId <$> oplevelp p
+  <?> "infix type operator"
+
+-- Variable bindings
+varidp :: Tag i => P (VarId i)
+varidp  = antiblep
+      <|> VarId <$> (lidp <|> operatorp)
+  <?> "variable name"
+
+-- Infix variable occurrences
+varopp  :: Tag i => Prec → P (VarId i)
+varopp p = VarId <$> oplevelp p
+  <?> "infix operator"
+
+-- Data constructor names
+conidp :: Tag i => P (ConId i)
+conidp  = antiblep
+      <|> ConId <$> uidp
+  <?> "data constructor"
+
+-- Module names
+modidp :: Tag i => P (ModId i)
+modidp  = antiblep
+      <|> ModId <$> uidp
+  <?> "module name"
+
+-- Module type names
+sigidp :: Tag i => P (SigId i)
+sigidp  = antiblep
+      <|> SigId <$> uidp
+  <?> "module type (signature) name"
 
 -- Add a path before something
-pathp :: Id i => P ([Uid i] -> b) -> P b
-pathp p = try $ do
-  path <- many $ try $ uidp <* dot
+pathp :: (Tag i, Antible b) => P ([ModId i] -> b) -> P b
+pathp p = (antiblep <|>) . try $ do
+  path <- many $ try $ modidp <* dot
   make <- p
   return (make path)
 
--- Qualified uppercase identifiers:
---  - module names occurences
---  - datacons in patterns (though path is ignored)
-quidp :: Id i => P (QUid i)
-quidp  = pathp (uidp >>! flip J)
-     <|> antiblep
-  <?> "uppercase identifier"
+-- Qualified type identifiers
+qtypidp :: Tag i => P (QTypId i)
+qtypidp  = pathp (flip J <$> typidp)
+  <?> "(qualified) type constructor"
 
--- Qualified lowercase identifiers:
---  - module name identifier lists
-qlidp :: Id i => P (QLid i)
-qlidp  = pathp (lidp >>! flip J)
-     <|> antiblep
-  <?> "lowercase identifier"
+-- Qualified variable occurrences
+qvaridp :: Tag i => P (QVarId i)
+qvaridp  = pathp (flip J <$> varidp)
+  <?> "(qualified) variable name"
 
--- Qualified lowercase identifiers or naturals:
---  - tycon occurences
-qlidnatp :: Id i => P (QLid i)
-qlidnatp  = pathp (lidnatp >>! flip J)
-        <|> antiblep
-  <?> "type name"
+-- Qualified data constructor names
+qconidp :: Tag i => P (QConId i)
+qconidp  = pathp (flip J <$> conidp)
+  <?> "(qualified) data constructor"
 
--- Lowercase identifiers and operators
---  - variable bindings
-varp :: Id i => P (Lid i)
-varp  = lidp <|> operatorp
-  <?> "variable name"
+-- Qualified module names
+qmodidp :: Tag i => P (QModId i)
+qmodidp  = pathp (flip J <$> modidp)
+  <?> "(qualified) module name"
 
--- Qualified lowercase identifers and operators
---  - variable occurences
-qvarp :: Id i => P (QLid i)
-qvarp  = antiblep
-     <|> pathp (varp >>! flip J)
-  <?> "variable name"
+-- Qualified module type names
+qsigidp :: Tag i => P (QSigId i)
+qsigidp  = pathp (flip J <$> sigidp)
+  <?> "(qualified) module type name"
 
 -- Identifiers
-identp :: Id i => P (Ident i)
-identp = antiblep
-      <|> pathp (flip J <$> (Var <$> varp <|> Con <$> uidp))
+identp :: Tag i => P (Ident i)
+identp = pathp (flip J <$> (Var . unTypId <$> typidp <|> Con <$> uidp))
   <?> "identifier"
 
 -- Type variables
-tyvarp :: Id i => P (TyVar i)
+tyvarp :: Tag i => P (TyVar i)
 tyvarp  = try $ "type variable" @@
             sigilU *> tv Qu
         <|> sigilA *> tv Qa
   where tv q = antiblep <|> TV <$> lidp <*> pure q <*> pure bogus
 
 -- open variant injection constructor
-varinjp ∷ Id i ⇒ P (Uid i)
+varinjp ∷ Tag i ⇒ P (Uid i)
 varinjp = try (variantInj *> ulabelp)
   <?> "open variant constructor"
 
 -- open variant embedding constructor
-varembp ∷ Id i ⇒ P (Uid i)
+varembp ∷ Tag i ⇒ P (Uid i)
 varembp = try (variantEmb *> ulabelp)
   <?> "open variant constructor"
-
-oplevelp :: Id i => Prec -> P (Lid i)
-oplevelp  = (<?> "operator") . liftM AST.lid . opP
 
 quantp :: P Quant
 quantp  = Forall <$ forall
@@ -387,10 +420,10 @@ quantp  = Forall <$ forall
       <|> antiblep
   <?> "quantifier"
 
-typep  :: Id i => P (Type i)
+typep  :: Tag i => P (Type i)
 typep   = typepP precStart
 
-typepP :: Id i => Int -> P (Type i)
+typepP :: Tag i => Int -> P (Type i)
 typepP p = "type" @@ case () of
   _ | p == precStart
           -> tyrowp1 <|> next
@@ -431,13 +464,13 @@ typepP p = "type" @@ case () of
     | otherwise
           -> typepP precStart
   where
-  tyarg :: Id i => P [Type i]
+  tyarg :: Tag i => P [Type i]
   tyarg  = parens (antiblep <|> commaSep1 (typepP precMin))
        <|> (:[]) <$> tyatom
   --
-  tyatom :: Id i => P (Type i)
+  tyatom :: Tag i => P (Type i)
   tyatom  = tyVar <$> tyvarp
-        <|> tyApp <$> qlidnatp <*> pure []
+        <|> tyApp <$> qtypidp <*> pure []
         <|> antiblep
         <|> tyUn <$ qualU
         <|> tyAf <$ qualA
@@ -446,60 +479,60 @@ typepP p = "type" @@ case () of
         <|> parens (typepP precMin)
         <|> do
               ops <- many1 $ addLoc $
-                oplevelp (Right precBang) >>! tyApp . J []
+                typopp (Right precBang) >>! tyApp . J []
               arg <- tyatom
               return (foldr (\op t -> op [t]) arg ops)
   --
-  tyapp' :: Id i => [Type i] -> P (Type i)
+  tyapp' :: Tag i => [Type i] -> P (Type i)
   tyapp' [t] = option t $
     do
-      tc <- qlidnatp
+      tc <- qtypidp
       tyapp' [tyApp tc [t]]
     <|>
     do
       ellipsis
       tyapp' [tyDots t]
   tyapp' ts  = do
-    tc <- qlidnatp
+    tc <- qtypidp
     tyapp' [tyApp tc ts]
   --
   next = typepP (p + 1)
 
-variantp ∷ Id i ⇒ P (Type i)
+variantp ∷ Tag i ⇒ P (Type i)
 variantp = AST.tyVariant <$> brackets tyrowp
 
-tyrowp1 ∷ Id i ⇒ P (Type i)
+tyrowp1 ∷ Tag i ⇒ P (Type i)
 tyrowp1 = AST.tyRow <$> varinjp
                        <*> option AST.tyUnit
                              (reserved "of" *> typepP precStart)
                        <*> option AST.tyEnd
                              (reservedOp "|" *> tyrowp)
 
-tyrowp ∷ Id i ⇒ P (Type i)
+tyrowp ∷ Tag i ⇒ P (Type i)
 tyrowp = "row type" @@
          antiblep
      <|> tyrowp1
      <|> AST.tyVar <$> tyvarp
      <|> AST.tyEnd <$  whiteSpace
 
-recordp ∷ Id i ⇒ P (Type i)
+recordp ∷ Tag i ⇒ P (Type i)
 recordp = AST.tyRecord <$$> braces $
   recrowp <|> AST.tyEnd <$ whiteSpace
 
-recrowp ∷ Id i ⇒ P (Type i)
+recrowp ∷ Tag i ⇒ P (Type i)
 recrowp = antiblep
       <|> AST.tyRow <$> llabelp <* colon
                        <*> typepP precStart
                        <*> option AST.tyEnd (comma *> recrowp)
       <|> AST.tyVar <$> tyvarp
 
-tybinopp :: Id i => Prec -> P (Type i -> Type i -> Type i)
+tybinopp :: Tag i => Prec -> P (Type i -> Type i -> Type i)
 tybinopp p = try $ do
-  op <- oplevelp p
-  when (unLid op == "-") pzero
+  op <- typopp p
+  when (idName op == "-") pzero
   return (\t1 t2 -> tyApp (J [] op) [t1, t2])
 
-progp :: Id i => P (Prog i)
+progp :: Tag i => P (Prog i)
 progp  = choice [
            do ds <- declsp
               when (null ds) pzero
@@ -508,7 +541,7 @@ progp  = choice [
            antioptp exprp >>! prog []
          ]
 
-replp :: Id i => P [Decl i]
+replp :: Tag i => P [Decl i]
 replp  = choice [
            try $ do
              ds <- declsp
@@ -518,7 +551,7 @@ replp  = choice [
            exprp >>! (prog2decls . prog [] . Just)
          ]
 
-declsp :: Id i => P [Decl i]
+declsp :: Tag i => P [Decl i]
 declsp  = antiblep <|> loop
   where loop =
           choice [
@@ -544,7 +577,7 @@ declsp  = antiblep <|> loop
             return []
           ]
 
-declp :: Id i => P (Decl i)
+declp :: Tag i => P (Decl i)
 declp  = "declaration" @@ choice [
            do
              reserved "type"
@@ -558,12 +591,12 @@ declp  = "declaration" @@ choice [
              choice [
                  do
                    reserved "type"
-                   n <- uidp
+                   n <- sigidp
                    reservedOp "="
                    s <- sigexpp
                    return (dcSig n s),
                  do
-                   n   <- uidp
+                   n   <- modidp
                    asc <- option id $ do
                      colon
                      sigexpp >>! flip meAsc
@@ -587,46 +620,46 @@ declp  = "declaration" @@ choice [
              return (dcAbs at ds),
            do
              reserved "exception"
-             n  <- uidp
+             n  <- conidp
              t  <- antioptaroundp (reserved "of" `between` punit) typep
              return (dcExn n t),
            antiblep
          ]
 
-modexpp :: Id i => P (ModExp i)
+modexpp :: Tag i => P (ModExp i)
 modexpp  = "structure" @@ foldlp meAsc body ascription where
   body = choice [
            meStr  <$> between (reserved "struct") (reserved "end") declsp,
-           meName <$> quidp
-                  <*> option [] (antilist1p comma qlidp),
+           meName <$> qmodidp
+                  <*> antilistp comma qvaridp,
            antiblep
          ]
   ascription = colon *> sigexpp
 
-sigexpp :: Id i => P (SigExp i)
+sigexpp :: Tag i => P (SigExp i)
 sigexpp  = "signature" @@ do
   se <- choice [
           seSig  <$> between (reserved "sig") (reserved "end")
                              (antiblep <|> many sigitemp),
-          seName <$> quidp
-                 <*> option [] (antilist1p comma qlidp),
+          seName <$> qsigidp
+                 <*> antilistp comma qvaridp,
           antiblep
         ]
   specs <- many $ do
     reserved "with"
     reserved "type"
     flip sepBy1 (reserved "and") $ "signature specialization" @@ do
-      (tvs, tc) <- tyAppp (antiblep <|>) tyvarp (J []) qlidnatp
+      (tvs, tc) <- tyAppp (antiblep <|>) tyvarp (J []) qtypidp
       reservedOp "="
       t         <- typep
       return (\sig -> seWith sig tc tvs t)
   return (foldl (flip ($)) se (concat specs))
 
-sigitemp :: Id i => P (SigItem i)
+sigitemp :: Tag i => P (SigItem i)
 sigitemp = "signature item" @@ choice [
     do
       reserved "val"
-      n <- lidp
+      n <- varidp
       colon
       t <- typep
       return (sgVal n t),
@@ -638,12 +671,12 @@ sigitemp = "signature item" @@ choice [
       choice [
           do
             reserved "type"
-            n <- uidp
+            n <- sigidp
             reservedOp "="
             s <- sigexpp
             return (sgSig n s),
           do
-            n <- uidp
+            n <- modidp
             colon
             s <- sigexpp
             return (sgMod n s)
@@ -653,16 +686,16 @@ sigitemp = "signature item" @@ choice [
       sgInc <$> sigexpp,
     do
       reserved "exception"
-      n  <- uidp
+      n  <- conidp
       t  <- antioptaroundp (reserved "of" `between` punit) typep
       return (sgExn n t),
     antiblep
   ]
 
-tyDecsp :: Id i => P [TyDec i]
+tyDecsp :: Tag i => P [TyDec i]
 tyDecsp  = antilist1p (reserved "and") tyDecp
 
-tyDecp :: Id i => P (TyDec i)
+tyDecp :: Tag i => P (TyDec i)
 tyDecp = "type declaration" @@ addLoc $ choice
   [ antiblep
   , do
@@ -729,21 +762,21 @@ tyDecp = "type declaration" @@ addLoc $ choice
 
 -- | Generic parser for things in the shape of type constructor
 --   applications.
-tyAppp :: Id i =>
+tyAppp :: Tag i =>
           -- | Wrapper for parsing the parameter(s) of a normal suffix
           --   type application
           (P [a] -> P [a]) ->
           -- | Parser for a type parameter
           P a ->
           -- | Injection to lift a type operator
-          (Lid i -> b) ->
+          (TypId i -> b) ->
           -- | Parser for postfix constructor
           P b ->
           P ([a], b)
 tyAppp wrap param oper suffix = choice [
   -- prefix operator
   do
-    l  <- oplevelp (Right precBang)
+    l  <- typopp (Right precBang)
     p1 <- param
     return ([p1], oper l),
   -- infix operator
@@ -752,7 +785,7 @@ tyAppp wrap param oper suffix = choice [
     n <- choice [ semis, operator ]
     when (n == "-" || precOp n == Right precBang) pzero
     p2 <- param
-    return ([p1, p2], oper (AST.lid n)),
+    return ([p1, p2], oper (ident n)),
   -- normal postfix application
   do
     ps   <- wrap (delimList punit parens comma param)
@@ -762,27 +795,27 @@ tyAppp wrap param oper suffix = choice [
 
 -- | Left-hand side of a type declaration, which looks like a
 --   type constructor applied to parameters
-tyProtp :: Id i => P ([(Variance, TyVar i)], Lid i)
-tyProtp  = tyAppp id paramVp id lidnatp
+tyProtp :: Tag i => P ([(Variance, TyVar i)], TypId i)
+tyProtp  = tyAppp id paramVp id typidp
 
 -- | A type pattern
-typatp  :: Id i => P (TyPat i)
+typatp  :: Tag i => P (TyPat i)
 typatp   = typatpP precStart
 
-typatpP :: Id i => Int -> P (TyPat i)
+typatpP :: Tag i => Int -> P (TyPat i)
 typatpP p = "type pattern" @@ case () of
   _ | p == precTySemi
           -> chainr1last (typatpP (p + 1))
-                         (tpBinOp . J [] . AST.lid <$> semis)
+                         (tpBinOp . J [] . ident <$> semis)
                          (typatpP precStart)
     | Just e <- fixities p -> case e of
         Left _ ->
           chainl1last (typatpP (p + 1))
-                      (tpBinOp . J [] <$> oplevelp (Left p))
+                      (tpBinOp . J [] <$> typopp (Left p))
                       (typatpP precStart)
         Right _ ->
           chainr1last (typatpP (p + 1))
-                      (tpBinOp . J [] <$> oplevelp (Right p))
+                      (tpBinOp . J [] <$> typopp (Right p))
                       (typatpP precStart)
     | p == precApp -- this case ensures termination
           -> tparg >>= tpapp'
@@ -797,23 +830,23 @@ typatpP p = "type pattern" @@ case () of
        <|> (:[]) <$> tpatom
   --
   tpatom  = tpvar
-        <|> tpApp <$> qlidnatp <*> pure []
+        <|> tpApp <$> qtypidp <*> pure []
         <|> antiblep
-        <|> tpApp (qlid "U") [] <$ qualU
-        <|> tpApp (qlid "A") [] <$ qualA
+        <|> tpApp (qident "U") [] <$ qualU
+        <|> tpApp (qident "A") [] <$ qualA
         <|> tpvariant
         <|> tprecord
         <|> parens (typatpP precMin)
         <|> do
               ops <- many1 $ addLoc $
-                oplevelp (Right precBang) >>! tpApp . J []
+                typopp (Right precBang) >>! tpApp . J []
               arg <- tpatom
               return (foldr (\op t -> op [t]) arg ops)
   tpapp' [t] = option t $ do
-    tc <- qlidnatp
+    tc <- qtypidp
     tpapp' [tpApp tc [t]]
   tpapp' ts  = do
-    tc <- qlidnatp
+    tc <- qtypidp
     tpapp' [tpApp tc ts]
   --
   tpvar = do
@@ -822,12 +855,12 @@ typatpP p = "type pattern" @@ case () of
     return (con tv v)
   --
   tpvariant = brackets $
-    tpApp (qlid tnVariant) . (:[]) <$> (antiblep <|> tpvar)
+    tpApp (qident tnVariant) . (:[]) <$> (antiblep <|> tpvar)
   tprecord  = braces $
-    tpApp (qlid tnRecord) . (:[]) <$> (antiblep <|> tpvar)
+    tpApp (qident tnRecord) . (:[]) <$> (antiblep <|> tpvar)
 
 -- | A let or let rec declaration
-letp :: Id i => P (Decl i)
+letp :: Tag i => P (Decl i)
 letp  = do
   reserved "let"
   choice [
@@ -837,7 +870,7 @@ letp  = do
       let names    = map (bnvar . dataOf) bindings
           namesExp = foldl1 exPair (map exBVar names)
           namesPat = foldl1 paPair (map paVar names)
-          tempVar  = AST.lid "#letrec"
+          tempVar  = ident "#letrec"
           decls0   = [ dcLet (paVar tempVar) $
                          exLetRec bindings namesExp ]
           decls1   = [ dcLet (paVar (bnvar binding)) $
@@ -846,7 +879,7 @@ letp  = do
                      | N _ binding <- bindings ]
       return $ dcLoc decls0 decls1,
     do
-      f     <- varp
+      f     <- varidp
       args  <- buildargsp
       annot <- buildannotp
       reservedOp "="
@@ -858,11 +891,11 @@ letp  = do
     ]
 
 -- An abstype group
-absTysp :: Id i => P [AbsTy i]
+absTysp :: Tag i => P [AbsTy i]
 absTysp = antilist1p (reserved "and") $ absTyp
 
 -- A single abstype
-absTyp :: Id i => P (AbsTy i)
+absTyp :: Tag i => P (AbsTy i)
 absTyp  = addLoc $ antiblep <|> do
   ((arity, tvs), name) <- tyProtp >>! first unzip
   quals        <- qualsp
@@ -871,7 +904,7 @@ absTyp  = addLoc $ antiblep <|> do
   return (absTy arity quals (tdDat name tvs alts))
 
 -- A type declaration parameter, consisting of a variance and a tyvar
-paramVp :: Id i => P (Variance, TyVar i)
+paramVp :: Tag i => P (Variance, TyVar i)
 paramVp = try $ (,) <$> variancep <*> tyvarp
 
 -- A variance mark
@@ -887,12 +920,12 @@ variancep = do
   <?> "variance marker"
 
 -- A qualifier annotation for a type declaration
-qualsp   :: Id i => P (QExp i)
+qualsp   :: Tag i => P (QExp i)
 qualsp    = option minBound $
   (reserved "qualifier" <|> reservedOp ":") *> qExpp
 
 -- A qualifier expression
-qExpp :: Id i => P (QExp i)
+qExpp :: Tag i => P (QExp i)
 qExpp  = "qualifier expression" @@ qexp where
   qexp  = addLoc $
             chainl1 qatom (addLoc $ qeJoin <$ (void comma <|> qjoinArr))
@@ -907,21 +940,21 @@ qExpp  = "qualifier expression" @@ qexp where
   clean (TV _ Qu _) = minBound
   clean tv          = qeVar tv
 
-altsp :: Id i => P [(Uid i, Maybe (Type i))]
+altsp :: Tag i => P [(ConId i, Maybe (Type i))]
 altsp  = sepBy1 altp (reservedOp "|")
 
-altp  :: Id i => P (Uid i, Maybe (Type i))
+altp  :: Tag i => P (ConId i, Maybe (Type i))
 altp   = do
-  k <- try $ uidp <* try (dot *> pzero <|> punit)
+  k <- try $ conidp <* try (dot *> pzero <|> punit)
   t <- optionMaybe $ do
     reserved "of"
     typep
   return (k, t)
 
-exprp :: Id i => P (Expr i)
+exprp :: Tag i => P (Expr i)
 exprp  = exprpP precStart
 
-exprpP :: Id i => Int -> P (Expr i)
+exprpP :: Tag i => Int -> P (Expr i)
 exprpP p = mark $ case () of
   _ | p == precStart → choice
     [ do reserved "let"
@@ -930,7 +963,7 @@ exprpP p = mark $ case () of
                       <*> antilist1p (reserved "and") bindingp
                       <*  reserved "in"
                       <*> exprp
-           , exLet <$> (paVar <$> lidp)
+           , exLet <$> (paVar <$> varidp)
                    <*> (buildargsp <*>
                          (buildannotp <* reservedOp "=" <*> exprp))
                    <*  reserved "in"
@@ -948,10 +981,10 @@ exprpP p = mark $ case () of
          ec  <- exprp
          clt <- addLoc $ do
            reserved "then"
-           caClause (paCon (quid "true") Nothing) <$> exprp
+           caClause (paCon (qident "true") Nothing) <$> exprp
          clf <- addLoc $ do
            reserved "else"
-           caClause (paCon (quid "false") Nothing) <$> exprp
+           caClause (paCon (qident "false") Nothing) <$> exprp
          return (exCase ec [clt, clf]),
       do reserved "match"
          e1 <- exprp
@@ -967,25 +1000,25 @@ exprpP p = mark $ case () of
          reserved "with"
          optional (reservedOp "|")
          clauses <- sepBy1 <-> reservedOp "|" $ addLoc $ do
-           caClause . paCon (quid "Left") . Just
+           caClause . paCon (qident "Left") . Just
              <$> pattp
              <*  arrow
              <*> exprp
-         let tryQ = qlid $
+         let tryQ = qident $
                       "INTERNALS.Exn.tryfun"
          return $
            exCase (exApp (exVar tryQ)
                          (exAbs paWild e1)) $
-             caClause (paCon (quid "Right")
-                             (Just (paVar (AST.lid "x"))))
-                      (exVar (qlid "x"))
+             caClause (paCon (qident "Right")
+                             (Just (paVar (ident "x"))))
+                      (exVar (qident "x"))
              :
              clauses ++
              [caClause
-                (paCon (quid "Left")
-                       (Just (paVar (AST.lid "e"))))
-                (exApp (exVar (qlid "INTERNALS.Exn.raise"))
-                       (exVar (qlid "e")))
+                (paCon (qident "Left")
+                       (Just (paVar (ident "e"))))
+                (exApp (exVar (qident "INTERNALS.Exn.raise"))
+                       (exVar (qident "e")))
               ],
       lambda *> buildargsp <* arrow <*> exprp,
       next ]
@@ -1008,24 +1041,24 @@ exprpP p = mark $ case () of
         next
     | p == precApp    →
         choice [
-          exCon <$> quidp <*> antioptp next,
+          exCon <$> qconidp <*> antioptp next,
           exInj <$> varinjp <*> antioptp next,
           exEmb <$> varembp <*> next,
           chainl1 next (addLoc (return exApp))
         ]
     | p == precBang   → do
-        ops <- many $ addLoc $ exBVar <$> oplevelp (Right precBang)
+        ops <- many $ addLoc $ exBVar <$> varopp (Right precBang)
         arg <- next
         return (foldr exApp arg ops)
     | p == precCom    →
         foldl1 exPair <$> commaSep1 next
     | p > precMax     → choice
         [
-          exVar <$> qvarp,
-          exCon <$> quidp <*> pure Nothing,
+          exVar <$> qvaridp,
+          exCon <$> qconidp <*> pure Nothing,
           exLit <$> litp,
           antiblep,
-          parens (exprpP precMin <|> pure (exBCon (AST.uid "()") Nothing))
+          parens (exprpP precMin <|> pure (exBCon (ident "()") Nothing))
         ]
     | Just (Left _) <- fixities p ->
         chainl1last next (opappp (Left p)) exprp
@@ -1037,33 +1070,33 @@ exprpP p = mark $ case () of
   mark = ("expression" @@)
 
 -- Parse a match clause
-casealtp :: Id i => P (CaseAlt i)
+casealtp :: Tag i => P (CaseAlt i)
 casealtp  = "match clause" @@ antiblep <|>
   caClause <$> pattp <* arrow <*> exprp
 
 -- Parse a single let rec binding
-bindingp :: Id i => P (Binding i)
+bindingp :: Tag i => P (Binding i)
 bindingp = "let rec binding" @@ antiblep <|>
-  bnBind <$> varp
+  bnBind <$> varidp
          <*> (buildargsp
                <*> (buildannotp
                      <* reservedOp "="
                      <*> exprp))
 
 -- Parse an infix operator at given precedence
-opappp :: Id i => Prec -> P (Expr i -> Expr i -> Expr i)
+opappp :: Tag i => Prec -> P (Expr i -> Expr i -> Expr i)
 opappp p = do
-  op  <- addLoc (oplevelp p >>! exBVar)
+  op  <- addLoc (exBVar <$> varopp p)
   return (\e1 e2 -> op `exApp` e1 `exApp` e2)
 
 -- Parse some number of argument patterns and return the function
 -- that adds them to a body expression to build a lambda.
-buildargsp :: Id i => P (Expr i -> Expr i)
+buildargsp :: Tag i => P (Expr i -> Expr i)
 buildargsp = (foldr exAbs <->) <$> many (pattpP (precApp + 1))
 
 -- Parse an optional type annotation and return the function that
 -- adds it as an ascription on an expression.
-buildannotp :: Id i => P (Expr i -> Expr i)
+buildannotp :: Tag i => P (Expr i -> Expr i)
 buildannotp = do
   mt <- antioptaroundp (colon *>) typep
   return $ case mt of
@@ -1071,10 +1104,10 @@ buildannotp = do
     Just t  → \e → exCast e t False
 
 -- A pattern
-pattp :: Id i => P (Patt i)
+pattp :: Tag i => P (Patt i)
 pattp  = pattpP precStart
 
-pattpP ∷ Id i ⇒ Int → P (Patt i)
+pattpP ∷ Tag i ⇒ Int → P (Patt i)
 pattpP p = mark $ case () of
   _ | p == precCast →
         foldl paAnn <$> next <*> many (colon *> typep)
@@ -1083,13 +1116,13 @@ pattpP p = mark $ case () of
         choice
           [ do
               reserved "as"
-              y <- varp
+              y <- varidp
               return (paAs x y),
             return x
           ]
     | p == precApp    →
         choice [
-          paCon <$> quidp <*> antioptp next,
+          paCon <$> qconidp <*> antioptp next,
           paInj <$> varinjp <*> antioptp next,
           next
         ]
@@ -1100,12 +1133,12 @@ pattpP p = mark $ case () of
     | p > precMax     → choice
         [
           paWild <$  reserved "_",
-          paVar  <$> varp,
-          paCon  <$> quidp <*> pure Nothing,
+          paVar  <$> varidp,
+          paCon  <$> qconidp <*> pure Nothing,
           paInj  <$> varinjp <*> pure Nothing,
           paLit  <$> litp,
           antiblep,
-          parens (pattpP precMin <|> pure (paCon (AST.quid "()") Nothing))
+          parens (pattpP precMin <|> pure (paCon (qident "()") Nothing))
         ]
     | otherwise     → next
   where
@@ -1128,37 +1161,37 @@ finish p = do
   return r
 
 -- | Parse a program
-parseProg     :: Id i => P (Prog i)
+parseProg     :: Tag i => P (Prog i)
 -- | Parse a REPL line
-parseRepl     :: Id i => P [Decl i]
+parseRepl     :: Tag i => P [Decl i]
 -- | Parse a sequence of declarations
-parseDecls    :: Id i => P [Decl i]
+parseDecls    :: Tag i => P [Decl i]
 -- | Parse a declaration
-parseDecl     :: Id i => P (Decl i)
+parseDecl     :: Tag i => P (Decl i)
 -- | Parse a module expression
-parseModExp   :: Id i => P (ModExp i)
+parseModExp   :: Tag i => P (ModExp i)
 -- | Parse a type declaration
-parseTyDec    :: Id i => P (TyDec i)
+parseTyDec    :: Tag i => P (TyDec i)
 -- | Parse a abstype declaration
-parseAbsTy    :: Id i => P (AbsTy i)
+parseAbsTy    :: Tag i => P (AbsTy i)
 -- | Parse a type
-parseType     :: Id i => P (Type i)
+parseType     :: Tag i => P (Type i)
 -- | Parse a type pattern
-parseTyPat    :: Id i => P (TyPat i)
+parseTyPat    :: Tag i => P (TyPat i)
 -- | Parse a qualifier expression
-parseQExp     :: Id i => P (QExp i)
+parseQExp     :: Tag i => P (QExp i)
 -- | Parse an expression
-parseExpr     :: Id i => P (Expr i)
+parseExpr     :: Tag i => P (Expr i)
 -- | Parse a pattern
-parsePatt     :: Id i => P (Patt i)
+parsePatt     :: Tag i => P (Patt i)
 -- | Parse a case alternative
-parseCaseAlt  :: Id i => P (CaseAlt i)
+parseCaseAlt  :: Tag i => P (CaseAlt i)
 -- | Parse a let rec binding
-parseBinding  :: Id i => P (Binding i)
+parseBinding  :: Tag i => P (Binding i)
 -- | Parse a signature
-parseSigExp   :: Id i => P (SigExp i)
+parseSigExp   :: Tag i => P (SigExp i)
 -- | Parse a signature item
-parseSigItem  :: Id i => P (SigItem i)
+parseSigItem  :: Tag i => P (SigItem i)
 
 parseProg      = finish progp
 parseRepl      = finish replp
@@ -1240,3 +1273,4 @@ instance Show a ⇒ Show (N i a) where showsPrec = showsPrec <$.> view
 makeQaD :: P a -> String -> a
 makeQaD parser =
   either (error . show) id . runParser parser state0 "<string>"
+

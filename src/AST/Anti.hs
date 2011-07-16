@@ -2,6 +2,7 @@
       DeriveDataTypeable,
       FlexibleContexts,
       FlexibleInstances,
+      MultiParamTypeClasses,
       PatternGuards,
       RankNTypes,
       TemplateHaskell #-}
@@ -22,7 +23,7 @@ module AST.Anti (
   -- *** Types
   AntiDict, PreTrans, Trans(..),
   -- *** Constructors
-  (=:), (=:!), (=:<), (&),
+  (=:), (=:!), (=:<), (=:•), (=:••), (&),
   -- ** Syntax classs
   -- *** Types
   SyntaxClass(..), SyntaxTable,
@@ -144,10 +145,16 @@ deriveAntibles  = concatMapM each where
     [InstanceD context hd decs] <-
       [d| instance Antible $(foldl TH.appT (TH.conT (scName sc))
                                    (map typeOfTyVarBndr tvs)) where
-            injAnti     = $(varE (maybe 'id id (scWrap sc)))
-                        . $(conE (scAnti sc))
+            injAnti     = $(foldl
+                              (\e1 n2 -> [| $e1 . $(conE n2) |])
+                              (varE (maybe 'id id (scWrap sc)))
+                              (scAnti sc))
             prjAnti stx = $(caseE [| stx |] [
-                              match (wrapper (TH.conP (scAnti sc) [TH.varP a]))
+                              match (wrapper
+                                      (foldr
+                                        (TH.conP <$.> (:[]))
+                                        (TH.varP a)
+                                        (scAnti sc)))
                                     (TH.normalB [| Just $(TH.varE a) |])
                                     [],
                               match TH.wildP
@@ -318,7 +325,7 @@ type AntiDict = M.Map String Trans
 data SyntaxClass = SyntaxClass {
   scName    :: Name,
   -- | The name of the constructor for antiquotes
-  scAnti    :: Name,
+  scAnti    :: [Name],
   -- | The safe injection from the underlying type to the main type
   scWrap    :: Maybe Name,
   -- | The dictionary of splice tags
@@ -331,14 +338,20 @@ type SyntaxTable = [SyntaxClass]
 
 -- | Construct a single syntax class from the type name and antiquote
 --   constructor
-(=::) :: TH.Name -> TH.Name -> SyntaxClass
-name =:: anti = SyntaxClass {
-  scName   = name,
-  scAnti   = anti,
-  scWrap   = Nothing,
-  scDict   = Nothing,
-  scCxt    = []
-}
+class MkSyntaxClass a b where
+  (=::) :: a -> b -> SyntaxClass
+
+instance MkSyntaxClass TH.Name [TH.Name] where
+  name =:: antis = SyntaxClass {
+    scName   = name,
+    scAnti   = antis,
+    scWrap   = Nothing,
+    scDict   = Nothing,
+    scCxt    = []
+  }
+
+instance MkSyntaxClass TH.Name TH.Name where
+  name =:: anti = name =:: [anti]
 
 -- | Extend a syntax class with the name of a function that lifts
 --   from pre-syntax to syntax
@@ -373,7 +386,20 @@ a =:! b = M.union ("" =: b) (a =: b)
 -- | Construct an antiquote dictionary for matching a
 --   simple constructor
 (=:<) :: String -> TH.Name -> AntiDict
-a =:< n  = a =: Just (\v -> conS n [varS v []])
+a =:< n  = a =:• [n]
 
-infix 2 =:, =:!, =:<
+-- | Construct an antiquote dictionary for matching a
+--   composition of simple constructors
+(=:•) :: String -> [TH.Name] -> AntiDict
+a =:• ns = a =: Just (\v -> foldr (conS <$.> (:[])) (varS v []) ns)
+
+-- | Construct an antiquote dictionary for matching sequences
+--   of constructors, where there may be a different sequence
+--   for expressions and patterns.
+(=:••) :: String -> ([TH.Name], [TH.Name]) -> AntiDict
+a =:•• (ins, outs) =
+  a =: Just (\v -> head (foldr ((:[]) <$$> varS) [varS v []] ins)
+         `whichS`  head (foldr ((:[]) <$$> conS) [wildS, varS v []] outs))
+
+infix 2 =:, =:!, =:<, =:•, =:••
 

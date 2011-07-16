@@ -1,6 +1,7 @@
 {-# LANGUAGE
       CPP,
       DeriveDataTypeable,
+      FlexibleContexts,
       FlexibleInstances,
       FunctionalDependencies,
       GeneralizedNewtypeDeriving,
@@ -12,18 +13,28 @@
       UnicodeSyntax #-}
 module AST.Ident (
   -- * Identifier classes
-  Id(..), Raw(..), Renamed(..), renamed0,
-  -- ** Dirty tricks
+  Id(..),
+  -- ** Tags
+  Tag(..), Raw(..), Renamed(..), renamed0,
+  -- *** Dirty tricks
   trivialRename, trivialRename2,
-  -- * Identifiers 
-  Path(..),
-  Lid(..), Uid(..), BIdent(..),
-  Ident, QLid, QUid,
+  -- * Identifiers
+  -- ** High level
+  TypId(..), QTypId,
+  VarId(..), QVarId,
+  ConId(..), QConId,
+  ModId(..), QModId,
+  SigId(..), QSigId,
   TyVar(..), tvUn, tvAf,
+  -- ** Low level
+  Path(..),
+  Lid(..), QLid,
+  Uid(..), QUid,
+  BIdent(..), Ident,
+  -- *** Operations
+  isOperator, uidToLid, lidToUid,
+  -- * Fresh names
   tvalphabet, freshName, freshNames,
-  isOperator,
-  lid, uid, renLid, renUid, qlid, quid,
-  uidToLid, lidToUid,
   -- * Free and defined vars
   Occurrence, occToQLit,
   FvMap, Fv(..), Dv(..), ADDITIVE(..),
@@ -38,14 +49,14 @@ import AST.Kind (QLit(..))
 import qualified Syntax.Strings as Strings
 
 import Prelude ()
-import Data.Char (isAlpha, isDigit, toUpper, toLower)
-import Data.Generics (Typeable(..), Data(..), everywhere, mkT)
+import Data.Char (isAlpha, isDigit, isUpper, toUpper, toLower)
+import Data.Generics (Typeable(..), Typeable1, Data(..), everywhere, mkT)
 import qualified Data.List as List
 import qualified Data.Map as M
 import qualified Data.Set as S
 import qualified Unsafe.Coerce
 
-class (IsBogus i, Data i) => Id i where
+class (IsBogus i, Data i) => Tag i where
   -- The trivial identity tag, used when the identity tag is
   -- insufficient to distinguish different thing
   trivialId :: i
@@ -69,7 +80,7 @@ instance Bogus Raw where
 instance IsBogus Raw where
   isBogus _ = True
 
-instance Id Raw where
+instance Tag Raw where
   compareId _ _ = id
 
 instance Show Renamed where
@@ -82,7 +93,7 @@ instance IsBogus Renamed where
   isBogus (Ren_ 0) = True
   isBogus _        = False
 
-instance Id Renamed where
+instance Tag Renamed where
   compareId (Ren_ 0) (Ren_ 0) next = next
   compareId (Ren_ 0) _        _    = LT
   compareId _        (Ren_ 0) _    = GT
@@ -92,19 +103,51 @@ renamed0 :: Renamed
 renamed0  = Ren_ 1
 
 -- | This is super dirty
-trivialRename :: forall f i j. (Id i, Id j, Data (f i)) => f i -> f j
+trivialRename :: forall f i j. (Tag i, Tag j, Data (f i)) => f i -> f j
 trivialRename  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
   each :: i -> i
   each _ = Unsafe.Coerce.unsafeCoerce (trivialId :: j)
 
 trivialRename2 :: forall f g h i j.
-                 (Id i, Id j, Data (f (g i) (h i))) =>
+                 (Tag i, Tag j, Data (f (g i) (h i))) =>
                  f (g i) (h i) -> f (g j) (h j)
 trivialRename2  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
   each :: i -> i
   each _ = Unsafe.Coerce.unsafeCoerce (trivialId :: j)
 
--- IDENTIFIERS
+---
+--- Generic identifiers
+---
+
+-- | A module path to an identifier
+type Q a i = Path (ModId i) (a i)
+
+-- | Generic identifiers and operations
+class (Typeable1 a,
+       Data (a Raw), Eq (a Raw), Ord (a Raw), Bogus (a Raw),
+       Data (a Renamed), Eq (a Renamed), Ord (a Renamed), Bogus (a Renamed))
+      ⇒
+      Id a where
+  idTag         ∷ a i → i
+  idName        ∷ a i → String
+  ident         ∷ Tag i ⇒ String → a i
+  identT        ∷ i → String → a i
+  qident        ∷ Tag i ⇒ String → Path (ModId i) (a i)
+  renId         ∷ i' → a i → a i'
+  --
+  ident        = identT bogus
+  qident s     = case reverse (splitBy (=='.') s) of
+    []   -> J [] (ident "")
+    x:xs -> J (map ident (reverse xs)) (ident x)
+  renId        = identT <$.> idName
+
+---
+--- LOW-LEVEL IDENTIFIERS
+---
+
+--
+-- Lowercase
+--
 
 -- | lowercase identifiers (variables, tycons)
 data Lid i
@@ -115,16 +158,34 @@ data Lid i
   | LidAnti Anti
   deriving (Typeable, Data)
 
-instance Id i => Eq (Lid i) where
+-- | path-qualified lowecase identifiers
+type QLid i = Q Lid i
+
+instance Tag i => Eq (Lid i) where
   a == b = compare a b == EQ
 
-instance Id i => Ord (Lid i) where
+instance Tag i => Ord (Lid i) where
   Lid u1 s1 `compare` Lid u2 s2 = compareId u1 u2 (compare s1 s2)
   LidAnti a `compare` _         = antierror "Lid#compare" a
   _         `compare` LidAnti a = antierror "Lid#compare" a
 
-instance Id i => Bogus (Lid i) where
+instance Tag i => Bogus (Lid i) where
   bogus = Lid bogus "<bogus>"
+
+instance Id Lid where
+  idTag  = lidUnique
+  idName = unLid
+  identT = Lid
+
+-- | Is the lowercase identifier an infix operator?
+isOperator :: Lid i -> Bool
+isOperator l = case show l of
+    '(':_ -> True
+    _     -> False
+
+--
+-- Uppercase
+--
 
 -- | uppercase identifiers (modules, datacons)
 data Uid i
@@ -135,31 +196,130 @@ data Uid i
   | UidAnti Anti
   deriving (Typeable, Data)
 
-instance Id i => Eq (Uid i) where
+-- | path-qualified uppercase identifiers
+type QUid i = Q Uid i
+
+instance Tag i => Eq (Uid i) where
   a == b = compare a b == EQ
 
-instance Id i => Ord (Uid i) where
+instance Tag i => Ord (Uid i) where
   Uid u1 s1 `compare` Uid u2 s2 = compareId u1 u2 (compare s1 s2)
   UidAnti a `compare` _         = antierror "Uid#compare" a
   _         `compare` UidAnti a = antierror "Uid#compare" a
 
-instance Id i => Bogus (Uid i) where
+instance Tag i => Bogus (Uid i) where
   bogus = Uid bogus "<bogus>"
 
--- | bare (unqualified) identifers
+instance Id Uid where
+  idTag  = uidUnique
+  idName = unUid
+  identT = Uid
+
+--
+-- Mixed upper and lower
+--
+
+uidToLid :: Uid i -> Lid i
+uidToLid (Uid ix s)  = Lid ix (mapHead toLower s)
+uidToLid (UidAnti a) = antierror "uidToLid" a
+
+lidToUid :: Lid i -> Uid i
+lidToUid (Lid ix s)  = Uid ix (mapHead toUpper s)
+lidToUid (LidAnti a) = antierror "lidToUid" a
+
+-- | Bare (unqualified) identifers of unknown sort
 data BIdent i = Var { unVar :: !(Lid i) }
               | Con { unCon :: !(Uid i) }
   deriving (Eq, Ord, Typeable, Data)
 
-instance Id i => Bogus (BIdent i) where
+-- | Path-qualified identifiers
+type Ident i = Q BIdent i
+
+instance Tag i => Bogus (BIdent i) where
   bogus = Var bogus
 
--- | path-qualified uppercase identifiers
-type QUid i = Path (Uid i) (Uid i)
--- | path-qualified lowecase identifiers
-type QLid i = Path (Uid i) (Lid i)
--- | path-qualified identifiers
-type Ident i = Path (Uid i) (BIdent i)
+instance Id BIdent where
+  idTag (Var n) = idTag n
+  idTag (Con n) = idTag n
+  idName (Var n) = idName n
+  idName (Con n) = idName n
+  identT i s =
+    if isUpperIdentifier s
+      then Con (identT i s)
+      else Var (identT i s)
+    where
+    -- | Is the string an uppercase identifier?  (Special case: @true@ and
+    --   @false@ are consider uppercase.)
+    --   (This code is duplicated from Syntax.Lexer!)
+    isUpperIdentifier "true"  = True
+    isUpperIdentifier "false" = True
+    isUpperIdentifier "()"    = True
+    isUpperIdentifier (c:_)   = isUpper c
+    isUpperIdentifier _       = False
+
+---
+--- Specific identifiers
+---
+
+-- | Type names
+newtype TypId i = TypId { unTypId ∷ Lid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+
+-- | Variable names
+newtype VarId i = VarId { unVarId ∷ Lid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+
+-- | Data constructor names
+newtype ConId i = ConId { unConId ∷ Uid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+
+-- | Module names
+newtype ModId i = ModId { unModId ∷ Uid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+
+-- | Module type names
+newtype SigId i = SigId { unSigId ∷ Uid i }
+  deriving (Typeable, Data, Eq, Ord, Bogus)
+
+-- | Qualified type names
+type QTypId i = Q TypId i
+-- | Qualified variable names
+type QVarId i = Q VarId i
+-- | Qualified data constructor names
+type QConId i = Q ConId i
+-- | Qualified module names
+type QModId i = Q ModId i
+-- | Qualified module type names
+type QSigId i = Q SigId i
+
+instance Id TypId where
+  idName = idName . unTypId
+  idTag  = idTag  . unTypId
+  identT = TypId <$$> identT
+
+instance Id VarId where
+  idName = idName . unVarId
+  idTag  = idTag  . unVarId
+  identT = VarId <$$> identT
+
+instance Id ConId where
+  idName = idName . unConId
+  idTag  = idTag  . unConId
+  identT = ConId <$$> identT
+
+instance Id ModId where
+  idName = idName . unModId
+  idTag  = idTag  . unModId
+  identT = ModId <$$> identT
+
+instance Id SigId where
+  idName = idName . unSigId
+  idTag  = idTag  . unSigId
+  identT = SigId <$$> identT
+
+--
+-- Type variables
+--
 
 -- | Type variables include qualifiers
 data TyVar i
@@ -171,6 +331,10 @@ data TyVar i
   | TVAnti Anti
   deriving (Eq, Ord, Typeable, Data)
 
+tvUn, tvAf :: Tag i => String -> TyVar i
+tvUn s = TV (ident s) Qu bogus
+tvAf s = TV (ident s) Qa bogus
+
 instance Locatable (TyVar i) where
   getLoc TV { tvloc = loc } = loc
   getLoc _                  = bogus
@@ -179,50 +343,21 @@ instance Relocatable (TyVar i) where
   setLoc tv@TV { } loc = tv { tvloc = loc }
   setLoc tv        _   = tv
 
-instance Id i => Bogus (TyVar i) where
+instance Tag i => Bogus (TyVar i) where
   bogus = TV bogus Qa bogus
 
-lid :: Id i => String -> Lid i
-lid = Lid trivialId
+instance Id TyVar where
+  idName (TV n _ _)  = idName n
+  idName (TVAnti a)  = antierror "idName" a
+  idTag (TV n _ _)   = idTag n
+  idTag (TVAnti a)   = antierror "idTag" a
+  identT i n         = TV (identT i n) Qa bogus
+  renId i (TV n q l) = TV (renId i n) q l
+  renId _ (TVAnti a) = antierror "renId" a
 
-uid :: Id i => String -> Uid i
-uid = Uid trivialId
-
-renLid :: i -> Lid i0 -> Lid i
-renLid = Lid <$.> unLid
-
-renUid :: i -> Uid i0 -> Uid i
-renUid = Uid <$.> unUid
-
-uidToLid :: Uid i -> Lid i
-uidToLid (Uid ix s)  = Lid ix (mapHead toLower s)
-uidToLid (UidAnti a) = antierror "uidToLid" a
-
-lidToUid :: Lid i -> Uid i
-lidToUid (Lid ix s)  = Uid ix (mapHead toUpper s)
-lidToUid (LidAnti a) = antierror "lidToUid" a
-
-tvUn, tvAf :: Id i => String -> TyVar i
-tvUn s = TV (lid s) Qu bogus
-tvAf s = TV (lid s) Qa bogus
-
--- | Is the lowercase identifier an infix operator?
-isOperator :: Lid i -> Bool
-isOperator l = case show l of
-    '(':_ -> True
-    _     -> False
-
--- | Sugar for generating AST for qualified lowercase identifers
-qlid :: Id i => String -> QLid i
-qlid s = case reverse (splitBy (=='.') s) of
-           []   -> J [] (lid "")
-           x:xs -> J (map uid (reverse xs)) (lid x)
-
--- | Sugar for generating AST for qualified uppercase identifers
-quid :: Id i => String -> QUid i
-quid s = case reverse (splitBy (=='.') s) of
-           []   -> J [] (uid "")
-           x:xs -> J (map uid (reverse xs)) (uid x)
+---
+--- 'Show' INSTANCES
+---
 
 instance Show (Lid i) where
   showsPrec _ (Lid _ s) =
@@ -249,13 +384,19 @@ instance Show (BIdent i) where
   showsPrec p (Var x) = showsPrec p x
   showsPrec p (Con k) = showsPrec p k
 
+instance Show (TypId i) where showsPrec p = showsPrec p . unTypId
+instance Show (VarId i) where showsPrec p = showsPrec p . unVarId
+instance Show (ConId i) where showsPrec p = showsPrec p . unConId
+instance Show (ModId i) where showsPrec p = showsPrec p . unModId
+instance Show (SigId i) where showsPrec p = showsPrec p . unSigId
+
 instance Show (TyVar i) where
   showsPrec _ (TV x Qu _)  = showString Strings.unlimited . showString (unLid x)
   showsPrec _ (TV x Qa _)  = showString Strings.affine . showString (unLid x)
   showsPrec _ (TVAnti a)   = showString Strings.affine . shows a
 
-instance Viewable (Path (Uid i) (BIdent i)) where
-  type View (Ident i) = Either (QLid i) (QUid i)
+instance Viewable (Path (ModId i) (BIdent i)) where
+  type View (Path (ModId i) (BIdent i)) = Either (QLid i) (QUid i)
   view (J p (Var n)) = Left (J p n)
   view (J p (Con n)) = Right (J p n)
 
@@ -263,8 +404,8 @@ instance Viewable (Path (Uid i) (BIdent i)) where
 instance (Ord p, (:>:) k k') =>
          (:>:) (Path p k) k'  where liftKey = J [] . liftKey
 
-instance Id i => (:>:) (BIdent i) (Lid i) where liftKey = Var
-instance Id i => (:>:) (BIdent i) (Uid i) where liftKey = Con
+instance Tag i => (:>:) (BIdent i) (Lid i) where liftKey = Var
+instance Tag i => (:>:) (BIdent i) (Uid i) where liftKey = Con
 
 ---
 --- Name generation
@@ -338,16 +479,16 @@ occToQLit n = if n > 1 then Qu else Qa
 
 -- | Our free variables function returns not merely a set,
 -- but a map from names to a count of maximum occurrences.
-type FvMap i = M.Map (QLid i) Occurrence
+type FvMap i = M.Map (QVarId i) Occurrence
 
 -- | The free variables analysis
-class Id i => Fv a i | a -> i where
+class Tag i => Fv a i | a -> i where
   fv :: a -> FvMap i
 
 -- | The defined variables analysis
-class Id i => Dv a i | a -> i where
-  qdv :: a -> S.Set (QLid i)
-  dv  :: a -> S.Set (Lid i)
+class Tag i => Dv a i | a -> i where
+  qdv :: a -> S.Set (QVarId i)
+  dv  :: a -> S.Set (VarId i)
 
   qdv  = S.mapMonotonic (J []) . dv
   dv a = S.fromDistinctAscList [ v | J [] v <- S.toAscList (qdv a) ]
@@ -370,34 +511,13 @@ instance Fv a i => Fv (ADDITIVE a) i where
   fv (ADDITIVE a) = foldr (|+|) M.empty (map fv a)
 
 -- | Used by the free variables analysis
-(|*|), (|+|) :: Id i => FvMap i -> FvMap i -> FvMap i
+(|*|), (|+|) :: Tag i => FvMap i -> FvMap i -> FvMap i
 (|*|) = M.unionWith (+)
 (|+|) = M.unionWith max
 
-(|-|) :: Id i => FvMap i -> QLid i -> FvMap i
+(|-|) :: Tag i => FvMap i -> QVarId i -> FvMap i
 (|-|)  = flip M.delete
 
-(|--|) :: Id i => FvMap i -> S.Set (QLid i) -> FvMap i
+(|--|) :: Tag i => FvMap i -> S.Set (QVarId i) -> FvMap i
 (|--|)  = S.fold M.delete
 
-{-
-class (Typeable a, Data a, Eq a, Ord a, Bogus a, Id i) ⇒
-      Ident a i | a → i where
-  idUnique      ∷ a → i
-  idName        ∷ a → String
-  mkId          ∷ String → a
-  mkIdTag       ∷ String → i → a
-  mkQId         ∷ String → Path (Uid i) a
-
-newtype TypId i = TypId { unTypId ∷ Lid i }
-  deriving (Typeable, Data, Eq, Ord, Bogus)
-newtype VarId i = VarId { unVarId ∷ Lid i }
-  deriving (Typeable, Data, Eq, Ord, Bogus)
-newtype ConId i = ConId { unConId ∷ Uid i }
-  deriving (Typeable, Data, Eq, Ord, Bogus)
-newtype ModId i = ModId { unModId ∷ Uid i }
-  deriving (Typeable, Data, Eq, Ord, Bogus)
-newtype SigId i = SigId { unSigId ∷ Uid i }
-  deriving (Typeable, Data, Eq, Ord, Bogus)
-
--}

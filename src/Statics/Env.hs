@@ -48,7 +48,7 @@ type Γs tv      = Env (TYPE (Uid R)) (Signature tv, Γ tv)
 
 -- | Wrapper for specifying type rather than value operations
 newtype TYPE a = TYPE { unTYPE ∷ a }
-  deriving (Eq, Ord, Show, Functor, Bogus, IsBogus, Id, Typeable, Data)
+  deriving (Eq, Ord, Show, Functor, Bogus, IsBogus, Tag, Typeable, Data)
 
 -- | An environment
 data Γ tv

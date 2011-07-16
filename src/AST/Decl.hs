@@ -66,15 +66,15 @@ data Decl' i
   -- | Abstype block declaration
   | DcAbs [AbsTy i] [Decl i]
   -- | Module declaration
-  | DcMod (Uid i) (ModExp i)
+  | DcMod (ModId i) (ModExp i)
   -- | Signature declaration
-  | DcSig (Uid i) (SigExp i)
+  | DcSig (SigId i) (SigExp i)
   -- | Module open
   | DcOpn (ModExp i)
   -- | Local block
   | DcLoc [Decl i] [Decl i]
   -- | Exception declaration
-  | DcExn (Uid i) (Maybe (Type i))
+  | DcExn (ConId i) (Maybe (Type i))
   -- | Antiquote
   | DcAnti Anti
   deriving (Typeable, Data)
@@ -84,7 +84,7 @@ data ModExp' i
   -- | A module literal
   = MeStr [Decl i]
   -- | A module variable
-  | MeName (QUid i) [QLid i]
+  | MeName (QModId i) [QVarId i]
   -- | A signature ascription
   | MeAsc (ModExp i) (SigExp i)
   -- | An antiquote
@@ -94,17 +94,17 @@ data ModExp' i
 -- | A signature item
 data SigItem' i
   -- | A value
-  = SgVal (Lid i) (Type i)
+  = SgVal (VarId i) (Type i)
   -- | A type
   | SgTyp [TyDec i]
   -- | A module
-  | SgMod (Uid i) (SigExp i)
+  | SgMod (ModId i) (SigExp i)
   -- | A signature
-  | SgSig (Uid i) (SigExp i)
+  | SgSig (SigId i) (SigExp i)
   -- | Signature inclusion
   | SgInc (SigExp i)
   -- | An exception
-  | SgExn (Uid i) (Maybe (Type i))
+  | SgExn (ConId i) (Maybe (Type i))
   -- | An antiquote
   | SgAnti Anti
   deriving (Typeable, Data)
@@ -114,9 +114,9 @@ data SigExp' i
   -- | A signature literal
   = SeSig [SigItem i]
   -- | A signature variable
-  | SeName (QUid i) [QLid i]
+  | SeName (QSigId i) [QVarId i]
   -- | Type-level fibration
-  | SeWith (SigExp i) (QLid i) [TyVar i] (Type i)
+  | SeWith (SigExp i) (QTypId i) [TyVar i] (Type i)
   -- | An antiquote
   | SeAnti Anti
   deriving (Typeable, Data)
@@ -125,7 +125,7 @@ data SigExp' i
 data TyDec' i
   -- | An abstract (empty) type
   = TdAbs {
-      tdName      :: Lid i,
+      tdName      :: TypId i,
       tdParams    :: [TyVar i],
       -- | The variance of each parameter
       tdVariances :: [Variance],
@@ -136,14 +136,14 @@ data TyDec' i
     }
   -- | A type operator or synonym
   | TdSyn {
-      tdName      :: Lid i,
+      tdName      :: TypId i,
       tdClauses   :: [([TyPat i], Type i)]
   }
   -- | An algebraic datatype
   | TdDat {
-      tdName      :: Lid i,
+      tdName      :: TypId i,
       tdParams    :: [TyVar i],
-      tdAlts      :: [(Uid i, Maybe (Type i))]
+      tdAlts      :: [(ConId i, Maybe (Type i))]
     }
   | TdAnti Anti
   deriving (Typeable, Data)
@@ -165,7 +165,7 @@ data DeclNote i
       -- | free variables
       dfv_   :: FvMap i,
       -- | defined variables
-      ddv_   :: S.Set (QLid i)
+      ddv_   :: S.Set (QVarId i)
     }
   deriving (Typeable, Data)
 
@@ -178,7 +178,7 @@ instance Relocatable (DeclNote i) where
 instance Notable (DeclNote i) where
   newNote = DeclNote bogus M.empty S.empty
 
-newDecl :: Id i => Decl' i -> Decl i
+newDecl :: Tag i => Decl' i -> Decl i
 newDecl d0 = flip N d0 $ case d0 of
   DcLet p1 e2 ->
     newNote {
@@ -228,7 +228,7 @@ newDecl d0 = flip N d0 $ case d0 of
       ddv_  = antierror "dv" a
     }
 
-newModExp :: Id i => ModExp' i -> ModExp i
+newModExp :: Tag i => ModExp' i -> ModExp i
 newModExp me0 = flip N me0 $ case me0 of
   MeStr ds ->
     newNote {
@@ -252,7 +252,7 @@ newModExp me0 = flip N me0 $ case me0 of
       ddv_  = antierror "dv" a
     }
 
-newSigItem :: Id i => SigItem' i -> SigItem i
+newSigItem :: Tag i => SigItem' i -> SigItem i
 newSigItem d0 = flip N d0 $ case d0 of
   SgVal l1 t2 ->
     newNote {
@@ -287,7 +287,7 @@ newSigItem d0 = flip N d0 $ case d0 of
       ddv_  = antierror "dv" a
     }
 
-newSigExp :: Id i => SigExp' i -> SigExp i
+newSigExp :: Tag i => SigExp' i -> SigExp i
 newSigExp se0 = flip N se0 $ case se0 of
   SeSig sis ->
     newNote {
@@ -309,13 +309,13 @@ newSigExp se0 = flip N se0 $ case se0 of
       ddv_  = antierror "dv" a
     }
 
-instance Id i => Fv (N (DeclNote i) a) i where fv  = dfv_ . noteOf
-instance Id i => Dv (N (DeclNote i) a) i where qdv = ddv_ . noteOf
+instance Tag i => Fv (N (DeclNote i) a) i where fv  = dfv_ . noteOf
+instance Tag i => Dv (N (DeclNote i) a) i where qdv = ddv_ . noteOf
 
-deriveNotable 'newDecl    (''Id, [0]) ''Decl
-deriveNotable 'newModExp  (''Id, [0]) ''ModExp
-deriveNotable 'newSigItem (''Id, [0]) ''SigItem
-deriveNotable 'newSigExp  (''Id, [0]) ''SigExp
+deriveNotable 'newDecl    (''Tag, [0]) ''Decl
+deriveNotable 'newModExp  (''Tag, [0]) ''ModExp
+deriveNotable 'newSigItem (''Tag, [0]) ''SigItem
+deriveNotable 'newSigExp  (''Tag, [0]) ''SigExp
 deriveNotable ''AbsTy
 deriveNotable ''TyDec
 deriveNotable ''Prog
@@ -326,8 +326,8 @@ deriveNotable ''Prog
 
 -- | Turn a program into a sequence of declarations by replacing
 -- the final expression with a declaration of variable 'it'.
-prog2decls :: Id i => Prog i -> [Decl i]
+prog2decls :: Tag i => Prog i -> [Decl i]
 prog2decls (N _ (Prog ds (Just e)))
-  = ds ++ [dcLet (paVar (lid "it")) e]
+  = ds ++ [dcLet (paVar (ident "it")) e]
 prog2decls (N _ (Prog ds Nothing))
   = ds

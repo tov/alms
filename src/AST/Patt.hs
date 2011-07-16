@@ -31,15 +31,15 @@ data Patt' i
   -- | wildcard
   = PaWild
   -- | variable pattern
-  | PaVar (Lid i)
+  | PaVar (VarId i)
   -- | datacon, possibly with parameter, possibly an exception
-  | PaCon (QUid i) (Maybe (Patt i))
+  | PaCon (QConId i) (Maybe (Patt i))
   -- | pair pattern
   | PaPair (Patt i) (Patt i)
   -- | literal pattern
   | PaLit Lit
   -- | bind an identifer and a pattern (@as@)
-  | PaAs (Patt i) (Lid i)
+  | PaAs (Patt i) (VarId i)
   -- | open variant
   | PaInj (Uid i) (Maybe (Patt i))
   -- | type annotation on a pattern
@@ -55,7 +55,7 @@ data PattNote i
       -- | source location
       ploc_  :: !Loc,
       -- | defined variables
-      pdv_   :: S.Set (Lid i)
+      pdv_   :: S.Set (VarId i)
     }
   deriving (Typeable, Data)
 
@@ -68,7 +68,7 @@ instance Relocatable (PattNote i) where
 instance Notable (PattNote i) where
   newNote = PattNote bogus S.empty
 
-newPatt :: Id i => Patt' i -> Patt i
+newPatt :: Tag i => Patt' i -> Patt i
 newPatt p0 = flip N p0 $ case p0 of
   PaWild           ->
     newNote {
@@ -111,8 +111,8 @@ newPatt p0 = flip N p0 $ case p0 of
       pdv_    = antierror "dv" a
     }
 
-instance Id i => Dv (N (PattNote i) a) i where
+instance Tag i => Dv (N (PattNote i) a) i where
   dv = pdv_ . noteOf
 
-deriveNotable 'newPatt (''Id, [0]) ''Patt
+deriveNotable 'newPatt (''Tag, [0]) ''Patt
 

@@ -8,7 +8,7 @@
 module AST.Decl where
 
 import AST.Notable
-import AST.Ident (Id, Fv, Dv)
+import AST.Ident (Tag, Fv, Dv)
 
 import Data.Data (Data, Typeable1)
 
@@ -18,9 +18,9 @@ type Decl i = N (DeclNote i) (Decl' i)
 
 instance Typeable1 DeclNote
 instance Typeable1 Decl'
-instance Id i => Data (DeclNote i)
-instance Id i => Data (Decl' i)
+instance Tag i => Data (DeclNote i)
+instance Tag i => Data (Decl' i)
 instance Locatable (DeclNote i)
 instance Notable (DeclNote i)
-instance Id i => Fv (N (DeclNote i) a) i
-instance Id i => Dv (N (DeclNote i) a) i
+instance Tag i => Fv (N (DeclNote i) a) i
+instance Tag i => Dv (N (DeclNote i) a) i

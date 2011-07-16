@@ -51,7 +51,7 @@ data RenameState = RenameState {
 renameState0 :: RenameState
 renameState0  = RenameState {
   savedEnv      = mempty {
-    datacons = M.singleton (uid "()") (uid "()", mkBogus "built-in", ())
+    datacons = M.singleton (ident "()") (ident "()", mkBogus "built-in", ())
   },
   savedCounter  = renamed0
 }
@@ -107,9 +107,11 @@ instance MonadError [AlmsError] Renaming where
 
 -- | The renaming environment
 data Env = Env {
-  tycons, vars    :: !(EnvMap Lid    ()),
-  datacons        :: !(EnvMap Uid    ()),
-  modules, sigs   :: !(EnvMap Uid    (Module, Env)),
+  tycons          :: !(EnvMap TypId    ()),
+  vars            :: !(EnvMap VarId    ()),
+  datacons        :: !(EnvMap ConId    ()),
+  modules         :: !(EnvMap ModId  (Module, Env)),
+  sigs            :: !(EnvMap SigId  (Module, Env)),
   tyvars          :: !(EnvMap Lid    (QLit, Bool))
 } deriving Show
 
@@ -122,11 +124,11 @@ type EnvMap f i = M.Map (f Raw) (f Renamed, Loc, i)
 data Module
   = MdNil
   | MdApp     !Module !Module
-  | MdTycon   !Loc !(Lid Raw)   !(Lid Renamed)
-  | MdVar     !Loc !(Lid Raw)   !(Lid Renamed)
-  | MdDatacon !Loc !(Uid Raw)   !(Uid Renamed)
-  | MdModule  !Loc !(Uid Raw)   !(Uid Renamed) !Module
-  | MdSig     !Loc !(Uid Raw)   !(Uid Renamed) !Module
+  | MdTycon   !Loc !(TypId Raw) !(TypId Renamed)
+  | MdVar     !Loc !(VarId Raw) !(VarId Renamed)
+  | MdDatacon !Loc !(ConId Raw) !(ConId Renamed)
+  | MdModule  !Loc !(ModId Raw) !(ModId Renamed) !Module
+  | MdSig     !Loc !(SigId Raw) !(SigId Renamed) !Module
   | MdTyvar   !Loc !(TyVar Raw) !(TyVar Renamed)
   deriving Show
 
@@ -291,7 +293,7 @@ steal :: R a -> R (a, Module)
 steal = R . censor (const mempty) . listen . unR
 
 -- | Get all the variable names, included qualified, bound in a module
-getAllVariables :: Module -> [QLid Renamed]
+getAllVariables :: Module -> [QVarId Renamed]
 getAllVariables = S.toList . loop where
   loop (MdApp md1 md2)      = loop md1 `S.union` loop md2
   loop (MdVar _ _ l')       = S.singleton (J [] l')
@@ -302,10 +304,10 @@ getAllVariables = S.toList . loop where
 -- | Look up something in an environment
 envLookup :: (Ord k, Show k) =>
              (Env -> M.Map k k') ->
-             Path (Uid Raw) k ->
+             Path (ModId Raw) k ->
              Env ->
-             Either (Maybe (Path (Uid Renamed) (Uid Raw)))
-                    (Path (Uid Renamed) k')
+             Either (Maybe (Path (ModId Renamed) (ModId Raw)))
+                    (Path (ModId Renamed) k')
 envLookup prj = loop [] where
   loop ms' (J []     x) e = case M.lookup x (prj e) of
     Just x' -> Right (J (reverse ms') x')
@@ -317,7 +319,7 @@ envLookup prj = loop [] where
 -- | Look up something in the environment
 getGenericFull :: (Ord k, Show k, Bogus k') =>
               String -> (Env -> M.Map k k') ->
-              Path (Uid Raw) k -> R (Path (Uid Renamed) k')
+              Path (ModId Raw) k -> R (Path (ModId Renamed) k')
 getGenericFull what prj qx = do
   e <- ask
   case envLookup prj qx e of
@@ -328,29 +330,29 @@ getGenericFull what prj qx = do
 -- | Look up something in the environment
 getGeneric :: (Ord (f Raw), Show (f Raw), Bogus i, Bogus (f Renamed)) =>
               String -> (Env -> EnvMap f i) ->
-              Path (Uid Raw) (f Raw) -> R (Path (Uid Renamed) (f Renamed))
+              Path (ModId Raw) (f Raw) -> R (Path (ModId Renamed) (f Renamed))
 getGeneric = liftM (fmap (\(qx', _, _) -> qx')) <$$$> getGenericFull
 
 -- | Look up a variable in the environment
-getVar :: QLid Raw -> R (QLid Renamed)
+getVar :: QVarId Raw -> R (QVarId Renamed)
 getVar  = getGeneric "Variable" vars
 
 -- | Look up a data constructor in the environment
-getDatacon :: QUid Raw -> R (QUid Renamed)
+getDatacon :: QConId Raw -> R (QConId Renamed)
 getDatacon  = getGeneric "Data constructor" datacons
 
 -- | Look up a variable in the environment
-getTycon :: QLid Raw -> R (QLid Renamed)
+getTycon :: QTypId Raw -> R (QTypId Renamed)
 getTycon  = getGeneric "Type constructor" tycons
 
 -- | Look up a module in the environment
-getModule :: QUid Raw -> R (QUid Renamed, Module, Env)
+getModule :: QModId Raw -> R (QModId Renamed, Module, Env)
 getModule  = liftM pull . getGenericFull "Structure" modules
   where
     pull (J ps (qu, _, (m, e))) = (J ps qu, m, e)
 
 -- | Look up a module in the environment
-getSig :: QUid Raw -> R (QUid Renamed, Module, Env)
+getSig :: QSigId Raw -> R (QSigId Renamed, Module, Env)
 getSig  = liftM pull . getGenericFull "Signature" sigs
   where
     pull (J ps (qu, _, (m, e))) = (J ps qu, m, e)
@@ -424,25 +426,25 @@ newRenamed = R $ do
       return trivialId
 
 -- | Get a new name for a variable binding
-bindVar :: Lid Raw -> R (Lid Renamed)
-bindVar  = bindGeneric renLid MdVar
+bindVar :: VarId Raw -> R (VarId Renamed)
+bindVar  = bindGeneric renId MdVar
 
 -- | Get a new name for a variable binding
-bindTycon :: Lid Raw -> R (Lid Renamed)
-bindTycon  = bindGeneric renLid MdTycon
+bindTycon :: TypId Raw -> R (TypId Renamed)
+bindTycon  = bindGeneric renId MdTycon
 
 -- | Get a new name for a data constructor binding
-bindDatacon :: Uid Raw -> R (Uid Renamed)
-bindDatacon = bindGeneric renUid MdDatacon
+bindDatacon :: ConId Raw -> R (ConId Renamed)
+bindDatacon = bindGeneric renId MdDatacon
 
 -- | Get a new name for a module, and bind it in the environment
-bindModule :: Uid Raw -> Module -> R (Uid Renamed)
-bindModule u0 md = bindGeneric renUid build u0
+bindModule :: ModId Raw -> Module -> R (ModId Renamed)
+bindModule u0 md = bindGeneric renId build u0
   where build loc old new = MdModule loc old new md
 
 -- | Get a new name for a signature, and bind it in the environment
-bindSig :: Uid Raw -> Module -> R (Uid Renamed)
-bindSig u0 md = bindGeneric renUid build u0
+bindSig :: SigId Raw -> Module -> R (SigId Renamed)
+bindSig u0 md = bindGeneric renId build u0
   where build loc old new = MdSig loc old new md
 
 -- | Add a type variable to the scope
@@ -450,7 +452,7 @@ bindTyvar :: TyVar Raw -> R (TyVar Renamed)
 bindTyvar tv = do
   e <- asks tyvars
   case M.lookup (tvname tv) e of
-    Nothing                         -> bindGeneric insert MdTyvar tv
+    Nothing                         -> bindGeneric renId MdTyvar tv
     Just (name', loc', (ql', _)) ->
       if tvqual tv == ql'
         then
@@ -466,8 +468,6 @@ bindTyvar tv = do
               already bound at $loc'.  The same type variable name cannot
               appear in the same scope with different qualifiers.
             |] (TV name' ql' loc')
-  where insert r (TV l q loc) = TV (renLid r l) q loc
-        insert _ (TVAnti a)   = antierror "bindTyvar" a
 
 -- | Map a function over a list, allowing the exports of each item
 --   to be in scope for the rest
@@ -525,18 +525,18 @@ renameDecl d0 = withLocation d0 $ case d0 of
     return [dc|+ abstype $list:ats' with $list:ds' end |]
   [dc| module INTERNALS = $me1 |] ->
     R $ local (\context -> context { allocate = False }) $ unR $ do
-      let u = uid "INTERNALS"
+      let u = ident "INTERNALS"
       (me1', md) <- steal $ renameModExp me1
       u' <- bindModule u md
-      return [dc|+ module $uid:u' = $me1' |]
-  [dc| module $uid:u = $me1 |] -> do
+      return [dc|+ module $mid:u' = $me1' |]
+  [dc| module $mid:u = $me1 |] -> do
     (me1', md) <- steal $ renameModExp me1
     u' <- bindModule u md
-    return [dc|+ module $uid:u' = $me1' |]
-  [dc| module type $uid:u = $se1 |] -> do
+    return [dc|+ module $mid:u' = $me1' |]
+  [dc| module type $sid:u = $se1 |] -> do
     (se1', md) <- steal $ renameSigExp se1
     u' <- bindSig u md
-    return [dc|+ module type $uid:u' = $se1' |]
+    return [dc|+ module type $sid:u' = $se1' |]
   [dc| open $me1 |] -> do
     me1' <- renameModExp me1
     return [dc|+ open $me1' |]
@@ -544,10 +544,10 @@ renameDecl d0 = withLocation d0 $ case d0 of
     (ds1', md) <- steal $ renameDecls ds1
     ds2' <- inModule md $ renameDecls ds2
     return [dc| local $list:ds1' with $list:ds2' end |]
-  [dc| exception $uid:u of $opt:mt |] -> do
+  [dc| exception $cid:u of $opt:mt |] -> do
     u'  <- bindDatacon u
     mt' <- traverse renameType mt
-    return [dc|+ exception $uid:u' of $opt:mt' |]
+    return [dc|+ exception $cid:u' of $opt:mt' |]
   [dc| $anti:a |] -> $antifail
     {-
   -}
@@ -600,7 +600,7 @@ renameTyDec mqe (N note td)      = withLocation note $ do
           Just (u, _) ->
             repeated "Data constructor" u "type declaration" []
         cons' <- forM cons $ \(u, mt) -> withLocation mt $ do
-          let u' = uid (unUid u)
+          let u' = renId trivialId u
           tell (MdDatacon (getLoc mt) u u')
           mt'   <- traverse renameType mt
           return (u', mt')
@@ -613,11 +613,11 @@ renameModExp me0 = withLocation me0 $ case me0 of
   [meQ| struct $list:ds end |] -> do
     ds' <- renameDecls ds
     return [meQ|+ struct $list:ds' end |]
-  [meQ| $quid:qu $list:_ |] -> do
+  [meQ| $qmid:qu $list:_ |] -> do
     (qu', md, _) <- getModule qu
     let qls = getAllVariables md
     tell md
-    return [meQ|+ $quid:qu' $list:qls |]
+    return [meQ|+ $qmid:qu' $list:qls |]
   [meQ| $me1 : $se2 |] -> do
     (me1', md1) <- steal $ renameModExp me1
     (se2', md2) <- steal $ renameSigExp se2
@@ -631,12 +631,12 @@ renameSigExp se0 = withLocation se0 $ case se0 of
     (sgs', md) <- listen $ don'tAllocate $ renameMapM renameSigItem sgs
     onlyInModule mempty $ checkSigDuplicates md
     return [seQ|+ sig $list:sgs' end |]
-  [seQ| $quid:qu $list:_ |] -> do
+  [seQ| $qsid:qu $list:_ |] -> do
     (qu', md, _) <- getSig qu
     let qls = getAllVariables md
     tell md
-    return [seQ|+ $quid:qu' $list:qls |]
-  [seQ| $se1 with type $list:tvs $qlid:ql = $t |] -> do
+    return [seQ|+ $qsid:qu' $list:qls |]
+  [seQ| $se1 with type $list:tvs $qtid:ql = $t |] -> do
     (se1', md) <- listen $ renameSigExp se1
     ql' <- onlyInModule md $ getTycon ql
     case unique id tvs of
@@ -644,7 +644,7 @@ renameSigExp se0 = withLocation se0 $ case se0 of
       Just (_, tvs') -> repeatedTVs tvs' "with-type"
     (tvs', mdtvs) <- steal $ mapM bindTyvar tvs
     t' <- inModule mdtvs $ renameType t
-    return [seQ|+ $se1' with type $list:tvs' $qlid:ql' = $t' |]
+    return [seQ|+ $se1' with type $list:tvs' $qtid:ql' = $t' |]
   [seQ| $anti:a |] -> $antifail
 
 checkSigDuplicates :: Module -> R ()
@@ -691,68 +691,68 @@ sealWith = loop Nothing where
       tell (MdSig loc u u' md1')
     MdTyvar   _ _ _   ->
       renameBug "sealWith" "signature can’t declare type variable"
-  locate b what prj ident = do
+  locate b what prj name = do
     m <- asks prj
-    case M.lookup ident m of
-      Just ident' -> return ident'
-      Nothing     -> renameError $
+    case M.lookup name m of
+      Just name' -> return name'
+      Nothing    -> renameError $
         case b of
           Nothing -> [msg|
             In signature matching, structure is missing
-            $words:what $q:ident,
+            $words:what $q:name,
             which is present in ascribed signature.
           |]
           Just (Left u) -> [msg|
             In exact signature matching (for nested signature $u)
-            found unexpected $words:what $q:ident.
+            found unexpected $words:what $q:name.
           |]
           Just (Right u) -> [msg|
             In exact signature matching (for nested signature $u)
-            missing expected $words:what $q:ident.
+            missing expected $words:what $q:name.
           |]
 
 -- | Rename a signature item and return the environment
 --   that they bind
 renameSigItem :: SigItem Raw -> R (SigItem Renamed)
 renameSigItem sg0 = case sg0 of
-  [sgQ| val $lid:l : $t |] -> do
+  [sgQ| val $vid:l : $t |] -> do
     l' <- bindVar l
     t' <- renameType (closeType t)
-    return [sgQ|+ val $lid:l' : $t' |]
+    return [sgQ|+ val $vid:l' : $t' |]
   [sgQ| type $list:tds |] -> do
     tds' <- renameTyDecs tds
     return [sgQ|+ type $list:tds' |]
-  [sgQ| module $uid:u : $se1 |] -> do
+  [sgQ| module $mid:u : $se1 |] -> do
     (se1', md) <- steal $ renameSigExp se1
     u' <- bindModule u md
-    return [sgQ|+ module $uid:u' : $se1' |]
-  [sgQ| module type $uid:u = $se1 |] -> do
+    return [sgQ|+ module $mid:u' : $se1' |]
+  [sgQ| module type $sid:u = $se1 |] -> do
     (se1', md) <- steal $ renameSigExp se1
     u' <- bindSig u md
-    return [sgQ|+ module type $uid:u' = $se1' |]
+    return [sgQ|+ module type $sid:u' = $se1' |]
   [sgQ| include $se1 |] -> do
     se1' <- renameSigExp se1
     return [sgQ|+ include $se1' |]
-  [sgQ| exception $uid:u of $opt:mt |] -> do
+  [sgQ| exception $cid:u of $opt:mt |] -> do
     u'  <- bindDatacon u
     mt' <- traverse renameType mt
-    return [sgQ|+ exception $uid:u' of $opt:mt' |]
+    return [sgQ|+ exception $cid:u' of $opt:mt' |]
   [sgQ| $anti:a |] -> $antifail
 
 -- | Rename an expression
 renameExpr :: Expr Raw -> R (Expr Renamed)
 renameExpr e00 = withLocation e00 . withAnnotationTVs e00 $ loop e00 where
   loop e0 = case e0 of
-    [ex| $qlid:ql |] -> do
+    [ex| $qvid:ql |] -> do
       ql' <- getVar ql
-      return [ex|+ $qlid:ql' |]
+      return [ex|+ $qvid:ql' |]
     [ex| $lit:lit |] -> do
       lit' <- renameLit lit
       return [ex|+ $lit:lit' |]
-    [ex| $quid:qu $opt:me |] -> do
+    [ex| $qcid:qu $opt:me |] -> do
       qu' <- getDatacon qu
       me' <- traverse loop me
-      return [ex|+ $quid:qu' $opt:me' |]
+      return [ex|+ $qcid:qu' $opt:me' |]
     [ex| `$uid:u $opt:me |] -> do
       let u' = trivialRename u
       me' <- traverse loop me
@@ -820,7 +820,7 @@ renameBindings :: [Binding Raw] -> R ([Binding Renamed], Module)
 renameBindings bns = do
   lxes <- forM bns $ \bn ->
     case bn of
-      [bnQ| $lid:x = $e |] -> return (_loc, x, e)
+      [bnQ| $vid:x = $e |] -> return (_loc, x, e)
       [bnQ| $antiB:a |] -> $antifail
   case unique (\(_,x,_) -> x) lxes of
     Nothing          -> return ()
@@ -834,16 +834,16 @@ renameBindings bns = do
             forM (reverse lxes') $ \(l,x',e) -> withLocation l $ do
               let _loc = l
               e'  <- renameExpr e
-              return [bnQ|+ $lid:x' = $e' |]
+              return [bnQ|+ $vid:x' = $e' |]
   return (bns', md)
 
 -- | Rename a type
 renameType :: Type Raw -> R (Type Renamed)
 renameType t0 = case t0 of
-  [ty| ($list:ts) $qlid:ql |] -> do
+  [ty| ($list:ts) $qtid:ql |] -> do
     ql' <- getTycon ql
     ts' <- mapM renameType ts
-    return [ty|+ ($list:ts') $qlid:ql' |]
+    return [ty|+ ($list:ts') $qtid:ql' |]
   [ty| '$tv |] -> do
     tv' <- getTyvar tv
     return [ty|+ '$tv' |]
@@ -882,10 +882,10 @@ renameTyPats x00 =
     N note (TpRow tv var) -> do
       tv' <- tyvar (getLoc note) tv
       return (tpRow tv' var <<@ note)
-    [tpQ| ($list:tps) $qlid:ql |] -> do
+    [tpQ| ($list:tps) $qtid:ql |] -> do
       ql'  <- lift (withLocation _loc (getTycon ql))
       tps' <- mapM loop tps
-      return [tpQ|+ ($list:tps') $qlid:ql' |]
+      return [tpQ|+ ($list:tps') $qtid:ql' |]
   --
   tyvar :: Loc -> TyVar Raw ->
            StateT (M.Map (Lid Raw) (TyVar Raw, Loc)) Renaming (TyVar Renamed)
@@ -919,18 +919,18 @@ renamePatt x00 =
   withLocation x00 $
     evalStateT (loop x00) M.empty where
   loop :: Patt Raw ->
-          StateT (M.Map (Either (Lid Raw) (TyVar Raw)) Loc)
+          StateT (M.Map (VarId Raw) Loc)
             Renaming (Patt Renamed)
   loop x0 = case x0 of
     [pa| _ |] ->
       return [pa|+ _ |]
-    [pa| $lid:l |] -> do
+    [pa| $vid:l |] -> do
       l' <- var _loc l
-      return [pa|+ $lid:l' |]
-    [pa| $quid:qu $opt:mx |] -> do
+      return [pa|+ $vid:l' |]
+    [pa| $qcid:qu $opt:mx |] -> do
       qu' <- lift $ getDatacon qu
       mx' <- traverse loop mx
-      return [pa|+ $quid:qu' $opt:mx' |]
+      return [pa|+ $qcid:qu' $opt:mx' |]
     [pa| `$uid:qu $opt:mx |] -> do
       let qu' = trivialRename qu
       mx' <- traverse loop mx
@@ -942,10 +942,10 @@ renamePatt x00 =
     [pa| $lit:lit |] -> do
       lit' <- lift $ renameLit lit
       return [pa|+ $lit:lit' |]
-    [pa| $x as $lid:l |] -> do
+    [pa| $x as $vid:l |] -> do
       x' <- loop x
       l' <- var _loc l
-      return [pa|+ $x' as $lid:l' |]
+      return [pa|+ $x' as $vid:l' |]
     [pa| ! $x |] -> do
       x' <- loop x
       return [pa| ! $x' |]
@@ -956,32 +956,32 @@ renamePatt x00 =
     [pa| $anti:a |] -> do
       $antifail
   --
-  var loc1 l = do
+  var loc1 vid = do
     seen <- get
-    case M.lookup (Left l) seen of
-      Just loc2 -> lift (repeated "Variable" l "pattern" [loc1, loc2])
+    case M.lookup vid seen of
+      Just loc2 -> lift (repeated "Variable" vid "pattern" [loc1, loc2])
       Nothing   -> do
-        put (M.insert (Left l) loc1 seen)
-        lift (withLocation loc1 (bindVar l))
+        put (M.insert vid loc1 seen)
+        lift (withLocation loc1 (bindVar vid))
 
 -- | Univerally-quantify all free type variables
 closeType :: Type Raw -> Type Raw
 closeType t = foldr tyAll t (annotFtvSet t)
 
-addVal     :: Lid Raw -> R (Lid Renamed)
-addType    :: Lid Raw -> Renamed -> R (Lid Renamed)
-addMod     :: Uid Raw -> R a -> R (Uid Renamed, a)
+addVal     :: VarId Raw -> R (VarId Renamed)
+addType    :: TypId Raw -> Renamed -> R (TypId Renamed)
+addMod     :: ModId Raw -> R a -> R (ModId Renamed, a)
 
 addVal = bindVar
 
 addType l i = do
-  let l' = renLid i l
+  let l' = renId i l
   loc <- getLocation
   tell (MdTycon loc l l')
   return l'
 
 addMod u body = do
-  let u' = uid (unUid u)
+  let u' = renId trivialId u
   (a, md) <- steal body
   loc <- getLocation
   tell (MdModule loc u u' md)
@@ -989,33 +989,33 @@ addMod u body = do
 
 -- | Result for 'getRenamingInfo'
 data RenamingInfo
-  = ModuleAt   { renInfoLoc :: Loc, renInfoQUid :: QUid Renamed }
-  | SigAt      { renInfoLoc :: Loc, renInfoQUid :: QUid Renamed }
-  | VariableAt { renInfoLoc :: Loc, renInfoQLid :: QLid Renamed }
-  | TyconAt    { renInfoLoc :: Loc, renInfoQLid :: QLid Renamed }
-  | DataconAt  { renInfoLoc :: Loc, renInfoQUid :: QUid Renamed }
+  = ModuleAt   { renInfoLoc :: Loc, renInfoQModId :: QModId Renamed }
+  | SigAt      { renInfoLoc :: Loc, renInfoQSigId :: QSigId Renamed }
+  | VariableAt { renInfoLoc :: Loc, renInfoQVarId :: QVarId Renamed }
+  | TyconAt    { renInfoLoc :: Loc, renInfoQTypId :: QTypId Renamed }
+  | DataconAt  { renInfoLoc :: Loc, renInfoQConId :: QConId Renamed }
   deriving Show
 
 -- | For the REPL to find out where identifiers are bound and their
 --   renamed name for looking up type info
 getRenamingInfo :: Ident Raw -> RenameState -> [RenamingInfo]
-getRenamingInfo ident RenameState { savedEnv = e } =
-  catMaybes $ case view ident of
-    Left ql  -> [ look tycons ql TyconAt,
-                  look vars ql VariableAt ]
-    Right qu -> [ look sigs qu SigAt,
-                  look modules qu ModuleAt,
-                  look datacons qu DataconAt ]
+getRenamingInfo name RenameState { savedEnv = e } =
+  catMaybes $ case view name of
+    Left ql  -> [ look tycons   (TypId <$> ql) TyconAt,
+                  look vars     (VarId <$> ql) VariableAt ]
+    Right qu -> [ look sigs     (SigId <$> qu) SigAt,
+                  look modules  (ModId <$> qu) ModuleAt,
+                  look datacons (ConId <$> qu) DataconAt ]
   where
     look prj qx build = case envLookup prj qx e of
       Left _                    -> Nothing
       Right (J ps (x', loc, _)) -> Just (build loc (J ps x'))
 
 -- Open the given module, if it exists.
-renamingEnterScope    :: Uid i -> RenameState -> RenameState
+renamingEnterScope    :: ModId i -> RenameState -> RenameState
 renamingEnterScope u r =
   let e  = savedEnv r in
-  case M.lookup (uid (unUid u)) (modules e) of
+  case M.lookup (renId trivialId u) (modules e) of
     Nothing -> r
     Just (_, _, (_, e'))
             -> r { savedEnv = e `mappend` e' }

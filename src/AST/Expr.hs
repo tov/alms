@@ -23,7 +23,7 @@ module AST.Expr (
   caClause, caAnti,
   bnBind, bnAnti,
   -- ** Synthetic expression constructors
-  exId, exBVar, exBCon,
+  exBVar, exBCon,
   exChar, exStr, exInt, exFloat,
   exSeq,
   -- ** Optimizing expression constructors
@@ -56,11 +56,11 @@ type CaseAlt i = N (ExprNote i) (CaseAlt' i)
 -- dealing with the common fields above.
 data Expr' i
   -- | variables
-  = ExVar (QLid i)
+  = ExVar (QVarId i)
   -- | literals
   | ExLit Lit
   -- | data construction
-  | ExCon (QUid i) (Maybe (Expr i))
+  | ExCon (QConId i) (Maybe (Expr i))
   -- | let expressions
   | ExLet (Patt i) (Expr i) (Expr i)
   -- | case expressions (including desugared @if@)
@@ -88,7 +88,7 @@ data Expr' i
 -- | Let-rec bindings require us to give types
 data Binding' i
   = BnBind {
-      bnvar  :: Lid i,
+      bnvar  :: VarId i,
       bnexpr :: Expr i
     }
   | BnAnti Anti
@@ -119,7 +119,7 @@ instance Relocatable (ExprNote i) where
   setLoc note loc = note { eloc_ = loc }
 
 -- | Types with free variable analyses
-instance Id i => Fv (N (ExprNote i) a) i where fv = efv_ . noteOf
+instance Tag i => Fv (N (ExprNote i) a) i where fv = efv_ . noteOf
 
 instance Notable (ExprNote i) where
   newNote = ExprNote {
@@ -127,7 +127,7 @@ instance Notable (ExprNote i) where
     efv_   = M.empty
   }
 
-newExpr :: Id i => Expr' i -> Expr i
+newExpr :: Tag i => Expr' i -> Expr i
 newExpr e0 = flip N e0 $ case e0 of
   ExVar v ->
     newNote {
@@ -196,7 +196,7 @@ newExpr e0 = flip N e0 $ case e0 of
       efv_  = antierror "fv" a
     }
 
-newBinding :: Id i => Binding' i -> Binding i
+newBinding :: Tag i => Binding' i -> Binding i
 newBinding b0 = flip N b0 $ case b0 of
   BnBind x e ->
     newNote {
@@ -208,7 +208,7 @@ newBinding b0 = flip N b0 $ case b0 of
       efv_  = antierror "fv" a
     }
 
-newCaseAlt :: Id i => CaseAlt' i -> CaseAlt i
+newCaseAlt :: Tag i => CaseAlt' i -> CaseAlt i
 newCaseAlt ca0 = flip N ca0 $ case ca0 of
   CaClause x e ->
     newNote {
@@ -220,32 +220,29 @@ newCaseAlt ca0 = flip N ca0 $ case ca0 of
       efv_  = antierror "fv" a
     }
 
-deriveNotable 'newExpr    (''Id, [0]) ''Expr
-deriveNotable 'newCaseAlt (''Id, [0]) ''CaseAlt
-deriveNotable 'newBinding (''Id, [0]) ''Binding
+deriveNotable 'newExpr    (''Tag, [0]) ''Expr
+deriveNotable 'newCaseAlt (''Tag, [0]) ''CaseAlt
+deriveNotable 'newBinding (''Tag, [0]) ''Binding
 
-exId   :: Id i => Ident i -> Expr i
-exId    = (exVar ||| exCon <-> Nothing) . view
-
-exBVar :: Id i => Lid i -> Expr i
+exBVar :: Tag i => VarId i -> Expr i
 exBVar  = exVar . J []
 
-exBCon :: Id i => Uid i -> Maybe (Expr i) -> Expr i
+exBCon :: Tag i => ConId i -> Maybe (Expr i) -> Expr i
 exBCon  = exCon . J []
 
-exChar :: Id i => Char -> Expr i
+exChar :: Tag i => Char -> Expr i
 exChar = exLit . LtChar
 
-exStr :: Id i => String -> Expr i
+exStr :: Tag i => String -> Expr i
 exStr  = exLit . LtStr
 
-exInt :: (Id i, Integral a) => a -> Expr i
+exInt :: (Tag i, Integral a) => a -> Expr i
 exInt  = exLit . LtInt . toInteger
 
-exFloat :: Id i => Double -> Expr i
+exFloat :: Tag i => Double -> Expr i
 exFloat  = exLit . LtFloat
 
-exSeq :: Id i => Expr i -> Expr i -> Expr i
+exSeq :: Tag i => Expr i -> Expr i -> Expr i
 exSeq e1 e2 = exLet paWild e1 e2
 
 -- | Constructs a let expression, but with a special case:
@@ -254,11 +251,11 @@ exSeq e1 e2 = exLet paWild e1 e2
 --   @let (x, y) = e in (x, y)   ==   e@
 --
 -- This is always safe to do.
-exLet' :: Id i => Patt i -> Expr i -> Expr i -> Expr i
+exLet' :: Tag i => Patt i -> Expr i -> Expr i -> Expr i
 exLet' x e1 e2 = if (x -==+ e2) then e1 else exLet x e1 e2
 
 -- | Constructs a let expression whose pattern is a variable.
-exLetVar' :: Id i => Lid i -> Expr i -> Expr i -> Expr i
+exLetVar' :: Tag i => VarId i -> Expr i -> Expr i -> Expr i
 exLetVar'  = exLet' . paVar
 
 -- | Constructs a lambda expression, but with a special case:
@@ -267,7 +264,7 @@ exLetVar'  = exLet' . paVar
 --    @exAbs' (x,y) (exApp (exVar f) (x,y))  ==  exVar f@
 --
 -- This eta-contraction is always safe, because f has no effect
-exAbs' :: Id i => Patt i -> Expr i -> Expr i
+exAbs' :: Tag i => Patt i -> Expr i -> Expr i
 exAbs' x e = case view e of
   ExApp e1 e2 -> case view e1 of
     ExVar (J p f) | x -==+ e2
@@ -276,18 +273,18 @@ exAbs' x e = case view e of
   _           -> exAbs x e
 
 -- | Construct an abstraction whose pattern is just a variable.
-exAbsVar' :: Id i => Lid i -> Expr i -> Expr i
+exAbsVar' :: Tag i => VarId i -> Expr i -> Expr i
 exAbsVar'  = exAbs' . paVar
 
 -- | Does a pattern exactly match an expression?  That is, is
 --   @let p = e1 in e@ equivalent to @e1@?  Note that we cannot
 --   safely handle data constructors, because they may fail to match.
-(-==+) :: Id i => Patt i -> Expr i -> Bool
+(-==+) :: Tag i => Patt i -> Expr i -> Bool
 p -==+ e = case (dataOf p, dataOf e) of
   (PaVar l,      ExVar (J [] l'))
     -> l == l'
-  (PaCon (J [] (Uid _ "()")) Nothing,
-   ExCon (J [] (Uid _ "()")) Nothing)
+  (PaCon (J [] (ConId (Uid _ "()"))) Nothing,
+   ExCon (J [] (ConId (Uid _ "()"))) Nothing)
     -> True
   (PaPair p1 p2, ExPair e1 e2)
     -> p1 -==+ e1 && p2 -==+ e2

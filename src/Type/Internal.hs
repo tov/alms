@@ -26,7 +26,7 @@ module Type.Internal (
   -- ** Kind re-exports
   Variance(..), Lattice(..), BoundedLattice(..), isQVariance,
   -- ** Names
-  Name, TypId, ConId,
+  Name, TypId, QTypId, ConId, QConId, RowLabel, RecLabel,
 
   -- * Qualifiers
   Qualifier(..), qlitexp, qvarexp, extractQual, liftVQExp, mapQExp,
@@ -85,13 +85,13 @@ import qualified Data.Set  as S
 ---
 
 -- | Everything should be renamed by now
-type R = AST.Renamed
-
--- | A type name
-type TypId = AST.QLid R
-
--- | A data constructor name
-type ConId = AST.Uid R
+type R        = AST.Renamed
+type TypId    = AST.TypId R
+type QTypId   = AST.QTypId R
+type ConId    = AST.ConId R
+type QConId   = AST.QConId R
+type RowLabel = AST.Uid R
+type RecLabel = AST.Lid R
 
 -- | Optional names that don't affect α equivalence
 type Name = Perhaps String
@@ -121,7 +121,7 @@ data Type tv
   -- | A recursive (mu) type
   | TyMu  !Name !(Type tv)
   -- | A row type
-  | TyRow !ConId !(Type tv) !(Type tv)
+  | TyRow !RowLabel !(Type tv) !(Type tv)
   -- | The application of a type constructor (possibly nullary).
   | TyApp !TyCon ![Type tv]
   deriving (Functor, Typeable, Data)
@@ -143,7 +143,7 @@ data TyCon
       -- | Unique ID
       tcId        ∷ !Int,
       -- | Printable name
-      tcName      ∷ !TypId,
+      tcName      ∷ !QTypId,
       -- | Variances for parameters, and correct length
       tcArity     ∷ ![Variance],
       -- | Bounds for parameters
@@ -187,7 +187,7 @@ class ExtTC r where
 instance ExtTC TyCon where
   extTC = id
 
-instance ExtTC r ⇒ ExtTC (TypId → r) where
+instance ExtTC r ⇒ ExtTC (QTypId → r) where
   extTC tc x = extTC (tc { tcName = x })
 
 instance (v ~ Variance, ql ~ QLit, ExtTC r) ⇒
@@ -209,7 +209,7 @@ instance (t ~ Type Empty, ExtTC r) ⇒
          ExtTC ([([TyPat], t)] → r) where
   extTC tc x = extTC (tc { tcNext = Just x })
 
-mkTC ∷ ExtTC r ⇒ Int → TypId → r
+mkTC ∷ ExtTC r ⇒ Int → AST.QTypId R → r
 mkTC i ql
   = extTC TyCon {
     tcId        = i,
@@ -223,7 +223,7 @@ mkTC i ql
   }
 
 internalTC ∷ ExtTC r ⇒ Int → String → r
-internalTC i s = mkTC i (AST.J [] (AST.Lid (AST.Ren_ i) s))
+internalTC i s = mkTC i (AST.J [] (AST.identT (AST.Ren_ i) s))
 
 tcUnit, tcInt, tcChar, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun ∷ TyCon
@@ -233,7 +233,7 @@ tcFun        = internalTC (-1) "→"      (qvarexp 1)
                                          (QCovariant,    Qa, False),
                                          (Covariant,     Qa, False)]
 tcUnit       = internalTC (-2) "unit"
-                 (Env.fromList [(AST.uid "()" ∷ ConId, Nothing)])
+                 (Env.fromList [(AST.ident "()" ∷ ConId, Nothing)])
 tcInt        = internalTC (-3) "int"
 tcChar       = internalTC (-4) "char"
 tcFloat      = internalTC (-5) "float"
@@ -440,7 +440,7 @@ foldTypeEnv
            -- | For constructor applications
            (TyCon → [r] → r) →
            -- | For row type labels
-           (ConId → r → r → r) →
+           (RowLabel → r → r → r) →
            -- | For recursive types
            (∀a. Name → (s → (r → r) → a) → a) →
            -- | Type to fold
@@ -482,7 +482,7 @@ foldType ∷ Ord tv ⇒
            -- | For constructor applications
            (TyCon → [r] → r) →
            -- | For row type labels
-           (ConId → r → r → r) →
+           (RowLabel → r → r → r) →
            -- | For recursive types
            (∀a. Name → (s → (r → r) → a) → a) →
            -- | Type to fold
@@ -516,7 +516,7 @@ foldTypeM ∷ (Monad m, Ord tv) ⇒
             -- | For constructor applications
             (TyCon → [r] → m r) →
             -- | For row type labels
-            (ConId → r → r → m r) →
+            (RowLabel → r → r → m r) →
             -- | For recursive types
             (∀a. Name → (s → (r → m r) → a) → a) →
             -- | Type to fold
@@ -544,7 +544,7 @@ unfoldQu u0 = first reverse . loop where
 
 -- To find the labels and fields of a row type, and the extension,
 -- in standard order
-unfoldRow ∷ Type tv → ([(ConId, Type tv)], Type tv)
+unfoldRow ∷ Type tv → ([(RowLabel, Type tv)], Type tv)
 unfoldRow = first (List.sortBy (compare <$> fst <$.> fst)) . loop where
   loop (TyRow n t1 t2) = first ((n, t1):) (loop t2)
   loop t               = ([], t)
@@ -559,7 +559,7 @@ unfoldMu t           = ([], t)
 ---
 
 -- Construct a row from a list of label/type pairs and a tail type.
-foldRow ∷ [(ConId, Type a)] → Type a → Type a
+foldRow ∷ [(RowLabel, Type a)] → Type a → Type a
 foldRow = flip (foldr (uncurry TyRow))
 
 -- Sort a row by its labels
@@ -568,7 +568,7 @@ sortRow = uncurry foldRow . unfoldRow
 
 -- Attempt to extract the type associated with the given label,
 -- and return that type and the remaning row type.
-extractLabel ∷ ConId → Type v → Maybe (Type v, Type v)
+extractLabel ∷ RowLabel → Type v → Maybe (Type v, Type v)
 extractLabel n (TyRow n' t1 t2)
   | n == n'      = Just (t1, t2)
   | otherwise    = second (TyRow n' t1) <$> extractLabel n t2

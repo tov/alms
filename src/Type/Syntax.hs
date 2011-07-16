@@ -84,13 +84,13 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
     let names  = fst <$> αs
         seen   = AST.unLid . AST.tvname <$> concat δ
         names' = AST.freshNames names seen AST.tvalphabet
-        αs'    = zipWith3 AST.TV (AST.lid <$> names')
+        αs'    = zipWith3 AST.TV (AST.ident <$> names')
                                  (snd <$> αs)
                                  (repeat AST.bogus)
     local (\cxt → cxt { t2sTvEnv = αs' : δ }) (k αs')
   --
   getTV _ (Free tv)
-    = AST.TV (AST.lid (uglyTvName tv)) (fromMaybe Qa (tvQual tv)) AST.bogus
+    = AST.TV (AST.ident (uglyTvName tv)) (fromMaybe Qa (tvQual tv)) AST.bogus
   getTV δ (Bound i j n)
     | rib:_ ← drop i δ, tv:_  ← drop j rib
     = tv
@@ -144,7 +144,7 @@ quantToStx Forall = AST.Forall
 quantToStx Exists = AST.Exists
 
 -- | Look up the best printing name for a type.
-bestName ∷ MonadReader r m ⇒ (r → TyNames) → TyCon → m TypId
+bestName ∷ MonadReader r m ⇒ (r → TyNames) → TyCon → m QTypId
 bestName getter tc = do
   tn ← asks getter
   return (tnLookup tn (tcId tc) (tcName tc))
@@ -156,14 +156,14 @@ tyConToStx ∷ TyNames → TyCon → AST.TyDec R
 tyConToStx tn tc =
   let
   n             = AST.jname (tcName tc)
-  tvs           = zipWith3 AST.TV (AST.lid <$> AST.tvalphabet)
+  tvs           = zipWith3 AST.TV (AST.ident <$> AST.tvalphabet)
                                   (tcBounds tc)
                                   (repeat AST.bogus)
   doType envTvs = typeToStx t2sContext0 { t2sTyNames = tn, t2sTvEnv = [envTvs] }
   in
   case tc of
   _ | tc == tcExn
-    → AST.tdAbs (AST.lid "exn") [] [] [] maxBound
+    → AST.tdAbs (AST.ident "exn") [] [] [] maxBound
   TyCon { tcNext = Just clauses }
     → AST.tdSyn n
                 [ second (`doType` rhs) (tyPatsToStx tn [] ps)
