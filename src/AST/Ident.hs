@@ -329,11 +329,18 @@ data TyVar i
       tvloc  :: !Loc
     }
   | TVAnti Anti
-  deriving (Eq, Ord, Typeable, Data)
+  deriving (Typeable, Data)
 
 tvUn, tvAf :: Tag i => String -> TyVar i
 tvUn s = TV (ident s) Qu bogus
 tvAf s = TV (ident s) Qa bogus
+
+instance Tag i => Eq (TyVar i) where
+  a == b = tvname a == tvname b && tvqual a == tvqual b
+
+instance Tag i => Ord (TyVar i) where
+  a `compare` b = tvname a `compare` tvname b
+        `thenCmp` tvqual a `compare` tvqual b
 
 instance Locatable (TyVar i) where
   getLoc TV { tvloc = loc } = loc

@@ -6,25 +6,31 @@
 module Statics.Sig (
   Signature, SigItem (..),
   sigToStx, sigToStx', sigItemToStx, sigItemToStx',
+  VarId, ModId, SigId, QVarId, QModId, QSigId,
 ) where
 
 import Util
 import qualified AST
-import AST.Ident
 import Type
 import qualified Syntax.Ppr as Ppr
 
 import Prelude ()
 import Data.Generics (Typeable, Data)
 
-type R = Renamed
+type R = AST.Renamed
+type VarId  = AST.VarId R
+type ModId  = AST.ModId R
+type SigId  = AST.SigId R
+type QVarId = AST.VarId R
+type QModId = AST.ModId R
+type QSigId = AST.SigId R
 
 data SigItem tv
-  = SiValue   !(Lid R) !(Type tv)
-  | SiType    !(Lid R) !TyCon
-  | SiExn     !(Uid R) !(Maybe (Type tv))
-  | SiModule  !(Uid R) !(Signature tv)
-  | SiModType !(Uid R) !(Signature tv)
+  = SgVal !VarId !(Type tv)
+  | SgTyp !TypId !TyCon
+  | SgExn !ConId !(Maybe (Type tv))
+  | SgMod !ModId !(Signature tv)
+  | SgSig !SigId !(Signature tv)
   deriving (Functor, Typeable, Data)
 
 type Signature tv = [SigItem tv]
@@ -46,11 +52,11 @@ sigItemToStx' = sigItemToStx tyNames0
 --   TODO: Group mutually recursive types.
 sigItemToStx ∷ Tv tv ⇒ TyNames → SigItem tv → AST.SigItem R
 sigItemToStx tn si0 = case si0 of
-  SiValue n τ     → AST.sgVal n (typeToStx t2sc τ)
-  SiType _ tc     → AST.sgTyp [tyConToStx tn tc]
-  SiExn n mτ      → AST.sgExn n (typeToStx t2sc <$> mτ)
-  SiModule n sig  → AST.sgMod n (sigToStx (tnEnter tn n) sig)
-  SiModType n sig → AST.sgSig n (sigToStx tn sig)
+  SgVal n τ   → AST.sgVal n (typeToStx t2sc τ)
+  SgTyp _ tc  → AST.sgTyp [tyConToStx tn tc]
+  SgExn n mτ  → AST.sgExn n (typeToStx t2sc <$> mτ)
+  SgMod n sig → AST.sgMod n (sigToStx (tnEnter tn n) sig)
+  SgSig n sig → AST.sgSig n (sigToStx tn sig)
   where
   t2sc = t2sContext0 { t2sTyNames = tn }
 

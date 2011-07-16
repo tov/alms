@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      DeriveDataTypeable,
       UnicodeSyntax
       #-}
 module Rank (
@@ -7,10 +8,12 @@ module Rank (
 
 import Syntax.PprClass as Ppr
 
+import Data.Generics (Typeable, Data)
+
 data Rank
   = Finite !Int
   | Infinity
-  deriving (Eq, Ord)
+  deriving (Eq, Ord, Typeable, Data)
 
 instance Show Rank where
   show (Finite n) = show n

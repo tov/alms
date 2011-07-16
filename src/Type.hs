@@ -4,6 +4,7 @@
       UnicodeSyntax
     #-}
 module Type (
+  module Type.Analyses,
   module Type.ArrowAnnotations,
   module Type.Internal,
   -- instances only: module Type.Ppr,
@@ -14,6 +15,7 @@ module Type (
   module Type.TyVar,
 ) where
 
+import Type.Analyses
 import Type.ArrowAnnotations
 import Type.Internal
 import Type.Ppr ()

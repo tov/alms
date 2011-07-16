@@ -21,7 +21,6 @@ import Util
 import qualified Syntax.Strings as Strings
 import qualified AST.Decl
 import qualified AST.Expr
-import qualified AST.Notable
 import qualified AST.Patt
 import Data.Loc
 

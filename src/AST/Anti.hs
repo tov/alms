@@ -174,6 +174,13 @@ deriveAntibles  = concatMapM each where
 -- Location expanders
 --
 
+-- | Show a name, and strip "Notable." from it if necessary
+showNot :: Show a => a -> String
+showNot a = case show a of
+  'A':'S':'T':'.':rest
+    -> "AST." ++ last (splitBy (== '.') rest)
+  s -> s
+
 class LocAst stx where
   toLocAstQ :: ToSyntax ast => TH.Name -> stx -> TH.Q ast
 
@@ -211,17 +218,17 @@ deriveLocAst build SyntaxClass { scName = name, scCxt = context } = do
         [d| instance LocAst ($(conT name) $(varT i)) where
               toLocAstQ loc stx =
                 do
-                  let _ignore = $(stringE (show name))
+                  let _ignore = $(stringE (showNot name))
                   ast <- $(varE build) stx
                   case ast of
                     VarE _ -> return ast
-                    _      -> varS $(stringE (show 'setLoc))
+                    _      -> varS $(stringE (showNot 'setLoc))
                                    [return ast, varS loc []]
                 `whichS'`
                 do
                   let pat preAstQ =
-                        conS $(stringE (show 'N))
-                            [ conS $(stringE (show dcon))
+                        conS $(stringE (showNot 'N))
+                            [ conS $(stringE (showNot dcon))
                                    $(listE [ if j == ix
                                                then [| varS loc [] |]
                                                else [| wildS |]
@@ -279,7 +286,7 @@ expandAntibleType build maybeWrap _t =
         Just wrap ->
           [| \x -> expandWrappedAntiFun
                      $(varE build)
-                     (mkName $(stringE (show wrap)))
+                     (mkName $(stringE (showNot wrap)))
                      (x:: $_t) |]
    in
   [| (`extQ` $main)

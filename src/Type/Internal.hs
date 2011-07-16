@@ -295,11 +295,11 @@ tyFun qe t1 t2 = TyApp tcFun [t1, qualToType qe, t2]
 
 -- | Constructor for unlimited arrow types
 tyArr ∷ Type tv → Type tv → Type tv
-tyArr = tyFun tyUn
+tyArr = tyFun Qu
 
 -- | Constructor for affine arrow types
 tyLol ∷ Type tv → Type tv → Type tv
-tyLol = tyFun tyAf
+tyLol = tyFun Qa
 
 -- | The pair type
 tyTuple ∷ Type tv → Type tv → Type tv
@@ -359,22 +359,26 @@ class Qualifier q tv | q → tv where
   qualifierEnv   = const qualifier
   qualifier      = qualifierEnv []
 
+instance Qualifier q tv ⇒ Qualifier (Maybe q) tv where
+  qualToType   = maybe tyUn qualToType
+  qualifierEnv = maybe minBound . qualifierEnv
+
 instance Qualifier QLit tv where
   qualToType Qa     = tyAf
   qualToType Qu     = tyUn
   qualifier Qa      = QeA
   qualifier Qu      = QeU S.empty
 
-instance Qualifier (Type tv) tv where
-  qualToType        = id
+instance Ord tv ⇒ Qualifier (Type tv) tv where
+  qualToType        = qualToType . qualifier
   qualifierEnv env0 = foldTypeEnv env0 fquant fbvar ffvar fcon frow frec
     where
     fquant ∷ Quant → [(Name, QLit)] → ([QLit] → (QExpV tv → QExpV tv) → a) → a
     frec   ∷ Name → (QLit → (QExpV tv → QExpV tv) → a) → a
     fquant Forall αs k     = k (Qu <$ αs) bumpQExp
     fquant Exists αs k     = k (snd <$> αs) bumpQExp
-    fbvar _ _    (Just ql) = qlitexp ql
-    fbvar (i,j) n Nothing  = qvarexp (Bound i j n)
+    fbvar _ _    (Just Qu) = qlitexp Qu
+    fbvar (i,j) n _        = qvarexp (Bound i j n)
     ffvar                  = qvarexp . Free
     fcon tc qes            = extractQual (tcQual tc) qes
     frow _ qe1 qe2         = qe1 ⊔ qe2
@@ -458,7 +462,7 @@ foldTypeEnv env0 fquant fbvar ffvar fcon frow frec σ0 =
   loop (TyApp tc ts)            =
     fcon tc <$> sequence
       [ if isQVariance v
-          then loop (qualToType (qualifier t))
+          then loop (qualToType t)
           else loop t
       | t ← ts
       | v ← tcArity tc ]
@@ -731,7 +735,7 @@ closeTy k vs σ0 = case σ0 of
 
 -- | Build a recursive type by closing and binding the given variable
 closeRec ∷ Ord tv ⇒ tv → Type tv → Type tv
-closeRec α σ = TyMu Nope (closeTy 0 [α] σ)
+closeRec α σ = standardizeType (TyMu Nope (closeTy 0 [α] σ))
 
 -- | Add the given quantifier while binding the given list of variables
 closeQuant ∷ Ord tv ⇒ Quant → [(tv, QLit)] → Type tv → Type tv

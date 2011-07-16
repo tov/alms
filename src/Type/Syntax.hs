@@ -65,13 +65,16 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
       return (foldr AST.tyMu σ' αs')
   loop (TyRow lab σ1 σ2) =
     AST.tyRow lab <$> loop σ1 <*> loop σ2
-  loop (TyApp tc [σ1, qe, σ2]) | tc == tcFun =
-    AST.tyFun <$> represent qe
-              <*> local (\cxt → cxt { t2sArrRule = iaeLeft (t2sArrRule cxt) })
-                    (loop σ1)
-              <*> local (\cxt → cxt { t2sArrRule = iaeRight (t2sArrRule cxt)
-                                                         (qualifier qe) σ1 })
-                    (loop σ2)
+  loop (TyApp tc [σ1, qe, σ2]) | tc == tcFun = do
+    cxt ← ask
+    qe' ← represent qe
+    let cxt1 = cxt { t2sArrRule = iaeLeft (t2sArrRule cxt) }
+        cxt2 = cxt { t2sArrRule = iaeRight (t2sArrRule cxt)
+                                           (qualifierCxt cxt qe)
+                                           σ1 }
+    t1' ← local (\_ → cxt1) (loop σ1)
+    t2' ← local (\_ → cxt2) (loop σ2)
+    return (AST.tyFun qe' t1' t2')
   loop (TyApp tc σs) = do
     AST.tyApp <$> bestName t2sTyNames tc <*> sequence
       [ local (\cxt → cxt { t2sArrRule = iaeUnder (t2sArrRule cxt) variance })
@@ -99,8 +102,11 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
   --
   represent qe = do
     cxt ← ask
-    return (iaeRepresent (getTV (t2sTvEnv cxt)) (t2sArrRule cxt)
-                         (qualifierEnv (AST.tvqual <$$> t2sTvEnv cxt) qe))
+    return (iaeRepresent (getTV (t2sTvEnv cxt))
+                         (t2sArrRule cxt)
+                         (qualifierCxt cxt qe))
+  --
+  qualifierCxt cxt = qualifierEnv (AST.tvqual <$$> t2sTvEnv cxt)
 
 -- | Represent a type value as a pre-syntactic type, for printing
 tyPatToStx' ∷ TyPat → (AST.TyPat R, [AST.TyVar R])

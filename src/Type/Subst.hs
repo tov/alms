@@ -32,6 +32,7 @@ module Type.Subst (
   -- * Substitution
   Substitutable(..),
 
+  module Util.Trace,
 ) where
 
 import Util

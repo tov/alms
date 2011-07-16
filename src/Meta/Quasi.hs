@@ -41,7 +41,9 @@ toPatQ True  x = do
 
 moduleQuals :: [(String, String)]
 moduleQuals  = [ ("AST.Type",        "AST"),
-                 ("AST.Kind",        "AST") ]
+                 ("AST.Kind",        "AST"),
+                 ("AST.Patt",        "AST"),
+                 ("AST.Notable",     "AST") ]
 
 antiExp :: Data a => a -> Maybe TH.ExpQ
 antiExp  = antiGen

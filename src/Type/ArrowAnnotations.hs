@@ -14,7 +14,6 @@ module Type.ArrowAnnotations (
 
 import Util
 import Meta.Quasi
-import qualified AST.Notable
 import qualified AST
 import Type.Internal
 
@@ -27,7 +26,7 @@ type R = AST.Renamed
 #ifdef ANNOTATION_RULE
 type CurrentImpArrRule = ANNOTATION_RULE
 #else
-type CurrentImpArrRule = Rule4
+type CurrentImpArrRule = Rule3
 #endif
 
 -- | The rule for printing arrows
@@ -117,24 +116,20 @@ instance ImpArrRule Rule2 where
 newtype Rule3 tv = Rule3 { unRule3 ∷ QExpV tv }
 
 instance ImpArrRule Rule3 where
-  iaeInit      = Rule3 minBound
-  iaeRight iae actual t
-    | unRule3 iae == actual = Rule3 (unRule3 iae ⊔ qualifier t)
-    | otherwise             = Rule3 (actual ⊔ qualifier t)
-  iaeImplied   = unRule3
+  iaeInit             = Rule3 minBound
+  iaeRight _ actual t = Rule3 (actual ⊔ qualifier t)
+  iaeImplied          = unRule3
 
 -- | Like 'Rule3', but we arrow the implicit qualifer into covariant
 --   type constructors.
 newtype Rule4 tv = Rule4 { unRule4 ∷ QExpV tv }
 
 instance ImpArrRule Rule4 where
-  iaeInit      = Rule4 minBound
-  iaeRight iae actual t
-    | unRule4 iae == actual = Rule4 (unRule4 iae ⊔ qualifier t)
-    | otherwise             = Rule4 (actual ⊔ qualifier t)
-  iaeImplied   = unRule4
-  iaeUnder iae Covariant    = iae
-  iaeUnder _   _            = iaeInit
+  iaeInit                = Rule4 minBound
+  iaeRight _ actual t    = Rule4 (actual ⊔ qualifier t)
+  iaeImplied             = unRule4
+  iaeUnder iae Covariant = iae
+  iaeUnder _   _         = iaeInit
 
 -- | Like 'Rule4', but we carry the implicit quantifier into ALL type
 --   constructors and only use it when we arrive at an arrow in a
@@ -147,9 +142,7 @@ data Rule5 tv
 
 instance ImpArrRule Rule5 where
   iaeInit      = Rule5 minBound 1
-  iaeRight iae actual t
-    | unRule5 iae == actual = Rule5 (unRule5 iae ⊔ qualifier t) 1
-    | otherwise             = Rule5 (actual ⊔ qualifier t) 1
+  iaeRight _ actual t = Rule5 (actual ⊔ qualifier t) 1
   iaeImplied iae
     | r4Var iae == 1 = unRule5 iae
     | otherwise      = minBound

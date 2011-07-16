@@ -34,7 +34,7 @@ module Env (
   GenLookup(..),
 
   -- * Aliases (why?)
-  (=:=), (=::=), (=:+=)
+  (=:=), (=:*=), (=::=), (=:+=)
 ) where
 
 import Prelude ()
@@ -47,7 +47,7 @@ import Data.Monoid
 
 infix 6 -:-, -::-, -:+-
 infixl 6 -.-
-infixr 5 -+-
+infixl 5 -+-
 infixl 5 -\-, -\\-, -|-
 
 -- | The basic type, mapping keys @k@ to values @v@
@@ -78,6 +78,10 @@ isEmpty   = M.null . unEnv
 -- | Create a singleton environment
 (-:-)    :: Ord k => k -> v -> Env k v
 k -:- v   = Env (M.singleton k v)
+
+-- | Create an environment from lists
+(-:*-)    :: Ord k => [k] -> [v] -> Env k v
+ks -:*- vs = fromList (zip ks vs)
 
 -- | Monadic bind creates a singleton environment whose value is
 --   monadic, given a pure value
@@ -160,7 +164,7 @@ mapAccumM f z m = do
       helper a' ((k, w) : acc) rest
 
 -- | Get an association list
-toList   :: Ord k => Env k v -> [(k, v)]
+toList   :: Env k v -> [(k, v)]
 toList    = M.toList . unEnv
 
 -- | Make an environment from an association list
@@ -168,32 +172,34 @@ fromList :: Ord k => [(k, v)] -> Env k v
 fromList  = Env . M.fromList
 
 -- | The keys
-domain   :: Ord k => Env k v -> [k]
+domain   :: Env k v -> [k]
 domain    = M.keys . unEnv
 
 -- | The values
-range    :: Ord k => Env k v -> [v]
+range    :: Env k v -> [v]
 range     = M.elems . unEnv
 
 instance Ord k => Monoid (Env k v) where
   mempty      = Env.empty
   mappend m n = Env (M.unionWith (\_ v -> v) (unEnv m) (unEnv n))
 
-instance (Ord k, Show k, Show v) => Show (Env k v) where
+instance (Show k, Show v) => Show (Env k v) where
   showsPrec _ env = foldr (.) id
     [ shows k . (" : "++) . shows v . ('\n':)
     | (k, v) <- M.toList (unEnv env) ]
 
 (=:=)  :: Ord k => k -> v -> Env k v
+(=:*=) :: Ord k => [k] -> [v] -> Env k v
 (=::=) :: (Ord k, Monad m) => k -> v -> Env k (m v)
 (=:+=) :: Ord k => k -> k -> Env k k
 (=:=)   = (-:-)
+(=:*=)  = (-:*-)
 (=::=)  = (-::-)
 (=:+=)  = (-:+-)
 
-infix 6 =:=, =::=, =:+=
+infix 6 =:=, =::=, =:*=, =:+=
 infixl 6 =.=, =..=
-infixr 5 =+=, =++=
+infixl 5 =+=, =++=
 
 instance (k :>: k') => GenExtend (Env k v) (Env k' v)    where (=+=) = (-+-)
 instance (k :>: k') => GenLookup (Env k v) k' v          where (=..=) = (-.-)

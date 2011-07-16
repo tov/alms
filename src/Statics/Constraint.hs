@@ -20,12 +20,12 @@ module Statics.Constraint (
   ConstraintT,
   runConstraintT, mapConstraintT,
   ConstraintState, constraintState0,
+  runConstraintIO,
 ) where
 
 import Util
 import Util.Trace
 import Util.MonadRef
-import AST ( isQVariance )
 import qualified Syntax.Ppr      as Ppr
 import qualified Alt.Graph       as Gr
 import qualified Data.UnionFind  as UF
@@ -37,6 +37,7 @@ import qualified Data.List  as List
 import qualified Data.Set   as S
 import qualified Data.Map   as M
 import qualified Data.Boolean.SatSolver as SAT
+import Data.IORef (IORef)
 
 ---
 --- A CONSTRAINT-SOLVING MONAD
@@ -289,6 +290,13 @@ runConstraintT ecs m = do
                           (runStateT (unConstraintT_ (resetEquivTVs >> m))
                                      (ecsInternal ecs))
   return (result, ExternalConstraintState cs ss)
+
+-- | Run a constraint computation in the IO Monad
+runConstraintIO ∷ ConstraintState (TV IORef) IORef →
+                  ConstraintT (TV IORef) IORef (AlmsErrorT IO) a →
+                  IO (Either [AlmsError]
+                             (a, ConstraintState (TV IORef) IORef))
+runConstraintIO ecs m = runAlmsErrorT (runConstraintT ecs m)
 
 -- | The external representation of the constraint solver's state
 data ConstraintState tv r

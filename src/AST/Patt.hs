@@ -8,7 +8,9 @@
       TypeSynonymInstances,
       UnicodeSyntax #-}
 module AST.Patt (
+  -- * Patterns
   Patt'(..), Patt, PattNote(..), newPatt,
+  -- ** Constructors
   paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn, paBang, paAnti,
 ) where
 

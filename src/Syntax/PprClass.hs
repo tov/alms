@@ -34,6 +34,8 @@ import Alt.PrettyPrint hiding ( Doc(..),
                                 vcat, sep, cat, fsep, fcat )
 import qualified Alt.PrettyPrint as P
 
+import Data.Perhaps
+import Syntax.Prec
 import qualified Syntax.Strings as Strings
 import AST.Ident (QTypId, ModId, Renamed)
 
@@ -232,8 +234,16 @@ fsep = trimCat P.fsep
 fcat = trimCat P.fcat
 
 instance Ppr a => Ppr (Maybe a) where
-  pprPrec _ Nothing  = mempty
-  pprPrec p (Just a) = pprPrec p a
+  ppr Nothing  = mempty
+  ppr (Just a) = ppr a
+
+instance Ppr a => Ppr (Perhaps a) where
+  ppr Nope     = mempty
+  ppr (Here a) = ppr a
+
+instance (Ppr a, Ppr b) => Ppr (Either a b) where
+  ppr (Left a)  = prec precApp (text "Left" <+> ppr a)
+  ppr (Right a) = prec precApp (text "Right" <+> ppr a)
 
 instance Ppr a => Ppr [a] where
   ppr = pprList
