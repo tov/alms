@@ -15,7 +15,6 @@ module AST.TypeAnnotation (
 
 import Util
 import AST
-import AST.Patt
 import Meta.Quasi
 
 import Prelude ()

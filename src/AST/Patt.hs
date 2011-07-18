@@ -2,7 +2,6 @@
       DeriveDataTypeable,
       FlexibleInstances,
       MultiParamTypeClasses,
-      NoMonomorphismRestriction,
       TemplateHaskell,
       TypeFamilies,
       TypeSynonymInstances,
@@ -23,7 +22,6 @@ import AST.Lit
 import AST.Type
 
 import Prelude ()
-import qualified Data.Set as S
 import Data.Generics (Typeable, Data)
 
 type Patt i = N (PattNote i) (Patt' i)
@@ -57,7 +55,7 @@ data PattNote i
       -- | source location
       ploc_  :: !Loc,
       -- | defined variables
-      pdv_   :: S.Set (VarId i)
+      pdv_   :: [VarId i]
     }
   deriving (Typeable, Data)
 
@@ -68,7 +66,7 @@ instance Relocatable (PattNote i) where
   setLoc note loc = note { ploc_ = loc }
 
 instance Notable (PattNote i) where
-  newNote = PattNote bogus S.empty
+  newNote = PattNote bogus mempty
 
 newPatt :: Tag i => Patt' i -> Patt i
 newPatt p0 = flip N p0 $ case p0 of
@@ -78,7 +76,7 @@ newPatt p0 = flip N p0 $ case p0 of
     }
   PaVar x          ->
     newNote {
-      pdv_    = S.singleton x
+      pdv_    = [x]
     }
   PaCon _ mx       ->
     newNote {
@@ -94,7 +92,7 @@ newPatt p0 = flip N p0 $ case p0 of
     }
   PaAs x y         ->
     newNote {
-      pdv_    = S.insert y (dv x)
+      pdv_    = dv x ++ [y]
     }
   PaInj _ my       ->
     newNote {

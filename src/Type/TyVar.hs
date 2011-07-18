@@ -12,6 +12,8 @@ module Type.TyVar (
   -- * Type variable observations
   Tv(..), Kind(..), Flavor(..),
   tvFlavorIs, tvKindIs, uglyTvName,
+  -- * Miscellany
+  varianceToKind,
   -- * Free type variables
   Ftv(..), VarMap,
   FtvTree(..), foldFtvTree,
@@ -43,6 +45,11 @@ instance Ppr Kind where
   ppr KdQual = char 'Q'
 instance Show Kind where showsPrec = showFromPpr
 
+-- | Get the kind associated with type variables that appear at a
+--   particular variance.
+varianceToKind ∷ Variance → Kind
+varianceToKind var = if isQVariance var then KdQual else KdType
+
 -- | Flavors of type variables
 data Flavor
   -- | unification variables
@@ -68,6 +75,8 @@ class (Ftv tv tv, Show tv, Ppr tv) ⇒ Tv tv where
   tvQual        ∷ tv → Maybe QLit
   -- | A description
   tvDescr       ∷ tv → Doc
+  -- | Read the contents of a type variable (not pure)
+  unsafeReadTV  ∷ tv → Maybe (Type tv)
 
 instance Tv Empty where
   tvUniqueID    = elimEmpty
@@ -75,6 +84,7 @@ instance Tv Empty where
   tvFlavor      = elimEmpty
   tvQual        = elimEmpty
   tvDescr       = elimEmpty
+  unsafeReadTV  = elimEmpty
 
 instance Ftv Empty Empty where ftvTree = elimEmpty
 instance Ppr Empty       where ppr = elimEmpty
@@ -85,6 +95,7 @@ instance Tv Int where
   tvFlavor _    = Skolem
   tvQual _      = Nothing
   tvDescr       = ppr
+  unsafeReadTV  = const Nothing
 
 instance Ftv Int Int where ftvTree = FTSingle
 

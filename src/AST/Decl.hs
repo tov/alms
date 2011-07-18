@@ -31,6 +31,7 @@ module AST.Decl (
   prog2decls
 ) where
 
+import Util
 import Meta.DeriveNotable
 import AST.Notable
 import AST.Anti
@@ -40,8 +41,8 @@ import AST.Type
 import AST.Patt
 import AST.Expr
 
+import Prelude ()
 import Data.Generics (Typeable(..), Data(..))
-import qualified Data.Set as S
 import qualified Data.Map as M
 
 type Decl i    = N (DeclNote i) (Decl' i)
@@ -165,7 +166,7 @@ data DeclNote i
       -- | free variables
       dfv_   :: FvMap i,
       -- | defined variables
-      ddv_   :: S.Set (QVarId i)
+      ddv_   :: [QVarId i]
     }
   deriving (Typeable, Data)
 
@@ -176,7 +177,7 @@ instance Relocatable (DeclNote i) where
   setLoc note loc = note { dloc_ = loc }
 
 instance Notable (DeclNote i) where
-  newNote = DeclNote bogus M.empty S.empty
+  newNote = DeclNote bogus M.empty mempty
 
 newDecl :: Tag i => Decl' i -> Decl i
 newDecl d0 = flip N d0 $ case d0 of
@@ -194,13 +195,13 @@ newDecl d0 = flip N d0 $ case d0 of
     newNote {
       dloc_  = getLoc (at1, ds2),
       dfv_   = fv ds2,
-      ddv_   = S.unions (map qdv ds2)
+      ddv_   = concatMap qdv ds2
     }
   DcMod u1 me2 ->
     newNote {
       dloc_  = getLoc me2,
       dfv_   = fv me2,
-      ddv_   = S.mapMonotonic (\(J p n) -> J (u1:p) n) (qdv me2)
+      ddv_   = (u1 <.>) <$> qdv me2
     }
   DcSig _ se2 ->
     newNote {
@@ -238,7 +239,7 @@ newModExp me0 = flip N me0 $ case me0 of
     }
   MeName _ qls ->
     newNote {
-      ddv_  = S.fromList qls
+      ddv_  = qls
     }
   MeAsc me se ->
     newNote {
@@ -257,7 +258,7 @@ newSigItem d0 = flip N d0 $ case d0 of
   SgVal l1 t2 ->
     newNote {
       dloc_  = getLoc t2,
-      ddv_   = S.singleton (J [] l1)
+      ddv_   = [J [] l1]
     }
   SgTyp tds ->
     newNote {
@@ -266,7 +267,7 @@ newSigItem d0 = flip N d0 $ case d0 of
   SgMod u1 se2 ->
     newNote {
       dloc_  = getLoc se2,
-      ddv_   = S.mapMonotonic (\(J p n) -> J (u1:p) n) (qdv se2)
+      ddv_   = (u1 <.>) <$> qdv se2
     }
   SgSig _ se2 ->
     newNote {
@@ -296,7 +297,7 @@ newSigExp se0 = flip N se0 $ case se0 of
     }
   SeName _ qls ->
     newNote {
-      ddv_  = S.fromList qls
+      ddv_  = qls
     }
   SeWith se1 _ _ t3 ->
     newNote {

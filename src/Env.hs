@@ -7,7 +7,8 @@
       OverlappingInstances,
       ScopedTypeVariables,
       TypeOperators,
-      UndecidableInstances #-}
+      UndecidableInstances,
+      UnicodeSyntax #-}
 module Env (
   -- * Basic type and operations
   Env(unEnv),
@@ -17,7 +18,7 @@ module Env (
   Env.empty, (-:-), (-::-),
   (-:+-), (-+-), (-\-), (-\\-), (-|-),
   -- ** Destructors
-  isEmpty, (-.-),
+  isEmpty, numberOfKeys, (-.-),
   -- ** Higher-order constructors
   unionWith, unionSum, unionProduct,
   -- ** Higher-order destructors
@@ -32,6 +33,7 @@ module Env (
   GenEmpty(..),
   GenExtend(..), (=++=),
   GenLookup(..),
+  GenNewEnv(..),
 
   -- * Aliases (why?)
   (=:=), (=:*=), (=::=), (=:+=)
@@ -75,13 +77,13 @@ empty     = Env M.empty
 isEmpty  :: Env k v -> Bool
 isEmpty   = M.null . unEnv
 
+-- | The number of bindings in the environment
+numberOfKeys  :: Env k v -> Int
+numberOfKeys   = M.size . unEnv
+
 -- | Create a singleton environment
 (-:-)    :: Ord k => k -> v -> Env k v
 k -:- v   = Env (M.singleton k v)
-
--- | Create an environment from lists
-(-:*-)    :: Ord k => [k] -> [v] -> Env k v
-ks -:*- vs = fromList (zip ks vs)
 
 -- | Monadic bind creates a singleton environment whose value is
 --   monadic, given a pure value
@@ -131,7 +133,7 @@ unionProduct m n = Env (M.unionWith combine m' n') where
 
 infix 5 `unionSum`, `unionProduct`
 
-instance Ord k => Functor (Env k) where
+instance Functor (Env k) where
   fmap f = Env . M.map f . unEnv
 
 -- | Map over the values of an environment
@@ -189,15 +191,13 @@ instance (Show k, Show v) => Show (Env k v) where
     | (k, v) <- M.toList (unEnv env) ]
 
 (=:=)  :: Ord k => k -> v -> Env k v
-(=:*=) :: Ord k => [k] -> [v] -> Env k v
 (=::=) :: (Ord k, Monad m) => k -> v -> Env k (m v)
 (=:+=) :: Ord k => k -> k -> Env k k
 (=:=)   = (-:-)
-(=:*=)  = (-:*-)
 (=::=)  = (-::-)
 (=:+=)  = (-:+-)
 
-infix 6 =:=, =::=, =:*=, =:+=
+infix 6 =:=, =::=, =:+=
 infixl 6 =.=, =..=
 infixl 5 =+=, =++=
 
@@ -360,3 +360,16 @@ class GenEmpty e where
 instance GenEmpty e => GenEmpty (PEnv p e) where
   genEmpty = PEnv genEmpty genEmpty
 
+-- Make new environments from a variety of things
+class GenNewEnv k' v' k v | k' v' → k v where
+  (-:*-)  ∷ k' → v' → Env k v
+  (-::*-) ∷ Monad m ⇒ k' → v' → Env k (m v)
+  k' -::*- v' = return <$> (k' -:*- v')
+
+instance Ord k ⇒ GenNewEnv [k] [v] k v where
+  ks -:*- vs = fromList (zip ks vs)
+
+(=:*=) :: GenNewEnv k' v' k v ⇒ k' → v' → Env k v
+(=:*=)  = (-:*-)
+
+infix 6 -:*-, -::*-, =:*=

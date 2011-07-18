@@ -28,7 +28,7 @@ type QSigId = AST.SigId R
 data SigItem tv
   = SgVal !VarId !(Type tv)
   | SgTyp !TypId !TyCon
-  | SgExn !ConId !(Maybe (Type tv))
+  | SgExn !ConId !(Maybe (Type Empty))
   | SgMod !ModId !(Signature tv)
   | SgSig !SigId !(Signature tv)
   deriving (Functor, Typeable, Data)

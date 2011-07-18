@@ -6,6 +6,7 @@
       MultiParamTypeClasses,
       GeneralizedNewtypeDeriving,
       ScopedTypeVariables,
+      TypeFamilies,
       TypeSynonymInstances,
       UndecidableInstances,
       UnicodeSyntax
@@ -17,6 +18,9 @@ module Statics.Env (
   Γ(..), Γv, Γc, Γt, Γm, Γs, R,
   -- ** Operations
   bumpΓ, sigToEnv, sigItemToEnv, (!.!),
+  -- * Testing
+  test_g0,
+  -- * Re-exports
   module Statics.Sig,
   module Env,
 ) where
@@ -43,7 +47,7 @@ type Δ tv = Env (AST.TyVar R) tv
 type Γv tv      = Env VarId (Type tv)
 -- | Mapping data constructor names to type constructors or exception
 --   parameter types
-type Γc tv      = Env ConId (Either TyCon (Maybe (Type tv)))
+type Γc tv      = Env ConId (Either TyCon (Maybe (Type Empty)))
 -- | Mapping type names to type constructors
 type Γt tv      = Env TypId TyCon
 -- | Mapping module names to their signatures and reflection as an environment
@@ -97,20 +101,25 @@ instance GenEmpty (Γ tv) where
 
 instance GenExtend (Γ tv) (Γ tv) where
   (=+=) = mappend
-instance GenExtend (Γ tv) (Γv tv) where
+instance (v ~ VarId, tv ~ tv') ⇒
+         GenExtend (Γ tv) (Env v (Type tv')) where       -- Γv
   e =+= ev' = e { varΓ = varΓ e =+= ev' }
-instance GenExtend (Γ tv) (Γc tv) where
+instance (c ~ ConId, tc ~ TyCon, mt ~ Maybe (Type Empty)) ⇒
+         GenExtend (Γ tv) (Env c (Either tc mt)) where  -- Γc
   e =+= ec' = e { conΓ = conΓ e =+= ec' }
-instance GenExtend (Γ tv) (Γt tv) where
+instance t ~ TypId ⇒
+         GenExtend (Γ tv) (Env t TyCon) where           -- Γt
   e =+= et' = e { typΓ = typΓ e =+= et' }
-instance GenExtend (Γ tv) (Γm tv) where
+instance (s ~ Signature tv, g ~ Γ tv) ⇒
+         GenExtend (Γ tv) (Env ModId (s, g)) where      -- Γm
   e =+= em' = e { modΓ = modΓ e =+= em' }
-instance GenExtend (Γ tv) (Γs tv) where
+instance (s ~ Signature tv, g ~ Γ tv) ⇒
+         GenExtend (Γ tv) (Env SigId (s, g)) where      -- Γs
   e =+= es' = e { sigΓ = sigΓ e =+= es' }
 
 instance GenLookup (Γ tv) VarId (Type tv) where
   (=..=) = (=..=) . varΓ
-instance GenLookup (Γ tv) ConId (Either TyCon (Maybe (Type tv))) where
+instance GenLookup (Γ tv) ConId (Either TyCon (Maybe (Type Empty))) where
   (=..=) = (=..=) . conΓ
 instance GenLookup (Γ tv) TypId TyCon where
   (=..=) = (=..=) . typΓ
@@ -146,3 +155,31 @@ instance Tv tv ⇒ Ppr.Ppr (Γ tv) where
     , ("mod",  Ppr.ppr0 $ snd <$> modΓ γ)
     , ("sig",  Ppr.ppr0 $ snd <$> sigΓ γ)
     ])
+
+test_g0 ∷ ∀ tv. Tv tv ⇒ Γ tv
+test_g0 = mempty
+  =+= AST.ident "->"            =:= tcFun
+  =+= AST.ident "unit"          =:= tcUnit
+    =+= AST.ident "()"            =:= Left tcUnit
+  =+= AST.ident "int"           =:= tcInt
+  =+= AST.ident "exn"           =:= tcExn
+    =+= AST.ident "Failure"       =:= Right (Just tyString)
+    =+= AST.ident "Match"         =:= Right Nothing
+  =+= AST.ident "U"             =:= tcUn
+  =+= AST.ident "A"             =:= tcAf
+  =+= AST.ident "\\/"           =:= tcJoin
+  =+= AST.ident "*"             =:= tcTuple
+  =+= AST.ident "end"           =:= tcEnd
+  =+= AST.ident "variant"       =:= tcVariant
+  =+= AST.ident "record"        =:= tcRecord
+  =+= AST.ident "dots"          =:= tcDots
+  =+= AST.ident "option"        =:= tcOption
+    =+= AST.ident "None"          =:= Left tcOption
+    =+= AST.ident "Some"          =:= Left tcOption
+  =+= AST.ident "idfun"         =:= tcIdfun
+    =+= AST.ident "Mono"          =:= Left tcIdfun
+    =+= AST.ident "Poly"          =:= Left tcIdfun
+  =+= AST.ident "x"             =:= tyInt
+  =+= AST.ident "bot"           =:= TyQu Forall [(Nope, Qa)] (bvTy 0 0 Nope)
+  =+= AST.ident "botU"          =:= TyQu Forall [(Nope, Qu)] (bvTy 0 0 Nope)
+

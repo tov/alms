@@ -30,7 +30,7 @@ module AST.Expr (
   exLet', exLetVar', exAbs', exAbsVar',
 
   -- * Expression accessors and updaters
-  syntacticValue, isAnnotated,
+  syntacticValue, isAnnotated, getExprAnnot,
 ) where
 
 import Util
@@ -332,4 +332,10 @@ isAnnotated e = case view e of
   ExEmb _ _      → False
   ExCast _ _ _   → True
   ExAnti a       → antierror "syntacticValue" a
+
+-- | Get the (static) type annotation on an expression
+getExprAnnot ∷ Expr i → Maybe (Type i)
+getExprAnnot e0 = case view e0 of
+  ExCast _ annot False → Just annot
+  _                    → Nothing
 

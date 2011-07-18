@@ -3,7 +3,8 @@
       UnicodeSyntax
     #-}
 module Type.Analyses (
-  inferKinds
+  inferKinds,
+  isMonoType,
 ) where
 
 import Util
@@ -31,6 +32,13 @@ inferKinds = varianceToKind <$$> loop 0 where
       | σ   ← σs ]
   loop k (TyRow _ σ1 σ2)          = zipWith (+) (loop k σ1) (loop k σ2)
   loop k (TyMu _ σ)               = loop (k + 1) σ
-  --
-  varianceToKind var = if isQVariance var then KdQual else KdType
+
+-- | Is the given type monomorphic (quantifer free)?
+isMonoType ∷ Ord tv ⇒ Type tv → Bool
+isMonoType = foldType (\_ ns k → k (() <$ ns) (\_ → False))
+                      (\_ _ _ → False)
+                      (\_ → True)
+                      (\_ → and)
+                      (\_ → (&&))
+                      (\_ k → k () id)
 

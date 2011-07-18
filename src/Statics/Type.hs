@@ -89,14 +89,3 @@ tcQuant AST.Forall        = return Forall
 tcQuant AST.Exists        = return Exists
 tcQuant (AST.QuantAnti a) = $(AST.antifail)
 
-_g0 ∷ ∀ tv. Tv tv ⇒ Γ tv
-_g0 = mempty
-  =+= (AST.ident "int"  :: TypId) =:= tcInt
-  =+= (AST.ident "unit" :: TypId) =:= tcUnit
-  =+= (AST.ident "*"    :: TypId) =:= tcTuple
-  =+= (AST.ident "->"   :: TypId) =:= tcFun
-  =+= (AST.ident "()"   :: ConId) =:= (Left tcUnit
-                                         ∷ Either TyCon
-                                                  (Maybe (Type tv)))
-  =+= (AST.ident "x"    :: VarId) =:= (tyInt ∷ Type tv)
-

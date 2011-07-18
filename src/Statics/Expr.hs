@@ -1,22 +1,20 @@
 {-# LANGUAGE
       FlexibleContexts,
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
       ParallelListComp,
       QuasiQuotes,
-      ScopedTypeVariables,
       TemplateHaskell,
       TupleSections,
-      UndecidableInstances,
       UnicodeSyntax
     #-}
+-- | Type inference for expressions
 module Statics.Expr {-(
   tcExpr
 )-} where
 
 import Util
+import Util.MonadRef
 import qualified AST
+import qualified Data.Loc
 import AST.TypeAnnotation
 import Meta.Quasi
 import qualified Rank
@@ -25,11 +23,13 @@ import qualified Syntax.Ppr as Ppr
 import Statics.Env
 import Statics.Error
 import Statics.Constraint
+import Statics.InstGen
+import Statics.Subsume
 import Statics.Type
+import Statics.Patt
 
 import Prelude ()
 import qualified Data.Map as M
-import qualified Data.Set as S
 
 tcExpr ∷ MonadConstraint tv r m ⇒
          Δ tv → Γ tv → AST.Expr R → m (AST.Expr R, Type tv)
@@ -43,13 +43,248 @@ infer φ0 δ γ e0 mσ0 = do
   traceN 1 (TraceIn ("infer", φ0, γ, e0, mσ0))
   mσ ← mapM subst mσ0
   let φ = maybe id prenexFlavors mσ φ0
-  σ ← case e0 of
-    [ex| λ $vid:x → $e |]               → do
-      [mσ1, _, mσ2]     ← splitCon (<:) mσ tcFun "application expression"
-      undefined -- XXX
-
+  σ ← withLocation e0 $ case e0 of
+    [ex| $qvid:n |]             → do
+      σ' ← maybeInstGen e0 φ γ =<< γ !.! n
+      return ([ex| $qvid:n |], σ')
+    --
+    [ex| $int:_ |]              → return (e0, tyInt)
+    [ex| $char:_ |]             → return (e0, tyChar)
+    [ex| $flo:_ |]              → return (e0, tyFloat)
+    [ex| $str:_ |]              → return (e0, tyString)
+    --
+    [ex| $qcid:c $opt:me |]     → do
+      -- Look up the type constructor and parameter type for the
+      -- given data constructor
+      tcexn ← γ !.! c
+      (tc, mσ1) ← case tcexn of
+        Left tc   → (tc,) <$> tcCons tc !.! jname c
+        Right mσ1 → return (tcExn, mσ1)
+      -- Propagation: If an annotation has been passed downward, split
+      -- it into type parameters for the type constructor.  If splitting
+      -- fails, then instantiate type variables with the right bounds
+      -- and kinds.
+      mσs ← splitCon mσ tc
+      σs  ← sequence
+              [ maybe (newTVTy' (qli, variancei)) return mσi
+              | mσi       ← mσs
+              | qli       ← tcBounds tc
+              | variancei ← tcArity tc ]
+      -- Check whether a parameter is expected. If it isn't, then assert
+      -- that none was given.  If it is, then instantiate it using the
+      -- propagated parameters, and propagate the instantated parameter
+      -- type downward.  Force the result to subsume the expected type.
+      me' ← case mσ1 of
+        Nothing → do
+          tassert (isNothing me)
+            [msg| In expression, nullary data constructor $q:c is
+                  applied to an argument. |]
+          return Nothing
+        Just σ1E → do
+          let σ1 = openTy 0 σs (elimEmptyF σ1E)
+          case me of
+            Just e  → do
+              (e', σ1') ← infer request δ γ e (Just σ1)
+              σ1' ≤ σ1
+              return (Just e')
+            Nothing → do
+              typeError_
+                [msg| In expression, unary data constructor $q:c is used
+                      with no argument. |]
+              return Nothing
+      σ'  ← maybeGen e0 φ γ (TyApp tc σs)
+      return ([ex| $qcid:c $opt:me' |], σ')
+    --
+    [ex| let $π = $e1 in $e2 |] → do
+      mσ1               ← extractPattAnnot δ γ π
+      ((e1', σs), αs)   ← collectTVs $ do
+        (e1', σ1)         ← infer (request Forall Exists) δ γ e1 mσ1
+        (_, σs)           ← tcPatt δ γ π (Just σ1) e2
+        return (e1', σs)
+      γ'                ← γ !+! π -:*- σs
+      (e2', σ')         ← infer (request φ γ αs) δ γ' e2 mσ
+      return ([ex| let $π = $e1' in $e2' |], σ')
+    [ex| match $e1 with $list:cas |] → do
+      ((e1', σ1), αs)   ← collectTVs (infer request δ γ e1 Nothing)
+      (cas', σ')        ← tcMatchCases (request φ γ αs) δ γ σ1 cas mσ
+      return ([ex| match $e1' with $list:cas' |], σ')
+    [ex| let rec $list:bs in $e2 |] → do
+      (bs', γ')         ← tcLetRecBindings δ γ bs
+      (e2', σ')         ← infer φ δ γ' e2 mσ
+      return ([ex| let rec $list:bs' in $e2' |], σ')
+    [ex| let $decl:_ in $_ |]       → do
+      typeBug "tcExpr" "TODO: let decl (e.g. let module) unimplemented" --XXX
+    --
+    [ex| ($e1, $e2) |]          → do
+      [mσ1, mσ2]        ← splitCon mσ tcTuple
+      (e1', σ1)         ← infer request δ γ e1 mσ1
+      (e2', σ2)         ← infer request δ γ e2 mσ2
+      σ'                ← maybeGen e0 φ γ (tyTuple σ1 σ2)
+      return ([ex| ($e1', $e2') |], σ')
+    --
+    [ex| λ $π → $e |]           → do
+      [mσ1, _, mσ2]     ← splitCon mσ tcFun
+      ((σ1, σs), αs)    ← collectTVs (tcPatt δ γ π mσ1 e)
+      αs'               ← filterM (isMonoType <$$> subst . fst)
+                                  ((fvTy &&& tvDescr) <$> αs)
+      γ'                ← γ !+! π -:*- σs
+      (e', σ2)          ← infer (request Exists γ αs) δ γ' e mσ2
+      for_ αs' $ \(α, descr) → do
+        τ ← subst α
+        tassert (isMonoType τ)
+          [msg| Use $descr polymorphically |]
+      let qe            = arrowQualifier γ e0
+      σ'                ← maybeGen e0 φ γ (tyFun qe σ1 σ2)
+      return ([ex| λ $π → $e' |], σ')
+    --
+    [ex| $_ $_ |]               → do
+      let (es, e1)      = AST.unfoldExApp e0
+      ((e0', σ), αs)    ← collectTVs $ do
+        (e1', σ1)         ← infer request δ γ e1 Nothing
+        (es', σ)          ← inferApp δ γ σ1 es
+        return (foldl' AST.exApp e1' es', σ)
+      σ'                ← maybeInstGen e0 (request φ γ αs) γ σ
+      return (e0', σ')
+    --
+    [ex| `$uid:c $opt:me1 |]    → do
+      [mσ0]             ← splitCon mσ tcVariant
+      (mσ1, _)          ← splitRow mσ0 c
+      σ2                ← newTVTy
+      (me1', σ1)        ← case me1 of
+        Nothing → return (Nothing, tyUnit)
+        Just e1 → first Just <$> infer request δ γ e1 mσ1
+      σ'                ← maybeGen e0 φ γ (TyApp tcVariant [TyRow c σ1 σ2])
+      return ([ex| `$uid:c $opt:me1' |], σ')
+    [ex| #$uid:c $e1 |]         → do
+      [mσ0]             ← splitCon mσ tcVariant
+      (_, mσ2)          ← splitRow mσ0 c
+      (e1', σ2)         ← infer request δ γ e1 (tyUnOp tcVariant <$> mσ2)
+      σ1                ← newTVTy
+      σ2'               ← newTVTy
+      tyUnOp tcVariant σ2' =: σ2
+      σ'                ← maybeGen e0 φ γ (tyUnOp tcVariant (TyRow c σ1 σ2'))
+      return ([ex| #$uid:c $e1' |], σ')
+    --
+    [ex| $e : $annot |]         → do
+      σ                 ← tcType δ γ annot
+      (e', αs)          ← collectTVs . withPinnedTVs σ $ do
+        (e', σ')          ← infer request δ γ e (Just σ)
+        σ' ≤ σ
+        return e'
+      σ'                ← maybeGen e0 (request φ γ αs) γ σ
+      return ([ex| $e' : $annot |], σ')
+    [ex| $_ :> $_ |]      → do
+      typeBug "tcExpr" "TODO: cast (:>) unimplemented" --XXX
+    --
+    [ex| $anti:a |]             → $(AST.antifail)
+    [ex| $antiL:a |]            → $(AST.antifail)
+    --
   traceN 1 (TraceOut ("infer", σ))
   return σ
+
+-- | Infer the type of an n-ary application expression
+inferApp ∷ MonadConstraint tv r m ⇒
+           Δ tv → Γ tv → Type tv → [AST.Expr R] →
+           m ([AST.Expr R], Type tv)
+inferApp δ γ ρ e1n = do
+  traceN 2 (TraceIn ("inferApp", γ, ρ, e1n))
+  (σ1m, σ)              ← funmatchN (length e1n) ρ
+  refs                  ← replicateM (length σ1m) (newRef Nothing)
+  withPinnedTVs ρ $
+    subsumeN [ (σi, do
+                      (ei', σi') ← infer (request Exists) δ γ ei (Just σi)
+                      writeRef refi (Just ei')
+                      traceN 2 ("subsumeI", i, ei, σi', σi)
+                      if AST.isAnnotated ei
+                        then σi' <: σi
+                        else σi' ≤  σi)
+             | i    ← [ 0 ∷ Int .. ]
+             | refi ← refs
+             | σi   ← σ1m
+             | ei   ← e1n ]
+  e1m'                  ← for refs $
+    readRef >=> maybe (typeBug "inferApp" "ref contained Nothing") return
+  if length σ1m < length e1n
+    then do
+      ρ' ← instantiate σ
+      first (e1m' ++) <$> inferApp δ γ ρ' (drop (length σ1m) e1n)
+    else do
+      traceN 2 (TraceOut ("inferApp", σ))
+      return (e1m', σ)
+
+-- | Type check a list of pattern match alternatives
+tcMatchCases ∷ MonadConstraint tv r m ⇒
+               Request tv → Δ tv → Γ tv →
+               Type tv → [AST.CaseAlt R] → Maybe (Type tv) →
+               m ([AST.CaseAlt R], Type tv)
+tcMatchCases _ _ _ _ [] _ = ([],) <$> newTVTy
+tcMatchCases φ δ γ σ ([caQ| `$uid:n $opt:mπi → $ei |]:cas) mσ
+  | maybe True (isPattTotal γ) mπi = do
+  traceN 3 ("tcMatchCases", φ, σ, "variant", n, mπi, ei)
+  β                     ← newTVTy
+  σ1                    ← newTVTy
+  σ2                    ← newTVTy
+  σ ≤≥ TyApp tcVariant [TyRow n σ1 σ2]
+  (γ', αs)              ← case mπi of
+    Just πi → do
+      ((_, σs), αs)         ← collectTVs (tcPatt δ γ πi (Just σ1) ei)
+      γ'                    ← γ !+! πi -:*- σs
+      return (γ', αs)
+    Nothing → do
+      σ1 =: tyUnit
+      return (γ, [])
+  (ei', σi)             ← infer (request φ γ αs) δ γ' ei mσ
+  (cas', σk)            ← if null cas
+    then do
+      σ2 ≤≥ tyNulOp tcEnd
+      return ([], β)
+    else tcMatchCases φ δ γ (TyApp tcVariant [σ2]) cas mσ
+  if AST.isAnnotated ei
+    then σi <: β
+    else σi ≤  β
+  σk <: β
+  return ([caQ|+ `$uid:n $opt:mπi → $ei' |]:cas', β)
+tcMatchCases φ δ γ σ ([caQ| $πi → $ei |]:cas) mσ = do
+  traceN 3 ("tcMatchCases", φ, σ, πi, ei)
+  β                     ← newTVTy
+  ((_, σs), αs)         ← collectTVs (tcPatt δ γ πi (Just σ) ei)
+  γ'                    ← γ !+! πi -:*- σs
+  (ei', σi)             ← infer (request φ γ αs) δ γ' ei mσ
+  (cas', σk)            ← tcMatchCases φ δ γ σ cas mσ
+  if AST.isAnnotated ei
+    then σi <: β
+    else σi ≤  β
+  σk <: β
+  return ([caQ|+ $πi → $ei' |]:cas', β)
+tcMatchCases _ _ _ _ ([caQ| $antiC:a |]:_) _ = $(AST.antifail)
+
+tcLetRecBindings ∷ MonadConstraint tv r m ⇒
+                   Δ tv → Γ tv → [AST.Binding R] →
+                   m ([AST.Binding R], Γ tv)
+tcLetRecBindings δ γ bs = do
+  (ns, es)          ← unzip <$> mapM unBinding bs
+  let mannots       = AST.getExprAnnot <$> es
+  σs                ← mapM (maybe newTVTy (tcType δ γ)) mannots
+  γ'                ← γ !+! ns -:*- σs
+  (es', σs')        ← unzip <$> sequence
+    [ do
+        tassert (AST.syntacticValue ei)
+          [msg|
+            In let rec, binding for $q:ni is not a syntactic value.
+          |]
+        σi ⊏: Qu
+        infer request δ γ' ei (σi <$ mannoti)
+    | ni        ← ns
+    | ei        ← es
+    | mannoti   ← mannots
+    | σi        ← σs ]
+  zipWithM (<:) σs' σs
+  σs''              ← generalizeList True (rankΓ γ) σs'
+  γ'                ← γ !+! ns -:*- σs''
+  return (zipWith AST.bnBind ns es', γ')
+  where
+    unBinding [bnQ| $vid:x = $e |] = return (x, e)
+    unBinding [bnQ| $antiB:a |]    = $(AST.antifail)
 
 ---
 --- MISCELLANEOUS HELPERS
@@ -74,62 +309,17 @@ arrowQualifier γ e =
   bigJoin [ qualifier (γ =..= n)
           | n      ← M.keys (AST.fv e) ]
 
--- | Extract and instantiate the annotations in a pattern as an annotation.
-extractPattAnnot ∷ MonadConstraint tv r m ⇒
-                   Δ tv → Γ tv → AST.Patt R → m (Maybe (Type tv))
-extractPattAnnot δ γ = loop where
-  loop [pa| _ |]                = return Nothing
-  loop [pa| $vid:_ |]           = return Nothing
-  loop [pa| $qcid:_ $opt:_ |]   = return Nothing
-  loop [pa| ($π1, $π2) |]       = do
-    mσ1 ← loop π1
-    mσ2 ← loop π2
-    case (mσ1, mσ2) of
-      (Just σ1, Just σ2)   → return (Just (tyTuple σ1 σ2))
-      (Just σ1, Nothing)   → Just . tyTuple σ1 <$> newTVTy
-      (Nothing, Just σ2)   → Just . flip tyTuple σ2 <$> newTVTy
-      (Nothing, Nothing)   → return Nothing
-  loop [pa| $lit:_ |]           = return Nothing
-  loop [pa| $π as $vid:_ |]     = loop π
-  loop [pa| `$uid:_ |]          = return Nothing
-  loop [pa| `$uid:uid $π |]     = do
-    mσ ← loop π
-    case mσ of
-      Just σ  → Just . TyRow uid σ <$> newTVTy
-      Nothing → return Nothing
-  loop [pa| $_ : $annot |]      = Just <$> tcType δ γ annot
-  loop [pa| ! $π |]             = loop π
-  loop [pa| $anti:a |]          = $(AST.antierror)
-
 -- | Extend the environment and update the ranks of the free type
 --   variables of the added types.
 (!+!) ∷ MonadSubst tv r m ⇒ Γ tv → Γv tv → m (Γ tv)
 γ !+! γv = do
-  lowerRank (Rank.inc (rankΓ γ)) (range γv)
+  lowerRank (Rank.inc (rankΓ γ)) =<< subst (range γv)
   return (bumpΓ γ =+= γv)
 infixl 2 !+!
 
 ---
 --- SUBSUMPTION OPERATIONS
 ---
-
--- | Given a list of type/U-action pairs, run all the U actions, but
---   in an order that does all U-actions not assocated with tyvars
---   before those associated with tyvars. Checks dynamically after each
---   action, since an action can turn a tyvar into a non-tyvar.
-subsumeN ∷ MonadConstraint tv r m ⇒
-           [(Type tv, m ())] → m ()
-subsumeN [] = return ()
-subsumeN σs = subsumeOneOf σs >>= subsumeN
-  where
-    subsumeOneOf []             = return []
-    subsumeOneOf [(_, u1)]      = [] <$ u1
-    subsumeOneOf ((σ1, u1):σs)  = do
-      σ ← substHead σ1
-      case σ of
-        TyVar (Free α) | tvFlavorIs Universal α
-          → ((σ, u1):) <$> subsumeOneOf σs
-        _ → σs <$ u1
 
 -- | Given a function arity and a type, extracts a list of argument
 --   types and a result type of at most the given arity.
@@ -160,307 +350,6 @@ funmatchN n0 σ0 = loop n0 =<< subst σ0
       βs ← replicateM n newTVTy
       β2 ← newTVTy
       return (βs, β2)
-
--- | Subsumption
-(≤)   ∷ MonadConstraint tv r m ⇒ Type tv → Type tv → m ()
-σ1 ≤ σ2 = do
-  traceN 2 ("≤", σ1, σ2)
-  subsumeBy (<:) σ1 σ2
-
-subsumeBy ∷ MonadConstraint tv r m ⇒
-            (Type tv → Type tv → m ()) → Type tv → Type tv → m ()
-subsumeBy (<*) σ1 σ2 = do
-  σ1' ← subst σ1
-  σ2' ← subst σ2
-  case (σ1', σ2') of
-    (TyVar (Free α), _) | tvFlavorIs Universal α → do
-      σ1' <* σ2'
-    (_, TyVar (Free α)) | tvFlavorIs Universal α → do
-      σ1' ← instAll True σ1'
-      σ1' <* σ2'
-    _ → do
-      ρ1        ← instantiate σ1'
-      (ρ2, αs2) ← collectTVs (instantiateNeg σ2')
-      ρ1 <* ρ2
-      -- Check for escaping skolems
-      let (us1, _, ss1) = partitionFlavors αs2
-      σ1'' ← subst σ1'
-      σ2'' ← subst σ2'
-      us1' ← mapM subst (fvTy <$> us1)
-      let freeSkolems = S.filter (tvFlavorIs Skolem) (ftvSet (σ1'', σ2'', us1'))
-      when (any (`S.member` freeSkolems) ss1) $ do
-        traceN 3 (αs2, freeSkolems)
-        tErrExp
-          [msg|
-            Cannot subsume types because a type is less
-            polymorphic than expected:
-          |]
-          (pprMsg σ1'')
-          (pprMsg σ2'')
-
--- | Given a list of type variables, partition it into a triple of lists
---   of 'Universal', 'Existential', and 'Skolem' flavored type variables.
-partitionFlavors ∷ Tv tv ⇒
-                   [tv] → ([tv], [tv], [tv])
-partitionFlavors = loop [] [] [] where
-  loop us es ss []     = (us, es, ss)
-  loop us es ss (α:αs) = case tvFlavor α of
-    Universal   → loop (α:us) es     ss     αs
-    Existential → loop us     (α:es) ss     αs
-    Skolem      → loop us     es     (α:ss) αs
-
----
---- INSTANTIATION OPERATIONS
----
-
--- | To instantiate a prenex quantifier with fresh type variables.
-instantiate ∷ MonadConstraint tv r m ⇒ Type tv → m (Type tv)
-instantiate = instAllEx True True
-
--- | To instantiate a prenex quantifier with fresh type variables, in
---   a negative position
-instantiateNeg ∷ MonadConstraint tv r m ⇒ Type tv → m (Type tv)
-instantiateNeg = instAllEx False False
-
--- | Instantiate the outermost universal and existential quantifiers
---   at the given polarities.
-instAllEx ∷ MonadConstraint tv r m ⇒ Bool → Bool → Type tv → m (Type tv)
-instAllEx upos epos = subst >=> instEx epos >=> instAll upos
-
--- | Instantiate an outer universal quantifier.
---   PRECONDITION: σ is fully substituted.
-instAll ∷ MonadConstraint tv r m ⇒ Bool → Type tv → m (Type tv)
-instAll pos (TyQu Forall αqs σ) = do
-  traceN 4 ("instAll/∀", pos, αqs, σ)
-  instGeneric 0 (determineFlavor Forall pos) αqs σ
-instAll pos (TyQu Exists αqs (TyQu Forall βqs σ)) = do
-  traceN 4 ("instAll/∃∀", pos, αqs, βqs, σ)
-  TyQu Exists αqs <$> instGeneric 1 (determineFlavor Forall pos) βqs σ
-instAll _ σ = return σ
-
--- | Instantiate an outer existential quantifier.
---   PRECONDITION: σ is fully substituted.
-instEx ∷ MonadConstraint tv r m ⇒ Bool → Type tv → m (Type tv)
-instEx pos (TyQu Exists αqs σ) = do
-  traceN 4 ("instEx", pos, αqs, σ)
-  instGeneric 0 (determineFlavor Exists pos) αqs σ
-instEx _ σ = return σ
-
--- | Instantiate type variables and use them to open a type, given
---   a flavor and list of qualifier literal bounds.  Along with the
---   instantiated type, returns any new type variables.
---   PRECONDITION: σ is fully substituted.
-instGeneric ∷ MonadConstraint tv r m ⇒
-              Int → Flavor → [(a, QLit)] → Type tv →
-              m (Type tv)
-instGeneric k flav αqs σ = do
-  αs ← zipWithM (newTV' <$$> (,flav,) . snd) αqs (inferKinds σ)
-  return (openTy k (fvTy <$> αs) σ)
-
--- | What kind of type variable to create when instantiating
---   a given quantifier in a given polarity:
-determineFlavor ∷ Quant → Bool → Flavor
-determineFlavor Forall True  = Universal
-determineFlavor Forall False = Skolem
-determineFlavor Exists True  = Existential
-determineFlavor Exists False = Universal
-
----
---- TYPE-MATCHING INSTANTIATION
----
-
--- | Given a type relation, (maybe) a type, and a type constructor,
---   return a list of (maybe) parameter types and returns
---   a list of any new type variables.  The output types are @Nothing@
---   iff the input type is @Nothign@.  If the input type is a type
---   variable, it gets unified with the requested shape over fresh type
---   variables using the given type relation.
---   PRECONDITION: σ is fully substituted.
-{-
-Instantiates both ∀ and ∃ to univars:
-  (λx.x) : A → A          ⇒       (λ(x:A). (x:A)) : A → A
-  (λx.x) : ∀α. α → α      ⇒       (λ(x:β). (x:β)) : ∀α. α → α
-  (λx.x) : ∀α. C α → C α  ⇒       (λ(x:C β). (x:C β)) : ∀α. C α → C α
-  (λx.x) : ∃α. α → α      ⇒       (λ(x:β). (x:β)) : ∃α. α → α
-  (λx.x) : ∃α. C α → C α  ⇒       (λ(x:C β). (x:C β)) : ∃α. C α → C α
--}
-splitCon ∷ MonadConstraint tv r m ⇒
-           -- | Unifier for type variables forced to a shape
-           (Type tv → Type tv → m ()) →
-           -- | Type to split
-           Maybe (Type tv) →
-           -- | Expected type
-           TyCon →
-           -- | Who's asking?
-           String →
-           m ([Maybe (Type tv)])
-splitCon _    Nothing  tc _  = return (Nothing <$ tcArity tc)
-splitCon (<*) (Just σ) tc who = do
-  traceN 4 ("splitCon", who, σ, tc)
-  ρ ← instAllEx True False σ
-  loop ρ
-  where
-  loop ρ = case ρ of
-    TyApp tc' σs     | tc == tc'
-      → return (Just <$> σs)
-                     | Next ρ' ← headReduceType ρ
-      → loop ρ'
-    TyVar (Free α)   | tvFlavorIs Universal α
-      → do
-          αs ← replicateM (length (tcArity tc)) (newTVTy' (tvDescr α))
-          ρ <* TyApp tc αs
-          return (Just <$> αs)
-    _ → tErrExp
-          [msg| Unexpected type in $<who>: |]
-          [msg| $σ |]
-          (pprMsg (TpApp tc (TpVar Nope <$ tcArity tc)))
-
--- | Like 'splitCon', but for rows.
---   PRECONDITION: σ is fully substituted.
-splitRow ∷ MonadConstraint tv r m ⇒
-           -- | Coercion to unify type variable with required shape
-           (Type tv → Type tv → m ()) →
-           -- | The type to split
-           Maybe (Type tv) →
-           -- | The row label that we're expecting
-           RowLabel →
-           -- | Who is asking?
-           String →
-           m (Maybe (Type tv), Maybe (Type tv))
-splitRow _    Nothing  _   _   = return (Nothing, Nothing)
-splitRow (<*) (Just σ) lab who = do
-  traceN 4 ("splitRow", who, σ, lab)
-  ρ ← instAllEx True False σ
-  loop ρ
-  where
-  loop ρ = case ρ of
-    TyRow lab' τ1 τ2 | lab' == lab
-      → return (Just τ1, Just τ2)
-                     | otherwise
-      → do
-        (mτ1, mτ2) ← loop τ2
-        return (mτ1, TyRow lab' τ1 <$> mτ2)
-    TyVar (Free α)   | tvFlavorIs Universal α
-      → do
-          τ1 ← newTVTy
-          τ2 ← newTVTy
-          ρ <* TyRow lab τ1 τ2
-          return (Just τ1, Just τ2)
-    TyApp _ _        | Next ρ' ← headReduceType ρ
-      → loop ρ'
-    _ → tErrExp
-          [msg| Unexpected type in $<who>: |]
-          [msg| $σ |]
-          [msg| a value constructed with `$lab |]
-
----
---- CONDITIONAL GENERALIZATION/INSTANTIATION
----
-
--- A system for specifying requested generalization/instantiation
-
--- | Used by 'infer' and helpers to specify a requested
---   generalization/instantiation state.
-data Request tv
-  = Request {
-      -- | Request the type to have ∀ quantifiers generalized
-      rqAll  ∷ !Bool,
-      -- | Request the type to have ∃ quantifiers generalized
-      rqEx   ∷ !Bool,
-      -- | Require that the existential type variables among these
-      --   be generalizable at the given ranks
-      rqTVs  ∷ [(tv, Rank.Rank)],
-      -- | Rank to which to generalize
-      rqRank ∷ !Rank.Rank
-    }
-
-instance Ppr.Ppr tv ⇒ Ppr.Ppr (Request tv) where
-  ppr φ = (if rqAll φ then Ppr.char '∀' else mempty)
-          Ppr.<>
-          (if rqEx φ then Ppr.char '∃' else mempty)
-          Ppr.<>
-          (if null (rqTVs φ)
-             then mempty
-             else Ppr.ppr (rqTVs φ) Ppr.<>
-                  Ppr.char '/' Ppr.<> Ppr.ppr (rqRank φ))
-
--- | Defines a variadic function for building 'Request' states.  Minimal
---   definition: 'addToRequest'
-class MkRequest r tv | r → tv where
-  -- | Variadic function that constructs a 'Request' state given some
-  --   number of parameters to modify it, as shown by instances below.
-  request      ∷ r
-  request      = addToRequest Request {
-    rqAll   = False,
-    rqEx    = False,
-    rqTVs   = [],
-    rqRank  = Rank.infinity
-  }
-  addToRequest ∷ Request tv → r
-
-instance MkRequest (Request tv) tv where
-  addToRequest = id
-
-instance MkRequest r tv ⇒ MkRequest (Request tv → r) tv where
-  addToRequest _ r' = addToRequest r'
-
-instance (Tv tv, MkRequest r tv) ⇒ MkRequest (Γ tv' → [tv] → r) tv where
-  addToRequest r γ αs = addToRequest r {
-    rqTVs  = [(α, rank) | α ← αs, tvFlavorIs Existential α] ++ rqTVs r,
-    rqRank = rank `min` rqRank r
-  }
-    where rank = rankΓ γ
-
-instance MkRequest r tv ⇒ MkRequest (Rank.Rank → r) tv where
-  addToRequest r rank = addToRequest r {
-    rqRank = rank `min` rqRank r
-  }
-
-instance MkRequest r tv ⇒ MkRequest (Quant → r) tv where
-  addToRequest r Forall = addToRequest r { rqAll = True }
-  addToRequest r Exists = addToRequest r { rqEx = True }
-
--- 'maybeGen', 'maybeInst', and 'maybeInstGen' are the external
--- interface to conditional generalization.
-
--- | Generalize the requested flavors,·
-maybeGen ∷ MonadConstraint tv r m ⇒
-           AST.Expr R → Request tv → Γ tv → Type tv → m (Type tv)
-maybeGen e0 φ γ σ = do
-  let value = AST.syntacticValue e0
-  traceN 4 ("maybeGen", value, φ, γ, σ)
-  checkEscapingEx φ
-  σ ← if rqAll φ
-        then generalize value (Rank.inc (rankΓ γ)) σ
-        else return σ
-  σ ← if rqEx φ
-        then generalizeEx (rankΓ γ `min` rqRank φ) σ
-        else return σ
-  if rqAll φ
-        then generalize value (rankΓ γ) σ
-        else return σ
-
-maybeInstGen ∷ MonadConstraint tv r m ⇒
-               AST.Expr R → Request tv → Γ tv → Type tv → m (Type tv)
-maybeInstGen e φ γ σ = do
-  σ ← case () of
-    _ | AST.isAnnotated e → return σ
-      | rqAll φ           → return σ
-      | rqEx φ            → instAll True =<< subst σ
-      | otherwise         → instantiate σ
-  maybeGen e φ γ σ
-
--- | Check for escaping existential type variables
-checkEscapingEx ∷ MonadConstraint tv r m ⇒ Request tv → m ()
-checkEscapingEx φ = do
-  αrs ← filterM escapes (rqTVs φ)
-  tassert (null αrs) $
-    case αrs of
-      [(α,_)] → [msg| Existential type variable $α escapes its context. |]
-      _       → [msg| Existential type variables escape their context: $ul:1 |]
-                  [ pprMsg α | (α, _) ← αrs ]
-  where
-    escapes (α, rank) = (rank >=) <$> getTVRank α
 
 ---
 --- INSTANTIATING ANNOTATION TYPE VARIABLES
@@ -495,4 +384,12 @@ instance Monoid KindLat where
   mempty = KindLat KdQual
   mappend (KindLat KdQual) (KindLat KdQual) = KindLat KdQual
   mappend _                _                = KindLat KdType
+
+---
+--- Testing
+
+test_tcExpr e =
+  runConstraintIO
+    constraintState0
+    (subst =<< snd <$> tcExpr mempty test_g0 e)
 

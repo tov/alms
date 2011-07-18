@@ -35,7 +35,7 @@ module Type.Internal (
   mkTC,
   -- ** Built-in
   tcUnit, tcInt, tcChar, tcFloat, tcString, tcExn, tcTuple, tcFun,
-  tcUn, tcAf, tcJoin,
+  tcUn, tcAf, tcJoin, tcEnd, tcRecord, tcVariant, tcDots,
   -- ** Convenient constructors
   fvTy, bvTy,
   -- ** Pre-constructed types
@@ -44,7 +44,7 @@ module Type.Internal (
   tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
   (.->.), (.→.), (.-*.), (.*.),
   -- *** For testing
-  tcCycle, tcConst, tcIdent, tcConsTup,
+  tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun,
 
   -- * Standard forms
   standardizeType, standardizeQuals,
@@ -55,7 +55,7 @@ module Type.Internal (
   -- ** Unfolds
   unfoldQu, unfoldRow, unfoldMu,
   -- ** Row operations
-  foldRow, sortRow, extractLabel,
+  foldRow, sortRow,
 
   -- * Locally nameless
   openTy, openTyN, closeTy, lcTy, lcTyK,
@@ -226,9 +226,10 @@ internalTC ∷ ExtTC r ⇒ Int → String → r
 internalTC i s = mkTC i (AST.J [] (AST.identT (AST.Ren_ i) s))
 
 tcUnit, tcInt, tcChar, tcFloat, tcString,
-  tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun ∷ TyCon
+  tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun,
+  tcEnd, tcRecord, tcVariant, tcDots ∷ TyCon
 
-tcFun        = internalTC (-1) "→"      (qvarexp 1)
+tcFun        = internalTC (-1) "->"     (qvarexp 1)
                                         [(Contravariant, Qa, False),
                                          (QCovariant,    Qa, False),
                                          (Covariant,     Qa, False)]
@@ -247,8 +248,15 @@ tcJoin       = internalTC (-10) "\\/"   (qvarexp 0 ⊔ qvarexp 1)
 tcTuple      = internalTC (-11) "*"     (qvarexp 0 ⊔ qvarexp 1)
                                         [(Covariant,     Qa, False),
                                          (Covariant,     Qa, False)]
+tcEnd        = internalTC (-12) "end"
+tcVariant    = internalTC (-13) "variant" (qvarexp 0)
+                                          [(Covariant, Qa, False)]
+tcRecord     = internalTC (-14) "record"  (qvarexp 0)
+                                          [(Covariant, Qa, False)]
+tcDots       = internalTC (-15) "dots"    (qvarexp 0)
+                                          [(Covariant, Qa, False)]
 
-tcCycle, tcConst, tcIdent, tcConsTup ∷ TyCon
+tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun ∷ TyCon
 tcCycle      = internalTC (-51) "cycle" [(Invariant,     Qa, True)]
 tcConst      = internalTC (-52) "const" [(Omnivariant, Qa, False)]
                  [([TpVar Nope], tyUnit)]
@@ -265,6 +273,17 @@ tcConsTup    = internalTC (-54) "cons"  (qvarexp 0 ⊔ qvarexp 1)
                   ([TpVar Nope, TpVar Nope],
                    TyApp tcTuple [TyVar (Bound 0 0 Nope),
                                   TyVar (Bound 0 1 Nope)])]
+tcOption     = internalTC (-55) "option" (qvarexp 0)
+                                         [(Covariant, Qa, False)]
+                 (Env.fromList [(AST.ident "None" ∷ ConId, Nothing),
+                                (AST.ident "Some", Just (bvTy 0 0 Nope))])
+tcIdfun      = internalTC (-55) "idfun" [(Invariant, Qa, False)]
+                 (Env.fromList [(AST.ident "Mono" ∷ ConId,
+                                 Just (bvTy 0 0 Nope .->. bvTy 0 0 Nope)),
+                                (AST.ident "Poly",
+                                 Just (TyQu Forall [(Nope, Qa)]
+                                        (bvTy 0 0 Nope .->. bvTy 0 0 Nope)))])
+
 ---
 --- Convenience constructors
 ---
@@ -368,6 +387,10 @@ instance Qualifier QLit tv where
   qualToType Qu     = tyUn
   qualifier Qa      = QeA
   qualifier Qu      = QeU S.empty
+
+instance Qualifier AST.Occurrence tv where
+  qualToType = qualToType . AST.occToQLit
+  qualifier  = qualifier . AST.occToQLit
 
 instance Ord tv ⇒ Qualifier (Type tv) tv where
   qualToType        = qualToType . qualifier
@@ -569,14 +592,6 @@ foldRow = flip (foldr (uncurry TyRow))
 -- Sort a row by its labels
 sortRow ∷ Type a → Type a
 sortRow = uncurry foldRow . unfoldRow
-
--- Attempt to extract the type associated with the given label,
--- and return that type and the remaning row type.
-extractLabel ∷ RowLabel → Type v → Maybe (Type v, Type v)
-extractLabel n (TyRow n' t1 t2)
-  | n == n'      = Just (t1, t2)
-  | otherwise    = second (TyRow n' t1) <$> extractLabel n t2
-extractLabel _ _ = Nothing
 
 ---
 --- Type standardization

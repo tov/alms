@@ -101,10 +101,10 @@ instance Show Quant where
 tnUnit, tnEnd, tnVariant, tnRecord, tnDots, tnTuple, tnUn, tnAf :: String
 
 tnUnit         = "unit"
-tnEnd          = "INTERNALS.Row.end"
-tnVariant      = "INTERNALS.Row.variant"
-tnRecord       = "INTERNALS.Row.record"
-tnDots         = "INTERNALS.Row.dots"
+tnEnd          = "end"
+tnVariant      = "variant"
+tnRecord       = "record"
+tnDots         = "dots"
 tnTuple        = "*"
 tnUn           = "U"
 tnAf           = "A"

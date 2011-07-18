@@ -97,6 +97,7 @@ instance (NewTV a, NewTV b) ⇒ NewTV (a, b) where
   newTVArg (a, b) = newTVArg a . newTVArg b
 instance NewTV Flavor         where newTVArg = upd1
 instance NewTV Kind           where newTVArg = upd2
+instance NewTV Variance       where newTVArg = upd2 . varianceToKind
 instance NewTV QLit           where newTVArg = upd3
 instance NewTV Doc            where newTVArg = upd4
 instance NewTV String         where newTVArg = upd4 . text
@@ -167,7 +168,8 @@ getTVRank       ∷ MonadSubst tv r m ⇒ tv → m Rank
 getTVRank       = fromMaybe Rank.infinity <$$> getTVRank_
 
 -- | Lower the rank of all the type variables in a given type
-lowerRank ∷ (MonadSubst tv r m, Ftv a tv) ⇒ Rank → a → m ()
+lowerRank ∷ (MonadSubst tv r m, Ftv a tv) ⇒
+            Rank → a → m ()
 lowerRank rank τ = mapM_ (lowerTVRank rank) (ftvList τ)
 
 -- | Collect type variables, discarding the result.
@@ -250,6 +252,9 @@ instance Tv (TV r) where
   tvQual   TV { tvRep = UniFl _ }       = Nothing
   tvQual   TV { tvRep = ExiFl q _ }     = Just q
   tvQual   TV { tvRep = SkoFl q }       = Just q
+  unsafeReadTV TV { tvRep = UniFl r }   =
+    (const Nothing ||| Just) (unsafeReadRef r)
+  unsafeReadTV _                        = Nothing
 
 ---
 --- A MonadSubst IMPLEMENTATION
@@ -453,11 +458,3 @@ instance MonadSubst tv r m ⇒ Substitutable (Type tv) m where
   substHead (TyVar (Free r)) = derefTV r
   substHead σ                = return σ
 
----
---- DEBUGGING
----
-
--- | Sketchy!
-unsafeReadTV ∷ TV s → Maybe (Type (TV s))
-unsafeReadTV TV { tvRep = UniFl r } = (const Nothing ||| Just) (unsafeReadRef r)
-unsafeReadTV _                      = Nothing

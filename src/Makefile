@@ -27,6 +27,7 @@ PARSEC  = -DPARSEC_VERSION=3
 # IMPARR  = -DANNOTATION_PRINTING_RULE=Rule0
 NOWARN  = -fno-warn-unused-do-bind -fno-warn-orphans
 UNICODE = -DUNICODE
+LANGUAGE= `sed 's/^/-X/' extensions.txt`
 
 $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)

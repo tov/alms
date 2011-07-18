@@ -27,7 +27,7 @@ module AST.Ident (
   SigId(..), QSigId,
   TyVar(..), tvUn, tvAf,
   -- ** Low level
-  Path(..),
+  Path(..), (<.>),
   Lid(..), QLid,
   Uid(..), QUid,
   BIdent(..), Ident,
@@ -41,7 +41,7 @@ module AST.Ident (
   (|*|), (|+|), (|-|), (|--|),
 ) where
 
-import Env (Path(..), (:>:)(..))
+import Env (Path(..), (:>:)(..), (<.>))
 import Util
 import AST.Anti
 import AST.Notable
@@ -494,23 +494,23 @@ class Tag i => Fv a i | a -> i where
 
 -- | The defined variables analysis
 class Tag i => Dv a i | a -> i where
-  qdv :: a -> S.Set (QVarId i)
-  dv  :: a -> S.Set (VarId i)
+  qdv :: a -> [QVarId i]
+  dv  :: a -> [VarId i]
 
-  qdv  = S.mapMonotonic (J []) . dv
-  dv a = S.fromDistinctAscList [ v | J [] v <- S.toAscList (qdv a) ]
+  qdv  = J [] <$$> dv
+  dv a = [ v | J [] v <- qdv a ]
 
 instance Fv a i => Fv [a] i where
   fv = foldr (|+|) M.empty . map fv
 
 instance Dv a i => Dv [a] i where
-  dv = S.unions . map dv
+  qdv = concatMap qdv
 
 instance Fv a i => Fv (Maybe a) i where
   fv = maybe mempty fv
 
 instance Dv a i => Dv (Maybe a) i where
-  dv = maybe mempty dv
+  qdv = maybe [] qdv
 
 newtype ADDITIVE a = ADDITIVE [a]
 
@@ -525,6 +525,6 @@ instance Fv a i => Fv (ADDITIVE a) i where
 (|-|) :: Tag i => FvMap i -> QVarId i -> FvMap i
 (|-|)  = flip M.delete
 
-(|--|) :: Tag i => FvMap i -> S.Set (QVarId i) -> FvMap i
-(|--|)  = S.fold M.delete
+(|--|) :: (Foldable f, Tag i) => FvMap i -> f (QVarId i) -> FvMap i
+(|--|)  = foldr' M.delete
 
