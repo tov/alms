@@ -7,19 +7,17 @@
       UnicodeSyntax
     #-}
 -- | Type inference for expressions
-module Statics.Expr {-(
-  tcExpr
-)-} where
+module Statics.Expr (
+  tcExpr, tcExprPatt,
+) where
 
 import Util
 import Util.MonadRef
 import qualified AST
 import qualified Data.Loc
-import AST.TypeAnnotation
 import Meta.Quasi
 import qualified Rank
 import Type
-import qualified Syntax.Ppr as Ppr
 import Statics.Env
 import Statics.Error
 import Statics.Constraint
@@ -27,14 +25,26 @@ import Statics.InstGen
 import Statics.Subsume
 import Statics.Type
 import Statics.Patt
+import {-# SOURCE #-} Statics.Decl
 
 import Prelude ()
 import qualified Data.Map as M
+import Data.IORef (IORef)
 
 tcExpr ∷ MonadConstraint tv r m ⇒
-         Δ tv → Γ tv → AST.Expr R → m (AST.Expr R, Type tv)
-tcExpr δ γ e = withTVsOf δ γ e $ \δ' → do
-  infer (request Forall Exists) δ' γ e Nothing
+         Γ tv → AST.Expr R → m (AST.Expr R, Type tv)
+tcExpr γ e = withTVsOf mempty γ e $ \δ → do
+  infer (request Forall Exists) δ γ e Nothing
+
+tcExprPatt ∷ MonadConstraint tv r m ⇒
+             Γ tv → AST.Expr R → AST.Patt R →
+             m (AST.Expr R, [Type tv])
+tcExprPatt γ e π = withTVsOf mempty γ (e, π) $ \δ → do
+  mσ1               ← extractPattAnnot δ γ π
+  (e', σ1)          ← infer (request Forall Exists) δ γ e mσ1
+  (_, σs)           ← tcPatt δ γ π (Just σ1) [ex|+! () |]
+  mapM (⊏: Qu) σs
+  return (e', σs)
 
 infer  ∷ MonadConstraint tv r m ⇒
          Request tv → Δ tv → Γ tv → AST.Expr R → Maybe (Type tv) →
@@ -112,8 +122,12 @@ infer φ0 δ γ e0 mσ0 = do
       (bs', γ')         ← tcLetRecBindings δ γ bs
       (e2', σ')         ← infer φ δ γ' e2 mσ
       return ([ex| let rec $list:bs' in $e2' |], σ')
-    [ex| let $decl:_ in $_ |]       → do
-      typeBug "tcExpr" "TODO: let decl (e.g. let module) unimplemented" --XXX
+    [ex| let $decl:d in $e1 |]      → do
+      (d', sig)         ← tcDecl [AST.ident "?LetModule"] γ d
+      let γ'            = γ =+= sigToEnv sig
+      (e1', σ1)         ← infer request δ γ' e1 mσ
+      σ'                ← maybeInstGen e0 φ γ σ1
+      return ([ex| let $decl:d' in $e1' |], σ')
     --
     [ex| ($e1, $e2) |]          → do
       [mσ1, mσ2]        ← splitCon mσ tcTuple
@@ -352,44 +366,13 @@ funmatchN n0 σ0 = loop n0 =<< subst σ0
       return (βs, β2)
 
 ---
---- INSTANTIATING ANNOTATION TYPE VARIABLES
----
-
--- | Given the environments, a piece of syntax, and a continuation,
---   call the continuation with the type variable environment extended
---   with fresh type variables for any annotation type variables in the
---   piece of syntax.
-withTVsOf ∷ (MonadConstraint tv r m, HasAnnotations a R) ⇒
-            Δ tv → Γ tv → a → (Δ tv → m b) → m b
-withTVsOf δ γ stx kont = do
-  let (αs, κs) = unzip (tvsWithKinds γ stx)
-  αs' ← mapM newTV' κs
-  kont (δ =+= αs =:*= αs')
-
--- | Given an expression, get its type variables with their kinds
-tvsWithKinds ∷ HasAnnotations a R ⇒
-               Γ tv → a → [(AST.TyVar R, Kind)]
-tvsWithKinds γ = M.toList . (unKindLat <$$> annotFtvMap var con) where
-  var _      = KindLat KdType
-  con n ix = case γ =..= n of
-    Just tc
-      | variance:_ ← drop ix (tcArity tc)
-      , isQVariance variance
-      → \_ → KindLat KdQual
-    _ → id
-
-newtype KindLat = KindLat { unKindLat ∷ Kind }
-
-instance Monoid KindLat where
-  mempty = KindLat KdQual
-  mappend (KindLat KdQual) (KindLat KdQual) = KindLat KdQual
-  mappend _                _                = KindLat KdType
-
----
 --- Testing
 
+test_tcExpr ∷ AST.Expr R →
+              IO (Either [AlmsError]
+                         (Type (TV IORef), ConstraintState (TV IORef) IORef))
 test_tcExpr e =
   runConstraintIO
     constraintState0
-    (subst =<< snd <$> tcExpr mempty test_g0 e)
+    (subst =<< snd <$> tcExpr test_g0 e)
 

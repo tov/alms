@@ -54,7 +54,8 @@ clean:
 	$(RM) $(EXE) $(EXE)-6.*
 
 wc.%:
-	find .. -name \*."$*" | xargs wc -l
+	find .. -name \*."$*" | xargs wc -l | sed 's/$$/ lines/'
+	@find .. -name \*."$*" | wc -l | sed 's/$$/ total .$* files/'
 
 test tests: $(EXE)
 	@$(EXAMPLES)/run-tests.sh ./$(EXE) $(EXAMPLES)

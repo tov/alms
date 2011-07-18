@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      FlexibleContexts,
       FlexibleInstances,
       FunctionalDependencies,
       MultiParamTypeClasses,
@@ -16,16 +17,22 @@ module Statics.InstGen (
   -- * Conditional generalization/instantiation
   Request(..), MkRequest(..),
   maybeGen, maybeInstGen, checkEscapingEx,
+  -- * Instantiating type annotation variables
+  withTVsOf,
 ) where
 
 import Util
 import qualified AST
+import AST.TypeAnnotation
 import qualified Syntax.Ppr as Ppr
 import qualified Rank
 import Type
 import Statics.Env
 import Statics.Error
 import Statics.Constraint
+
+import Prelude ()
+import qualified Data.Map as M
 
 ---
 --- INSTANTIATION OPERATIONS
@@ -249,4 +256,38 @@ checkEscapingEx φ = do
                   [ pprMsg α | (α, _) ← αrs ]
   where
     escapes (α, rank) = (rank >=) <$> getTVRank α
+
+---
+--- INSTANTIATING ANNOTATION TYPE VARIABLES
+---
+
+-- | Given the environments, a piece of syntax, and a continuation,
+--   call the continuation with the type variable environment extended
+--   with fresh type variables for any annotation type variables in the
+--   piece of syntax.
+withTVsOf ∷ (MonadConstraint tv r m, HasAnnotations a R) ⇒
+            Δ tv → Γ tv → a → (Δ tv → m b) → m b
+withTVsOf δ γ stx kont = do
+  let (αs, κs) = unzip (tvsWithKinds γ stx)
+  αs' ← zipWithM (\α κ → newTV' (AST.tvqual α, κ)) αs κs
+  kont (δ =+= αs =:*= αs')
+
+-- | Given an expression, get its type variables with their kinds
+tvsWithKinds ∷ HasAnnotations a R ⇒
+               Γ tv → a → [(AST.TyVar R, Kind)]
+tvsWithKinds γ = M.toList . (unKindLat <$$> annotFtvMap var con) where
+  var _      = KindLat KdType
+  con n ix = case γ =..= n of
+    Just tc
+      | variance:_ ← drop ix (tcArity tc)
+      , isQVariance variance
+      → \_ → KindLat KdQual
+    _ → id
+
+newtype KindLat = KindLat { unKindLat ∷ Kind }
+
+instance Monoid KindLat where
+  mempty = KindLat KdQual
+  mappend (KindLat KdQual) (KindLat KdQual) = KindLat KdQual
+  mappend _                _                = KindLat KdType
 

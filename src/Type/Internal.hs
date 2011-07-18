@@ -32,12 +32,12 @@ module Type.Internal (
   Qualifier(..), qlitexp, qvarexp, extractQual, liftVQExp, mapQExp,
 
   -- * Type constructors
-  mkTC,
+  abstractTyCon, mkTC,
   -- ** Built-in
   tcUnit, tcInt, tcChar, tcFloat, tcString, tcExn, tcTuple, tcFun,
   tcUn, tcAf, tcJoin, tcEnd, tcRecord, tcVariant, tcDots,
-  -- ** Convenient constructors
-  fvTy, bvTy,
+  -- ** Convenient constructors and projections
+  fvTy, bvTy, fromFreeTV,
   -- ** Pre-constructed types
   tyNulOp, tyUnOp, tyBinOp,
   tyFun, tyArr, tyLol, tyTuple, tyQLit,
@@ -68,6 +68,7 @@ import Util
 import Util.MonadRef
 import Data.Empty
 import Data.Lattice
+import Error
 import qualified Env
 import qualified AST
 import AST ( QLit(..), Variance(..), isQVariance )
@@ -176,6 +177,14 @@ instance Eq TyCon where
 
 instance Ord TyCon where
   compare tc tc'  = compare (tcName tc) (tcName tc')
+
+---
+--- Abstracting type constructors
+---
+
+-- | Remove the representation from a type constructor
+abstractTyCon ∷ TyCon → TyCon
+abstractTyCon tc = tc { tcCons = mempty, tcNext = Nothing }
 
 ---
 --- Built-in types
@@ -296,6 +305,12 @@ fvTy = TyVar . Free
 bvTy ∷ Optional f ⇒ Int → Int → f String → Type tv
 bvTy i j n = TyVar (Bound i j (foldOpt Nope Here n))
 
+-- | Project a free type variable from a 'TyVar'
+fromFreeTV ∷ TyVar tv → tv
+fromFreeTV (Free r)     = r
+fromFreeTV _            = throw $
+  almsBug StaticsPhase "fromFreeTV" "Got bound type variable"
+
 -- | Make a type from a nullary type constructor
 tyNulOp ∷ TyCon → Type tv
 tyNulOp tc = TyApp tc []
@@ -381,6 +396,10 @@ class Qualifier q tv | q → tv where
 instance Qualifier q tv ⇒ Qualifier (Maybe q) tv where
   qualToType   = maybe tyUn qualToType
   qualifierEnv = maybe minBound . qualifierEnv
+
+instance (Ord tv, Qualifier q tv) ⇒ Qualifier [q] tv where
+  qualToType   = qualToType . qualifier
+  qualifierEnv = bigJoin <$$> map . qualifierEnv
 
 instance Qualifier QLit tv where
   qualToType Qa     = tyAf

@@ -1,4 +1,5 @@
 {-# LANGUAGE
+      FlexibleContexts,
       FlexibleInstances,
       MultiParamTypeClasses,
       QuasiQuotes,
@@ -30,7 +31,7 @@ import Prelude ()
 import qualified Data.Map as M
 
 -- | Type check a pattern.
-tcPatt ∷ MonadConstraint tv r m ⇒
+tcPatt ∷ (MonadConstraint tv r m, AST.Fv stx R) ⇒
          -- | type variable environment
          Δ tv →
          -- | environment
@@ -41,7 +42,7 @@ tcPatt ∷ MonadConstraint tv r m ⇒
          Maybe (Type tv) →
          -- | expression in scope of pattern (used to check variable
          --   occurrences)
-         AST.Expr R →
+         stx →
          m (Type tv, [Type tv])
 tcPatt δ γ π0 mσ0 e0 = do
   traceN 1 (TraceIn ("inferPatt", δ, π0, mσ0))

@@ -38,8 +38,8 @@ type CurrentImpArrPrintingRule = CurrentImpArrRule
 
 -- | Interpret an explicit external qualifier as an internal one
 qInterpret ∷ (Ord tv, Monad m) ⇒
-             (AST.TyVar R → m (TyVar tv)) →
-             AST.QExp R → m (QExpV tv)
+             (AST.TyVar R → m tv) →
+             AST.QExp R → m (QExp tv)
 qInterpret resolve = loop where
   loop [qeQ| $qlit:ql |]    = return (qlitexp ql)
   loop [qeQ| `$tv |]        = qvarexp `liftM` resolve tv

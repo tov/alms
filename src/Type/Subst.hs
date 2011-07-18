@@ -42,6 +42,7 @@ import Error
 import Syntax.PprClass as Ppr
 import Syntax.Prec (precEq)
 import Rank (Rank)
+import qualified AST
 import qualified Rank
 import Type.Internal
 import Type.TyVar
@@ -95,6 +96,8 @@ instance (NewTV a, NewTV b, NewTV c) ⇒ NewTV (a, b, c) where
   newTVArg (a, b, c) = newTVArg a . newTVArg b . newTVArg c
 instance (NewTV a, NewTV b) ⇒ NewTV (a, b) where
   newTVArg (a, b) = newTVArg a . newTVArg b
+instance AST.Tag i ⇒ NewTV (AST.TyVar i)  where
+  newTVArg tv = newTVArg (AST.tvqual tv, ppr (AST.tvqual tv))
 instance NewTV Flavor         where newTVArg = upd1
 instance NewTV Kind           where newTVArg = upd2
 instance NewTV Variance       where newTVArg = upd2 . varianceToKind

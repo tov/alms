@@ -51,7 +51,7 @@ tcType δ0 γ = loop δ0 (iaeInit :: CurrentImpArrRule tv)
         let (αs, t) = AST.unfoldTyQu qu t0
             qls     = AST.tvqual <$> αs
         qu' ← tcQuant qu
-        αs' ← mapM (\ql → newTV' ql) qls
+        αs' ← mapM newTV' qls
         τ'  ← loop (δ =+= αs =:*= αs') iae t
         return (closeQuant qu' (zip αs' qls) τ')
       --

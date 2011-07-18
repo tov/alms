@@ -6,6 +6,7 @@
 module Statics.Sig (
   Signature, SigItem (..),
   sigToStx, sigToStx', sigItemToStx, sigItemToStx',
+  abstractSig, abstractSigItem,
   VarId, ModId, SigId, QVarId, QModId, QSigId,
 ) where
 
@@ -59,6 +60,21 @@ sigItemToStx tn si0 = case si0 of
   SgSig n sig → AST.sgSig n (sigToStx tn sig)
   where
   t2sc = t2sContext0 { t2sTyNames = tn }
+
+-- | Abstract a signature by removing the representation information
+--   of all type constructors
+abstractSig ∷ Signature tv → Signature tv
+abstractSig = map abstractSigItem
+
+-- | Abstract a signature item by removing the representation information
+--   of all type constructors
+abstractSigItem ∷ SigItem tv → SigItem tv
+abstractSigItem sg = case sg of
+  SgVal n σ     → SgVal n σ
+  SgTyp n tc    → SgTyp n (abstractTyCon tc)
+  SgExn n mσ    → SgExn n mσ
+  SgMod n sig   → SgMod n (abstractSig sig)
+  SgSig n sig   → SgSig n (abstractSig sig)
 
 instance Tv tv ⇒ Ppr.Ppr (SigItem tv) where
   ppr item = Ppr.askTyNames $ \tn → Ppr.ppr (sigItemToStx tn item)
