@@ -6,7 +6,7 @@
       UnicodeSyntax
     #-}
 module Type.Reduce (
-  matchTyCons,
+  matchReduce,
   headNormalizeTypeK, headNormalizeType,
   headReduceType, ReductionState(..),
   majorReductionSequence, reductionSequence, reductionSequence'
@@ -48,14 +48,14 @@ headNormalizeTypeK k0 σ0 = loop k0 (reductionSequence σ0) where
 
 -- | Given two types, try to reduce them to a pair with a common
 --   head constructor.
-matchTyCons ∷ Type tv → Type tv → Maybe (Type tv, Type tv)
-matchTyCons σ1 σ2 =
-  List.find sameTyCon
+matchReduce ∷ Type tv → Type tv → Maybe (Type tv, Type tv)
+matchReduce σ1 σ2 =
+  List.find isCandidate
             (allPairsBFS (majorReductionSequence σ1)
                          (majorReductionSequence σ2))
   where
-    sameTyCon (TyApp tc _, TyApp tc' _) = tc == tc'
-    sameTyCon _                         = False
+    isCandidate (TyApp tc _, TyApp tc' _) = tc == tc'
+    isCandidate _                         = True
 
 -- | Returns all pairs of a pair of lists, breadth first
 allPairsBFS ∷ [a] → [b] → [(a, b)]

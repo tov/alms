@@ -179,6 +179,9 @@ test_g0 = mempty
   =+= AST.ident "idfun"         =:= tcIdfun
     =+= AST.ident "Mono"          =:= Left tcIdfun
     =+= AST.ident "Poly"          =:= Left tcIdfun
+  =+= AST.ident "ident"         =:= tcIdent
+  =+= AST.ident "const"         =:= tcConst
+  =+= AST.ident "cons"          =:= tcConsTup
   =+= AST.ident "x"             =:= tyInt
   =+= AST.ident "bot"           =:= TyQu Forall [(Nope, Qa)] (bvTy 0 0 Nope)
   =+= AST.ident "botU"          =:= TyQu Forall [(Nope, Qu)] (bvTy 0 0 Nope)

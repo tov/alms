@@ -33,7 +33,7 @@ import Data.IORef (IORef)
 
 tcExpr ∷ MonadConstraint tv r m ⇒
          Γ tv → AST.Expr R → m (AST.Expr R, Type tv)
-tcExpr γ e = withTVsOf mempty γ e $ \δ → do
+tcExpr γ e = withTVsOf mempty γ e $ \δ →
   infer (request Forall Exists) δ γ e Nothing
 
 tcExprPatt ∷ MonadConstraint tv r m ⇒
@@ -148,7 +148,7 @@ infer φ0 δ γ e0 mσ0 = do
         tassert (isMonoType τ)
           [msg| Use $descr polymorphically |]
       let qe            = arrowQualifier γ e0
-      σ'                ← maybeGen e0 φ γ (tyFun qe σ1 σ2)
+      σ'                ← maybeGen e0 φ γ (tyFun σ1 qe σ2)
       return ([ex| λ $π → $e' |], σ')
     --
     [ex| $_ $_ |]               → do
@@ -352,7 +352,7 @@ funmatchN n0 σ0 = loop n0 =<< subst σ0
       β1 ← newTVTy
       qe ← qvarexp . Free <$> newTV' KdQual
       β2 ← newTVTy
-      σ =: tyFun qe β1 β2
+      σ =: tyFun β1 qe β2
       return ([β1], β2)
     TyMu _ σ1
       → loop n (openTy 0 [σ] σ1)

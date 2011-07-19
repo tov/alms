@@ -42,7 +42,7 @@ module Type.Internal (
   tyNulOp, tyUnOp, tyBinOp,
   tyFun, tyArr, tyLol, tyTuple, tyQLit,
   tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
-  (.->.), (.→.), (.-*.), (.*.),
+  (.->.), (.-*.), (.*.),
   -- *** For testing
   tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun,
 
@@ -324,16 +324,16 @@ tyBinOp ∷ TyCon → Type tv → Type tv → Type tv
 tyBinOp tc t1 t2 = TyApp tc [t1, t2]
 
 -- | A function type
-tyFun ∷ Qualifier qe tv ⇒ qe → Type tv → Type tv → Type tv
-tyFun qe t1 t2 = TyApp tcFun [t1, qualToType qe, t2]
+tyFun ∷ Qualifier qe tv ⇒ Type tv → qe → Type tv → Type tv
+tyFun t1 qe t2 = TyApp tcFun [t1, qualToType qe, t2]
 
 -- | Constructor for unlimited arrow types
 tyArr ∷ Type tv → Type tv → Type tv
-tyArr = tyFun Qu
+tyArr = tyFun <-> Qu
 
 -- | Constructor for affine arrow types
 tyLol ∷ Type tv → Type tv → Type tv
-tyLol = tyFun Qa
+tyLol = tyFun <-> Qa
 
 -- | The pair type
 tyTuple ∷ Type tv → Type tv → Type tv
@@ -356,13 +356,12 @@ tyString = tyNulOp tcString
 tyExn    = tyNulOp tcExn
 tyTuple  = tyBinOp tcTuple
 
-(.*.), (.->.), (.→.),  (.-*.) ∷ Type tv → Type tv → Type tv
+(.*.), (.->.), (.-*.) ∷ Type tv → Type tv → Type tv
 (.*.)    = tyTuple
 (.->.)   = tyArr
-(.→.)    = tyArr
 (.-*.)   = tyLol
 
-infixr 6 .→., .->., .-*., `tyArr`, `tyLol`
+infixr 6 .->., .-*., `tyArr`, `tyLol`
 infixl 7 .*., `tyTuple`
 
 ---

@@ -442,7 +442,7 @@ typepP p = "type" @@ case () of
                (choice
                 [ tyArr <$ arrow,
                   tyLol <$ lolli,
-                  funbraces (tyFun <$> (antiblep <|> Just <$> qExpp)),
+                  funbraces (flip tyFun <$> (antiblep <|> Just <$> qExpp)),
                   tybinopp (Right precArr) ])
                (typepP precStart)
     | p == precTySemi
@@ -1228,7 +1228,7 @@ pme :: String -> ModExp Renamed
 pme  = makeQaD parseModExp
 
 -- | Parse a type declaration
-ptd :: String -> TyDec Raw
+ptd :: String -> TyDec Renamed
 ptd  = makeQaD parseTyDec
 
 -- | Parse a type

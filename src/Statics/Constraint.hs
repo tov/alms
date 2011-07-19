@@ -489,7 +489,7 @@ subtypeTypes unify = check where
         | var ← tcArity tc1
         | τ1' ← τs1
         | τ2' ← τs2 ]
-      | Just (τ1', τ2') ← matchTyCons τ1 τ2 →
+      | Just (τ1', τ2') ← matchReduce τ1 τ2 →
       check τ1' τ2'
     (TyRow n1 τ11 τ12, TyRow n2 τ21 τ22)
       | n1 == n2 → do
@@ -1174,9 +1174,9 @@ solveQualifiers value αs qc τ = do
             _           → False)
           (sq_vmap state)
   --
-  -- Replace Q- or 0 variables by a single upper bound, if they have only
-  -- one (SUBST-NEG), or by A if they have none (SUBST-NEG-TOP).  If
-  -- 'doLossy', then we include SUBST-NEG-LOSSY as well, which uses
+  -- Replace Q- and 0-variant variables by a single upper bound, if they
+  -- have only one (SUBST-NEG), or by A if they have none (SUBST-NEG-TOP).
+  -- If 'doLossy', then we include SUBST-NEG-LOSSY as well, which uses
   -- approximate lower bounds for combining multiple upper bounds.
   substNeg doLossy state =
     substs who state $ M.fromDistinctAscList $ do

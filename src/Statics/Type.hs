@@ -6,7 +6,7 @@
       UnicodeSyntax
     #-}
 module Statics.Type (
-  tcType
+  tcType, tcTyPat,
 ) where
 
 import Util
@@ -32,7 +32,7 @@ tcType δ0 γ = loop δ0 (iaeInit :: CurrentImpArrRule tv)
         qe  ← iaeInterpret (Free <$$> (δ !.!)) iae mqe
         τ1  ← loop δ (iaeLeft iae) t1
         τ2  ← loop δ (iaeRight iae qe τ1) t2
-        return (tyFun qe τ1 τ2)
+        return (tyFun τ1 qe τ2)
       --
       [ty| ($list:ts) $qtid:n |] → do
         tc  ← γ !.! n
@@ -88,4 +88,30 @@ tcQuant ∷ MonadAlmsError m ⇒ AST.Quant → m Quant
 tcQuant AST.Forall        = return Forall
 tcQuant AST.Exists        = return Exists
 tcQuant (AST.QuantAnti a) = $(AST.antifail)
+
+-- | Type check a type pattern
+tcTyPat ∷ MonadConstraint tv r m ⇒
+          Γ tv → AST.TyPat R → m (TyPat, [AST.TyVar R])
+tcTyPat γ = runWriterT . loop where
+  loop tp0 = withLocation tp0 $ case tp0 of
+    AST.N _ (AST.TpVar tv _)                  → do
+      tell [tv]
+      return (TpVar (Here (AST.idName tv)))
+    AST.N _ (AST.TpRow tv _)                  → do
+      tell [tv]
+      return (TpRow (Here (AST.idName tv)))
+    [tpQ| ($list:tps) $qtid:n |]              → do
+      tc ← γ !.! n
+      tassert (isNothing (tcNext tc)) $
+        [msg| In type operator pattern, the type constructor to
+              be matched is also a type operator:
+              <dl>
+                <dt>In pattern:       <dd> $tp0
+                <dt>Type constructor: <dd> $1
+              </dl>
+              Type constructors in type patterns must be abstract types
+              or concrete data types, not type synonyms or operators.
+        |] (tcName tc)
+      TpApp tc <$> mapM loop tps
+    [tpQ| $antiP:a |]                     → $(AST.antifail)
 

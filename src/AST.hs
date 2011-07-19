@@ -139,7 +139,7 @@ unfoldExApp  = unscanl each where
 -- | Get the list of argument types and result type of a function type
 unfoldTyFun :: Type i -> ([Type i], Type i)
 unfoldTyFun  = unscanr each where
-  each (N _ (TyFun _ ta tr)) = Just (ta, tr)
+  each (N _ (TyFun ta _ tr)) = Just (ta, tr)
   each _                     = Nothing
 
 -- | Get the elements of a tuple as a list

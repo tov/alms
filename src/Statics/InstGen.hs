@@ -275,19 +275,13 @@ withTVsOf δ γ stx kont = do
 -- | Given an expression, get its type variables with their kinds
 tvsWithKinds ∷ HasAnnotations a R ⇒
                Γ tv → a → [(AST.TyVar R, Kind)]
-tvsWithKinds γ = M.toList . (unKindLat <$$> annotFtvMap var con) where
-  var _      = KindLat KdType
+tvsWithKinds γ = M.toList . annotFtvMap var con join where
+  var _      = KdType
   con n ix = case γ =..= n of
     Just tc
       | variance:_ ← drop ix (tcArity tc)
       , isQVariance variance
-      → \_ → KindLat KdQual
+      → \_ → KdQual
     _ → id
-
-newtype KindLat = KindLat { unKindLat ∷ Kind }
-
-instance Monoid KindLat where
-  mempty = KindLat KdQual
-  mappend (KindLat KdQual) (KindLat KdQual) = KindLat KdQual
-  mappend _                _                = KindLat KdType
-
+  join KdQual KdQual = KdQual
+  join _      _      = KdType

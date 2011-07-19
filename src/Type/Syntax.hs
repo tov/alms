@@ -17,7 +17,6 @@ module Type.Syntax (
 
 import Util
 import Util.Trace
-import Error
 import qualified Env
 import Type.Internal
 import Type.ArrowAnnotations
@@ -55,17 +54,18 @@ typeToStx' = typeToStx t2sContext0
 typeToStx ∷ (Tv tv, ImpArrRule rule) ⇒
             T2SContext rule tv → Type tv → AST.Type R
 typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
-  loop (TyVar (Free r)) | Just σ ← unsafeReadTV r =
-    if debug
-      then do
+  loop (TyVar (Free r)) | debug, Just σ ← unsafeReadTV r =
+      do
         δ  ← asks t2sTvEnv
         t  ← loop σ
         return (AST.tyApp (AST.qident "@=")
                           [AST.tyVar (getTV δ (Free r)), t])
+      {-
       else throw $
         almsBug (OtherError "unknown")
                 "typeToStx"
                 ("Saw unsubstituted type variable: " ++ show r)
+                -}
   loop (TyVar tv0)           = do
     δ  ← asks t2sTvEnv
     return (AST.tyVar (getTV δ tv0))
@@ -88,7 +88,7 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
                                            σ1 }
     t1' ← local (\_ → cxt1) (loop σ1)
     t2' ← local (\_ → cxt2) (loop σ2)
-    return (AST.tyFun qe' t1' t2')
+    return (AST.tyFun t1' qe' t2')
   loop (TyApp tc σs) = do
     AST.tyApp <$> bestName t2sTyNames tc <*> sequence
       [ local (\cxt → cxt { t2sArrRule = iaeUnder (t2sArrRule cxt) variance })
