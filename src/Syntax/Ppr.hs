@@ -442,6 +442,12 @@ instance Ppr (CaseAlt i) where
     hang (char '|' <+> ppr xi <+> text Strings.arrow)
          4
          (ppr ei)
+  ppr [caQ| #$uid:lab $opt:mxi -> $ei |] =
+    hang (text "| #" <> ppr lab
+          <+> maybe mempty (pprPrec (precApp + 1)) mxi
+          <+> text Strings.arrow)
+         4
+         (ppr ei)
   ppr [caQ| $antiC:a |]   = char '|' <+> ppr a
 
 -- | Print a let expression, indenting the body only if the body is

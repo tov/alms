@@ -20,7 +20,7 @@ module AST.Expr (
   exVar, exLit, exCon, exLet, exCase, exLetRec, exLetDecl,
   exPair, exAbs, exApp, exInj, exEmb, exCast, exAnti,
 
-  caClause, caAnti,
+  caClause, caPrj, caAnti,
   bnBind, bnAnti,
   -- ** Synthetic expression constructors
   exBVar, exBCon,
@@ -30,7 +30,7 @@ module AST.Expr (
   exLet', exLetVar', exAbs', exAbsVar',
 
   -- * Expression accessors and updaters
-  syntacticValue, isAnnotated, getExprAnnot,
+  syntacticValue, isAnnotated, getExprAnnot, cafakepatt,
 ) where
 
 import Util
@@ -95,10 +95,18 @@ data Binding' i
   deriving (Typeable, Data)
 
 data CaseAlt' i
+  -- | Normal match clauses
   = CaClause {
       capatt :: Patt i,
       caexpr :: Expr i
     }
+  -- | Open variant elimination
+  | CaPrj {
+      calab   :: Uid i,
+      campatt :: Maybe (Patt i),
+      caexpr  :: Expr i
+    }
+  -- | Antiquote
   | CaAnti Anti
   deriving (Typeable, Data)
 
@@ -215,6 +223,11 @@ newCaseAlt ca0 = flip N ca0 $ case ca0 of
       efv_  = fv e |--| qdv x,
       eloc_ = getLoc (x, e)
     }
+  CaPrj _ mx e ->
+    newNote {
+      efv_  = fv e |--| qdv mx,
+      eloc_ = getLoc (mx, e)
+    }
   CaAnti a ->
     newNote {
       efv_  = antierror "fv" a
@@ -322,6 +335,7 @@ isAnnotated e = case view e of
   ExCase _ cs    → all eachClause cs where
     eachClause c = case view c of
       CaClause { caexpr = e' } → isAnnotated e'
+      CaPrj    { caexpr = e' } → isAnnotated e'
       CaAnti a                 → antierror "isAnnotated" a
   ExLetRec _ e2  → isAnnotated e2
   ExLetDecl _ e2 → isAnnotated e2
@@ -338,4 +352,13 @@ getExprAnnot ∷ Expr i → Maybe (Type i)
 getExprAnnot e0 = case view e0 of
   ExCast _ annot False → Just annot
   _                    → Nothing
+
+-- | Given a case alternative, produce a (potentially fake)
+--   representation of its pattern, suitable for printing.
+cafakepatt ∷ Tag i ⇒ CaseAlt i → Patt i
+cafakepatt ca0 = case view ca0 of
+  CaClause x _ → x
+  CaPrj u mx _ → paCon (qident ('#':idName u)) mx
+  CaAnti a     → $antierror
+
 

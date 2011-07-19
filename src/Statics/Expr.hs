@@ -232,8 +232,7 @@ tcMatchCases ∷ MonadConstraint tv r m ⇒
                Type tv → [AST.CaseAlt R] → Maybe (Type tv) →
                m ([AST.CaseAlt R], Type tv)
 tcMatchCases _ _ _ _ [] _ = ([],) <$> newTVTy
-tcMatchCases φ δ γ σ ([caQ| `$uid:n $opt:mπi → $ei |]:cas) mσ
-  | maybe True (isPattTotal γ) mπi = do
+tcMatchCases φ δ γ σ ([caQ| #$uid:n $opt:mπi → $ei |]:cas) mσ = do
   traceN 3 ("tcMatchCases", φ, σ, "variant", n, mπi, ei)
   β                     ← newTVTy
   σ1                    ← newTVTy
@@ -258,6 +257,12 @@ tcMatchCases φ δ γ σ ([caQ| `$uid:n $opt:mπi → $ei |]:cas) mσ
     else σi ≤  β
   σk <: β
   return ([caQ|+ `$uid:n $opt:mπi → $ei' |]:cas', β)
+-- Should we do this case automatically like this?:
+{-
+tcMatchCases φ δ γ σ ([caQ| `$uid:n $opt:mπi → $ei |]:cas) mσ
+  | maybe True (isPattTotal γ) mπi = do
+  tcMatchCases φ δ γ σ ([caQ| #$uid:n $opt:mπi → $ei |]:cas) mσ
+  -}
 tcMatchCases φ δ γ σ ([caQ| $πi → $ei |]:cas) mσ = do
   traceN 3 ("tcMatchCases", φ, σ, πi, ei)
   β                     ← newTVTy

@@ -1072,7 +1072,8 @@ exprpP p = mark $ case () of
 -- Parse a match clause
 casealtp :: Tag i => P (CaseAlt i)
 casealtp  = "match clause" @@ antiblep <|>
-  caClause <$> pattp <* arrow <*> exprp
+     caClause <$> pattp <* arrow <*> exprp
+ <|> caPrj <$> varembp <*> antioptp pattp <* arrow <*> exprp
 
 -- Parse a single let rec binding
 bindingp :: Tag i => P (Binding i)

@@ -156,14 +156,25 @@ valOf e env = case e of
       VaLab n lab' v1' | lab == lab' -> return (VaLab (n + 1) lab v1')
       _                              -> return v1
   [ex| match $e1 with $list:clauses |] -> do
-    v1 <- valOf e1 env
-    let loop (N _ (CaClause xi ei):rest) = case bindPatt xi v1 env of
-          Just env' -> valOf ei env'
-          Nothing   -> loop rest
-        loop [] = throwPatternMatch v1
-                    (map (show . capatt . dataOf) clauses) env
-        loop (N _ (CaAnti a):_) = $antifail
-    loop clauses
+    let loop ([caQ| $xi → $ei |]:rest)                  v1 =
+          case bindPatt xi v1 env of
+            Just env' -> valOf ei env'
+            Nothing   -> loop rest v1
+        loop ([caQ| #$uid:lab $opt:mxi → $ei |]:rest)   v1 =
+          case v1 of
+            VaLab 0 lab' v1'
+              | lab == lab'  -> case mxi of
+                Nothing         -> valOf ei env
+                Just xi         -> case bindPatt xi v1' env of
+                  Just env'       -> valOf ei env'
+                  Nothing         -> loop [] v1
+            VaLab n lab' v1'
+              | lab == lab'  -> loop rest (VaLab (n - 1) lab' v1')
+            _                -> loop rest v1
+        loop []                                         v1 =
+          throwPatternMatch v1 (map (show . cafakepatt) clauses) env
+        loop ([caQ| $antiC:a |]:_)                      _  = $antifail
+    loop clauses =<< valOf e1 env
   [ex| let $x = $e1 in $e2 |]     -> do
     v1   <- valOf e1 env
     env' <- case bindPatt x v1 env of
@@ -190,8 +201,11 @@ valOf e env = case e of
     v2 <- valOf e2 env
     return (vinj (v1, v2))
   [ex| fun $x -> $e' |] ->
-    return (VaFun (FNAnonymous [pprPrec (precApp + 1) e])
-                  (\v -> bindPatt x v env >>= valOf e'))
+    return .
+      VaFun (FNAnonymous [pprPrec (precApp + 1) e]) $ \v ->
+        case bindPatt x v env of
+          Just env' -> valOf e' env'
+          Nothing   -> throwPatternMatch v [show x] env
   [ex| $e1 $e2 |] -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env

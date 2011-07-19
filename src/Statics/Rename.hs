@@ -810,6 +810,15 @@ renameCaseAlt ca0 = withLocation ca0 $ case ca0 of
     (x', md) <- steal $ renamePatt x
     e' <- inModule md $ renameExpr e
     return [caQ|+ $x' -> $e' |]
+  [caQ| #$uid:lab -> $e |] -> do
+    let lab' = trivialRename lab
+    e' <- renameExpr e
+    return [caQ|+ #$uid:lab' -> $e' |]
+  [caQ| #$uid:lab $x -> $e |] -> do
+    let lab' = trivialRename lab
+    (x', md) <- steal $ renamePatt x
+    e' <- inModule md $ renameExpr e
+    return [caQ|+ #$uid:lab' $x' -> $e' |]
   [caQ| $antiC:a |] -> $antifail
 
 -- | Rename a set of let rec bindings

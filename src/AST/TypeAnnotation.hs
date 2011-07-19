@@ -137,6 +137,8 @@ instance Tag i ⇒ HasAnnotations (Expr' i) i where
 instance Tag i ⇒ HasAnnotations (CaseAlt' i) i where
   annotFtvMap var con cmb ca0 = case ca0 of
     [caQ|' $x → $e |]           → afm var con cmb (x, e)
+    [caQ|' #$uid:_ $opt:mx → $e |]
+                                → afm var con cmb (mx, e)
     [caQ|' $antiC:a |]          → $antierror
 
 instance Tag i ⇒ HasAnnotations (Binding' i) i where
