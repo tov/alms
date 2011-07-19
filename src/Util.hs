@@ -94,7 +94,8 @@ import Control.Monad.Reader     ( MonadReader(..), ReaderT(..), mapReaderT,
 import Control.Monad.State.Strict ( MonadState(..), StateT(..), evalStateT,
                                     evalState, gets, modify, mapStateT )
 import Control.Monad.Trans    ( MonadTrans(..), MonadIO(..) )
-import Control.Monad.Writer.Strict ( MonadWriter(..), WriterT(..), execWriter,
+import Control.Monad.Writer.Strict ( MonadWriter(..), WriterT(..),
+                                     execWriterT, execWriter,
                                      mapWriterT, censor, listens )
 
 import Data.Char (chr, ord)

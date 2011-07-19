@@ -5,6 +5,7 @@
       GeneralizedNewtypeDeriving,
       MultiParamTypeClasses,
       RankNTypes,
+      StandaloneDeriving,
       TypeSynonymInstances,
       UndecidableInstances,
       UnicodeSyntax

@@ -61,6 +61,9 @@ module Type.Internal (
   openTy, openTyN, closeTy, lcTy, lcTyK,
   closeRec, closeQuant,
 
+  -- * Varieties
+  TyConVariety(..), varietyOf,
+
   module Data.Empty,
 ) where
 
@@ -803,3 +806,21 @@ lcTyK  = loop where
   loop k (TyApp _ ts)             = all (loop k) ts
   loop k (TyRow _ t1 t2)          = loop k t1 && loop k t2
   loop k (TyMu _ t)              = loop (k + 1) t
+
+---
+--- TyCon Varieties
+---
+
+data TyConVariety
+  = AbstractType
+  | DataType
+  | OperatorType
+  deriving (Eq, Ord)
+
+-- | Find out the variety of a type constructor
+varietyOf ∷ TyCon → TyConVariety
+varietyOf tc
+  | isJust (tcNext tc)          = OperatorType
+  | Env.isEmpty (tcCons tc)     = AbstractType
+  | otherwise                   = DataType
+

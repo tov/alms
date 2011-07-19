@@ -17,7 +17,7 @@ module Statics.Env (
   -- * Main environment
   Γ(..), Γv, Γc, Γt, Γm, Γs, R,
   -- ** Operations
-  bumpΓ, sigToEnv, sigItemToEnv, (!.!),
+  bumpΓ, sigToEnv, sigItemToEnv, (!.!), (!..!),
   -- * Testing
   test_g0,
   -- * Re-exports
@@ -134,12 +134,17 @@ instance GenLookup (Γ tv) k v =>
     (_, e') <- e =..= p
     e' =..= J ps k
 
-(!.!) ∷ (GenLookup e k v, Show k) ⇒ MonadAlmsError m ⇒ e → k → m v
+(!.!) ∷ (GenLookup e k v, Show k, MonadAlmsError m) ⇒ e → k → m v
 e !.! k = case e =..= k of
   Just v  → return v
   Nothing → typeBug "GenLookup" ("unbound identifier: " ++ show k)
 
-infixl 6 !.!
+(!..!) ∷ (GenLookup e k v, Show k) ⇒ e → k → v
+e !..! k = case e =..= k of
+  Just v  → v
+  Nothing → typeBugError "GenLookup" ("unbound identifier: " ++ show k)
+
+infixl 6 !.!, !..!
 
 instance (Ppr.Ppr k, Ppr.Ppr v) ⇒ Ppr.Ppr (Env k v) where
   ppr env = Ppr.braces . Ppr.fsep . Ppr.punctuate Ppr.comma $

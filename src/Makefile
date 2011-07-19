@@ -18,7 +18,7 @@ HS_SRC   = *.hs \
            Syntax/*.hs \
            Type/*.hs \
            Util/*.hs
-HSBOOT_SRC  = AST/*.hs-boot
+HSBOOT_SRC  = AST/*.hs-boot Statics/*.hs-boot
 
 HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(NOWARN) $(IMPARR) $(UNICODE)
 HIOPTS  = $(NOWARN) $(IMPARR) $(UNICODE)

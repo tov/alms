@@ -161,8 +161,8 @@ infer φ0 δ γ e0 mσ0 = do
       return (e0', σ')
     --
     [ex| `$uid:c $opt:me1 |]    → do
-      [mσ0]             ← splitCon mσ tcVariant
-      (mσ1, _)          ← splitRow mσ0 c
+      [mσRow]           ← splitCon mσ tcVariant
+      (mσ1, _)          ← splitRow mσRow c
       σ2                ← newTVTy
       (me1', σ1)        ← case me1 of
         Nothing → return (Nothing, tyUnit)
@@ -170,8 +170,8 @@ infer φ0 δ γ e0 mσ0 = do
       σ'                ← maybeGen e0 φ γ (TyApp tcVariant [TyRow c σ1 σ2])
       return ([ex| `$uid:c $opt:me1' |], σ')
     [ex| #$uid:c $e1 |]         → do
-      [mσ0]             ← splitCon mσ tcVariant
-      (_, mσ2)          ← splitRow mσ0 c
+      [mσRow]           ← splitCon mσ tcVariant
+      (_, mσ2)          ← splitRow mσRow c
       (e1', σ2)         ← infer request δ γ e1 (tyUnOp tcVariant <$> mσ2)
       σ1                ← newTVTy
       σ2'               ← newTVTy
@@ -294,8 +294,8 @@ tcLetRecBindings δ γ bs = do
     | σi        ← σs ]
   zipWithM (<:) σs' σs
   σs''              ← generalizeList True (rankΓ γ) σs'
-  γ'                ← γ !+! ns -:*- σs''
-  return (zipWith AST.bnBind ns es', γ')
+  γ''               ← γ !+! ns -:*- σs''
+  return (zipWith AST.bnBind ns es', γ'')
   where
     unBinding [bnQ| $vid:x = $e |] = return (x, e)
     unBinding [bnQ| $antiB:a |]    = $(AST.antifail)

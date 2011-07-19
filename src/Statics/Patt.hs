@@ -54,7 +54,7 @@ tcPatt δ γ π0 mσ0 e0 = do
   -- of occurrences of any surrounding "as" patterns. The latter is so
   -- that if we check a pattern like “π as x”, occurrences of x count
   -- as occurrences of all the variables in π.
-  loop π0 mσ = withLocation π0 $ case π0 of
+  loop π mσ = withLocation π $ case π of
     [pa| _ |]                     → do
       σ ← maybeFresh mσ [msg| unannotated wildcard pattern |]
       return σ
@@ -70,7 +70,7 @@ tcPatt δ γ π0 mσ0 e0 = do
       mσs ← splitCon mσ tc
       σs  ← mapM (flip maybeFresh [msg| |]) mσs
       case (mπ, mσ1) of
-        (Just π,  Just σ1) → void $ loop π (Just (openTy 0 σs (elimEmptyF σ1)))
+        (Just π1, Just σ1) → void $ loop π1 (Just (openTy 0 σs (elimEmptyF σ1)))
         (Nothing, Nothing) → return ()
         (Nothing, Just _ ) →
           typeError_ [msg|
@@ -93,21 +93,21 @@ tcPatt δ γ π0 mσ0 e0 = do
     [pa| $flo:_ |]                → tcLitPatt tcFloat mσ
     [pa| $char:_ |]               → tcLitPatt tcChar mσ
     [pa| $antiL:a |]              → $(AST.antifail)
-    [pa| $π as $vid:n |]          → do
-      σ  ← local (+ occOf n) (loop π mσ)
+    [pa| $π1 as $vid:n |]          → do
+      σ  ← local (+ occOf n) (loop π1 mσ)
       bind n σ
       return σ
     [pa| `$uid:lab $opt:mπ |]     → do
-      [mσ0]      ← splitCon mσ tcVariant
-      (mσ1, mσ2) ← splitRow mσ0 lab
-      let π = fromMaybe [pa|+ () |] mπ
-      σ1 ← loop π mσ1
+      [mσRow]    ← splitCon mσ tcVariant
+      (mσ1, mσ2) ← splitRow mσRow lab
+      let π1 = fromMaybe [pa|+ () |] mπ
+      σ1 ← loop π1 mσ1
       σ2 ← maybeFresh mσ2 [msg| |]
       mσ ?≤ TyApp tcVariant [TyRow lab σ1 σ2]
-    [pa| $π : $annot |]           → do
+    [pa| $π1 : $annot |]           → do
       σ' ← tcType δ γ annot
       σ  ← mσ ?≤ σ'
-      loop π (Just σ')
+      loop π1 (Just σ')
       return σ
     [pa| ! $_ |]                  → do
       typeBug "tcPatt" "TODO: Bang patterns not yet implemented" -- XXX

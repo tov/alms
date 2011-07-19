@@ -5,7 +5,7 @@
 -- | Type errors
 module Statics.Error (
   -- * Basic error functions
-  typeBug, typeError, typeError_, typeError', tassert,
+  typeBug, typeBugError, typeError, typeError_, typeError', tassert,
 
   -- * Messages
   gotMessage, expMessage,
@@ -26,6 +26,10 @@ import Prelude ()
 -- | Indicate a bug in the type checker.
 typeBug         ∷ MonadAlmsError m ⇒ String → String → m a
 typeBug         = throwAlms <$$> almsBug StaticsPhase
+
+-- | Indicate a bug in the type checker, with no Alms error monad.
+typeBugError    ∷ String → String → a
+typeBugError    = throw <$$> almsBug StaticsPhase
 
 -- | Indicate a type error.
 typeError       ∷ (MonadAlmsError m, Bogus a) ⇒ Message V → m a

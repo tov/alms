@@ -30,10 +30,7 @@ import Meta.Quasi
 import AST hiding ((&))
 import Data.Loc
 import AST.TypeAnnotation
-import qualified AST.Decl
-import qualified AST.Expr
 import qualified AST.Notable
-import qualified AST.Patt
 import Util
 import Syntax.Ppr (Ppr(..))
 

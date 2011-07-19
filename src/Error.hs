@@ -191,9 +191,12 @@ finallyAlms action cleanup = do
 infixl 1 `finallyAlms`
 
 mapAlmsErrors :: MonadAlmsError m =>
+                 m a ->
                  (AlmsError -> AlmsError) ->
-                 m a -> m a
-mapAlmsErrors f action = action `catchAlms` throwAlmsList . map f
+                 m a
+mapAlmsErrors action f = action `catchAlms` throwAlmsList . map f
+
+infixl 1 `mapAlmsErrors`
 
 --
 -- Instances

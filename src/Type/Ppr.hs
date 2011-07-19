@@ -30,8 +30,14 @@ instance Tv tv ⇒ Ppr (QExp tv) where
     αs  → prec precTySemi $
             fcat (punctuate (char '⋁') (ppr0 <$> αs))
 
+instance Ppr TyConVariety where
+  ppr AbstractType = text "abstract type"
+  ppr DataType     = text "data type"
+  ppr OperatorType = text "type synonym or operator"
+
 instance Tv tv ⇒ Show (Type tv) where showsPrec = showFromPpr
 instance Show TyPat where showsPrec = showFromPpr
 instance Show TyCon where showsPrec = showFromPpr
 instance Tv tv ⇒ Show (QExp tv) where showsPrec = showFromPpr
+instance Show TyConVariety where showsPrec = showFromPpr
 

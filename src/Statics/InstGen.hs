@@ -275,7 +275,7 @@ withTVsOf δ γ stx kont = do
 -- | Given an expression, get its type variables with their kinds
 tvsWithKinds ∷ HasAnnotations a R ⇒
                Γ tv → a → [(AST.TyVar R, Kind)]
-tvsWithKinds γ = M.toList . annotFtvMap var con join where
+tvsWithKinds γ = M.toList . annotFtvMap var con cmb where
   var _      = KdType
   con n ix = case γ =..= n of
     Just tc
@@ -283,5 +283,5 @@ tvsWithKinds γ = M.toList . annotFtvMap var con join where
       , isQVariance variance
       → \_ → KdQual
     _ → id
-  join KdQual KdQual = KdQual
-  join _      _      = KdType
+  cmb KdQual KdQual = KdQual
+  cmb _      _      = KdType

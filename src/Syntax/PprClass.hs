@@ -25,6 +25,8 @@ module Syntax.PprClass (
   isEmpty, renderStyle, fullRender,
   -- ** Instance helpers
   showFromPpr, pprFromShow,
+  -- * Alternate printing of 'Maybe'
+  MAYBE(..),
   -- * Re-exports
   module Alt.PrettyPrint
 ) where
@@ -232,6 +234,12 @@ sep  = trimCat P.sep
 cat  = trimCat P.cat
 fsep = trimCat P.fsep
 fcat = trimCat P.fcat
+
+newtype MAYBE a = MAYBE (Maybe a) deriving (Eq, Ord)
+
+instance Ppr a => Ppr (MAYBE a) where
+  ppr (MAYBE Nothing)  = text "nothing"
+  ppr (MAYBE (Just a)) = ppr a
 
 instance Ppr a => Ppr (Maybe a) where
   ppr Nothing  = mempty
