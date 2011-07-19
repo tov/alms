@@ -19,17 +19,12 @@ import Meta.Quasi
 import Value
 import Util
 import AST
-import qualified AST.Decl
-import qualified AST.Expr
-import qualified AST.Notable
-import qualified AST.Patt
 import Env
 import Syntax.Ppr (Ppr(..), Doc, text, precApp)
 import Error
 
 import Prelude ()
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Control.Exception (throw)
 
 --
 -- Our semantic domains
@@ -47,26 +42,22 @@ type Result   = IO Value
 type E        = [Scope]
 -- | Each scope binds paths of uppercase identifiers to flat value
 --   and exn environments
-type Scope    = PEnv (Uid R) Level
+type Scope    = PEnv (ModId R) Level
 -- | A level binds values and exceptions
 data Level    = Level {
                   vlevel :: !VE
                 }
 -- | We bind 'IO' 'Value's rather than values, so that we can use
 -- 'IORef' to set up recursion
-type VE       = Env (Lid R) (IO Value)
-
--- | To distinguish exn names from path components.
-newtype ExnName = ExnName (Uid R)
-  deriving (Eq, Ord)
+type VE       = Env (VarId R) (IO Value)
 
 instance GenEmpty Level where
   genEmpty = Level Env.empty
-instance GenLookup Level (Lid R) (IO Value) where
+instance GenLookup Level (VarId R) (IO Value) where
   level =..= k = vlevel level =..= k
 instance GenExtend Level Level where
   Level ve =+= Level ve' = Level (ve =+= ve')
-instance GenExtend Level (Env (Lid R) (IO Value)) where
+instance GenExtend Level (Env (VarId R) (IO Value)) where
   level =+= ve' = level =+= Level ve'
 
 -- | Domain for the meaning of an expression:
@@ -87,15 +78,15 @@ evalDecls :: [Decl R] -> DDecl
 evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl R -> DDecl
-evalDecl [$dc| let $x : $opt:_ = $e |]              = evalLet x e
-evalDecl [$dc| type $list:_ |]                      = return
-evalDecl [$dc| abstype $list:_ with $list:ds end |] = evalDecls ds
-evalDecl [$dc| open $b |]                           = evalOpen b
-evalDecl [$dc| module $uid:n = $b |]                = evalMod n b
-evalDecl [$dc| module type $uid:_ = $_ |]           = return
-evalDecl [$dc| local $list:d0 with $list:d1 end |]  = evalLocal d0 d1
-evalDecl [$dc| exception $uid:n of $opt:mt |]       = evalExn n mt
-evalDecl [$dc| $anti:a |]                           = $antifail
+evalDecl [dc| let $x = $e |]                       = evalLet x e
+evalDecl [dc| type $list:_ |]                      = return
+evalDecl [dc| abstype $list:_ with $list:ds end |] = evalDecls ds
+evalDecl [dc| open $b |]                           = evalOpen b
+evalDecl [dc| module $mid:n = $b |]                = evalMod n b
+evalDecl [dc| module type $sid:_ = $_ |]           = return
+evalDecl [dc| local $list:d0 with $list:d1 end |]  = evalLocal d0 d1
+evalDecl [dc| exception $cid:n of $opt:mt |]       = evalExn n mt
+evalDecl [dc| $anti:a |]                           = $antifail
 
 evalLet :: Patt R -> Expr R -> DDecl
 evalLet x e env = do
@@ -109,7 +100,7 @@ evalOpen b env = do
   e <- evalModExp b env
   return (env =+= e)
 
-evalMod :: Uid R -> ModExp R -> DDecl
+evalMod :: ModId R -> ModExp R -> DDecl
 evalMod x b env = do
   e <- evalModExp b env
   return (env =+= x =:= e)
@@ -121,39 +112,50 @@ evalLocal ds ds'  env0 = do
   return (env2 =+= scope)
 
 evalModExp :: ModExp R -> E -> IO Scope
-evalModExp [$meQ| struct $list:ds end |]  env = do
+evalModExp [meQ| struct $list:ds end |]  env = do
   scope:_ <- evalDecls ds (genEmpty:env)
   return scope
-evalModExp [$meQ| $quid:n $list:_ |]      env = do
+evalModExp [meQ| $qmid:n $list:_ |]      env = do
   case env =..= n of
     Just scope -> return scope
-    Nothing    -> runtimeBug _loc "evalModExp" $
+    Nothing    -> runtimeBug "evalModExp" $
       "Unknown module: ‘" ++ show n ++ "’"
-evalModExp [$meQ| $me1 : $_ |]            env = do
+evalModExp [meQ| $me1 : $_ |]            env = do
   evalModExp me1 env
-evalModExp [$meQ| $anti:a |]              _   = $antifail
+evalModExp [meQ| $anti:a |]              _   = $antifail
 
-evalExn :: Uid R -> Maybe (Type R) -> DDecl
+evalExn :: ConId R -> Maybe (Type R) -> DDecl
 evalExn _ _ env = return env
 
 eval :: E -> Prog R -> Result
-eval env0 [$prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
-eval env0 [$prQ| $list:ds        |] = evalDecls ds env0 >>  return (vinj ())
+eval env0 [prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
+eval env0 [prQ| $list:ds        |] = evalDecls ds env0 >>  return (vinj ())
 
 -- The meaning of an expression
 valOf :: Expr R -> D
 valOf e env = case e of
-  [$ex| $id:ident |] -> case view ident of
-    Left x     -> case env =..= x of
+  [ex| $qvid:n |] -> case env =..= n of
       Just v     -> v
-      Nothing    -> runtimeBug _loc "valOf" $
-        "unbound identifier: ‘" ++ show x ++ "’"
-    Right c    -> return (VaCon (jname c) Nothing)
-  [$ex| $str:s |]    -> return (vinj s)
-  [$ex| $int:z |]    -> return (vinj z)
-  [$ex| $flo:f |]    -> return (vinj f)
-  [$ex| $antiL:a |]  -> $antifail
-  [$ex| match $e1 with $list:clauses |] -> do
+      Nothing    -> runtimeBug "valOf" $
+        "unbound identifier: ‘" ++ show n ++ "’"
+  [ex| $str:s |]    -> return (vinj s)
+  [ex| $int:z |]    -> return (vinj z)
+  [ex| $flo:f |]    -> return (vinj f)
+  [ex| $char:c |]   -> return (vinj c)
+  [ex| $antiL:a |]  -> $antifail
+  [ex| $qcid:n $opt:me1 |]
+                    -> do
+    mv1 <- mapM (valOf <-> env) me1
+    return (VaCon (jname n) mv1)
+  [ex| `$uid:lab $opt:me1 |] -> do
+    v1 <- maybe (return (vinj ())) (valOf <-> env) me1
+    return (VaLab 0 lab v1)
+  [ex| #$uid:lab $e1 |] -> do
+    v1 <- valOf e1 env
+    case v1 of
+      VaLab n lab' v1' | lab == lab' -> return (VaLab (n + 1) lab v1')
+      _                              -> return v1
+  [ex| match $e1 with $list:clauses |] -> do
     v1 <- valOf e1 env
     let loop (N _ (CaClause xi ei):rest) = case bindPatt xi v1 env of
           Just env' -> valOf ei env'
@@ -162,9 +164,15 @@ valOf e env = case e of
                     (map (show . capatt . dataOf) clauses) env
         loop (N _ (CaAnti a):_) = $antifail
     loop clauses
-  [$ex| let rec $list:bs in $e2 |] -> do
+  [ex| let $x = $e1 in $e2 |]     -> do
+    v1   <- valOf e1 env
+    env' <- case bindPatt x v1 env of
+      Just env' -> return env'
+      Nothing   -> throwPatternMatch v1 [show x] env
+    valOf e2 env'
+  [ex| let rec $list:bs in $e2 |] -> do
     let extend (envI, rs) (N _ b) = do
-          r <- newIORef $ throwBadLetRec (unLid (bnvar b))
+          r <- newIORef $ throwBadLetRec (idName (bnvar b))
           return (envI =+= bnvar b =:= join (readIORef r), r : rs)
     (env', rev_rs) <- foldM extend (env, []) bs
     zipWithM_
@@ -174,69 +182,80 @@ valOf e env = case e of
       (reverse rev_rs)
       bs
     valOf e2 env'
-  [$ex| let $decl:d in $e2 |] -> do
+  [ex| let $decl:d in $e2 |] -> do
     env' <- evalDecl d env
     valOf e2 env'
-  [$ex| ($e1, $e2) |] -> do
+  [ex| ($e1, $e2) |] -> do
     v1 <- valOf e1 env
     v2 <- valOf e2 env
     return (vinj (v1, v2))
-  [$ex| fun $x : $_ -> $e' |] ->
+  [ex| fun $x -> $e' |] ->
     return (VaFun (FNAnonymous [pprPrec (precApp + 1) e])
                   (\v -> bindPatt x v env >>= valOf e'))
-  [$ex| $e1 $e2 |] -> do
+  [ex| $e1 $e2 |] -> do
     v1  <- valOf e1 env
     v2  <- valOf e2 env
     case v1 of
       VaFun n f -> f v2 >>! nameApp n (pprPrec (precApp + 1) v2) 
       VaCon c _ -> return (VaCon c (Just v2))
-      _         -> runtimeBug _loc "valOf" $
+      _         -> runtimeBug "valOf" $
         "applied non-function ‘" ++ show v1 ++
         "’ to argument ‘" ++ show v2 ++ "’"
-  [$ex| fun '$_ -> $e1 |]         -> valOf e1 env
-  [$ex| $e1 [$_] |]               -> valOf e1 env
-  [$ex| Pack[$opt:_]($_, $e1) |]  -> valOf e1 env
-  [$ex| ( $e1 : $_ ) |]           -> valOf e1 env
-  [$ex| ( $e1 :> $_ ) |]          -> valOf e1 env
-  [$ex| $anti:a |]                -> $antifail
+  [ex| ( $e1 : $_ ) |]           -> valOf e1 env
+  [ex| ( $_ :> $_ ) |]           -> runtimeBug "valOf" $
+      "TODO: Cast is unimplemented" -- XXX
+  [ex| $anti:a |]                -> $antifail
 
 bindPatt :: Monad m => Patt R -> Value -> E -> m E
 bindPatt x0 v env = case x0 of
-  [$pa| _ |] 
+  [pa| _ |]
     -> return env
-  [$pa| $lid:l |]
+  [pa| $vid:l |]
     -> return (env =+= l =:!= (l `nameFun` v))
-  [$pa| $quid:qu $opt:mx |]
+  [pa| $qcid:qu $opt:mx |]
     -> let u = jname qu in
        case (mx, v) of
       (Nothing, VaCon u' Nothing)   | u == u' -> return env
       (Just x,  VaCon u' (Just v')) | u == u' -> bindPatt x v' env
       _                                       -> perr
-  [$pa| ($x, $y) |]
+  [pa| `$uid:lab $opt:mx |]
+    -> case v of
+         VaLab 0 lab' v' | lab' == lab ->
+             case mx of
+              Nothing -> return env
+              Just x  -> bindPatt x v' env
+         _                             -> perr
+  [pa| ($x, $y) |]
     -> case vprjM v of
       Just (vx, vy) -> bindPatt x vx env >>= bindPatt y vy
       Nothing       -> perr
-  [$pa| $str:s |]
+  [pa| $str:s |]
     -> if v == vinj s
          then return env
          else perr
-  [$pa| $int:z |]
+  [pa| $int:z |]
     -> if v == vinj z
          then return env
          else perr
-  [$pa| $float:f |]
+  [pa| $float:f |]
     -> if v == vinj f
          then return env
          else perr
-  [$pa| Pack('$_, $x) |]
-    -> bindPatt x v env
-  [$pa| $x as $lid:l |]
+  [pa| $char:c |]
+    -> if v == vinj c
+         then return env
+         else perr
+  [pa| $x as $vid:l |]
     -> do
       env' <- bindPatt x v env
       return (env' =+= l =:!= v)
-  [$pa| $anti:a |]
+  [pa| $x : $_ |]
+    -> bindPatt x v env
+  [pa| ! $x |]
+    -> bindPatt x v env
+  [pa| $anti:a |]
     -> antifail "dynamics" a
-  [$pa| $antiL:a |]
+  [pa| $antiL:a |]
     -> antifail "dynamics" a
   where perr = fail $
                  "BUG! In bindPat, pattern match failure should " ++
@@ -245,26 +264,27 @@ bindPatt x0 v env = case x0 of
 throwPatternMatch :: Value -> [String] -> E -> IO a
 throwPatternMatch v ps _ =
   throw VExn {
-    exnValue = VaCon (uid "PatternMatch") (Just (vinj (show v, ps)))
+    exnValue = VaCon (ident "PatternMatch") (Just (vinj (show v, ps)))
   }
 
 throwBadLetRec :: String -> IO a
 throwBadLetRec v =
   throw VExn {
-    exnValue = VaCon (uid "UninitializedLetRec") (Just (vinj v))
+    exnValue = VaCon (ident "UninitializedLetRec") (Just (vinj v))
   }
 
-runtimeBug :: Loc -> String -> String -> IO a
-runtimeBug  = throwAlms <$$$> almsBug DynamicsPhase
+runtimeBug :: String -> String -> IO a
+runtimeBug  = throwAlms <$$> almsBug DynamicsPhase
 
 ---
 --- helpful stuff
 ---
 
 -- Add the given name to an anonymous function
-nameFun :: Lid R -> Value -> Value
-nameFun (Lid r x) (VaFun (FNAnonymous _) lam)
-  | x /= "it" || not (isTrivial r) = VaFun (FNNamed (text x)) lam
+nameFun :: VarId R -> Value -> Value
+nameFun n (VaFun (FNAnonymous _) lam)
+  | idName n /= "it" || not (isTrivial (idTag n))
+                 = VaFun (FNNamed (text (idName n))) lam
 nameFun _ value  = value
 
 -- Get the name of an applied function
@@ -280,7 +300,7 @@ collapse = foldr (flip (=+=)) genEmpty
 
 -- | For printing in the REPL, 'addDecls' returns an environment
 --   mapping any newly bound names to their values
-type NewValues = Env (Lid R) Value
+type NewValues = Env (VarId R) Value
 
 -- | Interpret declarations by adding to the environment, potentially
 --   with side effects
@@ -292,11 +312,11 @@ addDecls env decls = do
   return (env', vl')
 
 -- | Bind a name to a value
-addVal :: E -> Lid R -> Value -> E
+addVal :: E -> VarId R -> Value -> E
 addVal e n v     = e =+= n =:= (return v :: IO Value)
 
 -- | Bind a name to a module, which is represented as a nested
 --   environment
-addMod :: E -> Uid R -> E -> E
+addMod :: E -> ModId R -> E -> E
 addMod e n e' = e =+= n =:= collapse e'
 

@@ -30,7 +30,7 @@ import qualified Data.Char as Char
 import Data.Generics
 
 import Util
-import AST (Type, Renamed, Id(..), ConId)
+import AST (Type, Renamed, Id(..), Uid, ConId)
 import Syntax.Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             prec, prec1, ppr1, atPrec, precCom, precApp)
 
@@ -131,6 +131,9 @@ data Value
   = VaFun FunName (Value -> IO Value)
   -- | A datacon, potentially applied
   | VaCon (ConId R) (Maybe Value)
+  -- | An open variant injection or embedding. The 'Int' gives the
+  --   number of embeddings of the label
+  | VaLab Int (Uid R) Value
   -- | Any other embeddable Haskell type
   | forall a. Valuable a => VaDyn a
   deriving Typeable
@@ -214,12 +217,21 @@ instance Valuable Bool where
 instance Valuable Value where
   vinj v = v
   veq (VaCon c v) (VaCon d w) = c == d && v == w
+  veq (VaLab n c v) (VaLab m d w)
+                              = n == m && c == d && v == w
   veq (VaDyn a)   b           = veqDyn a b
   veq _           _           = False
   vppr (VaFun n _)            = ppr n
   vppr (VaCon c Nothing)      = ppr c
   vppr (VaCon c (Just v))     = prec precApp $
                                   ppr c <+> ppr1 v
+  vppr (VaLab 0 c v)
+    | v == vinj ()            = char '`' <> ppr c
+    | otherwise               = prec precApp $
+                                  char '`' <> ppr c <+> ppr1 v
+  vppr (VaLab z c v)          = prec precApp $
+                                  char '#' <> ppr c <+>
+                                    ppr1 (VaLab (z - 1) c v)
   vppr (VaDyn v)              = vppr v
   -- for value debugging:
   {-
