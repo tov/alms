@@ -25,7 +25,7 @@ import Util
 import qualified AST
 import AST.TypeAnnotation
 import qualified Syntax.Ppr as Ppr
-import qualified Rank
+import qualified Type.Rank as Rank
 import Type
 import Statics.Env
 import Statics.Error

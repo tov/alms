@@ -16,7 +16,7 @@ import Util.MonadRef
 import qualified AST
 import qualified Data.Loc
 import Meta.Quasi
-import qualified Rank
+import qualified Type.Rank as Rank
 import Type
 import Statics.Env
 import Statics.Error

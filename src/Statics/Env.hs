@@ -30,7 +30,7 @@ import qualified AST
 import Type
 import Statics.Sig
 import Statics.Error
-import qualified Rank
+import qualified Type.Rank as Rank
 import qualified Syntax.Ppr as Ppr
 import Env
 

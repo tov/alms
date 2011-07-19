@@ -6,7 +6,8 @@
       MultiParamTypeClasses,
       PatternGuards,
       RankNTypes,
-      ScopedTypeVariables
+      ScopedTypeVariables,
+      ViewPatterns
     #-}
 module Value (
   -- * Value and function representation
@@ -29,7 +30,7 @@ import qualified Data.Char as Char
 import Data.Generics
 
 import Util
-import AST (Uid(..), Type, Renamed, uid)
+import AST (Type, Renamed, Id(..), ConId)
 import Syntax.Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             prec, prec1, ppr1, atPrec, precCom, precApp)
 
@@ -100,13 +101,13 @@ class Typeable a => Valuable a where
   --   lists at some types (e.g. we inject Haskell 'String' as object
   --   language @string@ rather than @char list@)
   vinjList     :: [a] -> Value
-  vinjList []     = VaCon (uid "Nil") Nothing
-  vinjList (x:xs) = VaCon (uid "Cons") (Just (vinj (x, xs)))
+  vinjList []     = VaCon (ident "Nil") Nothing
+  vinjList (x:xs) = VaCon (ident "Cons") (Just (vinj (x, xs)))
 
   -- | Project a list.  (Same deal.)
   vprjListM    :: Monad m => Value -> m [a]
-  vprjListM (VaCon (Uid _ "Nil") Nothing) = return []
-  vprjListM (VaCon (Uid _ "Cons") (Just v)) = do
+  vprjListM (VaCon (idName -> "Nil") Nothing) = return []
+  vprjListM (VaCon (idName -> "Cons") (Just v)) = do
     (x, xs) <- vprjM v
     return (x:xs)
   vprjListM _ = fail "vprjM: not a list"
@@ -129,7 +130,7 @@ data Value
   -- | A function
   = VaFun FunName (Value -> IO Value)
   -- | A datacon, potentially applied
-  | VaCon (Uid R) (Maybe Value)
+  | VaCon (ConId R) (Maybe Value)
   -- | Any other embeddable Haskell type
   | forall a. Valuable a => VaDyn a
   deriving Typeable
@@ -198,17 +199,17 @@ instance Valuable Double where
 
 instance Valuable () where
   veq        = (==)
-  vinj ()    = VaCon (uid "()") Nothing
-  vprjM (VaCon (Uid _ "()") _) = return ()
-  vprjM _                    = fail "vprjM: not a unit"
+  vinj ()    = VaCon (ident "()") Nothing
+  vprjM (VaCon (idName -> "()") _) = return ()
+  vprjM _                          = fail "vprjM: not a unit"
 
 instance Valuable Bool where
   veq        = (==)
-  vinj True  = VaCon (uid "true") Nothing
-  vinj False = VaCon (uid "false") Nothing
-  vprjM (VaCon (Uid _ "true") _)  = return True
-  vprjM (VaCon (Uid _ "false") _) = return False
-  vprjM _                         = fail "vprjM: not a bool"
+  vinj True  = VaCon (ident "true") Nothing
+  vinj False = VaCon (ident "false") Nothing
+  vprjM (VaCon (idName -> "true") _)  = return True
+  vprjM (VaCon (idName -> "false") _) = return False
+  vprjM _                             = fail "vprjM: not a bool"
 
 instance Valuable Value where
   vinj v = v
@@ -253,22 +254,22 @@ instance (Valuable a, Valuable b) => Valuable (Either a b) where
   veq (Right b) (Right b') = veq b b'
   veq (Left _)  (Right _)  = False
   veq (Right _) (Left _)   = False
-  vinj (Left v)  = VaCon (uid "Left") (Just (vinj v))
-  vinj (Right v) = VaCon (uid "Right") (Just (vinj v))
-  vprjM (VaCon (Uid _ "Left") (Just v))  = liftM Left (vprjM v)
-  vprjM (VaCon (Uid _ "Right") (Just v)) = liftM Right (vprjM v)
-  vprjM _                                = fail "vprjM: not a sum"
+  vinj (Left v)  = VaCon (ident "Left") (Just (vinj v))
+  vinj (Right v) = VaCon (ident "Right") (Just (vinj v))
+  vprjM (VaCon (idName -> "Left") (Just v))  = liftM Left (vprjM v)
+  vprjM (VaCon (idName -> "Right") (Just v)) = liftM Right (vprjM v)
+  vprjM _                                    = fail "vprjM: not a sum"
 
 instance Valuable a => Valuable (Maybe a) where
   veq (Just a)  (Just a')  = veq a a'
   veq Nothing   Nothing    = True
   veq (Just _)  Nothing    = False
   veq Nothing   (Just _)   = False
-  vinj (Just v) = VaCon (uid "Some") (Just (vinj v))
-  vinj Nothing  = VaCon (uid "None") Nothing
-  vprjM (VaCon (Uid _ "Some") (Just v))  = liftM Just (vprjM v)
-  vprjM (VaCon (Uid _ "None") Nothing)   = return Nothing
-  vprjM _                                = fail "vprjM: not an option"
+  vinj (Just v) = VaCon (ident "Some") (Just (vinj v))
+  vinj Nothing  = VaCon (ident "None") Nothing
+  vprjM (VaCon (idName -> "Some") (Just v))  = liftM Just (vprjM v)
+  vprjM (VaCon (idName -> "None") Nothing)   = return Nothing
+  vprjM _                                   = fail "vprjM: not an option"
 
 -- | Type for injection of arbitrary Haskell values with
 --   minimal functionality
@@ -301,7 +302,7 @@ instance Exn.Exception VExn
 
 -- | Exception identity, generated dynamically
 data ExnId i = ExnId {
-                 eiName  :: Uid i,
+                 eiName  :: ConId i,
                  eiParam :: Maybe (Type i)
                }
   deriving (Typeable, Data)
@@ -365,7 +366,7 @@ vinjData = generic
       c f = case (showConstr r, f) of
              (s, Just f') | isTuple s
                -> f'
-             _ -> VaCon (uid (showConstr r)) f
+             _ -> VaCon (ident (showConstr r)) f
 
 -- | The partial inverse of 'vinjData'
 vprjDataM :: forall a m. (Data a, Monad m) => Value -> m a
@@ -384,7 +385,7 @@ vprjDataM = generic
     `extRT` (vprjM :: Value -> m Bool)
     `extRT` (vprjM :: Value -> m Char)
     where
-  generic (VaCon (Uid _ u) mfields0) = case readConstr ty u of
+  generic (VaCon (idName -> u) mfields0) = case readConstr ty u of
       Nothing -> fail $ 
                    "(BUG) Couldn't find constructor: " ++ u ++
                    " in " ++ show ty
@@ -415,7 +416,7 @@ vprjDataM = generic
       z = return
   generic v@(VaDyn _) = case dataTypeRep ty of
     AlgRep (c:_) | t <- showConstr c, isTuple t
-            -> generic (VaCon (uid t) (Just v))
+            -> generic (VaCon (ident t) (Just v))
     IntRep       | Just i <- vprjM v,
                    Just d <- cast (i :: Integer)
             -> return d

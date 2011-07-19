@@ -42,9 +42,9 @@ import Util.Trace
 import Error
 import Syntax.PprClass as Ppr
 import Syntax.Prec (precEq)
-import Rank (Rank)
 import qualified AST
-import qualified Rank
+import qualified Type.Rank as Rank
+import Type.Rank (Rank)
 import Type.Internal
 import Type.TyVar
 import Type.Ppr ()

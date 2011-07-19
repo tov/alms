@@ -2,7 +2,7 @@
       DeriveDataTypeable,
       UnicodeSyntax
       #-}
-module Rank (
+module Type.Rank (
   Rank, zero, infinity, inc
 ) where
 
