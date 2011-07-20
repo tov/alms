@@ -11,11 +11,11 @@ module INTERNALS = struct
     let failwith (msg: string) =
       raise (Failure msg)
 
-    let tryfun[`a] (thunk: unit -o `a) : exn + `a =
+    let tryfun (thunk: unit -o `a) : exn + `a =
       match tryfun_string thunk with
-      | Right a        -> Right[exn,`a] a
-      | Left (Left e)  -> Left[exn,`a] e
-      | Left (Right s) -> Left[exn,`a] (IOError s)
+      | Right a        -> Right a
+      | Left (Left e)  -> Left e
+      | Left (Right s) -> Left (IOError s)
 
     let raiseBlame (who: string) (what: string) =
       raise (Blame (who, what))
@@ -32,47 +32,47 @@ module INTERNALS = struct
       type `a contract = party * party -> `a -> `a
 
       (* Flat contracts for unlimited values. *)
-      let flat['a] (pred: 'a -> bool) : 'a contract =
+      let flat (pred: 'a -> bool) : 'a contract =
         fun (neg: party, pos: party) (a: 'a) ->
           if pred a
             then a
             else Exn.raiseBlame pos "violated contract"
 
       (* Flat contracts for affine values. *)
-      let flatA[`a] (pred: `a -> bool * `a) : `a contract =
+      let flatA (pred: `a -> bool * `a) : `a contract =
         fun (neg: party, pos: party) (a: `a) ->
           match pred a with
           | (true, a)  -> a
           | (false, _) -> Exn.raiseBlame pos "violated contract"
 
       (* The identity contract. *)
-      let any[`a] : `a contract =
+      let any : `a contract =
         fun (_: party, _: party) (a: `a) -> a
 
       (* Add domain and codomain contracts to a function. *)
-      let func[`q]
-              [`a1, `a2] (dom: (`a1, `a2) coercion)
-              [`b1, `b2] (cod: (`b1, `b2) coercion)
+      let func
+               (dom: (`a1, `a2) coercion)
+               (cod: (`b1, `b2) coercion)
               : (`a2 -[`q]> `b1, `a1 -[`q]> `b2) coercion =
         fun (neg: party, pos: party) (f: `a2 -[`q]> `b1) ->
           fun (a: `a1) -> cod (neg, pos) (f (dom (pos, neg) a))
 
       (* Coerce an affine function to an unlimited function, and
          check dynamically that it's applied only once. *)
-      let affunc[`a1, `a2] (dom: (`a1, `a2) coercion)
-                [`b1, `b2] (cod: (`b1, `b2) coercion)
+      let affunc (dom: (`a1, `a2) coercion)
+                 (cod: (`b1, `b2) coercion)
                 : (`a2 -o `b1, `a1 -> `b2) coercion =
         fun (neg: party, pos: party) (f: `a2 -o `b1) ->
           let rf = ref (Some f) in
             fun (a: `a1) ->
-              match rf <- None[`a2 -o `b1] with
+              match rf <- None with
               | Some f -> cod (neg, pos) (f (dom (pos, neg) a))
               | None   -> Exn.raiseBlame neg "reused one-shot function"
 
       (* Check that an ostensibly unlimited function is actually
          unlimited. *)
-      let unfunc[`a1, `a2] (dom: (`a1, `a2) coercion)
-                [`b1, `b2] (cod: (`b1, `b2) coercion)
+      let unfunc (dom: (`a1, `a2) coercion)
+                 (cod: (`b1, `b2) coercion)
                 : (`a2 -> `b1, `a1 -> `b2) coercion =
         fun (neg: party, pos: party) (f: `a2 -> `b1) ->
           fun (x: `a1) ->
@@ -86,9 +86,9 @@ module INTERNALS = struct
 end
 
 let not (b: bool) = if b then false else true
-let (!=)['a] (x: 'a) (y: 'a) = not (x == y)
+let (!=) (x: 'a) (y: 'a) = not (x == y)
 
-let flip['a,'b,'c] (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y
+let flip (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y
 
 let (<) (x: int) (y: int) = not (y <= x)
 let (>) = flip (<)
@@ -104,61 +104,63 @@ let (≥)  = (>=)
 let (≤.) = (<=.)
 let (≥.) = (>=.)
 
-let null = fun 'a (x : 'a list) ->
+let null = fun (x : 'a list) ->
   match x with
   | Nil -> true
   | _   -> false
-let anull = fun `a (xs : `a list) ->
+let anull = fun (xs : `a list) ->
   match xs with
-  | Nil          -> (Nil[`a], true)
+  | Nil          -> (Nil, true)
   | Cons(x, xs') -> (Cons(x, xs'), false)
-let hd = fun 'a (xs : 'a list) ->
+let hd = fun (xs : 'a list) ->
   let Cons(x, _) = xs in x
-let tl = fun 'a (xs : 'a list) ->
+let tl = fun (xs : 'a list) ->
   let Cons(_, xs') = xs in xs'
+  (*
 let foldr =
-  let rec foldr `a `b (f : `a -> `b -o `b)
-                        (z : `b) |[b](xs : `a list) : `b =
+  let rec foldr (f : `a -> `b -o `b)
+                (z : `b) (xs : `a list) : `b =
         match xs with
         | Nil -> z
         | Cons(x,xs) -> f x (foldr f z xs)
    in foldr
 let foldl =
-  let rec foldl `a `b (f : `a -> `b -o `b)
-                        (z : `b) |[b](xs : `a list) : `b =
+  let rec foldl (f : `a -> `b -o `b)
+                (z : `b) (xs : `a list) : `b =
         match xs with
         | Nil -> z
         | Cons(x,xs) -> foldl f (f x z) xs
    in foldl
-let map `a `b (f: `a -> `b) (xs: `a list) =
+let map (f: `a -> `b) (xs: `a list) =
       foldr (fun (x: `a) (xs': `b list) -> Cons (f x, xs')) Nil xs
-let filter 'a (f: 'a -> bool) (xs: 'a list) =
+let filter (f: 'a -> bool) (xs: 'a list) =
       foldr (fun (x: 'a) (xs': 'a list) ->
                if f x then Cons(x, xs') else xs')
             Nil
-let mapFilterA `a `b (f: `a -> `b option) (xs: `a list) =
+let mapFilterA (f: `a -> `b option) (xs: `a list) =
       foldr (fun (x: `a) (xs': `b list) ->
                match f x with
                | Some y -> Cons(y, xs')
                | None   -> xs')
             Nil
             xs
-let revApp[`c] (xs : `c list) (ys : `c list) =
+let revApp (xs : `c list) (ys : `c list) =
   let cons (x : `c) (acc : `c list) = Cons (x, acc) in
     foldl cons ys xs
-let rev[`b] (xs : `b list) = revApp xs Nil
-let append[`a] (xs : `a list) = revApp (rev xs)
-let length[`a] (xs : `a list) =
+let rev (xs : `b list) = revApp xs Nil
+let append (xs : `a list) = revApp (rev xs)
+let length (xs : `a list) =
   foldr (fun (x : `a) -> (+) 1) 0 xs
-let lengthA[`a] (xs : `a list) =
+let lengthA (xs : `a list) =
   let count (x : `a) (n : int, xs' : `a list) =
        (1 + n, Cons (x, xs')) in
-    foldr count (0, Nil[`a]) xs
+    foldr count (0, Nil) xs
+*)
 
-let fst[`a,`b] (x: `a, _: `b) = x
-let snd[`a,`b] (_: `a, y: `b) = y
+let fst (x: `a, _: `b) = x
+let snd (_: `a, y: `b) = y
 
-let (=>!) [`a] (x: `a) [`b] (y: `b) = (y, x)
+let (=>!)  (x: `a)  (y: `b) = (y, x)
 let (⇒) = (=>!)
 
 let (←) = (<-)

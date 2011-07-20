@@ -580,6 +580,11 @@ declsp  = antiblep <|> loop
 declp :: Tag i => P (Decl i)
 declp  = "declaration" @@ choice [
            do
+             tid ← try $
+               reserved "type" *> typidp <* reservedOp "=" <* reserved "type"
+             rhs ← qtypidp
+             return (dcAli tid rhs),
+           do
              reserved "type"
              tyDecsp >>! dcTyp,
            letp,
@@ -663,6 +668,11 @@ sigitemp = "signature item" @@ choice [
       colon
       t <- typep
       return (sgVal n t),
+   do
+     tid ← try $
+       reserved "type" *> typidp <* reservedOp "=" <* reserved "type"
+     rhs ← qtypidp
+     return (sgAli tid rhs),
     do
       reserved "type"
       sgTyp <$> tyDecsp,
@@ -1229,7 +1239,7 @@ pme :: String -> ModExp Renamed
 pme  = makeQaD parseModExp
 
 -- | Parse a type declaration
-ptd :: String -> TyDec Renamed
+ptd :: Tag i => String -> TyDec i
 ptd  = makeQaD parseTyDec
 
 -- | Parse a type

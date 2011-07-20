@@ -19,61 +19,60 @@ module BasisUtils (
   _loc,
   module Data.Loc,
   -- ** Environment construction
-  basis2venv, basis2tenv, basis2renv,
+  basis2renv, basis2tenv, basis2venv,
 
   -- * Function embedding
   MkFun(..), baseMkFun, vapp,
 
   -- * Re-exports
-  text, Uid(..),
+  text, Id(..),
   module Meta.Quasi,
 ) where
 
-import Prelude ()
-
+import Util
+import Util.MonadRef
 import Dynamics (E, addVal, addMod)
 import Env (GenEmpty(..))
-import Error (AlmsMonad)
+import Error (MonadAlmsError, almsBug, throwAlms, Phase(DynamicsPhase))
 import Meta.Quasi
 import Syntax.Parser (ptd)
 import Syntax.Ppr (ppr, pprPrec, text, precApp)
-import Rename
-import Statics (S, env0, runTC, tcMapM, addVal, addDecl, addType, addMod)
+import Statics
+import Statics.Rename as Rename
 import AST
-import qualified AST.Notable
-import qualified AST.Decl
 import Type (TyCon, tcName)
 import Data.Loc (Loc(Loc), mkBogus, setLoc)
-import Util
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
+
+import Prelude ()
 
 -- | Kind of identifier used in this module
 type R = Raw
 
--- | Default source location for primitives
-_loc :: Loc
-_loc  = mkBogus "<primitive>"
+-- | The default location for primitive bindings
+_loc  :: Loc
+_loc   = mkBogus "<primitive>"
 
 -- | An entry in the initial environment
 data Entry i
   -- | A value entry has a name, a types, and a value
   = ValEn {
-    enName  :: Lid i,
-    enType  :: Type i,
-    enValue :: Value
+    enVarName :: VarId i,
+    enType    :: Type i,
+    enValue   :: Value
   }
   -- | A declaration entry
   | DecEn {
-    enSrc   :: Decl i
+    enSrc     :: SigItem i
   }
   -- | A type entry associates a tycon name with information about it
   | TypEn {
-    enName  :: Lid i,
-    enTyCon :: TyCon
+    enTypName :: TypId i,
+    enTyCon   :: TyCon
   }
   -- | A module entry associates a module name with a list of entries
   | ModEn {
-    enModName :: Uid i,
+    enModName :: ModId i,
     enEnts    :: [Entry i]
   }
 
@@ -115,31 +114,31 @@ baseMkFun n f = VaFun n $ \v -> vprjM v >>! vinj . f
 
 -- | Make a value entry for a Haskell non-function.
 val :: Valuable v => String -> Type R -> v -> Entry Raw
-val name t v = ValEn (lid name) t (vinj v)
+val name t v = ValEn (ident name) t (vinj v)
 
 -- | Make a value entry for a Haskell function, given a names and types
 --   for the sublanguages.  (Leave blank to leave the binding out of
 --   that language.
 fun :: (MkFun r, Valuable v) =>
        String -> Type R -> (v -> r) -> Entry Raw
-fun name t f = ValEn (lid name) t
-                 (mkFun (FNNamed (ppr (lid name :: Lid R))) f)
+fun name t f = ValEn vid t (mkFun (FNNamed (ppr vid)) f)
+  where vid = ident name
 
 typ :: String -> Entry Raw
-typ s = DecEn [$dc| type $tydec:td |] where td = ptd s
+typ s = DecEn [sgQ| type $tydec:td |] where td = ptd s
 
 -- | Creates a declaration entry
-dec :: Decl R -> Entry Raw
+dec :: SigItem R -> Entry Raw
 dec  = DecEn
 
 -- | Creates a module entry
 submod :: String -> [Entry Raw] -> Entry Raw
-submod  = ModEn . uid
+submod  = ModEn . ident
 
--- | Creates a primitve type entry, binding a name to a type tag
+-- | Creates a primitive type entry, binding a name to a type tag
 --   (which is usually defined in AST.hs)
 primtype  :: String -> TyCon -> Entry Raw
-primtype   = TypEn . lid
+primtype   = TypEn . ident
 
 -- | Application
 (-:), (-=) :: (a -> b) -> a -> b
@@ -151,51 +150,67 @@ infixr 0 -=
 
 -- | Instance of 'fun' for making binary arithmetic functions
 binArith :: String -> (Integer -> Integer -> Integer) -> Entry Raw
-binArith name = fun name [$ty| int -> int -> int |]
+binArith name = fun name [ty| int -> int -> int |]
 
 -- | Apply an object language function (as a 'Value')
 vapp :: Valuable a => Value -> a -> IO Value
-vapp  = \(VaFun _ f) x -> f (vinj x)
+vapp (VaFun _ f) x = f (vinj x)
+vapp _           _ = throwAlms
+  $ almsBug DynamicsPhase "vapp" "applied non-function"
 infixr 0 `vapp`
 
 -- | Build the renaming environment and rename the entries
-basis2renv :: AlmsMonad m =>
+basis2renv :: MonadAlmsError m =>
               [Entry Raw] -> m ([Entry Renamed], RenameState)
 basis2renv =
   runRenamingM False _loc renameState0 . renameMapM each where
-  each ValEn { enName = u, enType = t, enValue = v } = do
+  each ValEn { enVarName = u, enType = t, enValue = v } = do
     u' <- Rename.addVal u
     t' <- renameType t
-    return ValEn { enName = u', enType = t', enValue = v }
+    return ValEn { enVarName = u', enType = t', enValue = v }
   each DecEn { enSrc = d } = do
-    d' <- renameDecl d
+    d' <- renameSigItem d
     return DecEn { enSrc = d' }
-  each TypEn { enName = l, enTyCon = tc } = do
-    l' <- Rename.addType l (lidUnique (jname (tcName tc)))
-    return TypEn { enName = l', enTyCon = tc }
+  each TypEn { enTypName = l, enTyCon = tc } = do
+    l' <- Rename.addType l (idTag (jname (tcName tc)))
+    return TypEn { enTypName = l', enTyCon = tc }
   each ModEn { enModName = u, enEnts = es } = do
     (u', es') <- Rename.addMod u $ renameMapM each es
     return ModEn { enModName = u', enEnts = es' }
 
+-- | Build the static environment
+basis2tenv :: (MonadAlmsError m, MonadRef r m) =>
+              StaticsState r -> [Entry Renamed] -> m (StaticsState r)
+basis2tenv ss0 entries = addSignature ss1 sigexp
+  where
+    ss1             = foldl' (uncurry . addPrimType) ss0 prims
+    (sigexp, prims) = evalRWS (eachEntries entries) [] (0 :: Int)
+    eachEntries es  = do
+      sigitems <- mapM eachEntry es
+      return [seQ|+ sig $list:sigitems end |]
+    eachEntry ValEn { enVarName = n, enType = t }
+      = return [sgQ|+ val $vid:n : $t |]
+    eachEntry DecEn { enSrc = sigitem }
+      = return sigitem
+    eachEntry TypEn { enTypName = n, enTyCon = tc }
+      = do
+        ix <- get
+        put (ix + 1)
+        let n' = ident (idName n ++ "_prim" ++ show ix)
+        tell [(n', tc)]
+        return [sgQ|+ type $tid:n = type $tid:n' |]
+    eachEntry ModEn { enModName = n, enEnts = es }
+      = do
+        sig <- eachEntries es
+        return [sgQ|+ module $mid:n : $sig |]
+
 -- | Build the dynamic environment
-basis2venv :: AlmsMonad m => [Entry Renamed] -> m E
+basis2venv :: MonadAlmsError m => [Entry Renamed] -> m E
 basis2venv es = foldM add genEmpty es where
-  add :: AlmsMonad m => E -> Entry Renamed -> m E
-  add e (ValEn { enName = n, enValue = v })
+  add :: MonadAlmsError m => E -> Entry Renamed -> m E
+  add e (ValEn { enVarName = n, enValue = v })
           = return (Dynamics.addVal e n v)
   add e (ModEn { enModName = n, enEnts = es' })
           = Dynamics.addMod e n `liftM` basis2venv es'
   add e _ = return e
-
--- | Build the static environment
-basis2tenv :: AlmsMonad m => [Entry Renamed] -> m S
-basis2tenv  = liftM snd . runTC env0 . tcMapM each where
-  each ValEn { enName = n, enType = t }
-    = Statics.addVal n t
-  each DecEn { enSrc = decl }
-    = Statics.addDecl decl
-  each TypEn { enName = n, enTyCon = i }
-    = Statics.addType n i
-  each ModEn { enModName = n, enEnts = es }
-    = Statics.addMod n $ tcMapM each es
 

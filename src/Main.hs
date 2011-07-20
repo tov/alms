@@ -8,17 +8,17 @@ module Main (
 import Util
 import Syntax.Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
             ($$), nest, printDoc, hPrintDoc)
-import qualified Syntax.Ppr
+import qualified Syntax.Ppr as Ppr
 import Syntax.Parser (parseFile, REPLCommand(..), parseCommand)
 import Syntax.Prec (precOp)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
+{-
 import Printing (addTyNameContext)
 import Rename (RenameState, runRenamingM, renameDecls, renameProg,
                getRenamingInfo, RenamingInfo(..))
-import Statics (tcProg, tcDecls, S, runTC, runTCNew, Module(..),
-                getExnParam, tyConToDec, getVarInfo, getTypeInfo,
-                getConInfo)
-import Coercion (translate, translateDecls, TEnv, tenv0)
+-}
+import Statics
+import Statics.Sig (Signature)
 import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
@@ -27,11 +27,13 @@ import AST (Prog, Decl, TyDec, BIdent(..), prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
 import Data.Loc (isBogus, initial, bogus)
-import qualified Error as EM
+import qualified Error as E
 import qualified Message.AST  as Msg
+import Type (TV)
 
 import Prelude ()
 import Data.Char (isSpace)
+import Data.IORef (IORef)
 import System.Exit (exitFailure)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
@@ -43,7 +45,6 @@ import qualified USE_READLINE as RL
 #endif
 
 data Option = Don'tExecute
-            | Don'tCoerce
             | NoBasis
             | Verbose
             | Quiet
@@ -51,18 +52,25 @@ data Option = Don'tExecute
             | NoLineEdit
   deriving Eq
 
+data ReplState = RS {
+  rsStatics     :: StaticsState IORef,
+  rsDynamics    :: E
+}
+
+type Alms = E.AlmsErrorT IO
+
 -- | The main procedure
 main :: IO ()
 main  = do
   args <- getArgs
   processArgs [] args $ \opts mmsrc filename -> do
   (primBasis', r0) <- basis2renv primBasis
-  g0 <- basis2tenv primBasis'
+  g0 <- basis2tenv (staticsState0 r0) primBasis'
   e0 <- basis2venv primBasis'
   case mmsrc of
     Nothing | Quiet `notElem` opts -> hPutStrLn stderr versionString
     _ -> return ()
-  let st0 = RS r0 g0 tenv0 e0
+  let st0 = RS g0 e0
   st1 <- if NoBasis `elem` opts
            then return st0
            else findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
@@ -88,43 +96,25 @@ loadString :: ReplState -> String -> String -> IO ReplState
 loadString st name src = do
   case parseFile name src of
     Left e     -> Exn.throwIO e
-    Right ast0 -> do
-      (st1, ast1)    <- renaming (st, prog2decls (ast0 :: Prog Raw))
-      (st2, _, ast2) <- statics False (st1, ast1)
-      (st3, ast3)    <- translation (st2, ast2)
-      (st4, _)       <- dynamics (st3, ast3)
-      return st4
+    Right ast  -> do
+      (st', _, ast') <- E.runAlmsErrorIO (statics (st, prog2decls ast))
+      (st'', _)      <- dynamics (st', ast')
+      return st''
 
 batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
 batch filename msrc opt st0 = do
       src <- msrc
       case parseFile filename src of
         Left e    -> Exn.throwIO e
-        Right ast -> rename ast where
-          rename  :: Prog Raw     -> IO ()
-          check   :: Prog Renamed -> IO ()
-          coerce  :: Prog Renamed -> IO ()
+        Right ast -> check ast where
+          check   :: Prog Raw -> IO ()
           execute :: Prog Renamed -> IO ()
 
-          rename ast0 = do
-            (ast1, _) <- runRenamingM True (initial filename)
-                                      (rsRenaming st0) (renameProg ast0)
-            check ast1
-
           check ast0 = do
-            ((t, ast1), _) <- runTC (rsStatics st0) (tcProg ast0)
+            (ast1, mt) <- typeCheckProg (rsStatics st0) ast0
             when (opt Verbose) $
-              mumble "TYPE" t
-            coerce ast1
-
-          coerce ast1 =
-            if opt Don'tCoerce
-              then execute ast1
-              else do
-                let ast2 = translate (rsTranslation st0) ast1
-                when (opt Verbose) $
-                  mumble "TRANSLATION" ast2
-                execute ast2
+              mumble "TYPE" mt
+            execute ast1
 
           execute ast2 =
             unless (opt Don'tExecute) $ do
@@ -132,31 +122,13 @@ batch filename msrc opt st0 = do
               when (opt Verbose) $
                 mumble "RESULT" v
 
-data ReplState = RS {
-  rsRenaming    :: RenameState,
-  rsStatics     :: S,
-  rsTranslation :: TEnv,
-  rsDynamics    :: E
-}
-
-renaming    :: (ReplState, [Decl Raw]) -> IO (ReplState, [Decl Renamed])
-statics     :: Bool -> (ReplState, [Decl Renamed]) ->
-               IO (ReplState, Module, [Decl Renamed])
-translation :: (ReplState, [Decl Renamed]) -> IO (ReplState, [Decl Renamed])
+statics     :: (ReplState, [Decl Raw]) ->
+               Alms (ReplState, Signature (TV IORef), [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed]) -> IO (ReplState, NewValues)
 
-renaming (st, ast) = do
-  (ast', r') <- runRenamingM True (initial "-")
-                             (rsRenaming st) (renameDecls ast)
-  return (st { rsRenaming = r' }, ast')
-
-statics _ (rs, ast) = do
-  (ast', new, s') <- runTCNew (rsStatics rs) (tcDecls ast)
-  return (rs { rsStatics = s' }, new, ast')
-
-translation (rs, ast) = do
-  let (menv', ast') = translateDecls (rsTranslation rs) ast
-  return (rs { rsTranslation = menv' }, ast')
+statics (rs, ast) = do
+  (ast', sig, s') <- typeCheckDecls (rsStatics rs) ast
+  return (rs { rsStatics = s' }, sig, ast')
 
 dynamics (rs, ast) = do
   (e', new) <- addDecls (rsDynamics rs) ast
@@ -173,23 +145,28 @@ handleExns body (st, handler) =
     `Exn.catches`
     [ Exn.Handler $ \e@(VExn { }) -> do
         prog <- getProgName
-        continue $ EM.AlmsError
-                     (EM.OtherError ("Uncaught exception"))
-                     bogus
-                     (Msg.Table [
-                        ("in program:", Msg.Exact prog),
-                        ("exception:", Msg.Printable (-1) (vppr e))
-                     ]),
+        continue1 $
+          E.AlmsError
+            (E.OtherError ("Uncaught exception"))
+            bogus
+            (Msg.Table [
+               ("in program:", Msg.Exact prog),
+               ("exception:", Msg.Printable (-1) (vppr e))
+          ]),
+      Exn.Handler continue1,
       Exn.Handler continue,
       Exn.Handler $ \err ->
-        continue $ EM.AlmsError EM.DynamicsPhase bogus $
+        continue1 $ E.AlmsError E.DynamicsPhase bogus $
           Msg.Flow [Msg.Words (errorString err)],
       Exn.Handler $ \(Exn.SomeException err) ->
-        continue $ EM.AlmsError EM.DynamicsPhase bogus $
+        continue1 $ E.AlmsError E.DynamicsPhase bogus $
           Msg.Flow [Msg.Words (show err)] ]
   where
-    continue err = do
-      hPrintDoc stderr (withRS st (ppr (err :: EM.AlmsError)))
+    continue1 err = continue (E.AlmsErrorIO [err])
+    continue errs = do
+      for (E.unAlmsErrorIO errs) $ \err -> do
+        hPrintDoc stderr (withRS st (ppr err))
+        hPutStrLn stderr ""
       handler
 
 interactive :: (Option -> Bool) -> ReplState -> IO ()
@@ -202,32 +179,23 @@ interactive opt rs0 = do
       case mres of
         Nothing  -> return ()
         Just (row', ast) -> do
-          st' <- doLine st ast
+          st' <- E.runAlmsErrorIO (doLine st ast)
                    `handleExns` (st, return st)
           repl row' st'
     doLine st ast = let
-      rename  :: (ReplState, [Decl Raw]) -> IO ReplState
-      check   :: (ReplState, [Decl Renamed]) -> IO ReplState
-      coerce  :: Module -> (ReplState, [Decl Renamed]) -> IO ReplState
-      execute :: Module -> (ReplState, [Decl Renamed]) -> IO ReplState
+      check   :: (ReplState, [Decl Raw]) -> E.AlmsErrorT IO ReplState
+      {-
+      execute :: Signature (TV tv) -> (ReplState, [Decl Renamed]) -> IO ReplState
       display :: Module -> NewValues -> ReplState -> IO ReplState
-
-      rename (st0, ast0) = do
-        renaming (st0, ast0) >>= check
+      -}
 
       check stast0   = do
-                         (st1, newDefs, ast1) <- statics True stast0
-                         coerce newDefs (st1, ast1)
+                         (st1, newDefs, ast1) <- statics stast0
+                         liftIO (print newDefs)
+                         return st1
+                         -- coerce newDefs (st1, ast1)
 
-      coerce newDefs stast1
-                     = if opt Don'tCoerce
-                         then execute newDefs stast1
-                         else do
-                           stast2 <- translation stast1
-                           when (opt Verbose) $
-                             mumbles "TRANSLATION" (snd stast2)
-                           execute newDefs stast2
-
+{-
       execute newDefs stast2
                           = if opt Don'tExecute
                               then display newDefs empty (fst stast2)
@@ -239,7 +207,8 @@ interactive opt rs0 = do
                           = do printResult st3 newDefs newVals
                                return st3
 
-      in rename (st, ast)
+    -}
+      in check (st, ast)
     say    = if opt Quiet then const (return ()) else printDoc
     getln' = if opt NoLineEdit then getline else readline
     getln  = if opt Quiet then const (getln' "") else getln'
@@ -274,6 +243,8 @@ interactive opt rs0 = do
                   return (Just (row + count, ast))
                 ParseError derr -> 
                   loop (count + 1) ((line, derr) : acc)
+    printInfo _ _ = return () -- XXX
+                  {-
     printResult :: ReplState -> Module -> NewValues -> IO ()
     printResult st md00 values = say (withRS st (loop True md00)) where
       loop tl md0 = case md0 of
@@ -345,10 +316,14 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
                 then text "  -- built-in"
                 else text "  -- defined at" <+> text (show loc)
       where a >?> b = Ppr.ifEmpty who (a <+> b) (a Ppr.>?> b)
+        -}
 
 -- Add the ReplState to the pretty-printing context.
 withRS :: ReplState -> Doc -> Doc
+withRS _  = id
+{- XXX
 withRS rs = addTyNameContext (rsRenaming rs) (rsStatics rs)
+-}
 
 printPrec :: String -> IO ()
 printPrec oper = printDoc $
@@ -381,7 +356,6 @@ processArgs opts0 args0 k = loop opts0 args0 where
                         = loop (LoadFile name:opts) r
   loop opts ("-b":r)    = loop (NoBasis:opts) r
   loop opts ("-x":r)    = loop (Don'tExecute:opts) r
-  loop opts ("-c":r)    = loop (Don'tCoerce:opts) r
   loop opts ("-v":r)    = loop (Verbose:opts) r
   loop opts ("-q":r)    = loop (Quiet:opts) r
   loop opts ("-e":r)    = loop (NoLineEdit:opts) r
@@ -406,9 +380,8 @@ usage  = do
   hPutStrLn stderr ""
   hPutStrLn stderr "Debugging options:"
   hPutStrLn stderr "  -b       Don't load libbasis.alms"
-  hPutStrLn stderr "  -c       Don't add contracts"
   hPutStrLn stderr "  -x       Don't execute"
-  hPutStrLn stderr "  -v       Verbose (show translation, results, types)"
+  hPutStrLn stderr "  -v       Verbose (show results, types)"
   exitFailure
 
 initialize :: IO ()

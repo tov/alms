@@ -9,8 +9,6 @@ import AST
 import Util
 import Value (Value, Valuable(..))
 
-import qualified AST.Notable
-import qualified AST.Decl
 import qualified Data.Loc
 
 import qualified Control.Concurrent.MVar as MV
@@ -24,41 +22,41 @@ instance Valuable MVar where
 
 entries :: [Entry Raw]
 entries  = [
-    dec [$dc| type `a mvar qualifier U |],
-    fun "new" -: [$ty| all `a. `a -> `a mvar |]
+    dec [sgQ| type `a mvar qualifier U |],
+    fun "new" -: [ty| all `a. `a -> `a mvar |]
       -= liftM MVar . MV.newMVar,
     fun "newEmpty"
-                 -: [$ty| all `a. unit -> `a mvar |]
+                 -: [ty| all `a. unit -> `a mvar |]
       -= \() -> MVar `liftM` MV.newEmptyMVar,
     fun "take"
-                 -: [$ty| all `a. `a mvar -> `a |]
+                 -: [ty| all `a. `a mvar -> `a |]
       -= MV.takeMVar . unMVar,
     fun "put"
-                 -: [$ty| all `a. `a mvar -> `a -> unit |]
+                 -: [ty| all `a. `a mvar -> `a -> unit |]
       -= MV.putMVar . unMVar,
     fun "read"
-                 -: [$ty| all 'a. 'a mvar -> 'a |] -- important!
+                 -: [ty| all 'a. 'a mvar -> 'a |] -- important!
       -= MV.readMVar . unMVar,
     fun "swap"
-                 -: [$ty| all `a. `a mvar -> `a -> `a |]
+                 -: [ty| all `a. `a mvar -> `a -> `a |]
       -= MV.swapMVar . unMVar,
     fun "tryTake"
-                 -: [$ty| all `a. `a mvar -> `a option |]
+                 -: [ty| all `a. `a mvar -> `a option |]
       -= MV.tryTakeMVar . unMVar,
     fun "tryPut"
-                 -: [$ty| all `a. `a mvar -> `a -> bool |]
+                 -: [ty| all `a. `a mvar -> `a -> bool |]
       -= MV.tryPutMVar . unMVar,
     fun "isEmpty"
-                 -: [$ty| all `a. `a mvar -> bool |]
+                 -: [ty| all `a. `a mvar -> bool |]
       -= MV.isEmptyMVar . unMVar,
     fun "callWith"
-                 -: [$ty| all `a `b. `a mvar -> (`a -> `b) -> `b |]
+                 -: [ty| all `a `b. `a mvar -> (`a -> `b) -> `b |]
       -= \mv callback -> MV.withMVar (unMVar mv) (vapp callback),
     fun "modify_"
-                 -: [$ty| all `a. `a mvar -> (`a -> `a) -> unit |]
+                 -: [ty| all `a. `a mvar -> (`a -> `a) -> unit |]
       -= \mv callback -> MV.modifyMVar_ (unMVar mv) (vapp callback),
     fun "modify"
-                 -: [$ty| all `a `b. `a mvar -> (`a -> `a * `b) -> `b |]
+                 -: [ty| all `a `b. `a mvar -> (`a -> `a * `b) -> `b |]
       -= \mv callback -> MV.modifyMVar (unMVar mv) $ \v -> do
                            result <- vapp callback v
                            (vprjM result :: IO (Value, Value))

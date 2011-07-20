@@ -295,6 +295,7 @@ instance MonadAlmsError m ⇒ MonadAlmsError (SubstT s m) where
   withLocation_ loc = SubstT . withLocation_ loc . unSubstT
   bailoutAlms_      = lift bailoutAlms_
   reportAlms_       = lift <$> reportAlms_
+  mapAlmsErrors f   = SubstT . mapAlmsErrors f . unSubstT
 
 instance MonadAlmsError m ⇒ MonadError [AlmsError] (SubstT s m) where
   throwError     = throwAlmsList

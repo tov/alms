@@ -7,7 +7,7 @@
     #-}
 -- | Type checking declarations
 module Statics.Decl (
-  tcProg, tcDecls, tcDecl
+  tcProg, tcDecls, tcDecl, tcSigExp,
 ) where
 
 import Util
@@ -45,6 +45,9 @@ tcDecl μ γ d0 = withLocation d0 $ case d0 of
   [dc| let $π = $e |]                           → do
     (e', σs)    ← tcExprPatt γ e π
     return ([dc| let $π = $e' |], zipWith SgVal (AST.dv π) σs)
+  [dc| type $tid:lhs = type $qtid:rhs |]        → do
+    tc          ← γ !.! rhs
+    return (d0, [SgTyp lhs tc { tcName = J (reverse μ) lhs }])
   [dc| type $list:tds |]                        → do
     sig         ← tcTyDecs μ γ tds
     return (d0, sig)
@@ -105,6 +108,9 @@ tcSigItem γ sigitem0 = withLocation sigitem0 $ case sigitem0 of
     σ           ← tcType mempty γ t
     return [SgVal n σ]
   [sgQ| type $list:tds |]                       → tcTyDecs [] γ tds
+  [sgQ| type $tid:lhs = type $qtid:rhs |]       → do
+    tc          ← γ !.! rhs
+    return [SgTyp lhs tc { tcName = J [] lhs }]
   [sgQ| module $mid:n : $sigexp |]              → do
     sig         ← tcSigExp γ sigexp
     return [SgMod n sig]

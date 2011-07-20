@@ -13,8 +13,6 @@ import Value (Valuable(..), Value(..))
 import AST
 import Type
 
-import qualified AST.Notable
-import qualified AST.Decl
 import qualified Data.Loc
 
 import qualified Basis.IO
@@ -43,11 +41,10 @@ primBasis  = [
 
     -- Primitive types:
     "unit"   `primtype` tcUnit,
-    "any"    `primtype` tcBot,
     "exn"    `primtype` tcExn,
-    dec [$dc| type bool = false | true |],
+    dec [sgQ| type bool = false | true |],
     "int"    `primtype` tcInt,
-    dec [$dc| type char = int |],
+    dec [sgQ| type char = int |],
     "float"  `primtype` tcFloat,
     "string" `primtype` tcString,
     "U"      `primtype` tcUn,
@@ -55,11 +52,11 @@ primBasis  = [
     "*"      `primtype` tcTuple,
 
     -- Sums
-    dec [$dc| type `a option = None | Some of `a |],
-    dec [$dc| type `a + `b = Left of `a | Right of `b |],
+    dec [sgQ| type `a option = None | Some of `a |],
+    dec [sgQ| type `a + `b = Left of `a | Right of `b |],
 
     -- Lists
-    dec [$dc| type `a list = Nil | Cons of `a * `a list |],
+    dec [sgQ| type `a list = Nil | Cons of `a * `a list |],
 
     -- Arithmetic
     binArith "+" (+),
@@ -67,120 +64,120 @@ primBasis  = [
     binArith "*" (*),
     binArith "/" div,
     binArith "%" mod,
-    fun "~" -: [$ty| int -> int |]
+    fun "~" -: [ty| int -> int |]
       -= (negate :: Integer -> Integer),
-    fun "abs" -: [$ty| int -> int |]
+    fun "abs" -: [ty| int -> int |]
       -= (abs :: Integer -> Integer) ,
-    fun "<=" -: [$ty| int -> int -> bool |]
+    fun "<=" -: [ty| int -> int -> bool |]
       -= ((<=) :: Integer -> Integer -> Bool),
-    fun "string_of_int" -: [$ty| int -> string |]
+    fun "string_of_int" -: [ty| int -> string |]
       -= (show :: Integer -> String),
-    fun "int_of_string" -: [$ty| string -> int |]
+    fun "int_of_string" -: [ty| string -> int |]
       -= (read :: String -> Integer),
-    fun "random_int" -: [$ty| unit -> int |]
+    fun "random_int" -: [ty| unit -> int |]
       -= \() -> (randomIO :: IO Int),
 
     -- Floating point arithmetic
-    fun "<=." -: [$ty| float -> float -> bool |]
+    fun "<=." -: [ty| float -> float -> bool |]
       -= ((<=) :: Double -> Double -> Bool),
-    fun "<." -: [$ty| float -> float -> bool |]
+    fun "<." -: [ty| float -> float -> bool |]
       -= ((<) :: Double -> Double -> Bool),
-    fun "+." -: [$ty| float -> float -> float |]
+    fun "+." -: [ty| float -> float -> float |]
       -= ((+) :: Double -> Double -> Double),
-    fun "-." -: [$ty| float -> float -> float |]
+    fun "-." -: [ty| float -> float -> float |]
       -= ((-) :: Double -> Double -> Double),
-    fun "*." -: [$ty| float -> float -> float |]
+    fun "*." -: [ty| float -> float -> float |]
       -= ((*) :: Double -> Double -> Double),
-    fun "/." -: [$ty| float -> float -> float |]
+    fun "/." -: [ty| float -> float -> float |]
       -= ((/) :: Double -> Double -> Double),
-    fun "**" -: [$ty| float -> float -> float |]
+    fun "**" -: [ty| float -> float -> float |]
       -= ((**) :: Double -> Double -> Double),
-    fun "~." -: [$ty| float -> float |]
+    fun "~." -: [ty| float -> float |]
       -= (negate :: Double -> Double),
-    fun "sqrt" -: [$ty| float -> float |]
+    fun "sqrt" -: [ty| float -> float |]
       -= (sqrt :: Double -> Double),
-    fun "log" -: [$ty| float -> float |]
+    fun "log" -: [ty| float -> float |]
       -= (log :: Double -> Double),
-    fun "absf" -: [$ty| float -> float |]
+    fun "absf" -: [ty| float -> float |]
       -= (abs :: Double -> Double),
-    fun "float_of_int" -: [$ty| int -> float |]
+    fun "float_of_int" -: [ty| int -> float |]
       -= (fromIntegral :: Integer -> Double),
-    fun "int_of_float" -: [$ty| float -> int |]
+    fun "int_of_float" -: [ty| float -> int |]
       -= (round :: Double -> Integer),
-    fun "string_of_float" -: [$ty| float -> string |]
+    fun "string_of_float" -: [ty| float -> string |]
       -= (show :: Double -> String),
-    fun "float_of_string" -: [$ty| string -> float |]
+    fun "float_of_string" -: [ty| string -> float |]
       -= (read :: String -> Double),
 
     -- Strings
-    fun "explode"  -: [$ty| string -> char list |]
+    fun "explode"  -: [ty| string -> char list |]
       -= map char2integer,
-    fun "implode"  -: [$ty| char list -> string |]
+    fun "implode"  -: [ty| char list -> string |]
       -= map integer2char,
-    fun "^" -: [$ty| string -> string -> string |]
+    fun "^" -: [ty| string -> string -> string |]
       -= ((++) :: String -> String -> String),
-    fun "string_of" -: [$ty| all 'a. 'a -> string |]
+    fun "string_of" -: [ty| all 'a. 'a -> string |]
       -= (return . show :: Value -> IO String),
-    fun "string_length" -: [$ty| string -> int |]
+    fun "string_length" -: [ty| string -> int |]
       -= \s -> toInteger (length (s :: String)),
 
     -- "Magic" equality and print; failure
-    fun "==" -: [$ty| all 'a. 'a -> 'a -> bool |]
+    fun "==" -: [ty| all 'a. 'a -> 'a -> bool |]
       -= ((==) :: Value -> Value -> Bool),
-    fun "print" -: [$ty| all 'a. 'a -> unit |]
+    fun "print" -: [ty| all 'a. 'a -> unit |]
       -= (print :: Value -> IO ()),
 
     -- I/O
-    fun "putChar"  -: [$ty| char -> unit |]
+    fun "putChar"  -: [ty| char -> unit |]
       -= putChar . integer2char,
-    fun "getChar"  -: [$ty| unit -> char |]
+    fun "getChar"  -: [ty| unit -> char |]
       -= \() -> fmap char2integer getChar,
-    fun "flush"    -: [$ty| unit -> unit |]
+    fun "flush"    -: [ty| unit -> unit |]
       -= \() -> IO.hFlush IO.stdout,
-    fun "putStr"   -: [$ty| string -> unit |]
+    fun "putStr"   -: [ty| string -> unit |]
       -= putStr,
-    fun "putStrLn" -: [$ty| string -> unit |]
+    fun "putStrLn" -: [ty| string -> unit |]
       -= putStrLn,
-    fun "getLine"  -: [$ty| unit -> string |]
+    fun "getLine"  -: [ty| unit -> string |]
       -= \() -> getLine,
 
     -- The environment
-    fun "getArgs" -: [$ty| unit -> string list |]
+    fun "getArgs" -: [ty| unit -> string list |]
       -= \() -> Env.getArgs,
-    fun "getProgName" -: [$ty| unit -> string |]
+    fun "getProgName" -: [ty| unit -> string |]
       -= \() -> Env.getProgName,
-    fun "getEnv" -: [$ty| string -> string |]
+    fun "getEnv" -: [ty| string -> string |]
       -= Env.getEnv,
-    fun "getEnvironment" -: [$ty| unit -> (string * string) list |]
+    fun "getEnvironment" -: [ty| unit -> (string * string) list |]
       -= \() -> Env.getEnvironment,
 
     -- References
-    dec [$dc| type `a ref qualifier U |],
-    dec [$dc| type `a aref qualifier A |],
-    fun "ref" -: [$ty| all `a. `a -> `a ref |]
+    dec [sgQ| type `a ref qualifier U |],
+    dec [sgQ| type `a aref qualifier A |],
+    fun "ref" -: [ty| all `a. `a -> `a ref |]
       -= (\v -> Ref `fmap` newIORef v),
-    fun "aref" -: [$ty| all `a. `a -> `a aref |]
+    fun "aref" -: [ty| all `a. `a -> `a aref |]
       -= (\v -> Ref `fmap` newIORef v),
 
-    fun "!" -: [$ty| all 'a. 'a ref -> 'a |]
+    fun "!" -: [ty| all 'a. 'a ref -> 'a |]
       -= (\r -> readIORef (unRef r)),
-    fun "!!" -: [$ty| all 'a. 'a aref -> 'a aref * 'a |]
+    fun "!!" -: [ty| all 'a. 'a aref -> 'a aref * 'a |]
       -= (\r -> do
            v <- readIORef (unRef r)
            return (r, v)),
-    fun "<-" -: [$ty| all `a. `a ref -> `a -> `a |]
+    fun "<-" -: [ty| all `a. `a ref -> `a -> `a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, v'))),
-    fun "<-!" -: [$ty| all `a `b. `a aref ->
+    fun "<-!" -: [ty| all `a `b. `a aref ->
                             `b -o `b aref * `a |]
       -= (\r v -> do
            atomicModifyIORef (unRef r) (\v' -> (v, (r, v')))),
 
     submod "Unsafe" [
       -- Unsafe coercions
-      fun "unsafeCoerce" -: [$ty| all `b `a. `a -> `b |]
+      fun "unsafeCoerce" -: [ty| all `b `a. `a -> `b |]
         -= (id :: Value -> Value),
-      fun "unsafeDup" -: [$ty| all `a. `a -> `a * `a |]
+      fun "unsafeDup" -: [ty| all `a. `a -> `a * `a |]
         -= ((\v -> (v, v)) :: Value -> (Value, Value))
     ],
 

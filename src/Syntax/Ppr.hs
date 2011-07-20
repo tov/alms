@@ -195,6 +195,8 @@ instance Ppr (Decl i) where
     prec precDot $
       text "let" <+> ppr x <+> equals
         >+> ppr e
+  ppr [dc| type $tid:lhs = type $qtid:rhs |] =
+    text "type" <+> ppr lhs <+> equals <+> text "type" <+> ppr rhs
   ppr [dc| type $list:tds |] = pprTyDecs tds
   ppr [dc| abstype $list:ats0 with $list:ds end |] =
     case ats0 of
@@ -339,6 +341,8 @@ instance Ppr (SigItem i) where
       text "val" <+> ppr n >+> colon <+> ppr t
     [sgQ| type $list:tds |] ->
       pprTyDecs tds
+    [sgQ| type $tid:lhs = type $qtid:rhs |] ->
+      text "type" <+> ppr lhs <+> equals <+> text "type" <+> ppr rhs
     [sgQ| module $uid:u : $s |] ->
       pprSigExp add s where
         add body = text "module" <+> ppr u <+> colon <+> body

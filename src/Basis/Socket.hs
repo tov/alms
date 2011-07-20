@@ -13,9 +13,6 @@ import Basis.IO ()
 import BasisUtils
 import AST
 import Value
-
-import qualified AST.Notable
-import qualified AST.Decl
 import qualified Data.Loc
 
 instance Valuable S.Socket where
@@ -102,68 +99,68 @@ deriving instance Data S.AddrInfo
 
 entries :: [Entry Raw]
 entries  = [
-    dec [$dc| type portNumber = PortNum of int |],
-    dec [$dc| type socket |],
+    dec [sgQ| type portNumber = PortNum of int |],
+    dec [sgQ| type socket |],
     typ (enumTypeDecl S.AF_INET),
     typ (enumTypeDecl S.Stream),
-    dec [$dc| type protocolNumber = int |],
-    dec [$dc| type hostAddress  = int |],
-    dec [$dc| type flowInfo     = int |],
-    dec [$dc| type hostAddress6 = int * int * int * int |],
-    dec [$dc| type scopeID      = int |],
-    dec [$dc| type sockAddr
+    dec [sgQ| type protocolNumber = int |],
+    dec [sgQ| type hostAddress  = int |],
+    dec [sgQ| type flowInfo     = int |],
+    dec [sgQ| type hostAddress6 = int * int * int * int |],
+    dec [sgQ| type scopeID      = int |],
+    dec [sgQ| type sockAddr
                  = SockAddrInet of portNumber * hostAddress
                  | SockAddrInet6 of
                      portNumber * flowInfo * hostAddress6 * scopeID
                  | SockAddrUnix of string |],
     typ (enumTypeDecl S.AI_ALL),
     typ (enumTypeDecl S.ShutdownSend),
-    dec [$dc| type addrInfo
+    dec [sgQ| type addrInfo
                 = AddrInfo of
                     addrInfoFlag list * family * socketType *
                     protocolNumber * sockAddr * string option |],
-    dec [$dc| type hostName = string |],
-    dec [$dc| type serviceName = string |],
+    dec [sgQ| type hostName = string |],
+    dec [sgQ| type serviceName = string |],
 
-    val "inaddr_any" -: [$ty| hostAddress |]
+    val "inaddr_any" -: [ty| hostAddress |]
       -= S.iNADDR_ANY,
-    val "defaultProtocol" -: [$ty| protocolNumber |]
+    val "defaultProtocol" -: [ty| protocolNumber |]
       -= S.defaultProtocol,
-    val "defaultHints" -: [$ty| addrInfo |]
+    val "defaultHints" -: [ty| addrInfo |]
       -= S.defaultHints {
            S.addrAddress  = S.SockAddrInet S.aNY_PORT S.iNADDR_ANY,
            S.addrCanonName = Nothing
          },
 
     fun "getAddrInfo"
-      -: [$ty| addrInfo option -> hostName option ->
+      -: [ty| addrInfo option -> hostName option ->
                 serviceName option -> addrInfo list |]
       -= S.getAddrInfo,
-    fun "inet_addr" -: [$ty| string -> hostAddress |]
+    fun "inet_addr" -: [ty| string -> hostAddress |]
       -= S.inet_addr,
 
-    fun "socket" -: [$ty| family -> socketType -> protocolNumber -> socket |]
+    fun "socket" -: [ty| family -> socketType -> protocolNumber -> socket |]
       -= S.socket,
-    fun "bind"   -: [$ty| socket -> sockAddr -> unit |]
+    fun "bind"   -: [ty| socket -> sockAddr -> unit |]
       -= S.bindSocket,
-    fun "connect"   -: [$ty| socket -> sockAddr -> unit |]
+    fun "connect"   -: [ty| socket -> sockAddr -> unit |]
       -= S.connect,
-    fun "listen" -: [$ty| socket -> int -> unit |]
+    fun "listen" -: [ty| socket -> int -> unit |]
       -= S.listen,
-    fun "accept" -: [$ty| socket -> socket * sockAddr |]
+    fun "accept" -: [ty| socket -> socket * sockAddr |]
       -= S.accept,
-    fun "send" -: [$ty| socket -> string -> int |]
+    fun "send" -: [ty| socket -> string -> int |]
       -= \sock str -> S.send sock str,
-    fun "recv" -: [$ty| socket -> int -> string |]
+    fun "recv" -: [ty| socket -> int -> string |]
       -= \sock len -> S.recv sock len,
-    fun "shutdown" -: [$ty| socket -> shutdownCmd -> unit |]
+    fun "shutdown" -: [ty| socket -> shutdownCmd -> unit |]
       -= S.shutdown,
-    fun "close" -: [$ty| socket -> unit |]
+    fun "close" -: [ty| socket -> unit |]
       -= S.sClose,
 
-    fun "isReadable" -: [$ty| socket -> bool |]
+    fun "isReadable" -: [ty| socket -> bool |]
       -= S.sIsReadable,
-    fun "isWritable" -: [$ty| socket -> bool |]
+    fun "isWritable" -: [ty| socket -> bool |]
       -= S.sIsWritable
   ]
 

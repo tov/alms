@@ -11,15 +11,19 @@
       #-}
 module Error (
   AlmsError(..), Phase(..),
-  almsBug, (!::), appendToMessage,
+  almsBug, (!::),
   wordsMsg, quoteMsg, pprMsg, showMsg, emptyMsg,
   throw,
 
   MonadAlmsError(..),
-  unTryAlms, finallyAlms, mapAlmsErrors,
+  unTryAlms, finallyAlms,
+  addErrorContext,
+  bailoutIfError,
 
   AlmsErrorT(..), runAlmsErrorT,
   mapAlmsErrorT, liftCallCC, liftCatch, liftListen, liftPass,
+
+  AlmsErrorIO(..), runAlmsErrorIO,
 
   module Message.Quasi,
 ) where
@@ -100,11 +104,6 @@ almsBug phase culprit0 msg0 =
 msg0 !:: thing = [msg| $words:msg0 <q>$thing</q> |]
 infix 1 !::
 
--- | Append a message to the end of the message of an 'AlmsError'
-appendToMessage :: AlmsError -> Message d -> AlmsError
-appendToMessage exn message =
-  exn { exnMessage = [msg| $1 <br> $2 |] (exnMessage exn) message }
-
 ---
 --- 'AlmsError' Instances
 ---
@@ -152,6 +151,8 @@ class Monad m => MonadAlmsError m where
   -- | If any errors have occurred, collect them and give them to
   --   a handler.  The list should be non-empty.
   catchAlms     :: m a -> ([AlmsError] -> m a) -> m a
+  -- | Map any errors propagating upward
+  mapAlmsErrors :: (AlmsError -> AlmsError) -> m a -> m a
   --
   -- Low-level methods (not intended for client use)
   --
@@ -172,7 +173,7 @@ class Monad m => MonadAlmsError m where
         loc <- getLocation
         reportAlms_ e { exnLoc = loc }
       else reportAlms_ e
-  throwAlms e       = reportAlms e >> bailoutAlms_
+  throwAlms e      = reportAlms e >> bailoutAlms_
   throwAlmsList es = mapM reportAlms es >> bailoutAlms_
 
 unTryAlms :: MonadAlmsError m =>
@@ -190,13 +191,20 @@ finallyAlms action cleanup = do
 
 infixl 1 `finallyAlms`
 
-mapAlmsErrors :: MonadAlmsError m =>
+addErrorContext :: MonadAlmsError m =>
                  m a ->
-                 (AlmsError -> AlmsError) ->
+                 Message d ->
                  m a
-mapAlmsErrors action f = action `catchAlms` throwAlmsList . map f
+addErrorContext action message =
+  mapAlmsErrors eachError action
+  where
+  eachError exn = 
+    exn { exnMessage = [msg| $1 <br> $2 |] message (exnMessage exn) }
 
-infixl 1 `mapAlmsErrors`
+infixl 1 `addErrorContext`
+
+bailoutIfError :: MonadAlmsError m => m a -> m a
+bailoutIfError action = action `catchAlms` throwAlmsList
 
 --
 -- Instances
@@ -210,6 +218,7 @@ instance MonadAlmsError IO where
   reportAlms_     = throwIO
   catchAlms action handler = Control.Exception.catch action handler'
     where handler' e = handler [e]
+  mapAlmsErrors f action = Control.Exception.catch action (throwIO . f)
 
 --
 -- A monad transformer
@@ -217,8 +226,9 @@ instance MonadAlmsError IO where
 
 newtype AlmsErrorT m a
   = AlmsErrorT {
-      unAlmsErrorT :: Maybe.MaybeT (StrictRWS.RWST Loc [AlmsError] () m) a
+      unAlmsErrorT :: Maybe.MaybeT (StrictRWS.RWST LocMap [AlmsError] () m) a
     }
+type LocMap = (Loc, AlmsError -> AlmsError)
 
 instance Monad m => Functor (AlmsErrorT m) where
   fmap  = liftM
@@ -236,18 +246,22 @@ instance MonadTrans AlmsErrorT where
   lift = AlmsErrorT . lift . lift
 
 instance Monad m => MonadAlmsError (AlmsErrorT m) where
-  getLocation       = AlmsErrorT (lift ask)
+  getLocation       = AlmsErrorT (lift (asks fst))
   withLocation_ loc =
-    AlmsErrorT . Maybe.mapMaybeT (local (const loc)) . unAlmsErrorT
+    AlmsErrorT . local (first (const loc)) . unAlmsErrorT
   bailoutAlms_      = AlmsErrorT (Maybe.MaybeT (return Nothing))
-  reportAlms_ e     = AlmsErrorT (lift (tell [e]))
+  reportAlms_ e     = AlmsErrorT . lift $ do
+    f <- asks snd
+    tell [f e]
   catchAlms action handler
                     = either handler return =<< lift (runAlmsErrorT action)
+  mapAlmsErrors f   =
+    AlmsErrorT . local (second (. f)) . unAlmsErrorT
 
 runAlmsErrorT :: Monad m =>
                  AlmsErrorT m a -> m (Either [AlmsError] a)
 runAlmsErrorT (AlmsErrorT action) = do
-  (mresult, es) <- StrictRWS.evalRWST (Maybe.runMaybeT action) bogus ()
+  (mresult, es) <- StrictRWS.evalRWST (Maybe.runMaybeT action) (bogus, id) ()
   case (mresult, es) of
     (Just a, [])  -> return (Right a)
     (_,      [])  -> return $
@@ -303,6 +317,22 @@ liftPass pass' = mapAlmsErrorT $ \action → pass' $ do
     Nothing     → ((Nothing, st, es), id)
     Just (v, f) → ((Just v, st, es), f)
 
+---
+--- Running in IO
+---
+
+newtype AlmsErrorIO = AlmsErrorIO { unAlmsErrorIO ∷ [AlmsError] }
+  deriving (Typeable)
+
+instance Show AlmsErrorIO where
+  show = concatMap ((++ "\n") . ('\n' :) . show) . unAlmsErrorIO
+
+instance Exception AlmsErrorIO
+
+-- | Run in the IO monad, accumulating all errors.
+runAlmsErrorIO ∷ AlmsErrorT IO a → IO a
+runAlmsErrorIO = either (throwIO . AlmsErrorIO) return <=< runAlmsErrorT
+
 --
 -- AlmsErrorT Pass-through instances
 --
@@ -337,6 +367,9 @@ instance MonadTrace m ⇒ MonadTrace (AlmsErrorT m) where
   putTraceIndent = lift <$> putTraceIndent
   putTraceString = lift <$> putTraceString
 
+instance MonadIO m ⇒ MonadIO (AlmsErrorT m) where
+  liftIO = lift . liftIO
+
 --
 -- MonadAlmsError Pass-through instances
 --
@@ -347,6 +380,7 @@ instance MonadAlmsError m => MonadAlmsError (Identity.IdentityT m) where
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = Identity.liftCatch catchAlms
+  mapAlmsErrors  = Identity.mapIdentityT . mapAlmsErrors
 
 instance MonadAlmsError m => MonadAlmsError (Maybe.MaybeT m) where
   getLocation    = lift getLocation
@@ -354,6 +388,7 @@ instance MonadAlmsError m => MonadAlmsError (Maybe.MaybeT m) where
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = Maybe.liftCatch catchAlms
+  mapAlmsErrors  = Maybe.mapMaybeT . mapAlmsErrors
 
 instance MonadAlmsError m => MonadAlmsError (ListT m) where
   getLocation    = lift getLocation
@@ -361,6 +396,7 @@ instance MonadAlmsError m => MonadAlmsError (ListT m) where
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = List.liftCatch catchAlms
+  mapAlmsErrors  = mapListT . mapAlmsErrors
 
 instance MonadAlmsError m => MonadAlmsError (ReaderT r m) where
   getLocation    = lift getLocation
@@ -368,6 +404,7 @@ instance MonadAlmsError m => MonadAlmsError (ReaderT r m) where
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = Reader.liftCatch catchAlms
+  mapAlmsErrors  = mapReaderT . mapAlmsErrors
 
 instance (MonadAlmsError m, Monoid w) =>
          MonadAlmsError (StrictRWS.RWST r w s m) where
@@ -376,6 +413,7 @@ instance (MonadAlmsError m, Monoid w) =>
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = StrictRWS.liftCatch catchAlms
+  mapAlmsErrors  = StrictRWS.mapRWST . mapAlmsErrors
 
 instance (MonadAlmsError m, Monoid w) =>
          MonadAlmsError (LazyRWS.RWST r w s m) where
@@ -384,6 +422,7 @@ instance (MonadAlmsError m, Monoid w) =>
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = LazyRWS.liftCatch catchAlms
+  mapAlmsErrors  = LazyRWS.mapRWST . mapAlmsErrors
 
 instance (MonadAlmsError m, Monoid w) =>
          MonadAlmsError (StrictWriter.WriterT w m) where
@@ -392,6 +431,7 @@ instance (MonadAlmsError m, Monoid w) =>
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = StrictWriter.liftCatch catchAlms
+  mapAlmsErrors  = StrictWriter.mapWriterT . mapAlmsErrors
 
 instance (MonadAlmsError m, Monoid w) =>
          MonadAlmsError (LazyWriter.WriterT w m) where
@@ -400,6 +440,7 @@ instance (MonadAlmsError m, Monoid w) =>
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = LazyWriter.liftCatch catchAlms
+  mapAlmsErrors  = LazyWriter.mapWriterT . mapAlmsErrors
 
 instance MonadAlmsError m => MonadAlmsError (StrictState.StateT s m) where
   getLocation    = lift getLocation
@@ -407,6 +448,7 @@ instance MonadAlmsError m => MonadAlmsError (StrictState.StateT s m) where
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = StrictState.liftCatch catchAlms
+  mapAlmsErrors  = StrictState.mapStateT . mapAlmsErrors
 
 instance MonadAlmsError m => MonadAlmsError (LazyState.StateT s m) where
   getLocation    = lift getLocation
@@ -414,4 +456,5 @@ instance MonadAlmsError m => MonadAlmsError (LazyState.StateT s m) where
   bailoutAlms_   = lift bailoutAlms_
   reportAlms_    = lift . reportAlms_
   catchAlms      = LazyState.liftCatch catchAlms
+  mapAlmsErrors  = LazyState.mapStateT . mapAlmsErrors
 

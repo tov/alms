@@ -18,11 +18,11 @@ module AST.Decl (
   SigItem'(..), SigItem, newSigItem,
   -- ** Synthetic constructors
   -- | These fill in the source location fields with a bogus location
-  dcLet, dcTyp, dcAbs, dcMod, dcSig, dcOpn, dcLoc, dcExn, dcAnti,
+  dcLet, dcTyp, dcAli, dcAbs, dcMod, dcSig, dcOpn, dcLoc, dcExn, dcAnti,
   absTy, absTyAnti,
   tdAbs, tdSyn, tdDat, tdAnti,
   meStr, meName, meAsc, meAnti,
-  sgVal, sgTyp, sgMod, sgSig, sgInc, sgExn, sgAnti,
+  sgVal, sgTyp, sgAli, sgMod, sgSig, sgInc, sgExn, sgAnti,
   seSig, seName, seWith, seAnti,
   prog,
 
@@ -64,6 +64,8 @@ data Decl' i
   = DcLet (Patt i) (Expr i)
   -- | Type declaration
   | DcTyp [TyDec i]
+  -- | Type alias
+  | DcAli (TypId i) (QTypId i)
   -- | Abstype block declaration
   | DcAbs [AbsTy i] [Decl i]
   -- | Module declaration
@@ -98,6 +100,8 @@ data SigItem' i
   = SgVal (VarId i) (Type i)
   -- | A type
   | SgTyp [TyDec i]
+  -- | Type alias
+  | SgAli (TypId i) (QTypId i)
   -- | A module
   | SgMod (ModId i) (SigExp i)
   -- | A signature
@@ -191,6 +195,8 @@ newDecl d0 = flip N d0 $ case d0 of
     newNote {
       dloc_  = getLoc tds
     }
+  DcAli _ _ ->
+    newNote
   DcAbs at1 ds2 ->
     newNote {
       dloc_  = getLoc (at1, ds2),
@@ -264,6 +270,8 @@ newSigItem d0 = flip N d0 $ case d0 of
     newNote {
       dloc_  = getLoc tds
     }
+  SgAli _ _ ->
+    newNote
   SgMod u1 se2 ->
     newNote {
       dloc_  = getLoc se2,

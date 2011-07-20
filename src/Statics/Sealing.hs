@@ -127,7 +127,7 @@ subsumeSig γ = eachSig where
     SgVal n σ   → do
       σ'        ← γ !.! n
       σ' ≤ σ
-        `mapAlmsErrors` flip appendToMessage
+        `addErrorContext`
           [msg| In signature matching, type mismatch for value binding $q:n. |]
     SgTyp n tc  → do
       tc'       ← γ !.! n

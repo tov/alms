@@ -80,6 +80,7 @@ evalDecls  = (flip . foldM . flip) evalDecl
 evalDecl :: Decl R -> DDecl
 evalDecl [dc| let $x = $e |]                       = evalLet x e
 evalDecl [dc| type $list:_ |]                      = return
+evalDecl [dc| type $tid:_ = type $qtid:_ |]        = return
 evalDecl [dc| abstype $list:_ with $list:ds end |] = evalDecls ds
 evalDecl [dc| open $b |]                           = evalOpen b
 evalDecl [dc| module $mid:n = $b |]                = evalMod n b
@@ -129,7 +130,7 @@ evalExn _ _ env = return env
 
 eval :: E -> Prog R -> Result
 eval env0 [prQ| $list:ds in $e0 |] = evalDecls ds env0 >>= valOf e0
-eval env0 [prQ| $list:ds        |] = evalDecls ds env0 >>  return (vinj ())
+eval env0 [prQ| $list:ds        |] = evalDecls ds env0 >>  return vaUnit
 
 -- The meaning of an expression
 valOf :: Expr R -> D
@@ -148,7 +149,7 @@ valOf e env = case e of
     mv1 <- mapM (valOf <-> env) me1
     return (VaCon (jname n) mv1)
   [ex| `$uid:lab $opt:me1 |] -> do
-    v1 <- maybe (return (vinj ())) (valOf <-> env) me1
+    v1 <- maybe (return vaUnit) (valOf <-> env) me1
     return (VaLab 0 lab v1)
   [ex| #$uid:lab $e1 |] -> do
     v1 <- valOf e1 env

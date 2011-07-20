@@ -18,7 +18,7 @@ module Statics.Rename (
   -- ** Adding the basis
   addVal, addType, addMod,
   -- * Renamers
-  renameProg, renameDecls, renameDecl, renameType,
+  renameProg, renameDecls, renameDecl, renameType, renameSigItem,
   -- * REPL query
   getRenamingInfo, RenamingInfo(..),
   renamingEnterScope,
@@ -494,6 +494,10 @@ renameDecl d0 = withLocation d0 $ case d0 of
     x'  <- renamePatt x
     e'  <- renameExpr e
     return [dc|+ let $x' = $e' |]
+  [dc| type $tid:lhs = type $qtid:rhs |] -> do
+    lhs' <- bindTycon lhs
+    rhs' <- getTycon rhs
+    return [dc|+ type $tid:lhs' = type $qtid:rhs' |]
   [dc| type $list:tds |] -> do
     tds' <- renameTyDecs tds
     return [dc|+ type $list:tds' |]
@@ -719,6 +723,10 @@ renameSigItem sg0 = case sg0 of
   [sgQ| type $list:tds |] -> do
     tds' <- renameTyDecs tds
     return [sgQ|+ type $list:tds' |]
+  [sgQ| type $tid:lhs = type $qtid:rhs |] -> do
+    lhs' <- bindTycon lhs
+    rhs' <- getTycon rhs
+    return [sgQ|+ type $tid:lhs' = type $qtid:rhs' |]
   [sgQ| module $mid:u : $se1 |] -> do
     (se1', md) <- steal $ renameSigExp se1
     u' <- bindModule u md
