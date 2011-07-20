@@ -174,10 +174,10 @@ test_g0 = mempty
   =+= AST.ident "A"             =:= tcAf
   =+= AST.ident "\\/"           =:= tcJoin
   =+= AST.ident "*"             =:= tcTuple
-  =+= AST.ident "end"           =:= tcEnd
+  =+= AST.ident "rowend"        =:= tcRowEnd
   =+= AST.ident "variant"       =:= tcVariant
   =+= AST.ident "record"        =:= tcRecord
-  =+= AST.ident "dots"          =:= tcDots
+  =+= AST.ident "rowdots"       =:= tcRowDots
   =+= AST.ident "option"        =:= tcOption
     =+= AST.ident "None"          =:= Left tcOption
     =+= AST.ident "Some"          =:= Left tcOption

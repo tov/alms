@@ -250,7 +250,7 @@ tcMatchCases φ δ γ σ ([caQ| #$uid:n $opt:mπi → $ei |]:cas) mσ = do
   (ei', σi)             ← infer (request φ γ αs) δ γ' ei mσ
   (cas', σk)            ← if null cas
     then do
-      σ2 ≤≥ tyNulOp tcEnd
+      σ2 ≤≥ tyNulOp tcRowEnd
       return ([], β)
     else tcMatchCases φ δ γ (TyApp tcVariant [σ2]) cas mσ
   if AST.isAnnotated ei

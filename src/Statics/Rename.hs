@@ -104,9 +104,9 @@ instance MonadError [AlmsError] Renaming where
 
 -- | The renaming environment
 data Env = Env {
-  tycons          :: !(EnvMap TypId    ()),
-  vars            :: !(EnvMap VarId    ()),
-  datacons        :: !(EnvMap ConId    ()),
+  tycons          :: !(EnvMap TypId  [ConId Raw]),
+  vars            :: !(EnvMap VarId  ()),
+  datacons        :: !(EnvMap ConId  ()),
   modules         :: !(EnvMap ModId  (Module, Env)),
   sigs            :: !(EnvMap SigId  (Module, Env)),
   tyvars          :: !(EnvMap Lid    (QLit, Bool))
@@ -121,7 +121,7 @@ type EnvMap f i = M.Map (f Raw) (f Renamed, Loc, i)
 data Module
   = MdNil
   | MdApp     !Module !Module
-  | MdTycon   !Loc !(TypId Raw) !(TypId Renamed)
+  | MdTycon   !Loc !(TypId Raw) !(TypId Renamed) ![ConId Raw]
   | MdVar     !Loc !(VarId Raw) !(VarId Renamed)
   | MdDatacon !Loc !(ConId Raw) !(ConId Renamed)
   | MdModule  !Loc !(ModId Raw) !(ModId Renamed) !Module
@@ -183,8 +183,8 @@ instance Monoid Module where
 envify :: Module -> Env
 envify MdNil            = mempty
 envify (MdApp md1 md2)  = envify md1 `mappend` envify md2
-envify (MdTycon loc l l')
-  = mempty { tycons = M.singleton l (l', loc, ()) }
+envify (MdTycon loc l l' dcs)
+  = mempty { tycons   = M.singleton l (l', loc, dcs) }
 envify (MdVar loc l l')
   = mempty { vars = M.singleton l (l', loc, ()) }
 envify (MdDatacon loc u u')
@@ -344,9 +344,15 @@ getVar  = getGeneric "Variable" vars
 getDatacon :: QConId Raw -> R (QConId Renamed)
 getDatacon  = getGeneric "Data constructor" datacons
 
--- | Look up a variable in the environment
+-- | Look up a type in the environment
 getTycon :: QTypId Raw -> R (QTypId Renamed)
 getTycon  = getGeneric "Type constructor" tycons
+
+-- | Look up a type with constructors in the environment
+getTyconFull :: QTypId Raw -> R (QTypId Renamed, [ConId Raw])
+getTyconFull qtid = do
+  J ps (tid, _, cids) <- getGenericFull "Type name" tycons qtid
+  return (J ps tid, cids)
 
 -- | Look up a module in the environment
 getModule :: QModId Raw -> R (QModId Renamed, Module, Env)
@@ -433,8 +439,9 @@ bindVar :: VarId Raw -> R (VarId Renamed)
 bindVar  = bindGeneric renId MdVar
 
 -- | Get a new name for a variable binding
-bindTycon :: TypId Raw -> R (TypId Renamed)
-bindTycon  = bindGeneric renId MdTycon
+bindTycon :: TypId Raw -> [ConId Raw] -> R (TypId Renamed)
+bindTycon l0 dcs = bindGeneric renId build l0
+  where build loc old new = MdTycon loc old new dcs
 
 -- | Get a new name for a data constructor binding
 bindDatacon :: ConId Raw -> R (ConId Renamed)
@@ -505,8 +512,9 @@ renameDecl d0 = withLocation d0 $ case d0 of
     tell md
     return [dc|+ let rec $list:bns' |]
   [dc| type $tid:lhs = type $qtid:rhs |] -> do
-    lhs' <- bindTycon lhs
-    rhs' <- getTycon rhs
+    (rhs', dcs) <- getTyconFull rhs
+    lhs'        <- bindTycon lhs dcs
+    mapM_ bindDatacon dcs
     return [dc|+ type $tid:lhs' = type $qtid:rhs' |]
   [dc| type $list:tds |] -> do
     tds' <- renameTyDecs tds
@@ -516,7 +524,7 @@ renameDecl d0 = withLocation d0 $ case d0 of
         bindEach (N _ (AbsTy _ _ [tdQ| $anti:a |])) = $antifail
         bindEach (N note at) = withLocation note $ do
           let l = tdName (dataOf (atdecl at))
-          bindTycon l
+          bindTycon l []
           return (l, getLoc note)
     (llocs, mdT) <- listen $ mapM bindEach ats
     case unique fst llocs of
@@ -565,7 +573,7 @@ renameTyDecs :: [TyDec Raw] -> R [TyDec Renamed]
 renameTyDecs tds = withLocation tds $ do
   let bindEach [tdQ| $anti:a |] = $antifail
       bindEach (N note td)       = withLocation note $ do
-        bindTycon (tdName td)
+        bindTycon (tdName td) (tdMaybeCons td)
         return (tdName td, getLoc note)
   (llocs, md) <- listen $ mapM bindEach tds
   case unique fst llocs of
@@ -573,6 +581,10 @@ renameTyDecs tds = withLocation tds $ do
     Just (l, locs) ->
       repeated "Type declaration for" l "type group" (snd <$> locs)
   inModule md $ mapM (liftM snd . renameTyDec Nothing) tds
+
+tdMaybeCons :: TyDec' Raw -> [ConId Raw]
+tdMaybeCons TdDat { tdAlts = alts } = fst <$> alts
+tdMaybeCons _                       = []
 
 renameTyDec :: Maybe (QExp Raw) -> TyDec Raw ->
                R (Maybe (QExp Renamed), TyDec Renamed)
@@ -609,6 +621,7 @@ renameTyDec mqe (N note td)      = withLocation note $ do
           Just (u, _) ->
             repeated "Data constructor" u "type declaration" []
         cons' <- forM cons $ \(u, mt) -> withLocation mt $ do
+          -- XXX Why trivial?
           let u' = renId trivialId u
           tell (MdDatacon (getLoc mt) u u')
           mt'   <- traverse renameType mt
@@ -662,7 +675,7 @@ checkSigDuplicates md = case md of
     MdApp md1 md2        -> do
       checkSigDuplicates md1
       inModule md1 $ checkSigDuplicates md2
-    MdTycon   loc l  _   -> mustFail loc "Type"        l $ getTycon (J [] l)
+    MdTycon   loc l  _ _ -> mustFail loc "Type"        l $ getTycon (J [] l)
     MdVar     loc l  _   -> mustFail loc "Variable"    l $ getVar (J [] l)
     MdDatacon loc u  _   -> mustFail loc "Constructor" u $ getDatacon (J [] u)
     MdModule  loc u  _ _ -> mustFail loc "Structure"   u $ getModule (J [] u)
@@ -680,9 +693,9 @@ sealWith = loop Nothing where
   loop b md = case md of
     MdNil              -> return ()
     MdApp md1 md2      -> do loop b md1; loop b md2
-    MdTycon   _ l _   -> do
-      (l', loc, _) <- locate b "type constructor" tycons l
-      tell (MdTycon loc l l')
+    MdTycon   _ l _ _  -> do
+      (l', loc, cs') <- locate b "type constructor" tycons l
+      tell (MdTycon loc l l' cs')
     MdVar     _ l _   -> do
       (l', loc, _) <- locate b "variable" vars l
       tell (MdVar loc l l')
@@ -732,8 +745,9 @@ renameSigItem sg0 = withLocation sg0 $ case sg0 of
     tds' <- renameTyDecs tds
     return [sgQ|+ type $list:tds' |]
   [sgQ| type $tid:lhs = type $qtid:rhs |] -> do
-    lhs' <- bindTycon lhs
-    rhs' <- getTycon rhs
+    (rhs', dcs) <- getTyconFull rhs
+    lhs'        <- bindTycon lhs dcs
+    mapM_ bindDatacon dcs
     return [sgQ|+ type $tid:lhs' = type $qtid:rhs' |]
   [sgQ| module $mid:u : $se1 |] -> do
     (se1', md) <- steal $ renameSigExp se1
@@ -987,15 +1001,15 @@ closeType :: Type Raw -> Type Raw
 closeType t = foldr tyAll t (annotFtvSet t)
 
 addVal     :: VarId Raw -> R (VarId Renamed)
-addType    :: TypId Raw -> Renamed -> R (TypId Renamed)
+addType    :: TypId Raw -> Renamed -> [ConId Raw] -> R (TypId Renamed)
 addMod     :: ModId Raw -> R a -> R (ModId Renamed, a)
 
 addVal = bindVar
 
-addType l i = do
+addType l i dcs = do
   let l' = renId i l
   loc <- getLocation
-  tell (MdTycon loc l l')
+  tell (MdTycon loc l l' dcs)
   return l'
 
 addMod u body = do

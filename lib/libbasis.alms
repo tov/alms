@@ -1,4 +1,15 @@
 module INTERNALS = struct
+  module PrimTypes = struct
+    type unit    = type unit
+    type variant = type variant
+    type record  = type record
+    type rowend  = type rowend
+    type rowdots = type rowdots
+    type U       = type U
+    type A       = type A
+    type bool    = type bool
+  end
+
   module Exn = struct
     open Prim.Exn
 
@@ -23,7 +34,8 @@ module INTERNALS = struct
 
   local
     module INTERNALS = struct
-      module Exn = Exn
+      module Exn       = Exn
+      module PrimTypes = PrimTypes
     end
   with
     module Contract = struct
@@ -157,5 +169,6 @@ let (⇒) = (=>!)
 let (←) = (<-)
 let (⇐) = (<-!)
 
-open INTERNALS
+module Exn      = INTERNALS.Exn
+module Contract = INTERNALS.Contract
 open Exn

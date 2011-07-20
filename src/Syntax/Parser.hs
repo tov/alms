@@ -324,6 +324,8 @@ lidnatp = ident <$> (Lexer.lid <|> show <$> natural)
 typidp :: Tag i => P (TypId i)
 typidp  = antiblep
       <|> TypId <$> (lidnatp <|> operatorp)
+      <|> ident "A" <$ qualA
+      <|> ident "U" <$ qualU
   <?> "type constructor"
 
 -- Infix type identifiers
@@ -472,8 +474,6 @@ typepP p = "type" @@ case () of
   tyatom  = tyVar <$> tyvarp
         <|> tyApp <$> qtypidp <*> pure []
         <|> antiblep
-        <|> tyUn <$ qualU
-        <|> tyAf <$ qualA
         <|> variantp
         <|> recordp
         <|> parens (typepP precMin)
@@ -491,7 +491,7 @@ typepP p = "type" @@ case () of
     <|>
     do
       ellipsis
-      tyapp' [tyDots t]
+      tyapp' [tyRowDots t]
   tyapp' ts  = do
     tc <- qtypidp
     tyapp' [tyApp tc ts]
@@ -505,25 +505,25 @@ tyrowp1 ∷ Tag i ⇒ P (Type i)
 tyrowp1 = AST.tyRow <$> varinjp
                        <*> option AST.tyUnit
                              (reserved "of" *> typepP precStart)
-                       <*> option AST.tyEnd
+                       <*> option AST.tyRowEnd
                              (reservedOp "|" *> tyrowp)
 
 tyrowp ∷ Tag i ⇒ P (Type i)
 tyrowp = "row type" @@
          antiblep
      <|> tyrowp1
-     <|> AST.tyVar <$> tyvarp
-     <|> AST.tyEnd <$  whiteSpace
+     <|> AST.tyVar    <$> tyvarp
+     <|> AST.tyRowEnd <$  whiteSpace
 
 recordp ∷ Tag i ⇒ P (Type i)
 recordp = AST.tyRecord <$$> braces $
-  recrowp <|> AST.tyEnd <$ whiteSpace
+  recrowp <|> AST.tyRowEnd <$ whiteSpace
 
 recrowp ∷ Tag i ⇒ P (Type i)
 recrowp = antiblep
       <|> AST.tyRow <$> llabelp <* colon
                        <*> typepP precStart
-                       <*> option AST.tyEnd (comma *> recrowp)
+                       <*> option AST.tyRowEnd (comma *> recrowp)
       <|> AST.tyVar <$> tyvarp
 
 tybinopp :: Tag i => Prec -> P (Type i -> Type i -> Type i)
@@ -980,10 +980,12 @@ exprpP p = mark $ case () of
          ec  <- exprp
          clt <- addLoc $ do
            reserved "then"
-           caClause (paCon (qident "true") Nothing) <$> exprp
+           caClause (paCon (qident "INTERNALS.PrimTypes.true") Nothing)
+                <$> exprp
          clf <- addLoc $ do
            reserved "else"
-           caClause (paCon (qident "false") Nothing) <$> exprp
+           caClause (paCon (qident "INTERNALS.PrimTypes.false") Nothing)
+                <$> exprp
          return (exCase ec [clt, clf]),
       do reserved "match"
          e1 <- exprp

@@ -19,9 +19,9 @@ module AST.Type (
   TyAppN(..),
 
   -- * Built-in types
-  tyUnit, tyEnd, tyVariant, tyRecord, tyDots, tyTuple, tyUn, tyAf,
+  tyUnit, tyRowEnd, tyVariant, tyRecord, tyRowDots, tyTuple, tyUn, tyAf,
   -- ** Type construtor names
-  tnUnit, tnEnd, tnVariant, tnRecord, tnDots, tnTuple, tnUn, tnAf,
+  tnUnit, tnRowEnd, tnVariant, tnRecord, tnRowDots, tnTuple, tnUn, tnAf,
   -- ** Convenience constructors
   tyArr, tyLol,
   tyAll, tyEx,
@@ -98,16 +98,17 @@ instance Show Quant where
 ---
 
 -- | Names of built-in types
-tnUnit, tnEnd, tnVariant, tnRecord, tnDots, tnTuple, tnUn, tnAf :: String
+tnUnit, tnRowEnd, tnVariant, tnRecord, tnRowDots, tnTuple, tnUn, tnAf
+              :: String
 
-tnUnit         = "unit"
-tnEnd          = "end"
-tnVariant      = "variant"
-tnRecord       = "record"
-tnDots         = "dots"
-tnTuple        = "*"
-tnUn           = "U"
-tnAf           = "A"
+tnUnit         = "INTERNALS.PrimTypes.unit"
+tnRowEnd       = "INTERNALS.PrimTypes.rowend"
+tnVariant      = "INTERNALS.PrimTypes.variant"
+tnRecord       = "INTERNALS.PrimTypes.record"
+tnRowDots      = "INTERNALS.PrimTypes.rowdots"
+tnTuple        = "INTERNALS.PrimTypes.*"
+tnUn           = "INTERNALS.PrimTypes.U"
+tnAf           = "INTERNALS.PrimTypes.A"
 
 --- Convenience constructors
 
@@ -140,8 +141,8 @@ instance (TyApp' r i, a ~ Type i) ⇒ TyApp' (a → r) i where
 tyUnit        :: Tag i => Type i
 tyUnit         = tyAppN tnUnit
 
-tyEnd         :: Tag i => Type i
-tyEnd          = tyAppN tnEnd
+tyRowEnd      :: Tag i => Type i
+tyRowEnd       = tyAppN tnRowEnd
 
 tyVariant     :: Tag i => Type i -> Type i
 tyVariant      = tyAppN tnVariant
@@ -149,8 +150,8 @@ tyVariant      = tyAppN tnVariant
 tyRecord      :: Tag i => Type i -> Type i
 tyRecord       = tyAppN tnRecord
 
-tyDots        :: Tag i => Type i -> Type i
-tyDots         = tyAppN tnDots
+tyRowDots     :: Tag i => Type i -> Type i
+tyRowDots      = tyAppN tnRowDots
 
 tyTuple       :: Tag i => Type i -> Type i -> Type i
 tyTuple        = tyAppN tnTuple

@@ -32,7 +32,7 @@ module BasisUtils (
 import Util
 import Util.MonadRef
 import Dynamics (E, addVal, addMod)
-import Env (GenEmpty(..))
+import Env (GenEmpty(..), domain)
 import Error (MonadAlmsError, almsBug, throwAlms, Phase(DynamicsPhase))
 import Meta.Quasi
 import Syntax.Parser (ptd)
@@ -40,7 +40,7 @@ import Syntax.Ppr (ppr, pprPrec, text, precApp)
 import Statics
 import Statics.Rename as Rename
 import AST
-import Type (TyCon, tcName)
+import Type (TyCon, tcName, tcCons)
 import Data.Loc (Loc(Loc), mkBogus, setLoc)
 import Value (Valuable(..), FunName(..), funNameDocs, Value(..))
 
@@ -173,6 +173,7 @@ basis2renv =
     return DecEn { enSrc = d' }
   each TypEn { enTypName = l, enTyCon = tc } = do
     l' <- Rename.addType l (idTag (jname (tcName tc)))
+                           (trivialRename <$> domain (tcCons tc))
     return TypEn { enTypName = l', enTyCon = tc }
   each ModEn { enModName = u, enEnts = es } = do
     (u', es') <- Rename.addMod u $ renameMapM each es

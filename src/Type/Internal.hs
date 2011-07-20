@@ -35,7 +35,7 @@ module Type.Internal (
   abstractTyCon, mkTC,
   -- ** Built-in
   tcUnit, tcInt, tcChar, tcFloat, tcString, tcExn, tcTuple, tcFun,
-  tcUn, tcAf, tcJoin, tcEnd, tcRecord, tcVariant, tcDots,
+  tcUn, tcAf, tcJoin, tcRowEnd, tcRecord, tcVariant, tcRowDots,
   -- ** Convenient constructors and projections
   fvTy, bvTy, fromFreeTV,
   -- ** Pre-constructed types
@@ -239,7 +239,7 @@ internalTC i s = mkTC i (AST.J [] (AST.identT (AST.Ren_ i) s))
 
 tcUnit, tcInt, tcChar, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun,
-  tcEnd, tcRecord, tcVariant, tcDots ∷ TyCon
+  tcRowEnd, tcRecord, tcVariant, tcRowDots ∷ TyCon
 
 tcFun        = internalTC (-1) "->"     (qvarexp 1)
                                         [(Contravariant, Qa, False),
@@ -260,12 +260,12 @@ tcJoin       = internalTC (-10) "\\/"   (qvarexp 0 ⊔ qvarexp 1)
 tcTuple      = internalTC (-11) "*"     (qvarexp 0 ⊔ qvarexp 1)
                                         [(Covariant,     Qa, False),
                                          (Covariant,     Qa, False)]
-tcEnd        = internalTC (-12) "end"
+tcRowEnd     = internalTC (-12) "rowend"
 tcVariant    = internalTC (-13) "variant" (qvarexp 0)
                                           [(Covariant, Qa, False)]
 tcRecord     = internalTC (-14) "record"  (qvarexp 0)
                                           [(Covariant, Qa, False)]
-tcDots       = internalTC (-15) "dots"    (qvarexp 0)
+tcRowDots    = internalTC (-15) "rowdots" (qvarexp 0)
                                           [(Covariant, Qa, False)]
 
 tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun ∷ TyCon

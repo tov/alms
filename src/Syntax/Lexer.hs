@@ -299,8 +299,6 @@ isUpperIdentifier :: String -> Bool
 isUpperIdentifier "true"  = True
 isUpperIdentifier "false" = True
 isUpperIdentifier "()"    = True
-isUpperIdentifier "A"     = False
-isUpperIdentifier "U"     = False
 isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 

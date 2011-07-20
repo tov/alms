@@ -42,16 +42,22 @@ primBasis  = [
     -- Primitive types:
     "unit"   `primtype` tcUnit,
     "exn"    `primtype` tcExn,
-    dec [sgQ| type bool = false | true |],
     "int"    `primtype` tcInt,
-    dec [sgQ| type char = int |],
+    "char"   `primtype` tcChar,
     "float"  `primtype` tcFloat,
     "string" `primtype` tcString,
     "U"      `primtype` tcUn,
     "A"      `primtype` tcAf,
     "*"      `primtype` tcTuple,
+    "record" `primtype` tcRecord,
+    "variant"`primtype` tcVariant,
+    "rowend" `primtype` tcRowEnd,
+    "rowdots"`primtype` tcRowDots,
+    "\\/"    `primtype` tcJoin,
+    "->"     `primtype` tcFun,
 
     -- Sums
+    dec [sgQ| type bool = false | true |],
     dec [sgQ| type `a option = None | Some of `a |],
     dec [sgQ| type `a + `b = Left of `a | Right of `b |],
 
