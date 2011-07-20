@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      QuasiQuotes #-}
 module Basis.Channel (Channel, entries) where
 
 import Data.Typeable (Typeable)

@@ -1,8 +1,4 @@
 -- | Converts coercion expressions to dynamic checks.
-{-# LANGUAGE
-      PatternGuards,
-      QuasiQuotes,
-      ViewPatterns #-}
 module Coercion  (
   coerceExpression,
   translate, translateDecls, TEnv, tenv0

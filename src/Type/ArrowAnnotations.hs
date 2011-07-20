@@ -1,9 +1,3 @@
-{-# LANGUAGE
-      CPP,
-      QuasiQuotes,
-      TemplateHaskell,
-      UnicodeSyntax
-    #-}
 -- | Rules for interpreting arrow qualifier annotations.
 module Type.ArrowAnnotations (
   -- * Between internal and external qualifier expressions

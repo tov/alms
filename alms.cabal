@@ -11,9 +11,12 @@ Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms
 Category:       Compilers/Interpreters
 Synopsis:       a practical affine language
 Build-type:     Simple
-Data-files:     lib/*.alms examples/*.alms examples/*.sh
+Extra-Source-Files:
+                alms.cabal.sh src/extensions.txt
+Data-Files:     lib/*.alms examples/*.alms examples/*.sh
                 examples/*.in examples/*.out
                 README Makefile
+
 
 Description:
     Alms is an experimental, general-purpose programming language that
@@ -154,6 +157,32 @@ Executable alms
                         Util.Viewable
                         Util
                         Value
+  Extensions:
+                        BangPatterns
+                        CPP
+                        DeriveDataTypeable
+                        DeriveFunctor
+                        EmptyDataDecls
+                        ExistentialQuantification
+                        FlexibleContexts
+                        FlexibleInstances
+                        FunctionalDependencies
+                        GeneralizedNewtypeDeriving
+                        MultiParamTypeClasses
+                        ParallelListComp
+                        PatternGuards
+                        QuasiQuotes
+                        RankNTypes
+                        ScopedTypeVariables
+                        StandaloneDeriving
+                        TemplateHaskell
+                        TupleSections
+                        TypeOperators
+                        TypeSynonymInstances
+                        UndecidableInstances
+                        UnicodeSyntax
+                        ViewPatterns
+
   if flag(readline)
     Build-Depends:  readline >= 1.0
     CPP-Options:    -DUSE_READLINE=System.Console.Readline

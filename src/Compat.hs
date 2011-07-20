@@ -1,5 +1,3 @@
-{-# LANGUAGE
-      TemplateHaskell #-}
 -- | Compatibility layer for different GHC and library versions
 module Compat (
   mask, newQuasi,

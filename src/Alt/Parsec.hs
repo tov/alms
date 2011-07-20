@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      CPP
-      #-}
 module Alt.Parsec (
   module Text.ParserCombinators.Parsec,
 ) where

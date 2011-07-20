@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      TemplateHaskell,
-      TypeFamilies,
-      TypeSynonymInstances,
-      UnicodeSyntax #-}
 module AST.Expr (
   -- * Expressions
   Expr'(..), Expr, ExprNote(..), newExpr,

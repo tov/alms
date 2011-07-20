@@ -1,8 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      QuasiQuotes,
-      StandaloneDeriving
-  #-}
 module Basis.Socket ( entries ) where
 
 import Data.Data as Data

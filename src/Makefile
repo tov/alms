@@ -20,8 +20,8 @@ HS_SRC   = *.hs \
            Util/*.hs
 HSBOOT_SRC  = AST/*.hs-boot Statics/*.hs-boot
 
-HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(NOWARN) $(IMPARR) $(UNICODE)
-HIOPTS  = $(NOWARN) $(IMPARR) $(UNICODE)
+HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(HIOPTS)
+HIOPTS  = $(NOWARN) $(IMPARR) $(UNICODE) $(LANGUAGE)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 PARSEC  = -DPARSEC_VERSION=3
 # IMPARR  = -DANNOTATION_PRINTING_RULE=Rule0
@@ -36,7 +36,7 @@ $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) --make $*.hs $(HCOPTS)
 
 %.i:
-	$(GHCI) \*$* $(HIOPTS) -XQuasiQuotes
+	$(GHCI) \*$* $(HIOPTS)
 
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline

@@ -1,8 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      QuasiQuotes,
-      TemplateHaskell #-}
 -- | The dynamics of the interpreter
 module Dynamics (
   -- * Static API

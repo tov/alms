@@ -1,18 +1,4 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      DeriveFunctor,
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
-      ParallelListComp,
-      RankNTypes,
-      ScopedTypeVariables,
-      TupleSections,
-      TypeFamilies,
-      TypeSynonymInstances,
-      UndecidableInstances,
-      UnicodeSyntax
-      #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | The internal representation of types, created by the type checker
 --   from the syntactic types in 'AST.Type'.
 module Type.Internal (

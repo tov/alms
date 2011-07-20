@@ -1,8 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      DeriveFunctor,
-      UnicodeSyntax
-    #-}
 module Statics.Sig (
   Signature, SigItem (..),
   sigToStx, sigToStx', sigItemToStx, sigItemToStx',

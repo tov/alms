@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      UndecidableInstances,
-      UnicodeSyntax #-}
 module Data.Lattice (
   -- * Lattices
   Lattice(..), BoundedLattice(..),

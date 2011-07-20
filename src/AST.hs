@@ -1,9 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      RankNTypes,
-      TemplateHaskell,
-      TypeFamilies,
-      TypeSynonymInstances #-}
 -----------------------------------------------------------------------------
 -- |
 -- This module provides abstract syntax and basic syntax operations.

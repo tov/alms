@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      UnicodeSyntax
-    #-}
 -- | Interface for producing bogus results, usually when an error
 --   has occurred but we want to keep going to try to find more errors.
 module Util.Bogus (

@@ -1,8 +1,4 @@
 -- | Built-in operations and types
-{-# LANGUAGE
-      DeriveDataTypeable,
-      QuasiQuotes,
-      TemplateHaskell #-}
 module Basis (
   primBasis, srcBasis, basis2venv, basis2tenv
 ) where

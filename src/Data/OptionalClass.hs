@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      UnicodeSyntax
-    #-}
 -- | A generalization of 'Maybe'
 module Data.OptionalClass (
   Optional(..),

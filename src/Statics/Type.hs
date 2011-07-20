@@ -1,10 +1,3 @@
-{-# LANGUAGE
-      ParallelListComp,
-      QuasiQuotes,
-      ScopedTypeVariables,
-      TemplateHaskell,
-      UnicodeSyntax
-    #-}
 module Statics.Type (
   tcType, tcTyPat,
 ) where

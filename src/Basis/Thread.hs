@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      QuasiQuotes #-}
 module Basis.Thread (entries) where
 
 import BasisUtils

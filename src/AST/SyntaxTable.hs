@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      RankNTypes,
-      TemplateHaskell #-}
 module AST.SyntaxTable where
 
 import Meta.THHelpers

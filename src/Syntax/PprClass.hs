@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances
-      #-}
 module Syntax.PprClass (
   -- * Documents
   Doc,

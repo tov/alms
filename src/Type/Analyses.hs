@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      ParallelListComp,
-      UnicodeSyntax
-    #-}
 module Type.Analyses (
   inferKinds,
   isMonoType,

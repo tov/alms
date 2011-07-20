@@ -1,5 +1,4 @@
-{-# LANGUAGE
-      TypeFamilies #-}
+{-# LANGUAGE TypeFamilies #-}
 -- | Quick and dirty views
 module Util.Viewable where
 

@@ -1,14 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleInstances,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      QuasiQuotes,
-      RankNTypes,
-      TupleSections,
-      UndecidableInstances,
-      UnicodeSyntax
-      #-}
 module Error (
   AlmsError(..), Phase(..),
   almsBug, (!::),

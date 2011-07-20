@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      ParallelListComp,
-      UnicodeSyntax
-    #-}
 -- | Pretty printing of internal types
 module Type.Ppr ( TyConInfo(..) ) where
 

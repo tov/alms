@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      TupleSections,
-      UnicodeSyntax
-    #-}
 {- | Based on Simonet's Dalton constraint solver -}
 module Data.UnionFind (
   -- * An implementation on top of 'MonadRef'

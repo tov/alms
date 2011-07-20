@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      CPP,
-      UnicodeSyntax
-    #-}
 -- | Hard-coded strings that depend on whether we're doing unicode.
 module Syntax.Strings where
 

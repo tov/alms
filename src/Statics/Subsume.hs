@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      QuasiQuotes,
-      UnicodeSyntax
-    #-}
 -- | Subsumption
 module Statics.Subsume (
   subsumeN, (≤), (≤≥), subsumeBy,

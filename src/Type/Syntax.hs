@@ -1,9 +1,3 @@
-{-# LANGUAGE
-      FlexibleContexts,
-      ParallelListComp,
-      PatternGuards,
-      UnicodeSyntax
-    #-}
 -- | For converting internal types back to syntactic types
 module Type.Syntax (
   -- * Types to syntax

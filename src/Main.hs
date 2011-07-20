@@ -1,10 +1,5 @@
 -- | The main driver program, which performs all manner of unpleasant
 --   tasks to tie everything together
-{-# LANGUAGE
-      CPP,
-      QuasiQuotes,
-      UnicodeSyntax
-    #-}
 module Main (
   main
 ) where

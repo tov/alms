@@ -1,16 +1,4 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      DeriveFunctor,
-      FlexibleContexts,
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      GeneralizedNewtypeDeriving,
-      ScopedTypeVariables,
-      TypeFamilies,
-      TypeSynonymInstances,
-      UndecidableInstances,
-      UnicodeSyntax
-    #-}
+{-# LANGUAGE TypeFamilies #-}
 module Statics.Env (
   -- * Type variable environment
   Δ,

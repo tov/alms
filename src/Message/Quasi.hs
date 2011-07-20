@@ -1,11 +1,4 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      GADTs,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      PatternGuards,
-      TemplateHaskell
-      #-}
+{-# LANGUAGE GADTs #-}
 module Message.Quasi (
   msg, Message(), H, V,
 ) where

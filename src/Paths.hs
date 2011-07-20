@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      CPP,
-      TemplateHaskell #-}
 module Paths (
   findFirstInPath, findInPath,
   almsLibPath, findAlmsLib, findAlmsLibRel,

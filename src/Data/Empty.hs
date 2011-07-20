@@ -1,9 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      EmptyDataDecls,
-      StandaloneDeriving,
-      UnicodeSyntax
-    #-}
 -- | An uninhabited type
 module Data.Empty (
   Empty, elimEmpty, elimEmptyF,

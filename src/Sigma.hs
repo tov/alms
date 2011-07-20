@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      GeneralizedNewtypeDeriving,
-      PatternGuards,
-      ViewPatterns #-}
 module Sigma (
   makeBangPatt, parseBangPatt, exSigma
 ) where

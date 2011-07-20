@@ -1,4 +1,3 @@
-{-# LANGUAGE RankNTypes #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 {-
   This is a modified version of the Parsec module whose copyright is

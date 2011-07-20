@@ -1,13 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      DeriveFunctor,
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
-      ParallelListComp,
-      UndecidableInstances,
-      UnicodeSyntax
-    #-}
 module Type.TyVar (
   -- * Type variable observations
   Tv(..), Kind(..), Flavor(..),

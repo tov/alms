@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      StandaloneDeriving,
-      TemplateHaskell,
-      TypeFamilies,
-      TypeSynonymInstances #-}
 module AST.Decl (
   -- * Declarations
   Decl'(..), Decl, DeclNote(..), newDecl,

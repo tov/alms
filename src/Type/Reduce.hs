@@ -1,10 +1,4 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      DeriveFunctor,
-      QuasiQuotes,
-      TypeFamilies,
-      UnicodeSyntax
-    #-}
+{-# LANGUAGE TypeFamilies #-}
 module Type.Reduce (
   matchReduce,
   headNormalizeTypeK, headNormalizeType,

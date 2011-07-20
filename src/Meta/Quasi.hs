@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      FlexibleContexts,
-      FlexibleInstances,
-      QuasiQuotes,
-      RankNTypes,
-      ScopedTypeVariables,
-      TemplateHaskell,
-      TypeSynonymInstances #-}
 module Meta.Quasi (
   pa, ty, ex, dc,
   prQ, tdQ, atQ, caQ, bnQ, meQ, qeQ, tpQ, seQ, sgQ,

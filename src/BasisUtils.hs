@@ -1,8 +1,5 @@
 -- | Tools for implementing primitive operations -- essentially an
 --   object-language/meta-language FFI.
-{-# LANGUAGE
-      FlexibleInstances,
-      QuasiQuotes #-}
 module BasisUtils (
   -- | * Initial environment entries
   Entry,

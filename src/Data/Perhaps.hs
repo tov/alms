@@ -1,8 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      DeriveFunctor,
-      UnicodeSyntax
-  #-}
 -- | Like maybe, but 'Eq' and 'Ord' instances are collapsed so that all
 --   values of type @Perhaps a@ are equal. Useful for hiding optional
 --   information from derived instances in other datatypes.

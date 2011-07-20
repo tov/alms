@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      QuasiQuotes,
-      TypeSynonymInstances,
-      UnicodeSyntax
-    #-}
 module Statics.Sealing (
   sealWith
 ) where

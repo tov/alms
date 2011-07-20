@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      UnicodeSyntax
-    #-}
 -- | Facilities for proper handling of equirecursive types
 module Type.Recursive (
   -- * Equirecursive type standardization

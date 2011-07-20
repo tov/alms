@@ -1,7 +1,4 @@
-{-# LANGUAGE
-      EmptyDataDecls,
-      GADTs
-      #-}
+{-# LANGUAGE GADTs #-}
 module Message.AST (
   Message(..),
   H, V, StackStyle(..),

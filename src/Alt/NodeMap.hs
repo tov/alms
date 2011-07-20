@@ -1,11 +1,3 @@
-{-#
-  LANGUAGE
-    FlexibleInstances,
-    FunctionalDependencies,
-    MultiParamTypeClasses,
-    UndecidableInstances,
-    UnicodeSyntax
-  #-}
 -- | A generalization of @Data.Graph.Inductive.NodeMap@ from the fgs package
 module Alt.NodeMap (
   MonadNM(..),

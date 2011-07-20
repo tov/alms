@@ -1,8 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      QuasiQuotes,
-      StandaloneDeriving
-  #-}
 module Basis.IO ( entries ) where
 
 import qualified Data.Loc

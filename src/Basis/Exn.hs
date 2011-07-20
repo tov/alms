@@ -1,5 +1,3 @@
-{-# LANGUAGE
-      QuasiQuotes #-}
 module Basis.Exn ( entries ) where
 
 import BasisUtils

@@ -1,15 +1,4 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
-      ParallelListComp,
-      TypeSynonymInstances,
-      TemplateHaskell,
-      TupleSections,
-      TypeFamilies,
-      UndecidableInstances,
-      UnicodeSyntax #-}
+{-# LANGUAGE TypeFamilies #-}
 module AST.Type (
   -- * Types
   Quant(..), Type'(..), Type, TyPat'(..), TyPat,

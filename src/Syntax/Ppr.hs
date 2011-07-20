@@ -1,10 +1,4 @@
 -- | Pretty-printing
-{-# LANGUAGE
-      PatternGuards,
-      QuasiQuotes,
-      TypeSynonymInstances,
-      UnicodeSyntax
-    #-}
 module Syntax.Ppr (
   pprTyApp,
   -- * Re-exports

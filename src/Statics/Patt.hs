@@ -1,13 +1,3 @@
-{-# LANGUAGE
-      FlexibleContexts,
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      QuasiQuotes,
-      TemplateHaskell,
-      TupleSections,
-      TypeSynonymInstances,
-      UnicodeSyntax
-    #-}
 -- | Type inference for patterns
 module Statics.Patt (
   tcPatt, extractPattAnnot, isPattTotal,

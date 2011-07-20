@@ -1,14 +1,5 @@
+{-# LANGUAGE OverlappingInstances #-}
 -- | Flat, deep, and generalized environments
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
-      OverlappingInstances,
-      ScopedTypeVariables,
-      TypeOperators,
-      UndecidableInstances,
-      UnicodeSyntax #-}
 module Env (
   -- * Basic type and operations
   Env(unEnv),

@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      QuasiQuotes,
-      UnicodeSyntax
-    #-}
 -- | Type errors
 module Statics.Error (
   -- * Basic error functions

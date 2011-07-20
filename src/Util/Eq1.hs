@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      UnicodeSyntax
-      #-}
 {- Equality type classes for unary and binary type constructors. -}
 module Util.Eq1 (
   Eq1(..), EQ1(..),

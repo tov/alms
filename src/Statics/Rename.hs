@@ -1,14 +1,3 @@
-{-# LANGUAGE
-      FlexibleContexts,
-      FlexibleInstances,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      PatternGuards,
-      QuasiQuotes,
-      RankNTypes,
-      RelaxedPolyRec,
-      TemplateHaskell,
-      TypeSynonymInstances #-}
 module Statics.Rename (
   -- * The renaming monad and runners
   Renaming, runRenaming, runRenamingM,

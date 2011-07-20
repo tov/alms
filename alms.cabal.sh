@@ -14,9 +14,12 @@ Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms
 Category:       Compilers/Interpreters
 Synopsis:       a practical affine language
 Build-type:     Simple
-Data-files:     lib/*.alms examples/*.alms examples/*.sh
-                examples/*.in examples/*.out alms.cabal.sh
+Extra-Source-Files:
+                alms.cabal.sh src/extensions.txt
+Data-Files:     lib/*.alms examples/*.alms examples/*.sh
+                examples/*.in examples/*.out
                 README Makefile
+
 
 Description:
     Alms is an experimental, general-purpose programming language that
@@ -73,7 +76,12 @@ EOF
 find src -name \*.hs |
     sed 's@^src/@                        @;s@\.hs$@@;s@/@.@g;/^Main$/d'
 
+echo "  Extensions:"
+
+sed 's/^/                        /' src/extensions.txt
+
 cat <<EOF
+
   if flag(readline)
     Build-Depends:  readline >= 1.0
     CPP-Options:    -DUSE_READLINE=System.Console.Readline

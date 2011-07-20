@@ -1,13 +1,3 @@
-{-# LANGUAGE
-      FlexibleContexts,
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
-      QuasiQuotes,
-      TupleSections,
-      UndecidableInstances,
-      UnicodeSyntax
-    #-}
 -- | Instantiation and generalization
 module Statics.InstGen (
   -- * Instantiation operations

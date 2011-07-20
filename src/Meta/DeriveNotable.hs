@@ -1,8 +1,4 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      TemplateHaskell,
-      TypeFamilies #-}
+{-# LANGUAGE TypeFamilies #-}
 module Meta.DeriveNotable (
   deriveNotable
 ) where

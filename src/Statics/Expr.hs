@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      FlexibleContexts,
-      ParallelListComp,
-      QuasiQuotes,
-      TemplateHaskell,
-      TupleSections,
-      UnicodeSyntax
-    #-}
 -- | Type inference for expressions
 module Statics.Expr (
   tcExpr, tcExprPatt, tcLetRecBindings,

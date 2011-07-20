@@ -1,11 +1,3 @@
-{-#
-  LANGUAGE
-    FlexibleInstances,
-    FunctionalDependencies,
-    MultiParamTypeClasses,
-    UndecidableInstances,
-    UnicodeSyntax
-  #-}
 module Util.MonadRef (
   MonadRef(..),
   UnsafeReadRef(..),

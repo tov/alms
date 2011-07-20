@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleContexts,
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      PatternGuards,
-      RankNTypes,
-      TemplateHaskell #-}
 module AST.Anti (
   -- * Representation of antiquotes
   Anti(..),

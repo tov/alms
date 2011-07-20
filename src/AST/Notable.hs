@@ -1,9 +1,4 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      FlexibleContexts,
-      GeneralizedNewtypeDeriving,
-      DeriveFunctor,
-      TypeFamilies #-}
+{-# LANGUAGE TypeFamilies #-}
 module AST.Notable (
   Notable(..), N(..), Located,
   LocNote(..), module Data.Loc

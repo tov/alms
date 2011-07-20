@@ -1,10 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      GeneralizedNewtypeDeriving,
-      TemplateHaskell,
-      TypeFamilies,
-      TypeSynonymInstances,
-      UnicodeSyntax #-}
 module AST.Kind (
   -- * Qualifiers and variance
   QLit(..), Variance(..),

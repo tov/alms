@@ -1,10 +1,4 @@
-{-# LANGUAGE
-      CPP,
-      FlexibleInstances,
-      GADTs,
-      ParallelListComp,
-      QuasiQuotes
-      #-}
+{-# LANGUAGE GADTs #-}
 module Message.Render (
   module Syntax.PprClass
 ) where

@@ -1,16 +1,4 @@
-{-# LANGUAGE
-      CPP,
-      DeriveDataTypeable,
-      FlexibleContexts,
-      FlexibleInstances,
-      FunctionalDependencies,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      ScopedTypeVariables,
-      TypeFamilies,
-      TypeSynonymInstances,
-      UndecidableInstances,
-      UnicodeSyntax #-}
+{-# LANGUAGE TypeFamilies #-}
 module AST.Ident (
   -- * Identifier classes
   Id(..),

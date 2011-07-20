@@ -1,10 +1,3 @@
-{-# LANGUAGE
-      PatternGuards,
-      ScopedTypeVariables,
-      StandaloneDeriving,
-      TypeFamilies,
-      TypeSynonymInstances,
-      UnicodeSyntax #-}
 -- | Parser
 module Syntax.Parser (
   -- * The parsing monad
@@ -124,10 +117,10 @@ almsParseError e =
     explist = case expects of
       []  -> []
       _   -> [("expected:", flow "," expects)]
-    messages  = [ s | PE.Message s     <- PE.errorMessages e, not$null s ]
-    unexpects = [ s | PE.UnExpect s    <- PE.errorMessages e, not$null s ]
-             ++ [ s | PE.SysUnExpect s <- PE.errorMessages e, not$null s ]
-    expects   = [ s | PE.Expect s      <- PE.errorMessages e, not$null s ]
+    messages  = [ s | PE.Message s     <- PE.errorMessages e, not $ null s ]
+    unexpects = [ s | PE.UnExpect s    <- PE.errorMessages e, not $ null s ]
+             ++ [ s | PE.SysUnExpect s <- PE.errorMessages e, not $ null s ]
+    expects   = [ s | PE.Expect s      <- PE.errorMessages e, not $ null s ]
     flow c         = Msg.Flow . map Msg.Words . punct c . L.nub
     punct _ []     = []
     punct _ [s]    = [s]

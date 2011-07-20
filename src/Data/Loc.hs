@@ -1,7 +1,4 @@
 -- | Source locations
-{-# LANGUAGE
-      DeriveDataTypeable,
-      TypeFamilies #-}
 module Data.Loc (
   -- * Type and constructors
   Loc(..),

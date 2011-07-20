@@ -1,5 +1,3 @@
-{-# LANGUAGE
-      PatternGuards #-}
 -- Miscellaneous high-level printing routines.  These can't go in, say,
 -- Ppr, because they depend on Rename and Statics.
 module Printing (

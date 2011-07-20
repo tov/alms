@@ -1,10 +1,3 @@
-{-# LANGUAGE
-      ParallelListComp,
-      QuasiQuotes,
-      TemplateHaskell,
-      TupleSections,
-      UnicodeSyntax
-    #-}
 -- | Type checking declarations
 module Statics.Decl (
   tcProg, tcDecls, tcDecl, tcSigExp,

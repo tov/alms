@@ -1,16 +1,3 @@
-{-#
-  LANGUAGE
-    FlexibleInstances,
-    FunctionalDependencies,
-    GeneralizedNewtypeDeriving,
-    MultiParamTypeClasses,
-    ParallelListComp,
-    QuasiQuotes,
-    RankNTypes,
-    UndecidableInstances,
-    UnicodeSyntax,
-    ViewPatterns
-  #-}
 {-# OPTIONS_GHC -fno-warn-name-shadowing #-}
 module Statics.Constraint (
   -- * The constraint solver interface

@@ -1,11 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      NoImplicitPrelude,
-      TypeSynonymInstances,
-      UndecidableInstances,
-      UnicodeSyntax #-}
 module Util.Trace (
   TraceIndent, MonadTrace(..),
   traceN, trace, traceLow,
@@ -201,7 +193,6 @@ instance (Ppr a, Ppr b, Ppr z)
       (fsep
        [
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr z)
        ⇒ TraceMessage (a,b,c,z) where
@@ -212,7 +203,6 @@ instance (Ppr a, Ppr b, Ppr c, Ppr z)
       (fsep
        [p c,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr z)
        ⇒ TraceMessage (a,b,c,d,z) where
@@ -223,7 +213,6 @@ instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr z)
       (fsep
        [p c, p d,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr z)
        ⇒ TraceMessage (a,b,c,d,e,z) where
@@ -234,7 +223,6 @@ instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr z)
       (fsep
        [p c, p d, p e,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr z)
        ⇒ TraceMessage (a,b,c,d,e,f,z) where
@@ -245,7 +233,6 @@ instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr z)
       (fsep
        [p c, p d, p e, p f,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr g, Ppr z)
        ⇒ TraceMessage (a,b,c,d,e,f,g,z) where
@@ -256,7 +243,6 @@ instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr g, Ppr z)
       (fsep
        [p c, p d, p e, p f, p g,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr g, Ppr h, Ppr z)
        ⇒ TraceMessage (a,b,c,d,e,f,g,h,z) where
@@ -267,7 +253,6 @@ instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr g, Ppr h, Ppr z)
       (fsep
        [p c, p d, p e, p f, p g, p h,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
 instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr g, Ppr h, Ppr i, Ppr z)
        ⇒ TraceMessage (a, b, c, d, e, f, g, h, i, z) where
@@ -278,5 +263,7 @@ instance (Ppr a, Ppr b, Ppr c, Ppr d, Ppr e, Ppr f, Ppr g, Ppr h, Ppr i, Ppr z)
       (fsep
        [p c, p d, p e, p f, p g, p h, p i,
         ppr z <> char ')'])
-    where p x = ppr x <> char ';'
 
+-- Very common helper
+p :: Ppr a => a -> Doc
+p x = ppr x <> char ';'

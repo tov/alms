@@ -1,15 +1,3 @@
-{-# LANGUAGE
-      ExistentialQuantification,
-      FlexibleInstances,
-      FunctionalDependencies,
-      GeneralizedNewtypeDeriving,
-      MultiParamTypeClasses,
-      RankNTypes,
-      StandaloneDeriving,
-      TypeSynonymInstances,
-      UndecidableInstances,
-      UnicodeSyntax
-    #-}
 -- | Representation of type variables and substitution
 module Type.Subst (
   -- * Substitution monads

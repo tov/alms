@@ -1,9 +1,4 @@
 -- | Utility functions
-{-# LANGUAGE
-      BangPatterns,
-      TypeOperators,
-      UnicodeSyntax
-      #-}
 module Util (
   -- * Extra collection operations
   -- ** Shallow mapping of 'Traversable's

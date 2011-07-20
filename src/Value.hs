@@ -1,14 +1,4 @@
 -- | The representation and embedding of values
-{-# LANGUAGE
-      DeriveDataTypeable,
-      ExistentialQuantification,
-      FlexibleInstances,
-      MultiParamTypeClasses,
-      PatternGuards,
-      RankNTypes,
-      ScopedTypeVariables,
-      ViewPatterns
-    #-}
 module Value (
   -- * Value and function representation
   Valuable(..), FunName(..), Value(..),

@@ -1,13 +1,3 @@
-{-# LANGUAGE
-      FlexibleInstances,
-      FunctionalDependencies,
-      MultiParamTypeClasses,
-      ParallelListComp,
-      QuasiQuotes,
-      TemplateHaskell,
-      UndecidableInstances,
-      UnicodeSyntax
-      #-}
 -- | For treating syntactic types as type annotations.
 module AST.TypeAnnotation (
   Annot, HasAnnotations(..),

@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      GeneralizedNewtypeDeriving,
-      UnicodeSyntax
-    #-}
 -- | The external interface to the type checker
 module Statics (
   -- * Type checking state

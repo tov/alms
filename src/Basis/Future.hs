@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      QuasiQuotes #-}
 module Basis.Future (entries) where
 
 import Data.Typeable (Typeable)

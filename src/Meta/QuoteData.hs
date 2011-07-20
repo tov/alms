@@ -1,11 +1,6 @@
 ---
 --- My verson of Language.Haskell.TH.Quote
 ---
-{-# LANGUAGE
-      RankNTypes,
-      RelaxedPolyRec,
-      PatternGuards,
-      ScopedTypeVariables #-}
 module Meta.QuoteData (dataToExpQ, dataToPatQ) where
 
 import Language.Haskell.TH

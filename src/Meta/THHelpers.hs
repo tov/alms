@@ -1,9 +1,3 @@
-{-# LANGUAGE
-      CPP,
-      DeriveDataTypeable,
-      RankNTypes,
-      TemplateHaskell,
-      TypeSynonymInstances #-}
 module Meta.THHelpers (
   -- * Simplified TH quasiquote
   th,

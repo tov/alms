@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      TemplateHaskell #-}
 module AST.Lit (
   Lit(..)
 ) where

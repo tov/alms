@@ -1,6 +1,3 @@
-{-# LANGUAGE
-      UnicodeSyntax
-    #-}
 -- | A wrapper around the fgs graph library.
 module Alt.Graph (
   Gr, ShowGraph(..),

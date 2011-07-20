@@ -1,7 +1,3 @@
-{-# LANGUAGE
-      DeriveDataTypeable,
-      UnicodeSyntax
-      #-}
 module Type.Rank (
   Rank, zero, infinity, inc
 ) where
