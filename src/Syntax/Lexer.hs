@@ -9,7 +9,7 @@ module Syntax.Lexer (
   -- * Operators
   opP,
   semis, bang, star,
-  sharpLoad, sharpInfo, sharpPrec,
+  sharpLoad, sharpInfo, sharpPrec, sharpConstraint,
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
@@ -181,6 +181,10 @@ sharpInfo        = reserved "#i" <|> reserved "#info"
 -- | The @#prec@ pragma
 sharpPrec       :: T.TokenEnd st => CharParser st ()
 sharpPrec        = reserved "#p" <|> reserved "#prec"
+
+-- | The @#constraint@ pragma
+sharpConstraint :: T.TokenEnd st => CharParser st ()
+sharpConstraint  = reserved "#c" <|> reserved "#constraint"
 
 -- | @!@, which has special meaning in let patterns
 bang            :: T.TokenEnd st => CharParser st String

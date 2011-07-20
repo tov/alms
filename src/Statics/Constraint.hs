@@ -6,7 +6,7 @@ module Statics.Constraint (
   -- * An implementation of the interface
   ConstraintT,
   runConstraintT, mapConstraintT,
-  ConstraintState, constraintState0,
+  ConstraintState, constraintState0, pprConstraintState,
   runConstraintIO,
 ) where
 
@@ -64,9 +64,6 @@ class MonadSubst tv r m ⇒ MonadConstraint tv r m | m → tv r where
   --   generalized is a syntactic value.  Returns a list of
   --   generalizable variables and their qualifier bounds.
   generalize'     ∷ Bool → Rank → Type tv → m [(tv, QLit)]
-  --
-  -- | Return a string representation of the constraint
-  showConstraint  ∷ m Ppr.Doc
 
 infix 5 <:, =:, ⊏:, ~:
 
@@ -84,7 +81,6 @@ instance (MonadConstraint tv s m, Monoid w) ⇒
   withPinnedTVs  = mapWriterT <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
-  showConstraint = lift showConstraint
 
 instance MonadConstraint tv r m ⇒
          MonadConstraint tv r (StateT s m) where
@@ -96,7 +92,6 @@ instance MonadConstraint tv r m ⇒
   withPinnedTVs  = mapStateT <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
-  showConstraint = lift showConstraint
 
 instance MonadConstraint tv p m ⇒
          MonadConstraint tv p (ReaderT r m) where
@@ -108,7 +103,6 @@ instance MonadConstraint tv p m ⇒
   withPinnedTVs  = mapReaderT <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
-  showConstraint = lift showConstraint
 
 instance (MonadConstraint tv p m, Monoid w) ⇒
          MonadConstraint tv p (RWST r w s m) where
@@ -120,7 +114,6 @@ instance (MonadConstraint tv p m, Monoid w) ⇒
   withPinnedTVs  = mapRWST <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
-  showConstraint = lift showConstraint
 
 --
 -- Some generic operations
@@ -312,6 +305,11 @@ instance Tv tv ⇒ Ppr.Ppr (ConstraintState tv r) where
 instance Tv tv ⇒ Show (ConstraintState tv r) where
   showsPrec = Ppr.showFromPpr
 
+-- | Get a printable representations of the internal constraint-solving
+--  state.
+pprConstraintState ∷ Tv tv ⇒ ConstraintState tv r → Ppr.Doc
+pprConstraintState = Ppr.ppr . ecsInternal
+
 --
 -- Instances
 --
@@ -388,8 +386,6 @@ instance MonadSubst tv r m ⇒
     ConstraintT_ (modify (csPinnedUpdate update))
   --
   generalize'    = solveConstraint
-  --
-  showConstraint = Ppr.ppr <$> ConstraintT_ get
 
 {-# INLINE gtraceN #-}
 gtraceN ∷ (TraceMessage a, Tv tv, MonadTrace m) ⇒

@@ -33,10 +33,10 @@ $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
 
 %.hi: $(HS_SRC) $(HSBOOT_SRC)
-	$(GHC) --make $*.hs $(HCOPTS)
+	$(GHC) --make `echo "$*" | sed 's@\.@/@g'`.hs $(HCOPTS)
 
 %.i:
-	$(GHCI) \*$* $(HIOPTS)
+	$(GHCI) \*`echo "$*" | sed 's@\.@/@g'` $(HIOPTS)
 
 $(EXE)-%:     GHC     = ghc-$*
 $(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline

@@ -83,6 +83,7 @@ parseQuasi str p = do
 data REPLCommand
   = GetInfoCmd [Ident Raw]
   | GetPrecCmd [String]
+  | GetConstraintCmd
   | DeclsCmd [Decl Raw]
   | ParseError AlmsError
 
@@ -93,9 +94,11 @@ parseCommand row line cmd =
     Just ids -> GetInfoCmd ids
     _ -> case parseGetPrec line of
       Just lids -> GetPrecCmd lids
-      _ -> case parseInteractive row cmd of
-        Right ast -> DeclsCmd ast
-        Left err  -> ParseError (almsParseError err)
+      _ -> case parseGetConstraint line of
+        Just _ -> GetConstraintCmd
+        _ -> case parseInteractive row cmd of
+          Right ast -> DeclsCmd ast
+          Left err  -> ParseError (almsParseError err)
 
 -- | Given a file name and source, parse it
 parseFile :: Tag i => String -> String -> Either AlmsError (Prog i)
@@ -140,6 +143,11 @@ parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
     parser = finish $
       sharpPrec *>
         many1 (operator <|> qjoin)
+
+parseGetConstraint :: String -> Maybe ()
+parseGetConstraint = (const Nothing ||| Just) . runParser parser state0 "-"
+  where
+    parser = finish $ sharpConstraint
 
 parseInteractive :: Tag i => Int -> String -> Either ParseError [Decl i]
 parseInteractive line src = parse p "-" src where

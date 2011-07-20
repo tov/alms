@@ -230,6 +230,10 @@ interactive opt rs0 = do
                   mapM_ printPrec lids
                   addHistory line
                   loop (count + 1) acc
+                GetConstraintCmd -> do
+                  say (getConstraint (rsStatics st))
+                  addHistory line
+                  loop (count + 1) acc
                 DeclsCmd ast -> do
                   addHistory cmd
                   return (Just (row + count, ast))

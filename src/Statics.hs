@@ -11,6 +11,7 @@ module Statics (
   -- * Renaming and typing info
   Statics.getRenamingInfo, RenamingInfo(..),
   getVarInfo, getTypeInfo, getConInfo,
+  getConstraint,
   staticsEnterScope,
 ) where
 
@@ -18,6 +19,7 @@ import Util
 import Util.MonadRef
 import AST.Ident (Raw, Renamed)
 import qualified AST
+import Syntax.PprClass (Doc)
 import Type
 import Statics.Env
 import Statics.Error
@@ -133,6 +135,11 @@ getTypeInfo tid ss = ssEnv ss =..= tid
 getConInfo :: QConId -> StaticsState r ->
               Maybe (Either TyCon (Maybe (AST.Type R)))
 getConInfo cid ss = typeToStx' <$$$> ssEnv ss =..= cid
+
+-- | Get a printable representation of the current constraint-solving
+--   state.
+getConstraint ∷ StaticsState r → Doc
+getConstraint = pprConstraintState . ssConstraint
 
 -- Open the given module, if it exists.
 staticsEnterScope       :: ModId -> StaticsState r -> StaticsState r
