@@ -116,27 +116,19 @@ let hd = fun (xs : 'a list) ->
   let Cons(x, _) = xs in x
 let tl = fun (xs : 'a list) ->
   let Cons(_, xs') = xs in xs'
-  (*
-let foldr =
-  let rec foldr (f : `a -> `b -o `b)
-                (z : `b) (xs : `a list) : `b =
-        match xs with
-        | Nil -> z
-        | Cons(x,xs) -> f x (foldr f z xs)
-   in foldr
-let foldl =
-  let rec foldl (f : `a -> `b -o `b)
-                (z : `b) (xs : `a list) : `b =
-        match xs with
-        | Nil -> z
-        | Cons(x,xs) -> foldl f (f x z) xs
-   in foldl
-let map (f: `a -> `b) (xs: `a list) =
-      foldr (fun (x: `a) (xs': `b list) -> Cons (f x, xs')) Nil xs
-let filter (f: 'a -> bool) (xs: 'a list) =
-      foldr (fun (x: 'a) (xs': 'a list) ->
-               if f x then Cons(x, xs') else xs')
-            Nil
+let rec foldr f z xs =
+  match xs with
+  | Nil -> z
+  | Cons(x,xs) -> f x (foldr f z xs)
+let rec foldl f z xs =
+  match xs with
+  | Nil -> z
+  | Cons(x,xs) -> foldl f (f x z) xs
+let map f xs =
+  foldr (λ x xs' -> Cons (f x, xs')) Nil xs
+let filter f xs =
+  foldr (λ x xs' -> if f x then Cons(x, xs') else xs')
+        Nil
 let mapFilterA (f: `a -> `b option) (xs: `a list) =
       foldr (fun (x: `a) (xs': `b list) ->
                match f x with
@@ -155,7 +147,6 @@ let lengthA (xs : `a list) =
   let count (x : `a) (n : int, xs' : `a list) =
        (1 + n, Cons (x, xs')) in
     foldr count (0, Nil) xs
-*)
 
 let fst (x: `a, _: `b) = x
 let snd (_: `a, y: `b) = y

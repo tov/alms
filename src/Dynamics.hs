@@ -79,6 +79,7 @@ evalDecls  = (flip . foldM . flip) evalDecl
 
 evalDecl :: Decl R -> DDecl
 evalDecl [dc| let $x = $e |]                       = evalLet x e
+evalDecl [dc| let rec $list:bns |]                 = evalLetRec bns
 evalDecl [dc| type $list:_ |]                      = return
 evalDecl [dc| type $tid:_ = type $qtid:_ |]        = return
 evalDecl [dc| abstype $list:_ with $list:ds end |] = evalDecls ds
@@ -95,6 +96,20 @@ evalLet x e env = do
   case bindPatt x v env of
     Just env' -> return env'
     Nothing   -> throwPatternMatch v [show x] env
+
+evalLetRec :: [Binding R] -> DDecl
+evalLetRec bs env = do
+  let extend (envI, rs) (N _ b) = do
+        r <- newIORef $ throwBadLetRec (idName (bnvar b))
+        return (envI =+= bnvar b =:= join (readIORef r), r : rs)
+  (env', rev_rs) <- foldM extend (env, []) bs
+  zipWithM_
+    (\r (N _ b) -> do
+       v <- valOf (bnexpr b) env'
+       writeIORef r (return v))
+    (reverse rev_rs)
+    bs
+  return env'
 
 evalOpen :: ModExp R -> DDecl
 evalOpen b env = do
@@ -183,16 +198,7 @@ valOf e env = case e of
       Nothing   -> throwPatternMatch v1 [show x] env
     valOf e2 env'
   [ex| let rec $list:bs in $e2 |] -> do
-    let extend (envI, rs) (N _ b) = do
-          r <- newIORef $ throwBadLetRec (idName (bnvar b))
-          return (envI =+= bnvar b =:= join (readIORef r), r : rs)
-    (env', rev_rs) <- foldM extend (env, []) bs
-    zipWithM_
-      (\r (N _ b) -> do
-         v <- valOf (bnexpr b) env'
-         writeIORef r (return v))
-      (reverse rev_rs)
-      bs
+    env' <- evalLetRec bs env
     valOf e2 env'
   [ex| let $decl:d in $e2 |] -> do
     env' <- evalDecl d env

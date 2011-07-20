@@ -876,18 +876,7 @@ letp  = do
   choice [
     do
       reserved "rec"
-      bindings <- flip sepBy1 (reserved "and") bindingp
-      let names    = map (bnvar . dataOf) bindings
-          namesExp = foldl1 exPair (map exBVar names)
-          namesPat = foldl1 paPair (map paVar names)
-          tempVar  = ident "#letrec"
-          decls0   = [ dcLet (paVar tempVar) $
-                         exLetRec bindings namesExp ]
-          decls1   = [ dcLet (paVar (bnvar binding)) $
-                         exLet namesPat (exBVar tempVar) $
-                            exBVar (bnvar binding)
-                     | N _ binding <- bindings ]
-      return $ dcLoc decls0 decls1,
+      dcLetRec <$> antilist1p (reserved "and") bindingp,
     do
       f     <- varidp
       args  <- buildargsp

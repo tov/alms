@@ -18,7 +18,8 @@ module AST.Decl (
   SigItem'(..), SigItem, newSigItem,
   -- ** Synthetic constructors
   -- | These fill in the source location fields with a bogus location
-  dcLet, dcTyp, dcAli, dcAbs, dcMod, dcSig, dcOpn, dcLoc, dcExn, dcAnti,
+  dcLet, dcLetRec, dcTyp, dcAli, dcAbs, dcMod, dcSig, dcOpn,
+  dcLoc, dcExn, dcAnti,
   absTy, absTyAnti,
   tdAbs, tdSyn, tdDat, tdAnti,
   meStr, meName, meAsc, meAnti,
@@ -62,6 +63,8 @@ data Prog' i = Prog [Decl i] (Maybe (Expr i))
 data Decl' i
   -- | Constant declaration
   = DcLet (Patt i) (Expr i)
+  -- | Recursive value declaration
+  | DcLetRec [Binding i]
   -- | Type declaration
   | DcTyp [TyDec i]
   -- | Type alias
@@ -190,6 +193,12 @@ newDecl d0 = flip N d0 $ case d0 of
       dloc_  = getLoc (p1, e2),
       dfv_   = fv e2,
       ddv_   = qdv p1
+    }
+  DcLetRec bns ->
+    newNote {
+      dloc_  = getLoc bns,
+      dfv_   = fv bns,
+      ddv_   = map (J [] . bnvar . dataOf) bns
     }
   DcTyp tds ->
     newNote {

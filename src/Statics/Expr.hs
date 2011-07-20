@@ -8,7 +8,7 @@
     #-}
 -- | Type inference for expressions
 module Statics.Expr (
-  tcExpr, tcExprPatt,
+  tcExpr, tcExprPatt, tcLetRecBindings,
 ) where
 
 import Util
@@ -119,7 +119,8 @@ infer φ0 δ γ e0 mσ0 = do
       (cas', σ')        ← tcMatchCases (request φ γ αs) δ γ σ1 cas mσ
       return ([ex| match $e1' with $list:cas' |], σ')
     [ex| let rec $list:bs in $e2 |] → do
-      (bs', γ')         ← tcLetRecBindings δ γ bs
+      (bs', ns, σs)     ← tcLetRecBindingsΔ δ γ bs
+      γ'                ← γ !+! ns -:*- σs
       (e2', σ')         ← infer φ δ γ' e2 mσ
       return ([ex| let rec $list:bs' in $e2' |], σ')
     [ex| let $decl:d in $e1 |]      → do
@@ -278,9 +279,14 @@ tcMatchCases φ δ γ σ ([caQ| $πi → $ei |]:cas) mσ = do
 tcMatchCases _ _ _ _ ([caQ| $antiC:a |]:_) _ = $(AST.antifail)
 
 tcLetRecBindings ∷ MonadConstraint tv r m ⇒
-                   Δ tv → Γ tv → [AST.Binding R] →
-                   m ([AST.Binding R], Γ tv)
-tcLetRecBindings δ γ bs = do
+                   Γ tv → [AST.Binding R] →
+                   m ([AST.Binding R], [VarId], [Type tv])
+tcLetRecBindings γ bs = withTVsOf mempty γ bs $ \δ → tcLetRecBindingsΔ δ γ bs
+
+tcLetRecBindingsΔ ∷ MonadConstraint tv r m ⇒
+                    Δ tv → Γ tv → [AST.Binding R] →
+                    m ([AST.Binding R], [VarId], [Type tv])
+tcLetRecBindingsΔ δ γ bs = do
   (ns, es)          ← unzip <$> mapM unBinding bs
   let mannots       = AST.getExprAnnot <$> es
   σs                ← mapM (maybe newTVTy (tcType δ γ)) mannots
@@ -299,8 +305,7 @@ tcLetRecBindings δ γ bs = do
     | σi        ← σs ]
   zipWithM (<:) σs' σs
   σs''              ← generalizeList True (rankΓ γ) σs'
-  γ''               ← γ !+! ns -:*- σs''
-  return (zipWith AST.bnBind ns es', γ'')
+  return (zipWith AST.bnBind ns es', ns, σs'')
   where
     unBinding [bnQ| $vid:x = $e |] = return (x, e)
     unBinding [bnQ| $antiB:a |]    = $(AST.antifail)

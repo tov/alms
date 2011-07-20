@@ -195,6 +195,10 @@ instance Ppr (Decl i) where
     prec precDot $
       text "let" <+> ppr x <+> equals
         >+> ppr e
+  ppr [dc| let rec $list:bs |] =
+    prec precDot $
+      text "let" <+>
+      vcat (zipWith pprBinding ("rec" : repeat "and") bs)
   ppr [dc| type $tid:lhs = type $qtid:rhs |] =
     text "type" <+> ppr lhs <+> equals <+> text "type" <+> ppr rhs
   ppr [dc| type $list:tds |] = pprTyDecs tds

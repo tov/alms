@@ -45,6 +45,9 @@ tcDecl μ γ d0 = withLocation d0 $ case d0 of
   [dc| let $π = $e |]                           → do
     (e', σs)    ← tcExprPatt γ e π
     return ([dc| let $π = $e' |], zipWith SgVal (AST.dv π) σs)
+  [dc| let rec $list:bns |]                     → do
+    (bns', ns, σs) ← tcLetRecBindings γ bns
+    return ([dc| let rec $list:bns' |], zipWith SgVal ns σs)
   [dc| type $tid:lhs = type $qtid:rhs |]        → do
     tc          ← γ !.! rhs
     return (d0, [SgTyp lhs tc { tcName = J (reverse μ) lhs }])

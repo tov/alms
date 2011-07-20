@@ -213,12 +213,18 @@ onlyInModule = local (const mempty) <$$> inModule
 --   for the context of the action.
 withAnnotationTVs :: HasAnnotations s Raw => s -> R a -> R a
 withAnnotationTVs stx action = do
-  ((), md) <- steal $ traverse_ bindTyvar (annotFtvSet stx)
-  inModule md action
+  skip <- R (asks inExpr)
+  ((), md) <- steal $
+    if skip
+      then return ()
+      else traverse_ bindTyvar (annotFtvSet stx)
+  inModule md (R (local (\e -> e { inExpr = True }) (unR action)))
 
 -- | Hide any annotation type variables that were in scope.
 hideAnnotationTVs :: R a -> R a
-hideAnnotationTVs = local (\e -> e { tyvars = each <$> tyvars e })
+hideAnnotationTVs = 
+  R . local (\e -> e { inExpr = False }) . unR .
+    local (\e -> e { tyvars = each <$> tyvars e })
   where each (a, b, (c, _)) = (a, b, (c, False))
 
 -- | Temporarily stop allocating unique ids
@@ -449,7 +455,7 @@ bindTyvar :: TyVar Raw -> R (TyVar Renamed)
 bindTyvar tv = do
   e <- asks tyvars
   case M.lookup (tvname tv) e of
-    Nothing                         -> bindGeneric renId MdTyvar tv
+    Nothing                      -> bindGeneric renId MdTyvar tv
     Just (name', loc', (ql', _)) ->
       if tvqual tv == ql'
         then
@@ -494,6 +500,10 @@ renameDecl d0 = withLocation d0 $ case d0 of
     x'  <- renamePatt x
     e'  <- renameExpr e
     return [dc|+ let $x' = $e' |]
+  [dc| let rec $list:bns |] -> do
+    (bns', md) <- renameBindings bns
+    tell md
+    return [dc|+ let rec $list:bns' |]
   [dc| type $tid:lhs = type $qtid:rhs |] -> do
     lhs' <- bindTycon lhs
     rhs' <- getTycon rhs
@@ -550,11 +560,9 @@ renameDecl d0 = withLocation d0 $ case d0 of
     mt' <- traverse renameType mt
     return [dc|+ exception $cid:u' of $opt:mt' |]
   [dc| $anti:a |] -> $antifail
-    {-
-  -}
 
 renameTyDecs :: [TyDec Raw] -> R [TyDec Renamed]
-renameTyDecs tds = do
+renameTyDecs tds = withLocation tds $ do
   let bindEach [tdQ| $anti:a |] = $antifail
       bindEach (N note td)       = withLocation note $ do
         bindTycon (tdName td)
@@ -715,7 +723,7 @@ sealWith = loop Nothing where
 -- | Rename a signature item and return the environment
 --   that they bind
 renameSigItem :: SigItem Raw -> R (SigItem Renamed)
-renameSigItem sg0 = case sg0 of
+renameSigItem sg0 = withLocation sg0 $ case sg0 of
   [sgQ| val $vid:l : $t |] -> do
     l' <- bindVar l
     t' <- renameType (closeType t)
@@ -746,8 +754,8 @@ renameSigItem sg0 = case sg0 of
 
 -- | Rename an expression
 renameExpr :: Expr Raw -> R (Expr Renamed)
-renameExpr e00 = withLocation e00 . withAnnotationTVs e00 $ loop e00 where
-  loop e0 = case e0 of
+renameExpr e00 = withAnnotationTVs e00 $ loop e00 where
+  loop e0 = withLocation e0 $ case e0 of
     [ex| $qvid:ql |] -> do
       ql' <- getVar ql
       return [ex|+ $qvid:ql' |]
@@ -831,11 +839,11 @@ renameCaseAlt ca0 = withLocation ca0 $ case ca0 of
 
 -- | Rename a set of let rec bindings
 renameBindings :: [Binding Raw] -> R ([Binding Renamed], Module)
-renameBindings bns = do
+renameBindings bns = withAnnotationTVs bns $ withLocation bns $ do
   lxes <- forM bns $ \bn ->
     case bn of
       [bnQ| $vid:x = $e |] -> return (_loc, x, e)
-      [bnQ| $antiB:a |] -> $antifail
+      [bnQ| $antiB:a |]    -> $antifail
   case unique (\(_,x,_) -> x) lxes of
     Nothing          -> return ()
     Just (x, locs) ->
@@ -853,7 +861,7 @@ renameBindings bns = do
 
 -- | Rename a type
 renameType :: Type Raw -> R (Type Renamed)
-renameType t0 = case t0 of
+renameType t0 = withLocation t0 $ case t0 of
   [ty| ($list:ts) $qtid:ql |] -> do
     ql' <- getTycon ql
     ts' <- mapM renameType ts
@@ -883,12 +891,10 @@ renameType t0 = case t0 of
 
 -- | Rename a type pattern
 renameTyPats :: [TyPat Raw] -> R [TyPat Renamed]
-renameTyPats x00 =
-  withLocation x00 $
-    evalStateT (mapM loop x00) M.empty where
+renameTyPats x00 = evalStateT (mapM loop x00) M.empty where
   loop :: TyPat Raw ->
           StateT (M.Map (Lid Raw) (TyVar Raw, Loc)) Renaming (TyPat Renamed)
-  loop x0 = case x0 of
+  loop x0 = withLocation x0 $ case x0 of
     [tpQ| $antiP:a |] -> $antifail
     N note (TpVar tv var) -> do
       tv' <- tyvar (getLoc note) tv
@@ -914,7 +920,7 @@ renameTyPats x00 =
 
 -- | Rename a qualifier expression
 renameQExp :: QExp Raw -> R (QExp Renamed)
-renameQExp qe0 = case qe0 of
+renameQExp qe0 = withLocation qe0 $ case qe0 of
   [qeQ| $qlit:qlit |] -> do
     return [qeQ|+ $qlit:qlit |]
   [qeQ| $qvar:tv |] -> do
@@ -929,13 +935,11 @@ renameQExp qe0 = case qe0 of
 
 -- | Rename a pattern
 renamePatt :: Patt Raw -> R (Patt Renamed)
-renamePatt x00 =
-  withLocation x00 $
-    evalStateT (loop x00) M.empty where
+renamePatt x00 = evalStateT (loop x00) M.empty where
   loop :: Patt Raw ->
           StateT (M.Map (VarId Raw) Loc)
             Renaming (Patt Renamed)
-  loop x0 = case x0 of
+  loop x0 = withLocation x0 $ case x0 of
     [pa| _ |] ->
       return [pa|+ _ |]
     [pa| $vid:l |] -> do
@@ -1034,7 +1038,6 @@ renamingEnterScope u r =
     Just (_, _, (_, e'))
             -> r { savedEnv = e `mappend` e' }
 
-{-
 -- | Test runner for renaming an expression
 re :: Expr Raw -> Either [AlmsError] (Expr Renamed)
 re e = fst <$> runRenaming True bogus renameState0 (renameExpr e)
@@ -1045,4 +1048,3 @@ rd d = fst <$> runRenaming True bogus renameState0 (renameDecl d)
 
 _loc :: Loc
 _loc = initial "<interactive>"
--}
