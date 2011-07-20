@@ -304,7 +304,7 @@ runtimeBug  = throwAlms <$$> almsBug DynamicsPhase
 -- Add the given name to an anonymous function
 nameFun :: VarId R -> Value -> Value
 nameFun n (VaFun (FNAnonymous _) lam)
-  | idName n /= "it" || not (isTrivial (idTag n))
+  | idName n /= "it"
                  = VaFun (FNNamed (text (idName n))) lam
 nameFun _ value  = value
 
