@@ -2,9 +2,19 @@ EXE      = alms
 GHC      = ghc
 EXAMPLES = examples
 SRC      = $(HS_SRC) $(HSBOOT_SRC)
-HS_SRC      = src/*.hs src/Basis/*.hs src/Basis/Channel/*.hs \
-              src/Syntax/*.hs src/Message/*.hs src/Meta/*.hs
-HSBOOT_SRC  = src/Syntax/*.hs-boot
+HS_SRC   = src/*.hs \
+           src/Alt/*.hs \
+           src/AST/*.hs \
+           src/Basis/*.hs \
+           src/Basis/Channel/*.hs \
+           src/Data/*.hs \
+           src/Message/*.hs \
+           src/Meta/*.hs \
+           src/Statics/*.hs \
+           src/Syntax/*.hs \
+           src/Type/*.hs \
+           src/Util/*.hs
+HSBOOT_SRC  = src/AST/*.hs-boot src/Statics/*.hs-boot
 
 DOC      = dist/doc/html/alms/alms/
 
@@ -12,8 +22,11 @@ default: Setup dist/setup-config $(SRC)
 	./Setup build
 	cp dist/build/alms/alms .
 
+alms.cabal: alms.cabal.sh Makefile
+	./alms.cabal.sh > alms.cabal
+
 dist/setup-config config: Setup alms.cabal
-	./Setup configure --flags="$(FLAGS)"
+	./Setup configure --user --flags="$(FLAGS)"
 
 Setup: Setup.hs
 	$(GHC) -o $@ --make $<

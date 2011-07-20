@@ -71,9 +71,14 @@ while [ -n "$1" ]; do
     version)
       version="$1"
       shift
-      ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
-      ex -c "/^Version: /s/\\(: *\\).*/\\1$version/|:wq" $name.cabal
-      $0 showVersion
+      if [ -n "$version" ]; then
+          ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
+          make $name.cabal
+          $0 showVersion
+      else
+          echo "Need to specify a version" >&2
+          exit 1
+      fi
       ;;
     showVersion)
       echo $version

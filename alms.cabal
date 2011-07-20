@@ -1,6 +1,6 @@
 Name:           alms
 Version:        0.6.0
-Copyright:      2010, Jesse A. Tov
+Copyright:      2011, Jesse A. Tov
 Cabal-Version:  >= 1.8
 License:        BSD3
 License-File:   LICENSE
@@ -44,78 +44,116 @@ Executable alms
   Hs-Source-Dirs:       src
   GHC-Options:          -O3
   CPP-Options:          -DALMS_CABAL_BUILD
-  Build-Depends:        haskell98,
+  Build-Depends:
+                        haskell98,
                         base == 4.*,
-                        syb >= 0.1,
-                        pretty >= 1,
-                        containers >= 0.1,
-                        mtl >= 1.1,
-                        filepath >= 1.1,
-                        network >= 2.2,
-                        directory >= 1.0,
-                        template-haskell >= 2.0,
-                        QuickCheck >= 2,
                         HUnit >= 1.2,
+                        QuickCheck >= 2,
+                        array >= 0.3,
+                        containers >= 0.1,
+                        directory >= 1.0,
+                        fgl >= 5,
+                        filepath >= 1.1,
+                        incremental-sat-solver >= 0.1.7,
+                        mtl >= 1.1,
+                        network >= 2.2,
+                        pretty >= 1,
                         random >= 1,
-                        array >= 0.3
-  Other-Modules:        Basis,
-                        Basis.Array,
-                        Basis.Channel,
-                        Basis.Channel.Haskell,
-                        Basis.Exn,
-                        Basis.Future,
-                        Basis.IO,
-                        Basis.MVar,
-                        Basis.Socket,
-                        Basis.Thread,
-                        BasisUtils,
-                        Coercion,
-                        Compat,
-                        Dynamics,
-                        Env,
-                        ErrorMessage,
-                        ErrorST,
-                        Lexer,
-                        Loc,
-                        Message.AST,
-                        Message.Parser,
-                        Message.Quasi,
-                        Message.Render,
-                        Meta.DeriveNotable,
-                        Meta.FileString,
-                        Meta.Quasi,
-                        Meta.QuoteData,
-                        Meta.THHelpers,
-                        PDNF,
-                        Parser,
-                        Paths,
-                        Ppr,
-                        PprClass,
-                        Prec,
-                        PrettyPrint,
-                        Printing,
-                        Rename,
-                        Sigma,
-                        Statics,
-                        Syntax,
-                        Syntax.Anti,
-                        Syntax.Decl,
-                        Syntax.Expr,
-                        Syntax.Ident,
-                        Syntax.Kind,
-                        Syntax.Lit,
-                        Syntax.Notable,
-                        Syntax.POClass,
-                        Syntax.Patt,
-                        Syntax.SyntaxTable,
-                        Syntax.Type,
-                        Token,
-                        Type,
-                        TypeRel,
-                        Util,
-                        Value,
-                        Viewable
-
+                        stm >= 2.0,
+                        syb >= 0.1,
+                        template-haskell >= 2.0,
+                        transformers >= 0.2,
+                        tuple >= 0.2
+  Other-Modules:
+                        Alt.Graph
+                        Alt.NodeMap
+                        Alt.Parsec
+                        Alt.PrettyPrint
+                        Alt.Token
+                        AST.Anti
+                        AST.Decl
+                        AST.Expr
+                        AST.Ident
+                        AST.Kind
+                        AST.Lit
+                        AST.Notable
+                        AST.Patt
+                        AST.SyntaxTable
+                        AST.Type
+                        AST.TypeAnnotation
+                        AST
+                        Basis.Array
+                        Basis.Channel.Haskell
+                        Basis.Channel
+                        Basis.Exn
+                        Basis.Future
+                        Basis.IO
+                        Basis.MVar
+                        Basis.Socket
+                        Basis.Thread
+                        Basis
+                        BasisUtils
+                        Coercion
+                        Compat
+                        Data.Empty
+                        Data.Lattice
+                        Data.Loc
+                        Data.OptionalClass
+                        Data.Perhaps
+                        Data.UnionFind
+                        Dynamics
+                        Env
+                        Error
+                        Main
+                        Message.AST
+                        Message.Parser
+                        Message.Quasi
+                        Message.Render
+                        Meta.DeriveNotable
+                        Meta.FileString
+                        Meta.Quasi
+                        Meta.QuoteData
+                        Meta.THHelpers
+                        Paths
+                        Printing
+                        Sigma
+                        Statics.Constraint
+                        Statics.Decl
+                        Statics.Env
+                        Statics.Error
+                        Statics.Expr
+                        Statics.InstGen
+                        Statics.Patt
+                        Statics.Rename
+                        Statics.Sealing
+                        Statics.Sig
+                        Statics.Subsume
+                        Statics.Type
+                        Statics
+                        Syntax.Lexer
+                        Syntax.Parser
+                        Syntax.Ppr
+                        Syntax.PprClass
+                        Syntax.Prec
+                        Syntax.Strings
+                        Type.Analyses
+                        Type.ArrowAnnotations
+                        Type.Internal
+                        Type.Ppr
+                        Type.Rank
+                        Type.Recursive
+                        Type.Reduce
+                        Type.Subst
+                        Type.Syntax
+                        Type.TyVar
+                        Type
+                        Util.Bogus
+                        Util.Eq1
+                        Util.MonadRef
+                        Util.Trace
+                        Util.Viewable
+                        Util
+                        Value
   if flag(readline)
     Build-Depends:  readline >= 1.0
     CPP-Options:    -DUSE_READLINE=System.Console.Readline
@@ -130,4 +168,3 @@ Executable alms
   else
     Build-Depends:  parsec == 2.*
     CPP-Options:    -DPARSEC_VERSION=2
-
