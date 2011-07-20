@@ -12,12 +12,6 @@ module Data.Loc (
   -- * Generic function for clearing source locations everywhere
   scrub, scrubWhen,
 
-  -- * For locating things
-  -- ** Datatype interface
-  {-
-  Located(..), mkBogL, bogL,
-  -}
-
   -- ** Type class interface
   Locatable(..), Relocatable(..), (<<@),
 
@@ -99,28 +93,6 @@ instance IsBogus Loc where
   isBogus (Loc _ (-1) _ _ _) = True
   isBogus _                  = False
 
--- | A value with a location attached
-{-
-data Located a = L {
-                   locatedLoc :: !Loc,
-                   locatedVal :: !a
-                 }
-  deriving (Eq, Ord, Typeable, Data)
-
-mkBogL :: String -> a -> Located a
-mkBogL  = L . mkBogus
-
-bogL :: a -> Located a
-bogL  = mkBogL "<bogus>"
-
-instance Show a => Show (Located a) where
-  showsPrec p = showsPrec p . locatedVal
-
-instance Viewable (Located a) where
-  type View (Located a) = a
-  view = locatedVal
--}
-
 -- | Class for types that carry source locations
 class Locatable a where
   getLoc   :: a -> Loc
@@ -128,14 +100,6 @@ class Locatable a where
 -- | Class for types that can have their source locations updated
 class Relocatable a where
   setLoc   :: a -> Loc -> a
-
-{-
-instance Locatable (Located a) where
-  getLoc (L loc _) = loc
-
-instance Relocatable (Located a) where
-  setLoc (L _ a) loc = L loc a
--}
 
 instance Locatable Loc where
   getLoc   = id
@@ -203,26 +167,24 @@ instance Show Loc where
   showsPrec _ loc
     | isBogus loc = showString (showFile (file loc))
     | otherwise   =
-        showString (showFile (file loc)) . showString " (" .
-        showCoords . showString ")"
+        showString (showFile (file loc)) . showChar ':' . showCoords
     where
     showCoords =
       if line1 loc == line2 loc then
-        showString "line " . shows (line1 loc) . showString ", " .
+        shows (line1 loc) . showChar ':' . shows (col1 loc) .
         if col1 loc + 1 >= col2 loc then
-          showString "column " . shows (col1 loc)
+          id
         else
-          showString "columns " . shows (col1 loc) .
-          showString "-" . shows (col2 loc)
+          showChar '-' . shows (col2 loc)
       else
-        showString "line " . shows (line1 loc) .
-        showString ", col. " . shows (col1 loc) .
-        showString " to line " . shows (line2 loc) .
-        showString ", col. " . shows (col2 loc)
+        shows (line1 loc) .
+        showChar ':' . shows (col1 loc) .
+        showChar '-' . shows (line2 loc) .
+        showChar ':' . shows (col2 loc)
     showFile "-" = "<stdin>"
     showFile s   =
       let shown = show s
        in if shown == '"' : s ++ "\""
-            then shown
-            else s
+            then s
+            else shown
 

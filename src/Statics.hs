@@ -11,6 +11,11 @@ module Statics (
 
   -- * Type checking operations
   typeCheckDecls, typeCheckProg,
+
+  -- * Renaming and typing info
+  Statics.getRenamingInfo, RenamingInfo(..),
+  getVarInfo, getTypeInfo, getConInfo,
+  staticsEnterScope,
 ) where
 
 import Util
@@ -62,7 +67,9 @@ staticsState0' = staticsState0 renameState0
 typeCheckDecls ∷ (MonadAlmsError m, MonadRef r m) ⇒
                  StaticsState r →
                  [AST.Decl Raw] →
-                 m ([AST.Decl Renamed], Signature (TV r), StaticsState r)
+                 m ([AST.Decl Renamed],
+                    [AST.SigItem R],
+                    StaticsState r)
 typeCheckDecls ss ds = do
   (ds', rs)         ← bailoutIfError $
     runRenamingM True bogus (ssRename ss) (renameDecls ds)
@@ -73,7 +80,7 @@ typeCheckDecls ss ds = do
               ssConstraint = cs,
               ssEnv        = ssEnv ss =+= sigToEnv sig
             }
-  return (ds'', sig, ss')
+  return (ds'', sigItemToStx' <$> sig, ss')
 
 -- | Type check a program.
 typeCheckProg ∷ (MonadAlmsError m, MonadRef r m) ⇒
@@ -112,42 +119,28 @@ addPrimType ss tid tc = ss { ssEnv = ssEnv ss =+= tid =:= tc }
 --- INTERFACE FOR GETTING TYPE INFO
 ---
 
-{-
-getVarInfo :: QLid R -> S -> Maybe Type
-getVarInfo ql (S e _) = e =..= fmap Var ql
+-- | Find out the renamed name of an identifier and where it was defined.
+getRenamingInfo ∷ AST.Ident Raw → StaticsState r → [RenamingInfo]
+getRenamingInfo = Statics.Rename.getRenamingInfo <$.> ssRename
 
-getTypeInfo :: QLid R -> S -> Maybe TyCon
-getTypeInfo ql (S e _) = e =..= ql
+-- | Find out the type of a variable
+getVarInfo :: QVarId -> StaticsState r -> Maybe (AST.Type R)
+getVarInfo vid ss = typeToStx' <$> ssEnv ss =..= vid
+
+-- | Find out about a type
+getTypeInfo :: QTypId -> StaticsState r -> Maybe TyCon
+getTypeInfo tid ss = ssEnv ss =..= tid
 
 -- Find out about a data constructor.  If it's an exception constructor,
--- return 'Left' with its paramter, otherwise return the type construtor
+-- return 'Right' with its parameter, otherwise return the type construtor
 -- of the result type
-getConInfo :: QUid R -> S -> Maybe (Either (Maybe Type) TyCon)
-getConInfo qu (S e _) = do
-  t <- e =..= fmap Con qu
-  case getExnParam t of
-    Just mt -> Just (Left mt)
-    Nothing ->
-      let loop (TyFun _ _ t2) = loop t2
-          loop (TyQu _ _ t1)  = loop t1
-          loop (TyApp tc _ _) = Just (Right tc)
-          loop _              = Nothing
-       in loop t
+getConInfo :: QConId -> StaticsState r ->
+              Maybe (Either TyCon (Maybe (AST.Type R)))
+getConInfo cid ss = typeToStx' <$$$> ssEnv ss =..= cid
 
 -- Open the given module, if it exists.
-staticsEnterScope    :: Uid R -> S -> S
-staticsEnterScope u s =
-  let e = sEnv s in
-  case e =..= u of
-    Just (_, e') -> s { sEnv = e =+= e' }
-    Nothing      -> s
-
--- | Find out the parameter type of an exception
-getExnParam :: Type -> Maybe (Maybe Type)
-getExnParam (TyApp tc _ _)
-  | tc == tcExn             = Just Nothing
-getExnParam (TyFun _ t1 (TyApp tc _ _))
-  | tc == tcExn             = Just (Just t1)
-getExnParam _               = Nothing
-
--}
+staticsEnterScope       :: ModId -> StaticsState r -> StaticsState r
+staticsEnterScope mid ss =
+  case ssEnv ss =..= mid of
+    Just (_, e') -> ss { ssEnv = ssEnv ss =+= e' }
+    Nothing      -> ss

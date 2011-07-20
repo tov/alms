@@ -10,7 +10,7 @@ module Type.Syntax (
   typeToStx, typeToStx',
   T2SContext(..), t2sContext0, TyNames(..), tyNames0,
   -- * Patterns to syntax
-  tyPatToStx, tyPatToStx',
+  tyPatToStx, tyPatToStx', tyPatsToStx,
   -- * Type constructors to type declarations
   tyConToStx, tyConToStx',
 ) where

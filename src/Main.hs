@@ -1,35 +1,37 @@
 -- | The main driver program, which performs all manner of unpleasant
 --   tasks to tie everything together
-{-# LANGUAGE CPP #-}
+{-# LANGUAGE
+      CPP,
+      QuasiQuotes,
+      UnicodeSyntax
+    #-}
 module Main (
   main
 ) where
 
 import Util
 import Syntax.Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
-            ($$), nest, printDoc, hPrintDoc)
+                   printDoc, hPrintDoc)
 import qualified Syntax.Ppr as Ppr
 import Syntax.Parser (parseFile, REPLCommand(..), parseCommand)
 import Syntax.Prec (precOp)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
 {-
 import Printing (addTyNameContext)
-import Rename (RenameState, runRenamingM, renameDecls, renameProg,
-               getRenamingInfo, RenamingInfo(..))
 -}
+import Meta.Quasi
 import Statics
-import Statics.Sig (Signature)
 import Value (VExn(..), vppr)
 import Dynamics (eval, addDecls, E, NewValues)
 import Basis (primBasis, srcBasis)
 import BasisUtils (basis2venv, basis2tenv, basis2renv)
-import AST (Prog, Decl, TyDec, BIdent(..), prog2decls,
+import qualified AST
+import AST (Prog, Decl, SigItem, prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
-import Data.Loc (isBogus, initial, bogus)
 import qualified Error as E
 import qualified Message.AST  as Msg
-import Type (TV)
+import Type.Ppr (TyConInfo(..))
 
 import Prelude ()
 import Data.Char (isSpace)
@@ -56,8 +58,6 @@ data ReplState = RS {
   rsStatics     :: StaticsState IORef,
   rsDynamics    :: E
 }
-
-type Alms = E.AlmsErrorT IO
 
 -- | The main procedure
 main :: IO ()
@@ -123,7 +123,7 @@ batch filename msrc opt st0 = do
                 mumble "RESULT" v
 
 statics     :: (ReplState, [Decl Raw]) ->
-               Alms (ReplState, Signature (TV IORef), [Decl Renamed])
+               E.AlmsErrorT IO (ReplState, [SigItem Renamed], [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed]) -> IO (ReplState, NewValues)
 
 statics (rs, ast) = do
@@ -182,33 +182,30 @@ interactive opt rs0 = do
           st' <- E.runAlmsErrorIO (doLine st ast)
                    `handleExns` (st, return st)
           repl row' st'
-    doLine st ast = let
-      check   :: (ReplState, [Decl Raw]) -> E.AlmsErrorT IO ReplState
-      {-
-      execute :: Signature (TV tv) -> (ReplState, [Decl Renamed]) -> IO ReplState
-      display :: Module -> NewValues -> ReplState -> IO ReplState
-      -}
+    doLine st0 ast0 = let
+      check   :: ReplState -> [Decl Raw] ->
+                 E.AlmsErrorT IO ReplState
+      execute :: [SigItem Renamed] -> ReplState -> [Decl Renamed] ->
+                 IO ReplState
+      display :: [SigItem Renamed] -> NewValues -> ReplState ->
+                 IO ReplState
 
-      check stast0   = do
-                         (st1, newDefs, ast1) <- statics stast0
-                         liftIO (print newDefs)
-                         return st1
-                         -- coerce newDefs (st1, ast1)
+      check st ast        = do
+                         (st', newDefs, ast') <- statics (st, ast)
+                         liftIO (execute newDefs st' ast')
 
-{-
-      execute newDefs stast2
+      execute newDefs st ast
                           = if opt Don'tExecute
-                              then display newDefs empty (fst stast2)
+                              then display newDefs empty st
                               else do
-                                (st3, newVals) <- dynamics stast2
-                                display newDefs newVals st3
+                                (st', newVals) <- dynamics (st, ast)
+                                display newDefs newVals st'
 
-      display newDefs newVals st3
-                          = do printResult st3 newDefs newVals
-                               return st3
+      display newDefs newVals st
+                          = do printResult newDefs newVals
+                               return st
 
-    -}
-      in check (st, ast)
+      in check st0 ast0
     say    = if opt Quiet then const (return ()) else printDoc
     getln' = if opt NoLineEdit then getline else readline
     getln  = if opt Quiet then const (getln' "") else getln'
@@ -243,39 +240,21 @@ interactive opt rs0 = do
                   return (Just (row + count, ast))
                 ParseError derr -> 
                   loop (count + 1) ((line, derr) : acc)
-    printInfo _ _ = return () -- XXX
-                  {-
-    printResult :: ReplState -> Module -> NewValues -> IO ()
-    printResult st md00 values = say (withRS st (loop True md00)) where
-      loop tl md0 = case md0 of
-        MdNil               -> mempty
-        MdApp md1 md2       -> loop tl md1 $$ loop tl md2
-        MdValue (Var l) t   -> pprValue tl l t (values =..= l)
-        MdValue (Con u) t   -> case getExnParam t of
-          Nothing        -> mempty
-          Just Nothing   -> text "exception"<+>ppr u
-          Just (Just t') -> text "exception"<+>ppr u<+>text "of"<+>ppr t'
-        MdTycon _ tc        ->
-          text "type" <+>
-          Ppr.askTyNames (\tn -> ppr (tyConToDec tn tc :: TyDec Renamed))
-        MdModule u md1      -> Ppr.enterTyNames u $
-          text "module" <+> ppr u <+> char ':' <+> text "sig"
-          $$ nest 2 (loop False md1)
-          $$ text "end"
-        MdSig u md1         ->
-          text "module type" <+> ppr u <+> char '=' <+> text "sig"
-          $$ nest 2 (loop False md1)
-          $$ text "end"
-      pprValue tl x t mv =
-        addHang '=' (if tl then fmap ppr mv else Nothing) $
-          addHang ':' (Just (ppr t)) $
-            (if tl then ppr x else text "val" <+> ppr x)
+    printResult :: [SigItem Renamed] -> NewValues -> IO ()
+    printResult types values = mapM_ (say . eachItem) types
+      where
+      eachItem sigitem = case sigitem of
+        [sgQ| val $vid:n : $t |]
+          → addHang '=' (ppr <$> values =..= n) $
+              addHang ':' (Just (ppr t)) $
+                ppr n
+        _ → ppr sigitem
       addHang c m d = case m of
         Nothing -> d
         Just t  -> hang (d <+> char c) 2 t
 
 printInfo :: ReplState -> Ident Raw -> IO ()
-printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
+printInfo st ident = case getRenamingInfo ident s of
     []  -> putStrLn $ "Not bound: ‘" ++ show ident ++ "’"
     ris -> mapM_ each ris
   where
@@ -290,11 +269,13 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
     each (TyconAt    loc x') =
       case getTypeInfo x' s of
         Nothing  -> mention "type" (ppr x') mempty loc
-        Just tc  -> mention "type" mempty (ppr tc) loc
+        Just tc  -> mention "type" mempty (ppr (TyConInfo tc)) loc
     each (DataconAt  loc x') =
       case getConInfo x' s of
         Nothing -> mention "val" (ppr x') mempty loc
-        Just (Left mt) ->
+        Just (Left tc) ->
+          mention "type" mempty (ppr (TyConInfo tc)) loc
+        Just (Right mt) ->
           mention "type" (text "exn")
                   (Ppr.sep [ text "= ...",
                              char '|' <+> ppr x' <+>
@@ -302,8 +283,6 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
                                Nothing -> mempty
                                Just t  -> text "of" <+> ppr t ])
                   loc
-        Just (Right tc) ->
-          mention "type" mempty (ppr tc) loc
     --
     s = rsStatics st
     --
@@ -316,7 +295,6 @@ printInfo st ident = case getRenamingInfo ident (rsRenaming st) of
                 then text "  -- built-in"
                 else text "  -- defined at" <+> text (show loc)
       where a >?> b = Ppr.ifEmpty who (a <+> b) (a Ppr.>?> b)
-        -}
 
 -- Add the ReplState to the pretty-printing context.
 withRS :: ReplState -> Doc -> Doc
@@ -333,9 +311,6 @@ printPrec oper = printDoc $
 
 mumble ::  Ppr a => String -> a -> IO ()
 mumble s a = printDoc $ hang (text s <> char ':') 2 (ppr a)
-
-mumbles :: Ppr a => String -> [a] -> IO ()
-mumbles s as = printDoc $ hang (text s <> char ':') 2 (Ppr.vcat (map ppr as))
 
 errorString :: IOError -> String
 errorString e | isUserError e = ioeGetErrorString e

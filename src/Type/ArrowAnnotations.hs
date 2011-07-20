@@ -47,8 +47,8 @@ qInterpret resolve = loop where
   loop [qeQ| $anti:a |]     = $(AST.antifail)
 
 -- | Represent an internal qualifier as an explicit external one
-qRepresent ∷ (TyVar tv → AST.TyVar R) →
-             QExpV tv → AST.QExp R
+qRepresent ∷ (tv → AST.TyVar R) →
+             QExp tv → AST.QExp R
 qRepresent _      QeA       = [qeQ|+! A |]
 qRepresent rename (QeU tvs)
   | S.null tvs              = [qeQ|+! U |]

@@ -22,9 +22,9 @@ type R = AST.Renamed
 type VarId  = AST.VarId R
 type ModId  = AST.ModId R
 type SigId  = AST.SigId R
-type QVarId = AST.VarId R
-type QModId = AST.ModId R
-type QSigId = AST.SigId R
+type QVarId = AST.QVarId R
+type QModId = AST.QModId R
+type QSigId = AST.QSigId R
 
 data SigItem tv
   = SgVal !VarId !(Type tv)
