@@ -61,7 +61,7 @@ renameErrorStop msg0 = do
 -- | Generate a renamer error, but keep going.
 renameError :: Bogus a => Message V -> R a
 renameError msg0 = do
-  reportAlms_ (AlmsError RenamerPhase bogus msg0)
+  reportAlms (AlmsError RenamerPhase bogus msg0)
   return bogus
 
 renameBug :: String -> String -> R a
@@ -144,9 +144,9 @@ runRenaming :: Bool -> Loc -> RenameState -> Renaming a ->
                Either [AlmsError] (a, RenameState)
 runRenaming nonTrivial loc saved action = do
   runIdentity $
-    runAlmsErrorT $ do
+    runAlmsErrorT $ withLocation loc $ do
       (result, rstate, md) <-
-        runRWST (withLocation loc (unR action))
+        runRWST (unR action)
           Context {
             env      = savedEnv saved,
             allocate = nonTrivial,
