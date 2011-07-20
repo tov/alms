@@ -319,8 +319,8 @@ instance Show AlmsErrorIO where
 instance Exception AlmsErrorIO
 
 -- | Run in the IO monad, accumulating all errors.
-runAlmsErrorIO ∷ AlmsErrorT IO a → IO a
-runAlmsErrorIO = either (throwIO . AlmsErrorIO) return <=< runAlmsErrorT
+runAlmsErrorIO ∷ MonadIO m ⇒ AlmsErrorT m a → m a
+runAlmsErrorIO = either (liftIO . throwIO . AlmsErrorIO) return <=< runAlmsErrorT
 
 --
 -- AlmsErrorT Pass-through instances

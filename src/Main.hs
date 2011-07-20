@@ -5,6 +5,8 @@ module Main (
 ) where
 
 import Util
+import Util.MonadRef
+import Util.UndoIO
 import Syntax.Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
                    printDoc, hPrintDoc)
 import qualified Syntax.Ppr as Ppr
@@ -117,8 +119,9 @@ batch filename msrc opt st0 = do
               when (opt Verbose) $
                 mumble "RESULT" v
 
-statics     :: (ReplState, [Decl Raw]) ->
-               E.AlmsErrorT IO (ReplState, [SigItem Renamed], [Decl Renamed])
+statics     :: (MonadRef IORef m, E.MonadAlmsError m) ⇒
+               (ReplState, [Decl Raw]) ->
+               m (ReplState, [SigItem Renamed], [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed]) -> IO (ReplState, NewValues)
 
 statics (rs, ast) = do
@@ -174,33 +177,15 @@ interactive opt rs0 = do
       case mres of
         Nothing  -> return ()
         Just (row', ast) -> do
-          st' <- E.runAlmsErrorIO (doLine st ast)
-                   `handleExns` (st, return st)
+          st' <- doLine st ast `handleExns` (st, return st)
           repl row' st'
-    doLine st0 ast0 = let
-      check   :: ReplState -> [Decl Raw] ->
-                 E.AlmsErrorT IO ReplState
-      execute :: [SigItem Renamed] -> ReplState -> [Decl Renamed] ->
-                 IO ReplState
-      display :: [SigItem Renamed] -> NewValues -> ReplState ->
-                 IO ReplState
-
-      check st ast        = do
-                         (st', newDefs, ast') <- statics (st, ast)
-                         liftIO (execute newDefs st' ast')
-
-      execute newDefs st ast
-                          = if opt Don'tExecute
-                              then display newDefs empty st
-                              else do
-                                (st', newVals) <- dynamics (st, ast)
-                                display newDefs newVals st'
-
-      display newDefs newVals st
-                          = do printResult newDefs newVals
-                               return st
-
-      in check st0 ast0
+    doLine st0 ast0 = do
+      (st1, newDefs, ast1) <- runUndoIO (E.runAlmsErrorIO (statics (st0, ast0)))
+      (st2, newVals)       <- if opt Don'tExecute
+                              then return (st1, empty)
+                              else dynamics (st1, ast1)
+      printResult newDefs newVals
+      return st2
     say    = if opt Quiet then const (return ()) else printDoc
     getln' = if opt NoLineEdit then getline else readline
     getln  = if opt Quiet then const (getln' "") else getln'
