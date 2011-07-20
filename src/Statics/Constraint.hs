@@ -365,8 +365,7 @@ instance MonadSubst tv r m ⇒
     runSeenT (subtypeTypes True τ τ')
   τ ⊏: τ' = do
     traceN 3 ("⊏:", qualToType τ, qualToType τ')
-    ConstraintT_ . modify . csQualsUpdate $
-      ((qualToType τ, qualToType τ') :)
+    addQualConstraint τ τ'
   --
   getPinnedTVs      = S.unions <$> ConstraintT_ (gets csPinned)
   --
@@ -1032,6 +1031,35 @@ instance Tv tv ⇒ Ppr.Ppr (QCState tv) where
     ]
     where p x = Ppr.ppr x
 
+-- | Add a qualifier subtyping constraint
+addQualConstraint ∷ (MonadSubst tv r m, Qualifier q1 tv, Qualifier q2 tv) ⇒
+                    q1 → q2 → ConstraintT_ tv r m ()
+addQualConstraint q1 q2 = do
+  q1' ← simplifyQual q1
+  q2' ← simplifyQual q2
+  tassert (q1' /= qlitexp Qa || q2' /= qlitexp Qu)
+    [msg| Qualifier inequality unsatisfiable.
+          <p>
+          (This may be the result of attempting to us an affine value
+          more than once.) |]
+  let qe1 = mapQExp (S.mapMonotonic Free) q1'
+      qe2 = mapQExp (S.mapMonotonic Free) q2'
+  unless (q1' ⊑ q2') $
+    ConstraintT_ . modify . csQualsUpdate $
+      ((qualToType qe1, qualToType qe2) :)
+
+simplifyQual ∷ (MonadSubst tv r m, Qualifier q tv) ⇒
+               q → m (QExp tv)
+simplifyQual q = do
+  qe ← qualifier <$> subst (qualToType q)
+  case qe of
+    QeA    → return QeA
+    QeU γs → do
+      (γs', qls) ← partitionJust tvQual <$> mapM fromTyVar (S.toAscList γs)
+      case bigJoin qls of
+        Qa      → return QeA
+        _       → return (QeU (S.fromDistinctAscList γs'))
+
 -- | Solver for qualifier contraints.
 --   Given a qualifier constraint, solve and produce type variable
 --   bounds.  Also return any remaining inequalities (which must be
@@ -1332,15 +1360,16 @@ solveQualifiers value αs qc τ = do
     case qe of
       QeA    → return QeA
       QeU γs → do
-        (γs', qls) ← partitionJust tvQual <$> mapM fromVar (S.toAscList γs)
+        (γs', qls) ← partitionJust tvQual <$> mapM fromTyVar (S.toAscList γs)
         if any (== Qa) qls
           then return QeA
           else return (QeU (S.fromDistinctAscList γs'))
   --
-  fromVar (Free α) = return α
-  fromVar _        = typeBug "solveQualifiers" "Got bound type variable"
-  --
   unifiable _ α = tvKindIs KdQual α
+
+fromTyVar ∷ MonadAlmsError m ⇒ TyVar tv → m tv
+fromTyVar (Free α) = return α
+fromTyVar _        = typeBug "solveQualifiers" "Got bound type variable"
 
 -- | Update a type variable variance map as a result of substituting a
 --   qualifier expression for a type variable.

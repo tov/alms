@@ -208,7 +208,7 @@ tcTyDec ∷ MonadConstraint tv r m ⇒
 tcTyDec γ td (tid, tc) = withLocation td $ case view td of
   AST.TdDat _ params alts
     → do
-      αs        ← mapM newTV' params
+      αs        ← mapM (curry newTV' Skolem) params
       let δ     = params -:*- αs
       mσs       ← mapM (mapM (tcType δ γ) . snd) alts
       let mσs'          = toEmptyF . closeTy 0 αs <$$> mσs
@@ -239,7 +239,7 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
               have the same number of parameters. |]
       (cs', infos) ← unzip <$$> for cs $ \(tps, rhs) → do
         (tps', αss)     ← unzip <$> mapM (tcTyPat γ) tps
-        αss'            ← mapM (mapM newTV') αss
+        αss'            ← mapM (mapM (curry newTV' Skolem)) αss
         let αs          = concat αss
             αs'         = concat αss'
         σ               ← tcType (αs -:*- αs') γ rhs
