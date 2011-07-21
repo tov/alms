@@ -32,6 +32,9 @@ Description:
     system to naturally and directly express a variety of resource
     management protocols from special-purpose type systems.
 
+Flag unicode
+  Description: Use Unicode symbols for pretty-printing
+
 Flag editline
   Description: Enable line editing using the editline package
 
@@ -118,7 +121,6 @@ Executable alms
                         Meta.QuoteData
                         Meta.THHelpers
                         Paths
-                        Printing
                         Sigma
                         Statics.Constraint
                         Statics.Decl
@@ -154,6 +156,7 @@ Executable alms
                         Util.Eq1
                         Util.MonadRef
                         Util.Trace
+                        Util.UndoIO
                         Util.Viewable
                         Util
                         Value
@@ -182,6 +185,9 @@ Executable alms
                         UndecidableInstances
                         UnicodeSyntax
                         ViewPatterns
+
+  if flag(unicode)
+    CPP-Options:    -DUNICODE
 
   if flag(readline)
     Build-Depends:  readline >= 1.0

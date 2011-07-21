@@ -35,6 +35,9 @@ Description:
     system to naturally and directly express a variety of resource
     management protocols from special-purpose type systems.
 
+Flag unicode
+  Description: Use Unicode symbols for pretty-printing
+
 Flag editline
   Description: Enable line editing using the editline package
 
@@ -81,6 +84,9 @@ echo "  Extensions:"
 sed 's/^/                        /' src/extensions.txt
 
 cat <<EOF
+
+  if flag(unicode)
+    CPP-Options:    -DUNICODE
 
   if flag(readline)
     Build-Depends:  readline >= 1.0
