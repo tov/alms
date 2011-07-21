@@ -69,14 +69,14 @@ typeCheckDecls ∷ (MonadAlmsError m, MonadRef r m) ⇒
                     [AST.SigItem R],
                     StaticsState r)
 typeCheckDecls ss ds = do
-  (ds', rs)         ← bailoutIfError $
+  (ds', rs)             ← bailoutIfError $
     runRenamingM True bogus (ssRename ss) (renameDecls ds)
-  ((ds'', sig), cs) ← bailoutIfError $
+  ((ds'', γ', sig), cs) ← bailoutIfError $
     runConstraintT (ssConstraint ss) (tcDecls [] (ssEnv ss) ds')
   let ss' = ss {
               ssRename     = rs,
               ssConstraint = cs,
-              ssEnv        = ssEnv ss =+= sigToEnv sig
+              ssEnv        = γ'
             }
   return (ds'', sigItemToStx' <$> sig, ss')
 

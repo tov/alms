@@ -26,65 +26,79 @@ tcProg  ∷ MonadConstraint tv r m ⇒
           Γ tv → AST.Prog R → m (AST.Prog R, Maybe (Type tv))
 tcProg γ prog0 = withLocation prog0 $ case prog0 of
   [prQ| $list:ds in $opt:me |]                  → do
-    (ds', sig)          ← tcDecls [] γ ds
-    meσ'                ← mapM (tcExpr (γ =+= sigToEnv sig)) me
+    (ds', γ', _)        ← tcDecls [] γ ds
+    meσ'                ← mapM (tcExpr γ') me
     let me' = fst <$> meσ'
     return ([prQ| $list:ds' in $opt:me' |], snd <$> meσ')
 
 -- | Type check a declaration.
 tcDecl  ∷ MonadConstraint tv r m ⇒
-          [ModId] → Γ tv → AST.Decl R → m (AST.Decl R, Signature tv)
+          [ModId] → Γ tv → AST.Decl R → m
+          (AST.Decl R, Γ tv, Signature tv)
 tcDecl μ γ d0 = withLocation d0 $ case d0 of
   [dc| let $π = $e |]                           → do
     (e', σs)    ← tcExprPatt γ e π
-    return ([dc| let $π = $e' |], zipWith SgVal (AST.dv π) σs)
+    γ'          ← γ !+! π -:*- σs
+    return ([dc| let $π = $e' |], γ', zipWith SgVal (AST.dv π) σs)
   [dc| let rec $list:bns |]                     → do
     (bns', ns, σs) ← tcLetRecBindings γ bns
-    return ([dc| let rec $list:bns' |], zipWith SgVal ns σs)
+    γ'          ← γ !+! ns -:*- σs
+    return ([dc| let rec $list:bns' |], γ', zipWith SgVal ns σs)
   [dc| type $tid:lhs = type $qtid:rhs |]        → do
     tc          ← γ !.! rhs
-    return (d0, [SgTyp lhs tc { tcName = J (reverse μ) lhs }])
+    let sig     = [SgTyp lhs tc { tcName = J (reverse μ) lhs }]
+    return (d0, γ =+= sig, sig)
   [dc| type $list:tds |]                        → do
     sig         ← tcTyDecs μ γ tds
-    return (d0, sig)
+    return (d0, γ =+= sig, sig)
+  {- XXX?
   [dc| abstype $list:at with $list:ds end |]    → do
     (sigC, sigA)        ← tcAbsTys μ γ at
-    (ds', sig1)         ← tcDecls μ (γ =+= sigToEnv sigC) ds
+    γ'                  ← γ !+! sigC
+    (ds', sig1)         ← tcDecls μ γ' ds
     sig                 ← sealWith μ (sigC ++ sig1) (sigA ++ sig1)
     return ([dc| abstype $list:at with $list:ds' end |], sig)
+    -}
   [dc| module type $sid:n = $sigexp |]          → do
-    sig                 ← tcSigExp γ sigexp
-    return (d0, [SgSig n sig])
+    sig1        ← tcSigExp γ sigexp
+    let sig     = [SgSig n sig1]
+    return (d0, γ =+= sig, sig)
   [dc| module $mid:n = $modexp |]               → do
-    (modexp', sig)      ← tcModExp (n:μ) γ modexp
-    return ([dc| module $mid:n = $modexp' |], [SgMod n sig])
+    (modexp', sig1)     ← tcModExp (n:μ) γ modexp
+    let sig     = [SgMod n sig1]
+    return ([dc| module $mid:n = $modexp' |], γ =+= sig, sig)
   [dc| open $modexp |]                          → do
     (modexp', sig) ← tcModExp μ γ modexp
-    return ([dc| open $modexp' |], sig)
+    return ([dc| open $modexp' |], γ =+= sig, sig)
+  {- XXX SKETCHY undefined TODO -}
   [dc| local $list:ds0 with $list:ds1 end |]    → do
-    (ds0', sig0) ← tcDecls (AST.ident "?LocalModule":μ) γ ds0
-    (ds1', sig1) ← tcDecls μ (γ =+= sigToEnv sig0) ds1
-    return ([dc| local $list:ds0' with $list:ds1' end |], sig1)
+    (ds0', γ', sig0) ← tcDecls (AST.ident "?LocalModule":μ) γ ds0
+    (ds1', _,  sig1) ← tcDecls μ γ' ds1
+    γ''              ← γ !+! sig1
+    return ([dc| local $list:ds0' with $list:ds1' end |], γ'', sig1)
   [dc| exception $cid:c of $opt:mt |]           → do
     mσ ← toEmptyF <$$> mapM (tcType mempty γ) mt
-    return (d0, [SgExn c mσ])
+    let sig     = [SgExn c mσ]
+    return (d0, γ =+= sig, sig)
   [dc| $anti:a |]                               → $(AST.antifail)
 
 -- | Type check a sequence of declarations
 tcDecls ∷ MonadConstraint tv r m ⇒
-          [ModId] → Γ tv → [AST.Decl R] → m ([AST.Decl R], Signature tv)
-tcDecls _ _ []     = return ([], [])
+          [ModId] → Γ tv → [AST.Decl R] →
+          m ([AST.Decl R], Γ tv, Signature tv)
+tcDecls _ γ []     = return ([], γ, [])
 tcDecls μ γ (d:ds) = do
-  (d', sig0)    ← tcDecl μ γ d
-  (ds', sig1)   ← tcDecls μ (γ =+= sigToEnv sig0) ds
-  return (d':ds', sig0 ++ sig1)
+  (d', γ', sig0)   ← tcDecl μ γ d
+  (ds', γ'', sig1) ← tcDecls μ γ' ds
+  return (d':ds', γ'', sig0 ++ sig1)
 
 -- | Type check a module expression
 tcModExp ∷ MonadConstraint tv r m ⇒
            [ModId] → Γ tv → AST.ModExp R → m (AST.ModExp R, Signature tv)
 tcModExp μ γ modexp0 = withLocation modexp0 $ case modexp0 of
   [meQ| struct $list:ds end |]                  → do
-    (ds', sig)          ← tcDecls μ γ ds
+    (ds', _, sig)       ← tcDecls μ γ ds
+    -- XXX need to check that γ' is closed
     return ([meQ| struct $list:ds' end |], sig)
   [meQ| $qmid:n $list:_ |]                      → do
     (sig, _) ← γ !.! n
@@ -125,7 +139,8 @@ tcSigItems   ∷ MonadConstraint tv r m ⇒
 tcSigItems _ []       = return []
 tcSigItems γ (sg:sgs) = do
   sig0  ← tcSigItem γ sg
-  sig1  ← tcSigItems (γ =+= sigToEnv sig0) sgs
+  γ'    ← γ !+! sig0
+  sig1  ← tcSigItems γ' sgs
   return (sig0 ++ sig1)
 
 -- | Type check a signature expression

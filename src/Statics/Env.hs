@@ -5,7 +5,7 @@ module Statics.Env (
   -- * Main environment
   Γ(..), Γv, Γc, Γt, Γm, Γs, R,
   -- ** Operations
-  bumpΓ, sigToEnv, sigItemToEnv, (!.!), (!..!),
+  bumpΓ, sigToEnv, sigItemToEnv, (!.!), (!..!), ExtendRank(..),
   -- * Testing
   test_g0,
   -- * Re-exports
@@ -104,6 +104,8 @@ instance (s ~ Signature tv, g ~ Γ tv) ⇒
 instance (s ~ Signature tv, g ~ Γ tv) ⇒
          GenExtend (Γ tv) (Env SigId (s, g)) where      -- Γs
   e =+= es' = e { sigΓ = sigΓ e =+= es' }
+instance tv ~ tv' ⇒ GenExtend (Γ tv) (Signature tv') where
+  e =+= sig = e =+= sigToEnv sig
 
 instance GenLookup (Γ tv) VarId (Type tv) where
   (=..=) = (=..=) . varΓ
@@ -133,6 +135,24 @@ e !..! k = case e =..= k of
   Nothing → typeBugError "GenLookup" ("unbound identifier: " ++ show k)
 
 infixl 6 !.!, !..!
+
+-- | Extend the environment and update the ranks of the free type
+--   variables of the added types.
+class ExtendRank a tv | a → tv where
+  (!+!) ∷ MonadSubst tv r m ⇒ Γ tv → a → m (Γ tv)
+
+infixl 2 !+!
+
+instance ExtendRank (Γ tv) tv where
+  γ !+! γ' = do
+    lowerRank (Rank.inc (rankΓ γ)) =<< subst (range (varΓ γ'))
+    return (bumpΓ γ =+= γ')
+
+instance ExtendRank (Γv tv) tv where
+  γ !+! γv = γ !+! mempty { varΓ = γv }
+
+instance ExtendRank (Signature tv) tv where
+  γ !+! sig = γ !+! sigToEnv sig
 
 instance (Ppr.Ppr k, Ppr.Ppr v) ⇒ Ppr.Ppr (Env k v) where
   ppr env = Ppr.braces . Ppr.fsep . Ppr.punctuate Ppr.comma $

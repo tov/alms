@@ -8,7 +8,6 @@ import Util.MonadRef
 import qualified AST
 import qualified Data.Loc
 import Meta.Quasi
-import qualified Type.Rank as Rank
 import Type
 import Statics.Env
 import Statics.Error
@@ -116,8 +115,7 @@ infer φ0 δ γ e0 mσ0 = do
       (e2', σ')         ← infer φ δ γ' e2 mσ
       return ([ex| let rec $list:bs' in $e2' |], σ')
     [ex| let $decl:d in $e1 |]      → do
-      (d', sig)         ← tcDecl [AST.ident "?LetModule"] γ d
-      let γ'            = γ =+= sigToEnv sig
+      (d', γ', _)       ← tcDecl [AST.ident "?LetModule"] γ d
       (e1', σ1)         ← infer request δ γ' e1 mσ
       σ'                ← maybeInstGen e0 φ γ σ1
       return ([ex| let $decl:d' in $e1' |], σ')
@@ -324,14 +322,6 @@ arrowQualifier ∷ Ord tv ⇒ Γ tv → AST.Expr R → QExpV tv
 arrowQualifier γ e =
   bigJoin [ qualifier (γ =..= n)
           | n      ← M.keys (AST.fv e) ]
-
--- | Extend the environment and update the ranks of the free type
---   variables of the added types.
-(!+!) ∷ MonadSubst tv r m ⇒ Γ tv → Γv tv → m (Γ tv)
-γ !+! γv = do
-  lowerRank (Rank.inc (rankΓ γ)) =<< subst (range γv)
-  return (bumpΓ γ =+= γv)
-infixl 2 !+!
 
 ---
 --- SUBSUMPTION OPERATIONS
