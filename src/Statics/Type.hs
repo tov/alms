@@ -44,12 +44,12 @@ tcType δ0 γ = loop δ0 (iaeInit :: CurrentImpArrRule tv)
         let (αs, t) = AST.unfoldTyQu qu t0
             qls     = AST.tvqual <$> αs
         qu' ← tcQuant qu
-        αs' ← mapM newTV' qls
+        αs' ← mapM (curry newTV' Skolem) qls
         τ'  ← loop (δ =+= αs =:*= αs') iae t
         return (closeQuant qu' (zip αs' qls) τ')
       --
       [ty| μ `$α. $t |] → do
-        α' ← newTV
+        α' ← newTV' Skolem
         τ' ← loop (δ =+= α =:= α') iae t
         checkGuarded α' τ'
         return (closeRec α' τ')

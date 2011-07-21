@@ -160,6 +160,11 @@ let lengthA (xs : `a list) =
        (1 + n, Cons (x, xs')) in
     foldr count (0, Nil) xs
 
+let rec openFoldr f z o xs = match xs with
+  | #Nil         → z
+  | #Cons(x,xs') → f x (openFoldr f z o xs')
+  | other        → o other
+
 let fst (x: `a, _: `b) = x
 let snd (_: `a, y: `b) = y
 
