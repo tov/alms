@@ -1038,10 +1038,8 @@ addQualConstraint q1 q2 = do
   q1' ← simplifyQual q1
   q2' ← simplifyQual q2
   tassert (q1' /= qlitexp Qa || q2' /= qlitexp Qu)
-    [msg| Qualifier inequality unsatisfiable.
-          <p>
-          (This may be the result of attempting to us an affine value
-          more than once.) |]
+    [msg| Qualifier inequality unsatisfiable:  Attempted to use an
+          affine type where only an unlimited type is permitted. |]
   let qe1 = mapQExp (S.mapMonotonic Free) q1'
       qe2 = mapQExp (S.mapMonotonic Free) q2'
   unless (q1' ⊑ q2') $

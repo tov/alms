@@ -55,7 +55,7 @@ data AlmsError
       exnLoc     :: Loc,      -- | Where in the source did it happen?
       exnMessage :: Message V -- | What happened?
   }
-  deriving Typeable
+  deriving (Typeable, Eq)
 
 -- | The phases in which an error might occur:
 data Phase
@@ -64,7 +64,7 @@ data Phase
   | StaticsPhase
   | DynamicsPhase
   | OtherError String
-  deriving Show
+  deriving (Eq, Ord, Show)
 
 -- | Error constructors
 

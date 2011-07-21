@@ -112,3 +112,5 @@ renderMessage cxt msg0 = case msg0 of
 instance Ppr (Message d)  where ppr = renderMessage rc0
 instance Show (Message d) where showsPrec = showFromPpr
 
+instance Eq (Message d) where
+  msg1 == msg2 = show msg1 == show msg2

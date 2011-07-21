@@ -26,12 +26,13 @@ import qualified AST
 import AST (Prog, Decl, SigItem, prog2decls,
                Ident, Raw, Renamed)
 import Env (empty, (=..=))
-import qualified Error as E
+import Error
 import qualified Message.AST  as Msg
 import Type.Ppr (TyConInfo(..))
 
 import Prelude ()
 import Data.Char (isSpace)
+import Data.List (nub)
 import Data.IORef (IORef)
 import System.Exit (exitFailure, exitSuccess, ExitCode)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
@@ -94,7 +95,7 @@ loadString st name src = do
   case parseFile name src of
     Left e     -> Exn.throwIO e
     Right ast  -> do
-      (st', _, ast') <- E.runAlmsErrorIO (statics (st, prog2decls ast))
+      (st', _, ast') <- runAlmsErrorIO (statics (st, prog2decls ast))
       (st'', _)      <- dynamics (st', ast')
       return st''
 
@@ -119,7 +120,7 @@ batch filename msrc opt st0 = do
               when (opt Verbose) $
                 mumble "RESULT" v
 
-statics     :: (MonadRef IORef m, E.MonadAlmsError m) ⇒
+statics     :: (MonadRef IORef m, MonadAlmsError m) ⇒
                (ReplState, [Decl Raw]) ->
                m (ReplState, [SigItem Renamed], [Decl Renamed])
 dynamics    :: (ReplState, [Decl Renamed]) -> IO (ReplState, NewValues)
@@ -133,9 +134,9 @@ dynamics (rs, ast) = do
   return (rs { rsDynamics = e' }, new)
 
 carp :: String -> IO ()
-carp msg = do
+carp message = do
   prog <- getProgName
-  hPutStrLn stderr (prog ++ ": " ++ msg)
+  hPutStrLn stderr (prog ++ ": " ++ message)
 
 handleExns :: IO a -> (ReplState, IO a) -> IO a
 handleExns body (st, handler) =
@@ -145,8 +146,8 @@ handleExns body (st, handler) =
       Exn.Handler $ \e@(VExn { }) -> do
         prog <- getProgName
         continue1 $
-          E.AlmsError
-            (E.OtherError ("Uncaught exception"))
+          AlmsError
+            (OtherError ("Uncaught exception"))
             bogus
             (Msg.Table [
                ("in program:", Msg.Exact prog),
@@ -155,15 +156,15 @@ handleExns body (st, handler) =
       Exn.Handler continue1,
       Exn.Handler continue,
       Exn.Handler $ \err ->
-        continue1 $ E.AlmsError E.DynamicsPhase bogus $
+        continue1 $ AlmsError DynamicsPhase bogus $
           Msg.Flow [Msg.Words (errorString err)],
       Exn.Handler $ \(Exn.SomeException err) ->
-        continue1 $ E.AlmsError E.DynamicsPhase bogus $
+        continue1 $ AlmsError DynamicsPhase bogus $
           Msg.Flow [Msg.Words (show err)] ]
   where
-    continue1 err = continue (E.AlmsErrorIO [err])
+    continue1 err = continue (AlmsErrorIO [err])
     continue errs = do
-      for (E.unAlmsErrorIO errs) $ \err -> do
+      for (nub (unAlmsErrorIO errs)) $ \err -> do
         hPrintDoc stderr (withRS st (ppr err))
         hPutStrLn stderr ""
       handler
@@ -181,7 +182,7 @@ interactive opt rs0 = do
           st' <- doLine st ast `handleExns` (st, return st)
           repl row' st'
     doLine st0 ast0 = do
-      (st1, newDefs, ast1) <- runUndoIO (E.runAlmsErrorIO (statics (st0, ast0)))
+      (st1, newDefs, ast1) <- runUndoIO (runAlmsErrorIO (statics (st0, ast0)))
       (st2, newVals)       <- if opt Don'tExecute
                               then return (st1, empty)
                               else dynamics (st1, ast1)
