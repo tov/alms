@@ -9,17 +9,21 @@ module Statics (
   typeCheckDecls, typeCheckProg,
 
   -- * Renaming and typing info
+  -- ** Renaming
   Statics.getRenamingInfo, RenamingInfo(..),
-  getVarInfo, getTypeInfo, getConInfo,
+  -- ** Constraint solving
   getConstraint,
-  staticsEnterScope,
+  -- ** Type checking
+  getVarInfo, getTypeInfo, getConInfo,
+  -- ** Printing nice type names
+  addTyNameContext, makeTyNames, makeT2SContext, staticsEnterScope,
 ) where
 
 import Util
 import Util.MonadRef
-import AST.Ident (Raw, Renamed)
+import AST.Ident (Raw, Renamed, Id(..))
 import qualified AST
-import Syntax.PprClass (Doc)
+import Syntax.PprClass (Doc, setTyNames)
 import Type
 import Statics.Env
 import Statics.Error
@@ -28,6 +32,7 @@ import Statics.Rename
 import Statics.Decl
 
 import Prelude ()
+import qualified Data.List as List
 
 ---
 --- TYPE CHECKING STATE
@@ -78,7 +83,7 @@ typeCheckDecls ss ds = do
               ssConstraint = cs,
               ssEnv        = γ'
             }
-  return (ds'', sigItemToStx' <$> sig, ss')
+  return (ds'', sigItemToStx (makeTyNames ss') <$> sig, ss')
 
 -- | Type check a program.
 typeCheckProg ∷ (MonadAlmsError m, MonadRef r m) ⇒
@@ -123,7 +128,7 @@ getRenamingInfo = Statics.Rename.getRenamingInfo <$.> ssRename
 
 -- | Find out the type of a variable
 getVarInfo :: QVarId -> StaticsState r -> Maybe (AST.Type R)
-getVarInfo vid ss = typeToStx' <$> ssEnv ss =..= vid
+getVarInfo vid ss = typeToStx (makeT2SContext ss) <$> ssEnv ss =..= vid
 
 -- | Find out about a type
 getTypeInfo :: QTypId -> StaticsState r -> Maybe TyCon
@@ -134,7 +139,7 @@ getTypeInfo tid ss = ssEnv ss =..= tid
 -- of the result type
 getConInfo :: QConId -> StaticsState r ->
               Maybe (Either TyCon (Maybe (AST.Type R)))
-getConInfo cid ss = typeToStx' <$$$> ssEnv ss =..= cid
+getConInfo cid ss = typeToStx (makeT2SContext ss) <$$$> ssEnv ss =..= cid
 
 -- | Get a printable representation of the current constraint-solving
 --   state.
@@ -147,3 +152,90 @@ staticsEnterScope mid ss =
   case ssEnv ss =..= mid of
     Just (_, e') -> ss { ssEnv = ssEnv ss =+= e' }
     Nothing      -> ss
+
+---
+--- CHOOSING BEST TYPE NAMES
+---
+
+-- | Given the type checker state, add it to the context of a document
+--   for printing type names in that document.
+addTyNameContext :: StaticsState r → Doc → Doc
+addTyNameContext  = setTyNames . makeTyNames
+
+-- | Get the type name lookup gadget from the type checker state
+makeTyNames :: StaticsState r → TyNames
+makeTyNames ss
+  = TyNames {
+      tnLookup = getBestName ss,
+      tnEnter  = \mid → makeTyNames (staticsEnterScope mid ss)
+    }
+
+-- | Make the type-syntactifying context from the type checker state
+makeT2SContext :: StaticsState r →
+                  T2SContext CurrentImpArrPrintingRule tv
+makeT2SContext ss = t2sContext0 { t2sTyNames = makeTyNames ss }
+
+-- | The status of a type name in an environment
+data NameStatus
+ -- | Bound to the expected type
+ = Match
+ -- | Not bound
+ | NoMatch
+ -- | Shadowed
+ | Interfere
+ deriving Eq
+
+-- | In the given environment, what is the status of the given
+--   type name?
+getNameStatus :: StaticsState r → Int → QTypId → NameStatus
+getNameStatus ss tag tid =
+  case [ tid'
+       | TyconAt _ tid' <- Statics.getRenamingInfo ql ss ] of
+    tid':_ ->
+      case getTypeInfo tid' ss of
+        Just tc | tcId tc == tag  -> Match
+                | otherwise       -> Interfere
+        _                         -> NoMatch
+    _     -> NoMatch
+  where ql = J (map (AST.renId bogus) (jpath tid))
+               (AST.ident (AST.idName (jname tid)))
+
+-- | Names know to the pretty-printer that should always be used
+--   exactly like this so that things print nicely.
+intrinsicNames ∷ [(Int, String)]
+intrinsicNames = first tcId <$>
+  [ (tcVariant,  AST.tnVariant),
+    (tcRecord,   AST.tnRecord),
+    (tcRowEnd,   AST.tnRowEnd),
+    (tcRowDots,  AST.tnRowDots) ]
+
+-- | Find the best name to refer to a type constructor.
+--   The goal here is to get the shortest unambiguous name.
+--    1. If the first parameter is True, we want an accurate name, so
+--       skip to step 3.
+--    2. If the unqualified name is bound to either the same type
+--       or to nothing, then use the unqualified name.
+--    3. Try qualifiying the name, starting with the last segment
+--       and adding one at a time, and if any of these match, then
+--       use that.
+--    4. Otherwise, uglify the name, because it's probably gone
+--       out of scope.
+getBestName :: StaticsState r -> Int -> QTypId -> QTypId
+
+getBestName ss tag qtid
+  | Just str ← lookup tag intrinsicNames = qident str
+  | otherwise                            =
+    case tryQuals (jpath qtid) (jname qtid) of
+      Just qtid'    → qtid'
+      Nothing
+        | AST.isTrivial (idTag (jname qtid))
+        , NoMatch ← getNameStatus ss tag qtid
+                    → qtid
+        | otherwise → uglify
+  where
+    tryQuals mids tid = msum
+      [ case getNameStatus ss tag (J mids' tid) of
+          Match     -> Just (J mids' tid)
+          _         -> Nothing
+      | mids' <- reverse (List.tails mids) ]
+    uglify = qtid { jpath = ident ('?':show tag) : jpath qtid }

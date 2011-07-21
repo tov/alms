@@ -123,7 +123,8 @@ pprVariantRow pre t post =
     (items, end) = unfoldTyRow t
     items' = [ char '`' <> ppr ni <+>
                  case ti of
-                   [ty| unit |] → mempty
+                   [ty| unit                     |] → mempty
+                   [ty| INTERNALS.PrimTypes.unit |] → mempty
                    _ → text "of" <+> ppr1 ti
              | (ni, ti) ← sortBy (compare`on`show.fst) items ]
     end'   = case end of

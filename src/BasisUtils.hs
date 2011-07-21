@@ -194,9 +194,8 @@ basis2tenv ss0 entries = addSignature ss1 sigexp
       = do
         ix <- get
         put (ix + 1)
-        let n' = ident (idName n ++ "_prim" ++ show ix)
-        tell [(n', tc)]
-        return [sgQ|+ type $tid:n = type $tid:n' |]
+        tell [(n, tc)]
+        return [sgQ|+ type $tid:n = type $tid:n |]
     eachEntry ModEn { enModName = n, enEnts = es }
       = do
         sig <- eachEntries es

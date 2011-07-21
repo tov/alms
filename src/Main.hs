@@ -13,9 +13,6 @@ import qualified Syntax.Ppr as Ppr
 import Syntax.Parser (parseFile, REPLCommand(..), parseCommand)
 import Syntax.Prec (precOp)
 import Paths (findAlmsLib, findAlmsLibRel, versionString, shortenPath)
-{-
-import Printing (addTyNameContext)
--}
 import Meta.Quasi
 import Statics
 import Value (VExn(..), vppr)
@@ -285,10 +282,7 @@ printInfo st ident = case getRenamingInfo ident s of
 
 -- Add the ReplState to the pretty-printing context.
 withRS :: ReplState -> Doc -> Doc
-withRS _  = id
-{- XXX
-withRS rs = addTyNameContext (rsRenaming rs) (rsStatics rs)
--}
+withRS = addTyNameContext . rsStatics
 
 printPrec :: String -> IO ()
 printPrec oper = printDoc $
