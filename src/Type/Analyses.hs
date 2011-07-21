@@ -53,19 +53,26 @@ tyPatToType tp0 = evalState (loop tp0) [0..]
     put rest
     return i
 
--- | Find out the variances and qualifier-involvement, and guardedness of
---   the type variables in a type pattern.
-tyPatKinds ∷ TyPat → [(Variance, Bool, Bool)]
-tyPatKinds (TpVar _)      = [(1, True, False)]
-tyPatKinds (TpRow _)      = [(1, True, False)]
-tyPatKinds (TpApp tc tps) =
-  concat
-    [ (\(var', qb, gb') →
-          (var * var', qb && S.member ix ftv_qe, gb || gb'))
-        <$> vbs
-    | vbs      ← tyPatKinds <$> tps
-    | ix       ← [ 0 .. ]
-    | var      ← tcArity tc
-    | gb       ← tcGuards tc ]
-  where ftv_qe = ftvSet (tcQual tc)
+-- | Find out the variances, qualifier-involvement, guardedness and
+--   'QLit' bounds of the type variables in a type pattern.
+tyPatKinds ∷ TyPat → [(Variance, Bool, Bool, QLit)]
+tyPatKinds = loop 1 True False Qa where
+  loop !variance !involved !guarded !bound tp0 = case tp0 of
+    TpVar _      → [(variance, involved, guarded, bound)]
+    TpRow _      → [(variance, involved, guarded, bound)]
+    TpApp tc tps →
+      concat
+        [ loop (vi * variance)
+               (involved && S.member i ftv_qe)
+               (guarded || gi)
+               (if bound == Qu && involved
+                  then Qu
+                  else bi)
+               tpi
+        | i        ← [ 0 .. ]
+        | vi       ← tcArity tc
+        | gi       ← tcGuards tc
+        | bi       ← tcBounds tc
+        | tpi      ← tps ]
+      where ftv_qe = ftvSet (tcQual tc)
 

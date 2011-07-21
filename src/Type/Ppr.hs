@@ -16,7 +16,7 @@ instance Tv tv ⇒ Ppr (Type tv) where
   ppr τ = askTyNames $ \tn → ppr (typeToStx t2sContext0 { t2sTyNames = tn } τ)
 
 instance Ppr TyPat where
-  ppr tp = askTyNames $ \tn → ppr (fst (tyPatToStx tn [] tp))
+  ppr tp = askTyNames $ \tn → ppr (fst (tyPatToStx tn [] Qa tp))
 
 instance Ppr TyCon where
   ppr tc = askTyNames $ \tn → ppr (tyConToStx tn tc)

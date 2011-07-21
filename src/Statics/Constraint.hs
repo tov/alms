@@ -64,6 +64,11 @@ class MonadSubst tv r m ⇒ MonadConstraint tv r m | m → tv r where
   --   generalized is a syntactic value.  Returns a list of
   --   generalizable variables and their qualifier bounds.
   generalize'     ∷ Bool → Rank → Type tv → m [(tv, QLit)]
+  -- | Find 'QLit' bounds for a set of type variables.  This assumes
+  --   that these variables may safely be removed from the constraint
+  --   if bounded as specified.  In particular, all the variables must
+  --   appear only on the left-hand side of the qualifier inequalities.
+  getTVBounds     ∷ [tv] → m [QLit]
 
 infix 5 <:, =:, ⊏:, ~:
 
@@ -81,6 +86,7 @@ instance (MonadConstraint tv s m, Monoid w) ⇒
   withPinnedTVs  = mapWriterT <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
+  getTVBounds    = lift <$> getTVBounds
 
 instance MonadConstraint tv r m ⇒
          MonadConstraint tv r (StateT s m) where
@@ -92,6 +98,7 @@ instance MonadConstraint tv r m ⇒
   withPinnedTVs  = mapStateT <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
+  getTVBounds    = lift <$> getTVBounds
 
 instance MonadConstraint tv p m ⇒
          MonadConstraint tv p (ReaderT r m) where
@@ -103,6 +110,7 @@ instance MonadConstraint tv p m ⇒
   withPinnedTVs  = mapReaderT <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
+  getTVBounds    = lift <$> getTVBounds
 
 instance (MonadConstraint tv p m, Monoid w) ⇒
          MonadConstraint tv p (RWST r w s m) where
@@ -114,6 +122,7 @@ instance (MonadConstraint tv p m, Monoid w) ⇒
   withPinnedTVs  = mapRWST <$> withPinnedTVs
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
+  getTVBounds    = lift <$> getTVBounds
 
 --
 -- Some generic operations
@@ -205,7 +214,8 @@ csPinnedUpdate f cs = cs { csPinned = f (csPinned cs) }
 
 instance Tv tv ⇒ Show (CTState tv r) where
   showsPrec _ cs
-    | null (Gr.edges (csGraph cs)) && null (csQuals cs)
+    | null (Gr.edges (csGraph cs)) 
+    , null (csQuals cs) 
         = id
     | otherwise
         = showString "CTState { csGraph = "
@@ -225,7 +235,8 @@ instance Tv tv ⇒ Ppr.Ppr (CTState tv r) where
                      [ Ppr.pprPrec 9 τ1
                          Ppr.<> Ppr.char '⊑'
                          Ppr.<> Ppr.pprPrec 9 τ2
-                     | (τ1, τ2) ← csQuals cs ])
+                     | (τ1, τ2) ← csQuals cs
+                     ])
     ]
 
 --
@@ -385,6 +396,7 @@ instance MonadSubst tv r m ⇒
     ConstraintT_ (modify (csPinnedUpdate update))
   --
   generalize'    = solveConstraint
+  getTVBounds    = solveBounds
 
 {-# INLINE gtraceN #-}
 gtraceN ∷ (TraceMessage a, Tv tv, MonadTrace m) ⇒
@@ -499,6 +511,7 @@ subtypeTypes unify = check where
     Gr.insNewMapNodeM a1
     Gr.insNewMapNodeM a2
     Gr.insMapEdgeM (a1, a2, ())
+    lift (fvTy a1 ⊏: fvTy a2)
 
 -- | Relate two types at the given variance.
 relateTypes ∷ MonadSubst tv r m ⇒
@@ -699,14 +712,6 @@ solveConstraint value γrank τ0 = do
                     catMaybes (map (Gr.lab g) pre),
                     β,
                     catMaybes (map (Gr.lab g) suc))
-          sequence $
-            [ fvTy α1 ⊏: β
-            | n1 ← pre
-            , let Just α1 = Gr.lab g n1 ]
-            ++
-            [ β ⊏: fvTy α2
-            | n2 ← suc
-            , let Just α2 = Gr.lab g n2 ]
           Gr.putGraph $
             let g' = Gr.delNode node g in
             if trans
@@ -1058,6 +1063,28 @@ simplifyQual q = do
         Qa      → return QeA
         _       → return (QeU (S.fromDistinctAscList γs'))
 
+-- Find qualifier bounds for type variables that definitely have only
+-- upper bounds.
+solveBounds    ∷ MonadSubst tv r m ⇒
+                 [tv] → ConstraintT_ tv r m [QLit]
+solveBounds αs = do
+  qc            ← ConstraintT_ (gets csQuals)
+  state         ← decomposeQuals qc QCState {
+                    sq_αs   = mempty,
+                    sq_τftv = mempty,
+                    sq_βlst = mempty,
+                    sq_vmap = mempty,
+                    sq_τ    = tyUnit
+                  }
+  traceN 4 ("solveBounds", "decompose", state)
+  let vmap      = sq_vmap state
+  ConstraintT_ . modify . csQualsUpdate . const $
+    recomposeQuals state { sq_vmap = foldl' (flip M.delete) vmap αs }
+  return [ case M.lookup α vmap of
+             Just (QEMeet (_:_)) → Qu
+             _                   → Qa
+         | α ← αs ]
+
 -- | Solver for qualifier contraints.
 --   Given a qualifier constraint, solve and produce type variable
 --   bounds.  Also return any remaining inequalities (which must be
@@ -1075,13 +1102,9 @@ solveQualifiers
     m ([(Type tv, Type tv)], [(tv, QLit)], Type tv)
 solveQualifiers value αs qc τ = do
   traceN 3 (TraceIn ("solveQ", "init", αs, qc))
-  -- Clean up the constraint, standardize types to qualifier form, and
-  -- deal with trivial stuff right away:
-  qc             ← stdize qc
-  traceN 4 ("solveQ", "stdize", qc)
   -- Decompose implements DECOMPOSE, TOP-SAT, BOT-SAT, and BOT-UNSAT.
   τftv           ← ftvV <$> subst τ
-  state          ← decompose qc QCState {
+  state          ← decomposeQuals qc QCState {
                      sq_αs   = αs,
                      sq_τftv = τftv,
                      sq_βlst = [],
@@ -1106,57 +1129,8 @@ solveQualifiers value αs qc τ = do
   -- for the variables to quantify.
   state          ← genVars state
   traceN 3 (TraceOut ("solveQ", "done", state))
-  return (recompose state, getBounds state, τ)
+  return (recomposeQuals state, getBounds state, τ)
   where
-  --
-  -- Given a list of qualifier inequalities on types, produce a list of
-  -- inequalities on standard-form qualifiers, omitting trivial
-  -- inequalities along the way.
-  stdize qc = mapM each qc where
-    each (τl, τh) = do
-      qe1 ← makeQExp τl
-      qe2 ← makeQExp τh
-      return (qe1, qe2)
-  --
-  -- Given a list of inequalities on qualifiers, rewrite them into
-  -- the two decomposed forms:
-  --
-  --  • γ ⊑ q βs
-  --
-  --  • q ⊑ βs
-  --
-  -- This implements DECOMPOSE, BOT-SAT, TOP-SAT, and BOT-UNSAT.
-  decompose qc state0 = foldM each state0 qc where
-    each state (_,       QeA)     = return state -- (TOP-SAT)
-    each state (QeA,     QeU γs2) = each' state (Qa, S.empty) γs2
-    each state (QeU γs1, QeU γs2) = each' state (Qu, γs1)     γs2
-    each' state (q1, γs1) γs2 = do
-      let γs'  = γs1 S.\\ γs2
-          βs'  = S.filter flex γs2
-          flex = (||) <$> unifiable state <*> (`S.notMember` sq_αs state)
-      fβlst ← case q1 of
-        -- (BOT-SAT)
-        Qu → return id
-        -- (BOT-UNSAT)
-        _  | S.null βs' → do
-               tErrExp_
-                 [msg| Qualifier inequality unsatisfiable. |]
-                 (pprMsg q1)
-                 (pprMsg (QeU γs2))
-               return id
-           | otherwise →
-               return ((q1, βs') :)
-      let fvmap = M.unionWith mappend (setToMapWith bound γs')
-          bound γ
-            | M.lookup γ (sq_τftv state) == Just Covariant
-            , γ `S.member` sq_αs state
-                                = qemSingleton maxBound
-            | unifiable state γ = qemSingleton (QeU γs2)
-            | otherwise         = qemSingleton (QeU βs')
-      return state {
-               sq_βlst = fβlst (sq_βlst state),
-               sq_vmap = fvmap (sq_vmap state)
-             }
   --
   -- Standardize the qualifiers in the type
   stdizeType state = do
@@ -1275,14 +1249,14 @@ solveQualifiers value αs qc τ = do
         (vmap, vmap') = M.partitionWithKey
                           (curry (unchanged . ftvSet))
                           (sq_vmap state)
-    ineqs ← stdize $
-      [ (qualToType ql, qualToType βs)
-      | (ql, βs) ← βlst' ]
-        ++
-      [ (fvTy γ, qualToType qe)
-      | (γ, qem) ← M.toList vmap'
-      , qe       ← unQEMeet qem ]
-    state ← decompose ineqs
+    let ineqs =
+          [ (qualToType ql, qualToType βs)
+          | (ql, βs) ← βlst' ]
+            ++
+          [ (fvTy γ, qualToType qe)
+          | (γ, qem) ← M.toList vmap'
+          , qe       ← unQEMeet qem ]
+    state ← decomposeQuals ineqs
       state {
         sq_αs   = sq_αs state S.\\ γset,
         sq_τftv = M.foldrWithKey substQE (sq_τftv state) γqes,
@@ -1341,30 +1315,85 @@ solveQualifiers value αs qc τ = do
   qeMeetQLit (QEMeet []) = maxBound
   qeMeetQLit _           = minBound
   --
-  -- Turn the decomposed constraint back into a list of pairs of types.
-  recompose state =
-      [ (fvTy γ, clean βs)
-      | (γ, QEMeet qem) ← M.toList (sq_vmap state)
-      , γ `S.notMember` sq_αs state
-      , βs ← qem ]
-    ++
-      [ (qualToType ql, clean βs)
-      | (ql, βs) ← sq_βlst state ]
-    where
-    clean βs = qualToType (βs S.\\ sq_αs state)
-  --
-  makeQExp τ = do
-    qe ← qualifier <$> subst τ
-    case qe of
-      QeA    → return QeA
-      QeU γs → do
-        (γs', qls) ← partitionJust tvQual <$> mapM fromTyVar (S.toAscList γs)
-        if any (== Qa) qls
-          then return QeA
-          else return (QeU (S.fromDistinctAscList γs'))
-  --
   unifiable _ α = tvKindIs KdQual α
 
+-- Put a set of qualifier inequalities in decomposed form (given
+-- possibly some in decomposed form already.
+decomposeQuals ∷ MonadSubst tv r m ⇒
+                 [(Type tv, Type tv)] →
+                 QCState tv →
+                 m (QCState tv)
+decomposeQuals qc0 state0 = do
+  qc             ← stdize qc0
+  traceN 4 ("decomposeQuals", "stdize", qc)
+  decompose state0 qc
+  where
+  --
+  -- Given a list of qualifier inequalities on types, produce a list of
+  -- inequalities on standard-form qualifiers, omitting trivial
+  -- inequalities along the way.
+  stdize qc = mapM each qc where
+    each (τl, τh) = do
+      qe1 ← simplifyQual τl
+      qe2 ← simplifyQual τh
+      return (qe1, qe2)
+  --
+  -- Given a list of inequalities on qualifiers, rewrite them into
+  -- the two decomposed forms:
+  --
+  --  • γ ⊑ q βs
+  --
+  --  • q ⊑ βs
+  --
+  -- This implements DECOMPOSE, BOT-SAT, TOP-SAT, and BOT-UNSAT.
+  decompose = foldM each where
+    each state (_,       QeA)     = return state -- (TOP-SAT)
+    each state (QeA,     QeU γs2) = each' state (Qa, S.empty) γs2
+    each state (QeU γs1, QeU γs2) = each' state (Qu, γs1)     γs2
+    each' state (q1, γs1) γs2 = do
+      let γs'  = γs1 S.\\ γs2
+          βs'  = S.filter flex γs2
+          flex = (||) <$> unifiable state <*> (`S.notMember` sq_αs state)
+      fβlst ← case q1 of
+        -- (BOT-SAT)
+        Qu → return id
+        -- (BOT-UNSAT)
+        _  | S.null βs' → do
+               tErrExp_
+                 [msg| Qualifier inequality unsatisfiable. |]
+                 (pprMsg q1)
+                 (pprMsg (QeU γs2))
+               return id
+           | otherwise →
+               return ((q1, βs') :)
+      let fvmap = M.unionWith mappend (setToMapWith bound γs')
+          bound γ
+            | M.lookup γ (sq_τftv state) == Just Covariant
+            , γ `S.member` sq_αs state
+                                = qemSingleton maxBound
+            | unifiable state γ = qemSingleton (QeU γs2)
+            | otherwise         = qemSingleton (QeU βs')
+      return state {
+               sq_βlst = fβlst (sq_βlst state),
+               sq_vmap = fvmap (sq_vmap state)
+             }
+  unifiable _ = tvKindIs KdQual
+
+-- | Turn the decomposed constraint back into a list of pairs of types.
+recomposeQuals ∷ Ord tv ⇒ QCState tv → [(Type tv, Type tv)]
+recomposeQuals state =
+    [ (fvTy γ, clean βs)
+    | (γ, QEMeet qem) ← M.toList (sq_vmap state)
+    , γ `S.notMember` sq_αs state
+    , βs ← qem ]
+  ++
+    [ (qualToType ql, clean βs)
+    | (ql, βs) ← sq_βlst state ]
+  where
+  clean βs = qualToType (βs S.\\ sq_αs state)
+
+-- | Project a free type variable from a 'TyVar', or error if the
+-- 'TyVar' is bounds.
 fromTyVar ∷ MonadAlmsError m ⇒ TyVar tv → m tv
 fromTyVar (Free α) = return α
 fromTyVar _        = typeBug "solveQualifiers" "Got bound type variable"

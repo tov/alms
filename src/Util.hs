@@ -8,6 +8,8 @@ module Util (
   -- ** 2-way 'Foldable' operations
   foldl2, foldr2, all2, any2,
   allA2, anyA2,
+  -- ** Extra zips
+  zip4, unzip4, zip5, unzip5,
   -- ** List operations
   mapCons, foldM1,
   lookupWithIndex, listNth, ordNub, partitionJust,
@@ -163,6 +165,26 @@ allA2 p xs ys = allA id (zipWith p (toList xs) (toList ys))
 anyA2 ∷ (Applicative f, Foldable t1, Foldable t2) ⇒
         (a → b → f Bool) → t1 a → t2 b → f Bool
 anyA2 p xs ys = anyA id (zipWith p (toList xs) (toList ys))
+
+-- | Zip four lists
+zip4   ∷ [a] → [b] → [c] → [d] → [(a, b, c, d)]
+zip4 (a:as) (b:bs) (c:cs) (d:ds) = (a, b, c, d) : zip4 as bs cs ds
+zip4 _      _      _      _      = []
+
+-- | Zip five lists
+zip5   ∷ [a] → [b] → [c] → [d] → [e] → [(a, b, c, d, e)]
+zip5 (a:as) (b:bs) (c:cs) (d:ds) (e:es) = (a, b, c, d, e) : zip5 as bs cs ds es
+zip5 _      _      _      _      _      = []
+
+-- | Unzip four lists
+unzip4 ∷ [(a, b, c, d)] → ([a], [b], [c], [d])
+unzip4 = foldr (\(a,b,c,d) ~(as,bs,cs,ds) → (a:as,b:bs,c:cs,d:ds))
+               ([],[],[],[])
+
+-- | Unzip four lists
+unzip5 ∷ [(a, b, c, d, e)] → ([a], [b], [c], [d], [e])
+unzip5 = foldr (\(a,b,c,d,e) ~(as,bs,cs,ds,es) → (a:as,b:bs,c:cs,d:ds,e:es))
+               ([],[],[],[],[])
 
 -- | Apply one function to the head of a list and another to the
 --   tail

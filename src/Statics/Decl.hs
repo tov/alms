@@ -255,26 +255,61 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
               have the same number of parameters. |]
       (cs', infos) ← unzip <$$> for cs $ \(tps, rhs) → do
         (tps', αss)     ← unzip <$> mapM (tcTyPat γ) tps
-        αss'            ← mapM (mapM (curry newTV' Skolem)) αss
+        αss'            ← mapM (mapM (const newTV)) αss
         let αs          = concat αss
             αs'         = concat αss'
         σ               ← tcType (αs -:*- αs') γ rhs
+        qlss            ← mapM getTVBounds αss'
         let σ'          = toEmptyF (closeTy 0 αs' σ)
             -- For each pattern, for each of its type variables,
             -- a triple of its variance, inclusion in the qualifer,
             -- and guardedness:
             kindses     = tyPatKinds <$> tps'
+        -- Bounds are computed by checking which type variables need to
+        -- be bounded for the right-hand side to be well-formed, then
+        -- checking which are similarly bounded on the left.  For those
+        -- that are not yet bounded on the left, if they are involved in
+        -- the qualifier of the pattern then we can bound them by bounding
+        -- the pattern, but otherwise it's an error.
+        bounds  ← sequence
+          [ bigMeet <$> sequence
+            [ if qll ⊑ qlr then return Qa
+              else if inQExp then return Qu
+              else do
+                typeError_ $ uncurry
+                  [msg|
+                    Ill-formed type $1 declaration.
+                    <br>
+                    Type variable $α must be bounded by U (unlimited)
+                    for the type on the right-hand side of $2 to be
+                    well-formed, but it is not bounded by its appearance
+                    in the pattern, and because it does not contribute
+                    to the qualifier of the pattern, bounded the pattern
+                    cannot effectively bound $α.
+                  |] $
+                  if length cs == 1
+                    then ("synonym", "the declaration")
+                    else ("operator", "clause " ++ show i)
+                return Qa
+            | (_, inQExp, _, qll) ← kindsi
+            | α   ← αsi
+            | α'  ← αsi'
+            | qlr ← qlsi ]
+          | i      ← [1 ∷ Int .. ]
+          | kindsi ← kindses
+          | αsi    ← αss
+          | αsi'   ← αss'
+          | qlsi   ← qlss ]
             -- The arity of each parameter is the join of the products
             -- of the arities of the type variables in the pattern and
             -- rhs type.
-            varmap      = ftvV σ
+        let varmap      = ftvV σ
             arity       = [ bigJoin $
                               zipWith (*)
                                 (sel1 <$> kindsi)
                                 (M.findWithDefault 0 <-> varmap <$> αsi')
                           | kindsi ← kindses
                           | αsi'   ← αss' ]
-            -- How to do bounds? --
             -- This is very permissive:
             guardmap    = ftvG σ
             guards      = [ all2 (||)
@@ -284,8 +319,7 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
                           | αsi'   ← αss' ]
             -- For each parameter, a list of which of its type
             -- variables are significant to the qualifier
-            qsignificances
-                        = [ map snd . filter fst $
+            qinvolveds = [ map snd . filter fst $
                               zip (sel2 <$> kindsi)
                                   αsi'
                           | kindsi ← kindses
@@ -293,21 +327,27 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
             qual        = case qualifier σ of
               QeA       → QeA
               QeU βs    → bigJoin
-               [ case List.findIndex (β `elem`) qsignificances of
+               [ case List.findIndex (β `elem`) qinvolveds of
                    Nothing → QeA
-                   Just ix → qvarexp ix
+                   Just ix
+                     | Qu:_ ← drop ix bounds → qlitexp Qu
+                     | otherwise             → qvarexp ix
                | Free β ← S.toList βs ]
-        return ((tps', σ'), (arity, guards, qual))
-      let (arities, guardses, quals) = unzip3 infos
+        return ((tps', σ'), (arity, bounds, guards, qual))
+      let (arities, boundses, guardses, quals) = unzip4 infos
           arity  = foldl1 (zipWith (⊔)) arities
+          bounds = foldl1 (zipWith (⊓)) boundses
           guards = foldl1 (zipWith (&&)) guardses
           qual   = bigJoin quals
       when (arity  /= tcArity tc
+         || bounds /= tcBounds tc
          || guards /= tcGuards tc
          || qual   /= tcQual tc)
         setChanged
+      traceN 1 ("bounds", bounds)
       return (tid, tc {
                      tcArity  = arity,
+                     tcBounds = bounds,
                      tcGuards = guards,
                      tcQual   = qual,
                      tcNext   = Just cs'

@@ -118,35 +118,49 @@ typeToStx cxt0 σ0 = runReader (loop σ0) cxt0 where
 
 -- | Represent a type value as a pre-syntactic type, for printing
 tyPatToStx' ∷ TyPat → (AST.TyPat R, [AST.TyVar R])
-tyPatToStx' = tyPatToStx tyNames0 []
+tyPatToStx' = tyPatToStx tyNames0 [] Qa
 
 -- | Turn an internal type pattern into a syntactic type pattern
-tyPatToStx ∷ TyNames → [(AST.TyVar R, Variance)] → TyPat →
+tyPatToStx ∷ TyNames → [(AST.TyVar R, Variance)] → QLit → TyPat →
              (AST.TyPat R, [AST.TyVar R])
-tyPatToStx tn0 tvs0 tp0 = evalRWS (loop tp0) tn0 (extendTyPatNames tvs0)
+tyPatToStx tn0 tvs0 ql0 tp0 =
+  evalRWS (loop ql0 tp0) tn0 (extendTyPatNames tvs0)
   where
-  loop (TpVar _)      = fresh AST.tpVar
-  loop (TpApp tc tps) = AST.tpApp <$> bestName id tc <*> mapM loop tps
-  loop (TpRow _)      = fresh AST.tpRow
+  loop ql (TpVar _)      = fresh ql AST.tpVar
+  loop ql (TpApp tc tps) = AST.tpApp
+                             <$> bestName id tc
+                             <*> sequence
+                               [ let qli = bi ⊓ if S.member i ftv_qe
+                                                  then ql else Qa
+                                  in loop qli tpi
+                               | i   ← [ 0 .. ]
+                               | tpi ← tps
+                               | bi  ← tcBounds tc ]
+                               where ftv_qe = ftvSet (tcQual tc)
+  loop ql (TpRow _)      = fresh ql AST.tpRow
   --
-  fresh mk = do
+  fresh ql mk = do
     (tv, variance):tvs ← get
     put tvs
-    tell [tv]
-    return (mk tv variance)
+    let tv' = tv { AST.tvqual = ql }
+    tell [tv']
+    return (mk tv' variance)
 
 -- | Turn a list of internal type pattern into a list of syntactic type
 --   patterns
-tyPatsToStx ∷ TyNames → [(AST.TyVar R, Variance)] → [TyPat] →
+tyPatsToStx ∷ TyNames → [(AST.TyVar R, Variance)] → [QLit] → [TyPat] →
               ([AST.TyPat R], [AST.TyVar R])
-tyPatsToStx tn0 tvs0 tps0 = loop (extendTyPatNames tvs0) tps0 where
-  loop _   []       = ([], [])
-  loop tvs (tp:tps) =
-    let (tp',  tvs')  = tyPatToStx tn0 tvs tp
-        (tps', tvss') = loop (drop (length tvs') tvs) tps
+tyPatsToStx tn0 tvs0 qls0 tps0 =
+  loop (extendTyPatNames tvs0) (qls0 ++ repeat Qa) tps0
+  where
+  loop tvs (ql:qls) (tp:tps) =
+    let (tp',  tvs')  = tyPatToStx tn0 tvs ql tp
+        (tps', tvss') = loop (drop (length tvs') tvs) qls tps
      in (tp':tps', tvs'++tvss')
+  loop _   _        _        = ([], [])
 
-extendTyPatNames ∷ [(AST.TyVar R, Variance)] → [(AST.TyVar R, Variance)]
+extendTyPatNames ∷ [(AST.TyVar R, Variance)] →
+                   [(AST.TyVar R, Variance)]
 extendTyPatNames tvs0 =
   tvs0 ++ [ (AST.tvAf name, maxBound)
           | name ← AST.tvalphabet
@@ -180,7 +194,7 @@ tyConToStx tn tc =
     → AST.tdAbs (AST.ident "exn") [] [] [] maxBound
   TyCon { tcNext = Just clauses }
     → AST.tdSyn n
-                [ second (`doType` rhs) (tyPatsToStx tn [] ps)
+                [ second (`doType` rhs) (tyPatsToStx tn [] (tcBounds tc) ps)
                 | (ps, rhs) ← clauses ]
   TyCon { tcCons = alts }
     | not (Env.isEmpty alts)
