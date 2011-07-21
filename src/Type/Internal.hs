@@ -22,6 +22,7 @@ module Type.Internal (
   -- ** Built-in
   tcUnit, tcInt, tcChar, tcFloat, tcString, tcExn, tcTuple, tcFun,
   tcUn, tcAf, tcJoin, tcRowEnd, tcRecord, tcVariant, tcRowDots,
+  tcRowHole,
   -- ** Convenient constructors and projections
   fvTy, bvTy, fromFreeTV,
   -- ** Pre-constructed types
@@ -225,7 +226,7 @@ internalTC i s = mkTC i (AST.J [] (AST.identT (AST.Ren_ i) s))
 
 tcUnit, tcInt, tcChar, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun,
-  tcRowEnd, tcRecord, tcVariant, tcRowDots ∷ TyCon
+  tcRowEnd, tcRecord, tcVariant, tcRowDots, tcRowHole ∷ TyCon
 
 tcFun        = internalTC (-1) "->"     (qvarexp 1)
                                         [(Contravariant, Qa, False),
@@ -253,6 +254,10 @@ tcRecord     = internalTC (-14) "record"  (qvarexp 0)
                                           [(Covariant, Qa, False)]
 tcRowDots    = internalTC (-15) "rowdots" (qvarexp 0)
                                           [(Covariant, Qa, False)]
+tcRowHole    = internalTC (-16) "rowhole" (qvarexp 0)
+                                          [(Covariant, Qa, True)]
+
+-- Types for testing
 
 tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun ∷ TyCon
 tcCycle      = internalTC (-51) "cycle" [(Invariant,     Qa, True)]

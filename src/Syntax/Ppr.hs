@@ -81,6 +81,9 @@ instance Ppr (Type i) where
                         pprVariantRow (lbrack <+>) t (<+> rbrack)
   ppr [ty| { $t } |] = pprRecordType t
   ppr [ty| $t ... |] = prec precApp $ sep [ ppr t, text Strings.ellipsis ]
+  ppr [ty| $t $qtid:n |]
+    | show n == tnRowHole
+                    = brackets $ ppr0 t
   ppr t@[ty| ($list:ts) $qtid:n |]
     | Just doc <- pprInfix unfoldType t
                     = doc

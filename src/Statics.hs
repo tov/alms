@@ -207,6 +207,7 @@ intrinsicNames = first tcId <$>
   [ (tcVariant,  AST.tnVariant),
     (tcRecord,   AST.tnRecord),
     (tcRowEnd,   AST.tnRowEnd),
+    (tcRowHole,  AST.tnRowHole),
     (tcRowDots,  AST.tnRowDots) ]
 
 -- | Find the best name to refer to a type constructor.

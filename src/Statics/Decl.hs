@@ -72,7 +72,7 @@ tcDecl μ γ d0 = withLocation d0 $ case d0 of
     γ'          ← γ !+! sig
     return ([dc| open $modexp' |], γ', sig)
   [dc| local $list:ds0 with $list:ds1 end |]    → do
-    (ds0', γ', sig0) ← tcDecls (AST.ident "?LocalModule":μ) γ ds0
+    (ds0', γ', _)    ← tcDecls (AST.ident "?LocalModule":μ) γ ds0
     (ds1', _,  sig1) ← tcDecls μ γ' ds1
     γ''              ← γ !+! sig1
     return ([dc| local $list:ds0' with $list:ds1' end |], γ'', sig1)
@@ -293,12 +293,10 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
                 return Qa
             | (_, inQExp, _, qll) ← kindsi
             | α   ← αsi
-            | α'  ← αsi'
             | qlr ← qlsi ]
           | i      ← [1 ∷ Int .. ]
           | kindsi ← kindses
           | αsi    ← αss
-          | αsi'   ← αss'
           | qlsi   ← qlss ]
             -- The arity of each parameter is the join of the products
             -- of the arities of the type variables in the pattern and
