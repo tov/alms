@@ -10,6 +10,7 @@ module Type.TyVar (
 ) where
 
 import Util
+import qualified AST
 import Syntax.PprClass
 import Type.Internal
 
@@ -99,11 +100,11 @@ tvKindIs kind v = tvKind v == kind
 
 -- | When all else fails, we can print a type variable like this
 uglyTvName ∷ Tv tv ⇒ tv → String
-uglyTvName tv = flavorSigil (tvFlavor tv) : show (tvUniqueID tv) where
+uglyTvName tv = flavorSigil (tvFlavor tv) : (AST.tvalphabet !! tvUniqueID tv)
 
 -- | A character denoting a flavor
 flavorSigil ∷ Flavor → Char
-flavorSigil Universal   = '?'
+flavorSigil Universal   = '_'
 flavorSigil Existential = '#'
 flavorSigil Skolem      = '$'
 

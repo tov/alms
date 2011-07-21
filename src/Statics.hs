@@ -238,4 +238,7 @@ getBestName ss tag qtid
           Match     -> Just (J mids' tid)
           _         -> Nothing
       | mids' <- reverse (List.tails mids) ]
-    uglify = qtid { jpath = ident ('?':show tag) : jpath qtid }
+    uglify
+      | '?':_ ← show qtid = qtid
+      | otherwise         = qtid { jpath = ident ('?':show tag) : jpath qtid }
+
