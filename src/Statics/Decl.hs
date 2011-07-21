@@ -66,11 +66,12 @@ tcDecl μ γ d0 = withLocation d0 $ case d0 of
   [dc| module $mid:n = $modexp |]               → do
     (modexp', sig1)     ← tcModExp (n:μ) γ modexp
     let sig     = [SgMod n sig1]
-    return ([dc| module $mid:n = $modexp' |], γ =+= sig, sig)
+    γ'          ← γ !+! sig
+    return ([dc| module $mid:n = $modexp' |], γ', sig)
   [dc| open $modexp |]                          → do
     (modexp', sig) ← tcModExp μ γ modexp
-    return ([dc| open $modexp' |], γ =+= sig, sig)
-  {- XXX SKETCHY undefined TODO -}
+    γ'          ← γ !+! sig
+    return ([dc| open $modexp' |], γ', sig)
   [dc| local $list:ds0 with $list:ds1 end |]    → do
     (ds0', γ', sig0) ← tcDecls (AST.ident "?LocalModule":μ) γ ds0
     (ds1', _,  sig1) ← tcDecls μ γ' ds1
@@ -94,11 +95,11 @@ tcDecls μ γ (d:ds) = do
 
 -- | Type check a module expression
 tcModExp ∷ MonadConstraint tv r m ⇒
-           [ModId] → Γ tv → AST.ModExp R → m (AST.ModExp R, Signature tv)
+           [ModId] → Γ tv → AST.ModExp R →
+           m (AST.ModExp R, Signature tv)
 tcModExp μ γ modexp0 = withLocation modexp0 $ case modexp0 of
   [meQ| struct $list:ds end |]                  → do
     (ds', _, sig)       ← tcDecls μ γ ds
-    -- XXX need to check that γ' is closed
     return ([meQ| struct $list:ds' end |], sig)
   [meQ| $qmid:n $list:_ |]                      → do
     (sig, _) ← γ !.! n
