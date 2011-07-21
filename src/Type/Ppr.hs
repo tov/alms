@@ -49,8 +49,9 @@ instance Ppr TyConInfo where
     case view (tyConToStx tn tc) of
       AST.TdSyn { AST.tdClauses = [(tps, t)] } →
         pprTyApp (tcName tc) (ps (snd <$> tvs))
-          >?> qe (fst <$> tvs)
-            >?> char '=' <+> ppr t
+          >?> ge (fst <$> tvs)
+            >?> qe (fst <$> tvs)
+              >?> char '=' <+> ppr t
           where
             tvs = [ case view tp of
                       AST.TpVar tv _ → (tv, ppr tv)
@@ -66,18 +67,20 @@ instance Ppr TyConInfo where
                   | i    ← [ 1 ∷ Int .. ] ]
       AST.TdSyn { AST.tdClauses = next } →
         pprTyApp (tcName tc) (ps tvs)
-          >?> (qe tvs <+> text "with"
-          $$ vcat (map alt next))
-            where
-              tvs  = [ AST.TV (AST.ident (show i)) qlit bogus
-                     | qlit ← tcBounds tc
-                     | i ← [ 1 .. ] ∷ [Int] ]
-              alt (tps,t) = char '|' <+> pprPrec precApp tps
-                              <+> ppr (AST.jname (tcName tc))
-                              >?> char '=' <+> ppr t
+          >?> ge tvs
+            >?> (qe tvs <+> text "with"
+                 $$ vcat (map alt next))
+              where
+                tvs  = [ AST.TV (AST.ident (show i)) qlit bogus
+                       | qlit ← tcBounds tc
+                       | i ← [ 1 .. ] ∷ [Int] ]
+                alt (tps,t) = char '|' <+> pprPrec precApp tps
+                                <+> ppr (AST.jname (tcName tc))
+                                >?> char '=' <+> ppr t
       AST.TdAbs { AST.tdParams = tvs } →
         pprTyApp (tcName tc) (ps tvs)
-          >?> qe tvs
+          >?> ge tvs
+            >?> qe tvs
       AST.TdDat { AST.tdParams = tvs, AST.tdAlts = altsList } →
         pprTyApp (tcName tc) (ps tvs)
           >?> qe tvs
@@ -94,7 +97,11 @@ instance Ppr TyConInfo where
       qe tvs = case tcQual tc of
                  QeU αs | S.null αs
                      → mempty
-                 qe' → colon <+> ppr (qRepresent (tvs !!) qe')
+                 qe' → colon <+> pprPrec precApp (qRepresent (tvs !!) qe')
       ps tvs = [ ppr var <> pprPrec (precApp + 1) tv
                | tv  ← tvs
                | var ← tcArity tc ]
+      ge tvs = case map snd . filter fst $ zip (tcGuards tc) tvs of
+                 []   → mempty
+                 tvs' → text "rec" <+> fsep (punctuate comma (ppr <$> tvs'))
+

@@ -741,8 +741,11 @@ tyDecp = "type declaration" @@ addLoc $ choice
     return (tdSyn name ((ps,t):alts))
   --
   finishTyAbs name tvs arity = do
-    guards ← option [] $ brackets $ reserved "rec" *> many1 tyvarp
-    tdAbs name tvs arity guards <$> qualsp
+    let guardsp = option [] $ reserved "rec" *> commaSep1 tyvarp
+    guards1 ← guardsp
+    qual    ← qualsp
+    guards2 ← guardsp
+    return (tdAbs name tvs arity (guards1 ++ guards2) qual)
   --
   -- A type declaration needs to give an unqualified name for the type
   -- being defined.  This checks that and splits into the name and the

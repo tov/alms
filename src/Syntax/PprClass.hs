@@ -7,7 +7,7 @@ module Syntax.PprClass (
   ppr0, ppr1, pprPrec1, pprDepth,
   -- ** Context operations
   prec, prec0, mapPrec, prec1, descend, atPrec, atDepth,
-  askPrec, askDepth,
+  askPrec, ifPrec, askDepth, ifDepth,
   trimList, trimCat,
   -- *** For type name shortening
   TyNames(..), tyNames0,
@@ -186,9 +186,21 @@ atDepth k = mapD (\e -> e { pcDepth = k })
 askPrec :: (Int -> Doc) -> Doc
 askPrec  = asksD pcPrec
 
+-- | A conditional: uses the second argument if the current precedence
+--   satisfies the predicate, otherwise the second
+ifPrec  :: (Int -> Bool) -> Doc -> Doc -> Doc
+ifPrec predicate true false =
+  askPrec $ \p → if predicate p then true else false
+
 -- | Find out the depth
 askDepth :: (Int -> Doc) -> Doc
 askDepth  = asksD pcDepth
+
+-- | A conditional: uses the second argument if the current depth
+--   satisfies the predicate, otherwise the second
+ifDepth  :: (Int -> Bool) -> Doc -> Doc -> Doc
+ifDepth predicate true false =
+  askDepth $ \p → if predicate p then true else false
 
 -- | Change the type name lookup function
 setTyNames   :: TyNames -> Doc -> Doc

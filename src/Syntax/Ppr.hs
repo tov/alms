@@ -172,8 +172,12 @@ unfoldTyPat _                           = Nothing
 
 instance Ppr (QExp i) where
   ppr [qeQ| $qlit:qu |]   = ppr qu
-  ppr [qeQ| $qvar:v |]    = ppr (tvname v)
-  ppr [qeQ| $qe1, $qe2 |] = ppr qe1 <> comma <> ppr qe2
+  ppr [qeQ| $qvar:v |]    = ifPrec (> 0)
+                              (ppr v)
+                              (ppr (tvname v))
+  ppr [qeQ| $qe1, $qe2 |] = ifPrec (> 0)
+    (ppr qe1 <+> text Strings.join <+> ppr qe2)
+    (ppr qe1 <> comma <> ppr qe2)
   ppr [qeQ| $anti:a |]    = ppr a
 
 instance Ppr (Prog i) where
@@ -249,8 +253,8 @@ pprExcDec u (Just t) =
 instance Ppr (TyDec i) where
   ppr td = case view td of
     TdAbs n ps vs gs qs -> pprProtoV n vs ps
-                             >?> pprGuards gs
                              >?> pprQuals qs
+                             >?> pprGuards gs
     TdSyn n [(ps,t)]    -> pprProto n ps >+> equals <+> ppr t
     TdSyn n cs          -> vcat [ char '|' <+> each ci | ci <- cs ]
       where
@@ -281,11 +285,11 @@ pprParamV v         tv = ppr v <> ppr tv
 
 pprGuards :: [TyVar i] -> Doc
 pprGuards []  = mempty
-pprGuards tvs = brackets $ text "rec" <+> fsep (ppr <$> tvs)
+pprGuards tvs = text "rec" <+> fsep (punctuate comma (ppr <$> tvs))
 
 pprQuals :: QExp i -> Doc
 pprQuals [qeQ| U |] = mempty
-pprQuals qs          = text ":" <+> pprPrec precApp qs
+pprQuals qs         = text ":" <+> pprPrec precApp qs
 
 pprAlternatives :: [(ConId i, Maybe (Type i))] -> Doc
 pprAlternatives [] = equals
