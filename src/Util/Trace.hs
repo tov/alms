@@ -18,7 +18,7 @@ import System.IO.Unsafe (unsafePerformIO)
 
 {-# INLINE debugLevel #-}
 debugLevel ∷ Int
-debugLevel = 0
+debugLevel = 3
 
 {-# INLINE debug #-}
 debug ∷ Bool

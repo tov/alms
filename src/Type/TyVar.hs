@@ -127,13 +127,21 @@ data FtvTree v
   = FTSingle v
   -- | Updates the incoming variance to give the variance in
   --   the subtree
-  | FTVariance (Variance → Variance) (FtvTree v)
+  | FTVariance VarianceEndo (FtvTree v)
   -- | Indicates that the subtree is guarded by a type constructor
   --   that allows recursion
   | FTGuard (FtvTree v)
   -- | A forest of 'FtvTree's
   | FTBranch [FtvTree v]
-  deriving Functor
+  deriving (Functor, Show)
+
+-- | Type for providing a 'Show' instance for @Variance -> Variance@
+-- functions which allows deriving 'Show' for 'FtvTree'.
+newtype VarianceEndo
+  = VarianceEndo { applyVarianceEndo ∷ Variance → Variance }
+
+instance Show VarianceEndo where
+  show ve = show (applyVarianceEndo ve 1)
 
 instance Monoid (FtvTree v) where
   mempty      = FTBranch []
@@ -145,12 +153,13 @@ instance Monoid (FtvTree v) where
 --   initial result.  Note that this fold gives no information about
 --   the shape of the tree, but it uses the tree structure to determine
 --   the variance of each type variable.
-foldFtvTree ∷ (v → Variance → r → r) → (r → r) → r → FtvTree v → r
-foldFtvTree fsingle fguard = loop Covariant where
-  loop var acc (FTSingle v)       = fsingle v var acc
-  loop var acc (FTVariance vf t)  = loop (vf var) acc t
-  loop var acc (FTGuard t)        = fguard (loop var acc t)
-  loop var acc (FTBranch ts)      = foldr (flip (loop var)) acc ts
+foldFtvTree ∷ (v → Variance → Bool → r → r) → r → FtvTree v → r
+foldFtvTree fsingle = loop Covariant False where
+  loop var gua acc tree = case tree of
+    FTSingle v      → fsingle v var gua acc
+    FTVariance vf t → loop (applyVarianceEndo vf var) gua acc t
+    FTGuard t       → loop var True acc t
+    FTBranch ts     → foldr (flip (loop var gua)) acc ts
 
 -- | Map from variables to variances
 type VarMap v = M.Map v Variance
@@ -167,7 +176,7 @@ class Ord tv ⇒ Ftv a tv | a → tv where
   --   implementation, so it must be defined explicitly.
   ftvTree  ∷ a → FtvTree tv
   -- | To fold over the free type variables in a piece of syntax.
-  ftvFold  ∷ (tv → Variance → r → r) → (r → r) → r → a → r
+  ftvFold  ∷ (tv → Variance → Bool → r → r) → r → a → r
   -- | To get a map from free type variables to their variances.
   ftvV     ∷ a → VarMap tv
   -- | To get a map from free type variables to their guardedness
@@ -179,11 +188,11 @@ class Ord tv ⇒ Ftv a tv | a → tv where
   ftvList  ∷ a → [tv]
   --
   --
-  ftvFold fsingle fguard zero a
-                 = foldFtvTree fsingle fguard zero $ ftvTree a
-  ftvV           = ftvFold (M.insertWith (+)) id M.empty
-  ftvG           = ftvFold (\v _ → M.insert v False) (True <$) M.empty
-  ftvSet         = ftvFold (const . S.insert) id S.empty
+  ftvFold fsingle zero a
+                 = foldFtvTree fsingle zero $ ftvTree a
+  ftvV           = ftvFold (const <$$> M.insertWith (+)) M.empty
+  ftvG           = ftvFold (const <$> M.insertWith (&&)) M.empty
+  ftvSet         = ftvFold (\v _ _ → S.insert v) S.empty
   ftvList        = S.toAscList . ftvSet
 
 instance Ord tv ⇒ Ftv (Type tv) tv where
@@ -192,7 +201,7 @@ instance Ord tv ⇒ Ftv (Type tv) tv where
               (mkBvF (\_ _ _ → mempty))
               FTSingle
               (\tc trees → FTBranch
-                 [ FTVariance (* var) $
+                 [ FTVariance (VarianceEndo (* var)) $
                      if guarded then FTGuard tree else tree
                  | tree    ← trees
                  | var     ← tcArity tc

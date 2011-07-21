@@ -49,9 +49,10 @@ tcType δ0 γ = loop δ0 (iaeInit :: CurrentImpArrRule tv)
         return (closeQuant qu' (zip αs' qls) τ')
       --
       [ty| μ `$α. $t |] → do
-        α' ← newTV' Skolem
+        α' ← newTV
         τ' ← loop (δ =+= α =:= α') iae t
         checkGuarded α' τ'
+        τ' ⊏: fvTy α'
         return (closeRec α' τ')
         where
         checkGuarded α' τ' = case M.lookup α' (ftvG τ') of
