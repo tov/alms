@@ -96,7 +96,9 @@ evalLetRec :: [Binding R] -> DDecl
 evalLetRec bs env = do
   let extend (envI, rs) (N _ b) = do
         r <- newIORef $ throwBadLetRec (idName (bnvar b))
-        return (envI =+= bnvar b =:= join (readIORef r), r : rs)
+        return (envI =+=
+                  bnvar b =:= (nameFun (bnvar b) <$> join (readIORef r)),
+                r : rs)
   (env', rev_rs) <- foldM extend (env, []) bs
   zipWithM_
     (\r (N _ b) -> do
