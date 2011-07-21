@@ -9,7 +9,7 @@ module Syntax.Lexer (
   -- * Operators
   opP,
   semis, bang, star,
-  sharpLoad, sharpInfo, sharpPrec, sharpConstraint,
+  pragma,
   lolli, arrow, funbraces,
   lambda, forall, exists, mu,
   qualbox,
@@ -34,6 +34,7 @@ import qualified Alt.Token as T
 
 import Prelude ()
 import Data.Char
+import qualified Data.List as List
 
 tok :: T.TokenEnd st => T.TokenParser st
 tok = T.makeTokenParser T.LanguageDef {
@@ -170,21 +171,12 @@ commaSep         = T.commaSep tok
 commaSep1       :: T.TokenEnd st => CharParser st a -> CharParser st [a]
 commaSep1        = T.commaSep1 tok
 
--- | The @#load@ pragma
-sharpLoad       :: T.TokenEnd st => CharParser st ()
-sharpLoad        = reserved "#l" <|> reserved "#load"
-
--- | The @#info@ pragma
-sharpInfo       :: T.TokenEnd st => CharParser st ()
-sharpInfo        = reserved "#i" <|> reserved "#info"
-
--- | The @#prec@ pragma
-sharpPrec       :: T.TokenEnd st => CharParser st ()
-sharpPrec        = reserved "#p" <|> reserved "#prec"
-
--- | The @#constraint@ pragma
-sharpConstraint :: T.TokenEnd st => CharParser st ()
-sharpConstraint  = reserved "#c" <|> reserved "#constraint"
+-- | Parse a pragma or a prefix thereof
+pragma          :: T.TokenEnd st ⇒ String → CharParser st ()
+pragma name      = try $ do
+  char '#'
+  s ← lid
+  guard (s `List.isPrefixOf` name)
 
 -- | @!@, which has special meaning in let patterns
 bang            :: T.TokenEnd st => CharParser st String

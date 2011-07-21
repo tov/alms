@@ -79,27 +79,6 @@ parseQuasi str p = do
   either (fail . show) return $
     runParser parser state0 { stAnti = True } "<quasi>" str
 
--- | REPL-level commands
-data REPLCommand
-  = GetInfoCmd [Ident Raw]
-  | GetPrecCmd [String]
-  | GetConstraintCmd
-  | DeclsCmd [Decl Raw]
-  | ParseError AlmsError
-
--- | Parse a line typed into the REPL
-parseCommand :: Int -> String -> String -> REPLCommand
-parseCommand row line cmd =
-  case parseGetInfo line of
-    Just ids -> GetInfoCmd ids
-    _ -> case parseGetPrec line of
-      Just lids -> GetPrecCmd lids
-      _ -> case parseGetConstraint line of
-        Just _ -> GetConstraintCmd
-        _ -> case parseInteractive row cmd of
-          Right ast -> DeclsCmd ast
-          Left err  -> ParseError (almsParseError err)
-
 -- | Given a file name and source, parse it
 parseFile :: Tag i => String -> String -> Either AlmsError (Prog i)
 parseFile  = (almsParseError +++ id) <$$> parse parseProg
@@ -129,26 +108,42 @@ almsParseError e =
     punct _ [s]    = [s]
     punct c (s:ss) = (s++c) : punct c ss
 
-parseGetInfo :: String -> Maybe [Ident Raw]
-parseGetInfo = (const Nothing ||| Just) . runParser parser state0 "-"
+-- | REPL-level commands
+data REPLCommand
+  = GetInfoCmd [Ident Raw]
+  | GetPrecCmd [String]
+  | GetConstraintCmd
+  | QuitCmd
+  | DeclsCmd [Decl Raw]
+  | ParseError AlmsError
+
+-- | Parse a line typed into the REPL
+parseCommand :: Int -> String -> String -> REPLCommand
+parseCommand row line syntax =
+  case parsePragma line of
+    Just cmd -> cmd
+    _        -> case parseInteractive row syntax of
+      Right ast -> DeclsCmd ast
+      Left err  -> ParseError (almsParseError err)
+
+-- | Parse a #-style REPL command
+parsePragma :: String -> Maybe REPLCommand
+parsePragma  = (const Nothing ||| Just) . runParser parser state0 "-"
   where
     parser = finish $
-      sharpInfo *>
-        many1 (identp
-               <|> J [] . Var . ident <$> (operator <|> qjoin))
+          GetInfoCmd <$
+            pragma "info" <*>
+            many1 (identp
+                   <|> J [] . Var . ident <$> (operator <|> qjoin))
+      <|> GetPrecCmd <$
+            pragma "precedence" <*>
+            many1 (operator <|> qjoin)
+      <|> GetConstraintCmd <$
+            pragma "constraints"
+      <|> QuitCmd <$
+            pragma "quit"
 
-parseGetPrec :: String -> Maybe [String]
-parseGetPrec = (const Nothing ||| Just) . runParser parser state0 "-"
-  where
-    parser = finish $
-      sharpPrec *>
-        many1 (operator <|> qjoin)
-
-parseGetConstraint :: String -> Maybe ()
-parseGetConstraint = (const Nothing ||| Just) . runParser parser state0 "-"
-  where
-    parser = finish $ sharpConstraint
-
+-- | Parse a declaration or expression in the REPL
 parseInteractive :: Tag i => Int -> String -> Either ParseError [Decl i]
 parseInteractive line src = parse p "-" src where
   p = do
@@ -561,7 +556,7 @@ declsp  = antiblep <|> loop
               ds <- loop
               return (d : ds),
             (<?> "#load") $ do
-              sharpLoad
+              pragma "load"
               name <- stringLiteral
               rel  <- sourceName `liftM` getPosition
               let mcontents = unsafePerformIO $ do

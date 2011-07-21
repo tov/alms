@@ -33,7 +33,7 @@ import Type.Ppr (TyConInfo(..))
 import Prelude ()
 import Data.Char (isSpace)
 import Data.IORef (IORef)
-import System.Exit (exitFailure)
+import System.Exit (exitFailure, exitSuccess, ExitCode)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
 import IO (hPutStrLn, hFlush, stdout, stderr)
@@ -141,7 +141,8 @@ handleExns :: IO a -> (ReplState, IO a) -> IO a
 handleExns body (st, handler) =
   body
     `Exn.catches`
-    [ Exn.Handler $ \e@(VExn { }) -> do
+    [ Exn.Handler $ \(e ∷ ExitCode) -> Exn.throwIO e,
+      Exn.Handler $ \e@(VExn { }) -> do
         prog <- getProgName
         continue1 $
           E.AlmsError
@@ -219,6 +220,7 @@ interactive opt rs0 = do
                   say (getConstraint (rsStatics st))
                   addHistory line
                   loop (count + 1) acc
+                QuitCmd -> exitSuccess
                 DeclsCmd ast -> do
                   addHistory cmd
                   return (Just (row + count, ast))

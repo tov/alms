@@ -24,6 +24,7 @@ import qualified IO
 import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import System.Random (randomIO)
+import System.Exit (exitWith, ExitCode(..))
 import Data.Typeable
 
 -- Primitive operations implemented in Haskell
@@ -143,7 +144,7 @@ primBasis  = [
     fun "getLine"  -: [ty| unit -> string |]
       -= \() -> getLine,
 
-    -- The environment
+    -- System and the environment
     fun "getArgs" -: [ty| unit -> string list |]
       -= \() -> Env.getArgs,
     fun "getProgName" -: [ty| unit -> string |]
@@ -152,6 +153,9 @@ primBasis  = [
       -= Env.getEnv,
     fun "getEnvironment" -: [ty| unit -> (string * string) list |]
       -= \() -> Env.getEnvironment,
+    fun "exit" -: [ty| ∀ `a. int -> `a |]
+      -= \z ->
+           exitWith (if z == 0 then ExitSuccess else ExitFailure z) ∷ IO (),
 
     -- References
     dec [sgQ| type `a ref qualifier U |],
