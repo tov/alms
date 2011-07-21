@@ -229,11 +229,12 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
       let mσs'          = toEmptyF . closeTy 0 αs <$$> mσs
           arity         = M.findWithDefault 0 <-> ftvV mσs <$> αs
           bounds        = AST.tvqual <$> params
-          guards        = M.findWithDefault False <-> ftvG mσs <$> αs
-          qual          =
-            mapQExp (S.mapMonotonic fromFreeTV) $
-              qualifierEnv [bounds] $
-                openTy 0 (fvTy <$> [0 ..]) <$> elimEmptyF <$$> mσs'
+          guards        = M.findWithDefault True <-> ftvG mσs <$> αs
+          qual          = case qualifierEnv [bounds] mσs' of
+            QeA     → QeA
+            QeU set → QeU (S.mapMonotonic each set)
+              where each (Bound _ j _) = j
+                    each (Free r)      = elimEmpty r
       when (arity  /= tcArity tc
          || bounds /= tcBounds tc
          || guards /= tcGuards tc

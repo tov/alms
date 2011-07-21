@@ -83,8 +83,9 @@ instance Ppr TyConInfo where
             >?> qe tvs
       AST.TdDat { AST.tdParams = tvs, AST.tdAlts = altsList } →
         pprTyApp (tcName tc) (ps tvs)
-          >?> qe tvs
-            >?> alts
+          >?> ge tvs
+            >?> qe tvs
+              >?> alts
         where
           alts = sep $
                  mapHead (text "=" <+>) $
