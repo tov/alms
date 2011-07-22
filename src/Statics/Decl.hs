@@ -50,11 +50,10 @@ tcDecl μ γ d0 = withLocation d0 $ case d0 of
     return (d0, γ =+= sig, sig)
   [dc| abstype $list:at with $list:ds end |]    → do
     (sigC, sigA)        ← tcAbsTys μ γ at
-    γC                  ← γ !+! sigC
-    (ds', _, sig1)      ← tcDecls μ γC ds
-    sig                 ← sealWith μ (sigC ++ sig1) (sigA ++ sig1)
-    γ''                 ← γ !+! sig
-    return ([dc| abstype $list:at with $list:ds' end |], γ'', sig)
+    (ds', _, sig1)      ← tcDecls μ (γ =+= sigC) ds
+    let sig             = sigA ++ sig1
+    γ'                  ← γ !+! sig
+    return ([dc| abstype $list:at with $list:ds' end |], γ', sig)
   [dc| type $list:tds |]                        → do
     sig         ← tcTyDecs μ γ tds
     return (d0, γ =+= sig, sig)
