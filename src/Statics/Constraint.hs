@@ -69,6 +69,11 @@ class MonadSubst tv r m ⇒ MonadConstraint tv r m | m → tv r where
   --   if bounded as specified.  In particular, all the variables must
   --   appear only on the left-hand side of the qualifier inequalities.
   getTVBounds     ∷ [tv] → m [QLit]
+  -- | Ensure that the current constraint is satisfiable.  This is
+  --   necessary after each REPL entry, because that's the commit point
+  --   for the constraint, and the REPL becomes unusable if a particular
+  --   type error hangs around in the constraint forever.
+  ensureSatisfiability ∷ m ()
 
 infix 5 <:, =:, ⊏:, ~:
 
@@ -87,6 +92,7 @@ instance (MonadConstraint tv s m, Monoid w) ⇒
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
   getTVBounds    = lift <$> getTVBounds
+  ensureSatisfiability = lift ensureSatisfiability
 
 instance MonadConstraint tv r m ⇒
          MonadConstraint tv r (StateT s m) where
@@ -99,6 +105,7 @@ instance MonadConstraint tv r m ⇒
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
   getTVBounds    = lift <$> getTVBounds
+  ensureSatisfiability = lift ensureSatisfiability
 
 instance MonadConstraint tv p m ⇒
          MonadConstraint tv p (ReaderT r m) where
@@ -111,6 +118,7 @@ instance MonadConstraint tv p m ⇒
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
   getTVBounds    = lift <$> getTVBounds
+  ensureSatisfiability = lift ensureSatisfiability
 
 instance (MonadConstraint tv p m, Monoid w) ⇒
          MonadConstraint tv p (RWST r w s m) where
@@ -123,6 +131,7 @@ instance (MonadConstraint tv p m, Monoid w) ⇒
   updatePinnedTVs= lift <$$> updatePinnedTVs
   generalize'    = lift <$$$> generalize'
   getTVBounds    = lift <$> getTVBounds
+  ensureSatisfiability = lift ensureSatisfiability
 
 --
 -- Some generic operations
@@ -395,8 +404,9 @@ instance MonadSubst tv r m ⇒
         eachSet done set       = (done, set)
     ConstraintT_ (modify (csPinnedUpdate update))
   --
-  generalize'    = solveConstraint
-  getTVBounds    = solveBounds
+  generalize'          = solveConstraint
+  getTVBounds          = solveBounds
+  ensureSatisfiability = checkQualifiers
 
 {-# INLINE gtraceN #-}
 gtraceN ∷ (TraceMessage a, Tv tv, MonadTrace m) ⇒
@@ -1019,6 +1029,10 @@ data QCState tv
     }
   deriving Show
 
+-- | The empty qualifier constraint
+qcState0 ∷ QCState tv
+qcState0 = QCState S.empty tyUnit M.empty mempty M.empty
+
 instance Tv tv ⇒ Ppr.Ppr (QCState tv) where
   ppr sq = p . M.fromList $
     [ ("αs",    p (sq_αs sq))
@@ -1036,6 +1050,10 @@ instance Tv tv ⇒ Ppr.Ppr (QCState tv) where
     ]
     where p x = Ppr.ppr x
 
+---
+--- MAIN QUALIFIER CONSTRAINT OPERATIONS
+---
+
 -- | Add a qualifier subtyping constraint
 addQualConstraint ∷ (MonadSubst tv r m, Qualifier q1 tv, Qualifier q2 tv) ⇒
                     q1 → q2 → ConstraintT_ tv r m ()
@@ -1051,31 +1069,13 @@ addQualConstraint q1 q2 = do
     ConstraintT_ . modify . csQualsUpdate $
       ((qualToType qe1, qualToType qe2) :)
 
-simplifyQual ∷ (MonadSubst tv r m, Qualifier q tv) ⇒
-               q → m (QExp tv)
-simplifyQual q = do
-  qe ← qualifier <$> subst (qualToType q)
-  case qe of
-    QeA    → return QeA
-    QeU γs → do
-      (γs', qls) ← partitionJust tvQual <$> mapM fromTyVar (S.toAscList γs)
-      case bigJoin qls of
-        Qa      → return QeA
-        _       → return (QeU (S.fromDistinctAscList γs'))
-
 -- Find qualifier bounds for type variables that definitely have only
 -- upper bounds.
 solveBounds    ∷ MonadSubst tv r m ⇒
                  [tv] → ConstraintT_ tv r m [QLit]
 solveBounds αs = do
   qc            ← ConstraintT_ (gets csQuals)
-  state         ← decomposeQuals qc QCState {
-                    sq_αs   = mempty,
-                    sq_τftv = mempty,
-                    sq_βlst = mempty,
-                    sq_vmap = mempty,
-                    sq_τ    = tyUnit
-                  }
+  state         ← decomposeQuals qc qcState0
   traceN 4 ("solveBounds", "decompose", state)
   let vmap      = sq_vmap state
   ConstraintT_ . modify . csQualsUpdate . const $
@@ -1084,6 +1084,16 @@ solveBounds αs = do
              Just (QEMeet (_:_)) → Qu
              _                   → Qa
          | α ← αs ]
+
+-- Ensure that the qualifier constraint is satisfiable, but don't
+-- make any approximating assumptions toward solving the constraint.
+checkQualifiers ∷ MonadSubst tv r m ⇒ ConstraintT_ tv r m ()
+checkQualifiers = do
+  qc            ← ConstraintT_ (gets csQuals)
+  state         ← decomposeQuals qc qcState0
+  traceN 4 ("checkQualifiers", "decompose", state)
+  runSat state False
+  ConstraintT_ . modify . csQualsUpdate . const $ recomposeQuals state
 
 -- | Solver for qualifier contraints.
 --   Given a qualifier constraint, solve and produce type variable
@@ -1104,11 +1114,9 @@ solveQualifiers value αs qc τ = do
   traceN 3 (TraceIn ("solveQ", "init", αs, qc))
   -- Decompose implements DECOMPOSE, TOP-SAT, BOT-SAT, and BOT-UNSAT.
   τftv           ← ftvV <$> subst τ
-  state          ← decomposeQuals qc QCState {
+  state          ← decomposeQuals qc qcState0 {
                      sq_αs   = αs,
                      sq_τftv = τftv,
-                     sq_βlst = [],
-                     sq_vmap = M.empty,
                      sq_τ    = τ
                    }
   traceN 4 ("solveQ", "decompose", state)
@@ -1149,11 +1157,11 @@ solveQualifiers value αs qc τ = do
   --
   -- Substitute U for qualifier variables upper bounded by U (FORCE-U).
   forceU state =
-    substs "forceU" state $
+    qSubsts "forceU" state $
       minBound <$
         M.filterWithKey
           (\β qem → case qem of
-            QEMeet [γs] → unifiable state β && S.null γs
+            QEMeet [γs] → qUnifiable state β && S.null γs
             _           → False)
           (sq_vmap state)
   --
@@ -1162,9 +1170,9 @@ solveQualifiers value αs qc τ = do
   -- If 'doLossy', then we include SUBST-NEG-LOSSY as well, which uses
   -- approximate lower bounds for combining multiple upper bounds.
   substNeg doLossy state =
-    substs who state $ M.fromDistinctAscList $ do
+    qSubsts who state $ M.fromDistinctAscList $ do
       δ ← S.toAscList (sq_αs state)
-      guard (unifiable state δ
+      guard (qUnifiable state δ
              && M.lookup δ (sq_τftv state) ⊑ Just QContravariant)
       case M.lookup δ (sq_vmap state) of
         Nothing            → return (δ, maxBound)
@@ -1191,7 +1199,7 @@ solveQualifiers value αs qc τ = do
         -- The lower bounds
         lbs = M.mapMaybe id . add_βlst . add_vmap
             $ setToMap (Just minBound)
-                       (S.filter (unifiable state) (sq_αs state))
+                       (S.filter (qUnifiable state) (sq_αs state))
                 M.\\ sq_vmap state
         -- Positive variables with lower bounds
         pos  = lbs M.\\ M.filter (/= QCovariant) (sq_τftv state)
@@ -1204,101 +1212,11 @@ solveQualifiers value αs qc τ = do
           return (δ', (δ, S.insert δ' `mapQExp` qe))
       | (δ, qe) ← M.toAscList inv
       , qe /= minBound ]
-    substs "substPosInv"
-           state {
-             sq_αs = sq_αs state `S.union` δ's
-           }
-           (pos `M.union` M.fromDistinctAscList inv)
-  --
-  -- Given a list of type variables and qualifiers, substitute for each,
-  -- updating the state as necessary.
-  substs ∷ MonadConstraint tv r m ⇒
-           String → QCState tv → M.Map tv (QExp tv) → m (QCState tv)
-  substs who state γqes0
-    | M.null γqes0 = return state
-    | otherwise      = do
-    traceN 4 (who, γqes0, state)
-    let sanitize _    []  []
-          = typeBug "subst" $
-              "Attempted impossible substitution: " ++ show γqes0
-        sanitize _    acc []
-          = unsafeSubsts state (M.fromDistinctAscList (reverse acc))
-        sanitize seen acc ((γ, qe):rest)
-          | S.member γ (S.union seen (ftvSet qe))
-          = sanitize seen acc rest
-          | otherwise
-          = sanitize (seen `S.union` ftvSet qe) ((γ, qe):acc) rest
-    sanitize S.empty [] (M.toAscList γqes0)
-  --
-  -- This does the main work of substitution, and it has a funny
-  -- precondition (which is enforced by 'subst', above), namely:
-  -- the type variables will be substituted in increasing order, so the
-  -- image of later variables must not contain earlier variables.
-  --
-  -- This is okay:     { 1 ↦ 2 3, 2 ↦ 4 }
-  -- This is not okay: { 1 ↦ 3 4, 2 ↦ 1 }
-  unsafeSubsts state γqes = do
-    sequence [ do
-                 let τ = qualToType (liftVQExp qe)
-                 writeTV γ τ
-                 updatePinnedTVs γ τ
-             | (γ, qe) ← M.toList γqes ]
-    let γset          = M.keysSet γqes
-        unchanged set = S.null (γset `S.intersection` set)
-        (βlst, βlst') = List.partition (unchanged . snd) (sq_βlst state)
-        (vmap, vmap') = M.partitionWithKey
-                          (curry (unchanged . ftvSet))
-                          (sq_vmap state)
-    let ineqs =
-          [ (qualToType ql, qualToType βs)
-          | (ql, βs) ← βlst' ]
-            ++
-          [ (fvTy γ, qualToType qe)
-          | (γ, qem) ← M.toList vmap'
-          , qe       ← unQEMeet qem ]
-    state ← decomposeQuals ineqs
-      state {
-        sq_αs   = sq_αs state S.\\ γset,
-        sq_τftv = M.foldrWithKey substQE (sq_τftv state) γqes,
-        sq_βlst = βlst,
-        sq_vmap = vmap
-      }
-    traceN 4 ("subst", γqes, state)
-    return state
-  --
-  -- As a last ditch effort, use a simple SAT solver to find a
-  -- decent literal-only substitution.
-  runSat state doIt = do
-    let formula = toSat state
-        sols    = SAT.solve =<< SAT.assertTrue formula SAT.newSatSolver
-    traceN 4 ("runSat", formula, sols)
-    case sols of
-      []  → do
-        typeError_ [msg| Qualifier constraints unsatisfiable |]
-        return state
-      sat:_ | doIt
-          → substs "sat" state =<<
-              M.fromDistinctAscList <$> sequence
-                [ return (δ, qlitexp ql)
-                  -- warn $ "\nSAT: substituting " ++ show (QE ql slack) ++
-                  --        " for type variable " ++ show δ
-                | δ ← S.toAscList (sq_αs state)
-                , unifiable state δ
-                , let (ql, var) = decodeSatVar δ (sq_τftv state) sat
-                , ql == Qa || var /= QInvariant ]
-      _   → return state
-  --
-  toSat state = foldr (SAT.:&&:) SAT.Yes $
-      [ (πa τftv q ==> πa τftv βs)
-      | (q, βs) ← sq_βlst state ]
-    ++
-      [ (πa τftv (Free α) ==> πa τftv αs)
-      | (α, QEMeet qes) ← M.toList (sq_vmap state)
-      , unifiable state α
-      , αs              ← qes ]
-    where
-      p ==> q = SAT.Not p SAT.:||: q
-      τftv    = sq_τftv state
+    qSubsts "substPosInv"
+            state {
+              sq_αs = sq_αs state `S.union` δ's
+            }
+            (pos `M.union` M.fromDistinctAscList inv)
   --
   -- Find the variables to generalize
   genVars state = return state { sq_αs = αs' } where
@@ -1314,8 +1232,10 @@ solveQualifiers value αs qc τ = do
   -- The QLit lower bound of a QExp
   qeMeetQLit (QEMeet []) = maxBound
   qeMeetQLit _           = minBound
-  --
-  unifiable _ α = tvKindIs KdQual α
+
+---
+--- COMMON QUALIFIER CONSTRAINT HELPERS
+---
 
 -- Put a set of qualifier inequalities in decomposed form (given
 -- possibly some in decomposed form already.
@@ -1353,7 +1273,7 @@ decomposeQuals qc0 state0 = do
     each' state (q1, γs1) γs2 = do
       let γs'  = γs1 S.\\ γs2
           βs'  = S.filter flex γs2
-          flex = (||) <$> unifiable state <*> (`S.notMember` sq_αs state)
+          flex = (||) <$> qUnifiable state <*> (`S.notMember` sq_αs state)
       fβlst ← case q1 of
         -- (BOT-SAT)
         Qu → return id
@@ -1370,14 +1290,13 @@ decomposeQuals qc0 state0 = do
           bound γ
             | M.lookup γ (sq_τftv state) == Just Covariant
             , γ `S.member` sq_αs state
-                                = qemSingleton maxBound
-            | unifiable state γ = qemSingleton (QeU γs2)
-            | otherwise         = qemSingleton (QeU βs')
+                                 = qemSingleton maxBound
+            | qUnifiable state γ = qemSingleton (QeU γs2)
+            | otherwise          = qemSingleton (QeU βs')
       return state {
                sq_βlst = fβlst (sq_βlst state),
                sq_vmap = fvmap (sq_vmap state)
              }
-  unifiable _ = tvKindIs KdQual
 
 -- | Turn the decomposed constraint back into a list of pairs of types.
 recomposeQuals ∷ Ord tv ⇒ QCState tv → [(Type tv, Type tv)]
@@ -1392,34 +1311,112 @@ recomposeQuals state =
   where
   clean βs = qualToType (βs S.\\ sq_αs state)
 
--- | Project a free type variable from a 'TyVar', or error if the
--- 'TyVar' is bounds.
-fromTyVar ∷ MonadAlmsError m ⇒ TyVar tv → m tv
-fromTyVar (Free α) = return α
-fromTyVar _        = typeBug "solveQualifiers" "Got bound type variable"
+-- | Given a list of type variables and qualifiers, substitute for each,
+--   updating the state as necessary.
+qSubsts ∷ MonadConstraint tv r m ⇒
+          String → QCState tv → M.Map tv (QExp tv) → m (QCState tv)
+qSubsts who state γqes0
+  | M.null γqes0 = return state
+  | otherwise      = do
+  traceN 4 (who, γqes0, state)
+  let sanitize _    []  []
+        = typeBug "subst" $
+            "Attempted impossible substitution: " ++ show γqes0
+      sanitize _    acc []
+        = unsafeSubsts state (M.fromDistinctAscList (reverse acc))
+      sanitize seen acc ((γ, qe):rest)
+        | S.member γ (S.union seen (ftvSet qe))
+        = sanitize seen acc rest
+        | otherwise
+        = sanitize (seen `S.union` ftvSet qe) ((γ, qe):acc) rest
+  sanitize S.empty [] (M.toAscList γqes0)
+  where
+  --
+  -- This does the main work of substitution, and it has a funny
+  -- precondition (which is enforced by 'subst', above), namely:
+  -- the type variables will be substituted in increasing order, so the
+  -- image of later variables must not contain earlier variables.
+  --
+  -- This is okay:     { 1 ↦ 2 3, 2 ↦ 4 }
+  -- This is not okay: { 1 ↦ 3 4, 2 ↦ 1 }
+  unsafeSubsts state γqes = do
+    sequence [ do
+                 let τ = qualToType (liftVQExp qe)
+                 writeTV γ τ
+                 updatePinnedTVs γ τ
+             | (γ, qe) ← M.toList γqes ]
+    let γset          = M.keysSet γqes
+        unchanged set = S.null (γset `S.intersection` set)
+        (βlst, βlst') = List.partition (unchanged . snd) (sq_βlst state)
+        (vmap, vmap') = M.partitionWithKey
+                          (curry (unchanged . ftvSet))
+                          (sq_vmap state)
+    let ineqs =
+          [ (qualToType ql, qualToType βs)
+          | (ql, βs) ← βlst' ]
+            ++
+          [ (fvTy γ, qualToType qe)
+          | (γ, qem) ← M.toList vmap'
+          , qe       ← unQEMeet qem ]
+    state ← decomposeQuals ineqs
+      state {
+        sq_αs   = sq_αs state S.\\ γset,
+        sq_τftv = M.foldrWithKey substQE (sq_τftv state) γqes,
+        sq_βlst = βlst,
+        sq_vmap = vmap
+      }
+    traceN 4 ("subst", γqes, state)
+    return state
 
--- | Update a type variable variance map as a result of substituting a
---   qualifier expression for a type variable.
-substQE ∷ Ord tv ⇒ tv → QExp tv → VarMap tv → VarMap tv
-substQE β qe vmap = case takeMap β vmap of
-  (Just v, vmap') → M.unionWith (⊔) vmap' (setToMap v (ftvSet qe))
-  _               → vmap
-
--- | Lookup a key in a map and remove the key from the map.
-takeMap ∷ Ord k ⇒ k → M.Map k v → (Maybe v, M.Map k v)
-takeMap = M.updateLookupWithKey (\_ _ → Nothing)
-
--- | Lift a 'S.Set' to a 'M.Map' with constant value
-setToMap   ∷ a → S.Set k → M.Map k a
-setToMap   = setToMapWith . const
-
--- | Lift a 'S.Set' to a 'M.Map' with values computed from keys.
-setToMapWith   ∷ (k → a) → S.Set k → M.Map k a
-setToMapWith f = M.fromDistinctAscList . map (id &&& f) . S.toAscList
+-- | Substitute and simplify a qualifier expression
+simplifyQual ∷ (MonadSubst tv r m, Qualifier q tv) ⇒
+               q → m (QExp tv)
+simplifyQual q = do
+  qe ← qualifier <$> subst (qualToType q)
+  case qe of
+    QeA    → return QeA
+    QeU γs → do
+      (γs', qls) ← partitionJust tvQual <$> mapM fromTyVar (S.toAscList γs)
+      case bigJoin qls of
+        Qa      → return QeA
+        _       → return (QeU (S.fromDistinctAscList γs'))
 
 ---
 --- SAT SOLVING FOR QUALIFIER CONSTRAINTS
 ---
+
+--
+-- As a last ditch effort, use a simple SAT solver to find a
+-- decent literal-only substitution.
+runSat state doIt = do
+  let sols    = SAT.solve =<< SAT.assertTrue formula SAT.newSatSolver
+  traceN 4 ("runSat", formula, sols)
+  case sols of
+    []  → do
+      typeError_ [msg| Qualifier constraints unsatisfiable |]
+      return state
+    sat:_ | doIt
+        → qSubsts "sat" state =<<
+            M.fromDistinctAscList <$> sequence
+              [ return (δ, qlitexp ql)
+                -- warn $ "\nSAT: substituting " ++ show (QE ql slack) ++
+                --        " for type variable " ++ show δ
+              | δ ← S.toAscList (sq_αs state)
+              , qUnifiable state δ
+              , let (ql, var) = decodeSatVar δ (sq_τftv state) sat
+              , ql == Qa || var /= QInvariant ]
+    _   → return state
+  where
+  formula = foldr (SAT.:&&:) SAT.Yes $
+      [ (πa τftv q ==> πa τftv βs)
+      | (q, βs) ← sq_βlst state ]
+    ++
+      [ (πa τftv (Free α) ==> πa τftv αs)
+      | (α, QEMeet qes) ← M.toList (sq_vmap state)
+      , qUnifiable state α
+      , αs              ← qes ]
+  p ==> q = SAT.Not p SAT.:||: q
+  τftv    = sq_τftv state
 
 -- | To encode some qualifier as a SAT formula
 class SATable a v where
@@ -1475,6 +1472,39 @@ maximizeVariance γ vm = case M.findWithDefault 0 γ vm of
 instance Ppr.Ppr SAT.Boolean where pprPrec = Ppr.pprFromShow
 instance Ppr.Ppr SAT.SatSolver where pprPrec = Ppr.pprFromShow
 
+---
+--- General qualifier-solving utility functions
+---
+
+-- | Is the given type variable unifiable as a qualifier variable?
+--   Right now, this just means its kind is 'KdQual'.
+qUnifiable ∷ Tv tv ⇒ QCState tv → tv → Bool
+qUnifiable _ α = tvKindIs KdQual α
+
+-- | Project a free type variable from a 'TyVar', or error if the
+-- 'TyVar' is bounds.
+fromTyVar ∷ MonadAlmsError m ⇒ TyVar tv → m tv
+fromTyVar (Free α) = return α
+fromTyVar _        = typeBug "solveQualifiers" "Got bound type variable"
+
+-- | Update a type variable variance map as a result of substituting a
+--   qualifier expression for a type variable.
+substQE ∷ Ord tv ⇒ tv → QExp tv → VarMap tv → VarMap tv
+substQE β qe vmap = case takeMap β vmap of
+  (Just v, vmap') → M.unionWith (⊔) vmap' (setToMap v (ftvSet qe))
+  _               → vmap
+
+-- | Lookup a key in a map and remove the key from the map.
+takeMap ∷ Ord k ⇒ k → M.Map k v → (Maybe v, M.Map k v)
+takeMap = M.updateLookupWithKey (\_ _ → Nothing)
+
+-- | Lift a 'S.Set' to a 'M.Map' with constant value
+setToMap   ∷ a → S.Set k → M.Map k a
+setToMap   = setToMapWith . const
+
+-- | Lift a 'S.Set' to a 'M.Map' with values computed from keys.
+setToMapWith   ∷ (k → a) → S.Set k → M.Map k a
+setToMapWith f = M.fromDistinctAscList . map (id &&& f) . S.toAscList
 
 {-
 

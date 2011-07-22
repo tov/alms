@@ -42,9 +42,9 @@ import qualified Data.List as List
 --   a reference type.
 data StaticsState r
   = StaticsState {
-      ssRename       ∷ !RenameState,
-      ssConstraint   ∷ !(ConstraintState (TV r) r),
-      ssEnv          ∷ !(Γ (TV r))
+      ssRen     ∷ !RenameState,
+      ssCon     ∷ !(ConstraintState (TV r) r),
+      ssEnv     ∷ !(Γ (TV r))
     }
 
 -- | The initial state of the type checker, parameterized by the
@@ -52,9 +52,9 @@ data StaticsState r
 staticsState0 ∷ RenameState → StaticsState r
 staticsState0 rs
   = StaticsState {
-      ssRename          = rs,
-      ssConstraint      = constraintState0,
-      ssEnv             = mempty
+      ssRen     = rs,
+      ssCon     = constraintState0,
+      ssEnv     = mempty
     }
 
 -- | The initial state of the type checker with no initial renaming
@@ -75,13 +75,13 @@ typeCheckDecls ∷ (MonadAlmsError m, MonadRef r m) ⇒
                     StaticsState r)
 typeCheckDecls ss ds = do
   (ds', rs)             ← bailoutIfError $
-    runRenamingM True bogus (ssRename ss) (renameDecls ds)
-  ((ds'', γ', sig), cs) ← bailoutIfError $
-    runConstraintT (ssConstraint ss) (tcDecls [] (ssEnv ss) ds')
+    runRenamingM True bogus (ssRen ss) (renameDecls ds)
+  ((ds'', γ', sig), cs) ← bailoutIfError . runConstraintT (ssCon ss) $ do
+    tcDecls [] (ssEnv ss) ds' <* ensureSatisfiability
   let ss' = ss {
-              ssRename     = rs,
-              ssConstraint = cs,
-              ssEnv        = γ'
+              ssRen     = rs,
+              ssCon     = cs,
+              ssEnv     = γ'
             }
   return (ds'', sigItemToStx (makeTyNames ss') <$> sig, ss')
 
@@ -92,9 +92,9 @@ typeCheckProg ∷ (MonadAlmsError m, MonadRef r m) ⇒
                 m (AST.Prog Renamed, Maybe (AST.Type Renamed))
 typeCheckProg ss p = do
   (p', _)         ← bailoutIfError $
-    runRenamingM True bogus (ssRename ss) (renameProg p)
-  ((p'', mσ), _)  ← bailoutIfError $
-    runConstraintT (ssConstraint ss) (tcProg (ssEnv ss) p')
+    runRenamingM True bogus (ssRen ss) (renameProg p)
+  ((p'', mσ), _)  ← bailoutIfError . runConstraintT (ssCon ss) $ do
+    tcProg (ssEnv ss) p' <* ensureSatisfiability
   return (p'', typeToStx' <$> mσ)
 
 ---
@@ -108,10 +108,10 @@ addSignature ∷ (MonadAlmsError m, MonadRef r m) ⇒
                AST.SigExp Renamed →
                m (StaticsState r)
 addSignature ss sigexp = do
-  (sig, cs') ← runConstraintT (ssConstraint ss) (tcSigExp (ssEnv ss) sigexp)
+  (sig, cs') ← runConstraintT (ssCon ss) (tcSigExp (ssEnv ss) sigexp)
   return ss {
-    ssConstraint = cs',
-    ssEnv        = ssEnv ss =+= sigToEnv sig
+    ssCon       = cs',
+    ssEnv       = ssEnv ss =+= sigToEnv sig
   }
 
 -- | Bind a primitive type constructor at top level.
@@ -124,7 +124,7 @@ addPrimType ss tid tc = ss { ssEnv = ssEnv ss =+= tid =:= tc }
 
 -- | Find out the renamed name of an identifier and where it was defined.
 getRenamingInfo ∷ AST.Ident Raw → StaticsState r → [RenamingInfo]
-getRenamingInfo = Statics.Rename.getRenamingInfo <$.> ssRename
+getRenamingInfo = Statics.Rename.getRenamingInfo <$.> ssRen
 
 -- | Find out the type of a variable
 getVarInfo :: QVarId -> StaticsState r -> Maybe (AST.Type R)
@@ -144,7 +144,7 @@ getConInfo cid ss = typeToStx (makeT2SContext ss) <$$$> ssEnv ss =..= cid
 -- | Get a printable representation of the current constraint-solving
 --   state.
 getConstraint ∷ StaticsState r → Doc
-getConstraint = pprConstraintState . ssConstraint
+getConstraint = pprConstraintState . ssCon
 
 -- Open the given module, if it exists.
 staticsEnterScope       :: ModId -> StaticsState r -> StaticsState r
