@@ -167,12 +167,14 @@ tcAbsTys μ γ ats = do
   ntcs1 ← sequence
     [ do
         qe ← indexQuals (AST.tdParams (view td)) qual
-        return (n, tc {
-                     tcArity = arity,
-                     tcQual  = qe,
-                     tcCons  = mempty,
-                     tcNext  = Nothing
-                   })
+        let tc' = tc {
+                    tcArity = arity,
+                    tcQual  = qe,
+                    tcCons  = mempty,
+                    tcNext  = Nothing
+                  }
+        checkTyConMonotone (AST.tdParams (view td)) tc
+        return (n, tc')
     | (n, tc) ← ntcs0
     | arity   ← arities
     | qual    ← quals
@@ -200,11 +202,13 @@ tcTyDecs' μ γ tds = do
       → do
         qe ← indexQuals params qual
         ix ← tvUniqueID <$> newTV
-        return (tid, mkTC ix (J (reverse μ) tid)
-                             qe
-                             (zip3 variances
-                                   (AST.tvqual <$> params)
-                                   ((`elem` guards) <$> params)))
+        let tc = mkTC ix (J (reverse μ) tid)
+                         qe
+                         (zip3 variances
+                               (AST.tvqual <$> params)
+                               ((`elem` guards) <$> params))
+        checkTyConMonotone params tc
+        return (tid, tc)
     AST.TdSyn _ []
       → typeBug "tcTyDecs'" "Saw type synonym with 0 clauses."
     AST.TdAnti a
@@ -217,6 +221,25 @@ tcTyDecs' μ γ tds = do
       return (tid, mkTC ix (J (reverse μ) tid)
                            ((Omnivariant,,False) <$> bounds) ∷ TyCon)
     --
+
+checkTyConMonotone ∷ MonadAlmsError m ⇒ [AST.TyVar R] → TyCon → m ()
+checkTyConMonotone params tc = do
+  let ftv_qe  = ftvSet (tcQual tc)
+      bad_tvs = map ([msg| $2 (variance $1, at $3) |]
+                       <$> sel2 <*> sel3 <*> AST.getLoc. sel3) .
+                filter (\tup → S.member (sel1 tup) ftv_qe) .
+                filter (\tup → sel2 tup ⊑ Contravariant) $
+                zip3 [ 0 .. ] (tcArity tc) params
+      name    = tcName tc
+  unless (null bad_tvs) $
+    typeError [msg| Type declaration for $q:name is inadmissable
+      because it doesn’t satisfy the monotonicity condition for
+      type constructors.
+      All type variable parameters that appear in the qualifier of
+      a type must be covariant or invariant, this is not satisfied
+      by all parameters of $q:name:
+      $ul:bad_tvs
+    |]
 
 tcTyDec ∷ MonadConstraint tv r m ⇒
           Γ tv → AST.TyDec R → (TypId, TyCon) → m (TypId, TyCon)
