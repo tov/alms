@@ -481,12 +481,15 @@ class Tag i => Fv a i | a -> i where
   fv :: a -> FvMap i
 
 -- | The defined variables analysis
-class Tag i => Dv a i | a -> i where
+class Dv a i | a -> i where
   qdv :: a -> [QVarId i]
   dv  :: a -> [VarId i]
 
   qdv  = J [] <$$> dv
   dv a = [ v | J [] v <- qdv a ]
+
+instance Dv (VarId i) i  where dv a = [a]
+instance Dv (QVarId i) i where qdv a = [a]
 
 instance Fv a i => Fv [a] i where
   fv = foldr (|+|) M.empty . map fv

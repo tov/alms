@@ -44,6 +44,9 @@ module Util (
   (<$.>), (<$$.>), (<$$$.>), (<$$$$.>),
   (<->), (<-->), (<--->), (<---->), (<----->),
 
+  -- * Generic set operations
+  SetLike(..), SetLike2(..),
+
   -- * Re-exports
   module Control.Arrow,
   module Control.Applicative,
@@ -92,7 +95,7 @@ import Control.Monad.State.Strict ( MonadState(..), StateT(..), evalStateT,
                                     evalState, gets, modify, mapStateT )
 import Control.Monad.Trans    ( MonadTrans(..), MonadIO(..) )
 import Control.Monad.Writer.Strict ( MonadWriter(..), WriterT(..),
-                                     execWriterT, execWriter,
+                                     runWriter, execWriterT, execWriter,
                                      mapWriterT, censor, listens )
 
 import Data.Char (chr, ord)
@@ -108,7 +111,8 @@ import Data.Perhaps
 import Util.Bogus
 import Util.Viewable
 
-import qualified Data.Set as Set
+import qualified Data.Set  as S
+import qualified Data.List as L
 
 mapHead, mapTail, mapInit, mapLast ∷ Traversable t ⇒ (a → a) → t a → t a
 
@@ -213,10 +217,10 @@ listNth i = foldr (const . Just) Nothing . drop i
 
 -- | Like nub, but O(n log n) instead of O(n^2)
 ordNub ∷ Ord a ⇒ [a] → [a]
-ordNub = loop Set.empty where
+ordNub = loop S.empty where
   loop seen (x:xs)
-    | x `Set.member` seen = loop seen xs
-    | otherwise           = x : loop (Set.insert x seen) xs
+    | x `S.member` seen = loop seen xs
+    | otherwise         = x : loop (S.insert x seen) xs
   loop _    []     = []
 
 -- | Partition a list into the portions where the function returns
@@ -404,3 +408,63 @@ f <----> x = (<---> x) <$> f
 f <-----> x = (<----> x) <$> f
 
 infixl 4 <->, <-->, <--->, <---->, <----->
+
+class (Eq a, Foldable t) ⇒ SetLike t a where
+  isEmptySet    ∷ t a → Bool
+  (∈), (∉)      ∷ a → t a → Bool
+  emptySet      ∷ t a
+  singleton     ∷ a → t a
+  --
+  isEmptySet    = null . toList
+  a ∈ set       = a `elem` toList set
+  a ∉ set       = not (a ∈ set)
+
+class (SetLike t a, SetLike t' a) ⇒ SetLike2 t t' a where
+  (⊆), (⊇), (/⊆), (/⊇), (/∩)
+                ∷ t a → t' a → Bool
+  (∪), (∩), (∖) ∷ t a → t' a → t a
+  --
+  set1 ⊆ set2   = all (∈ set2) set1
+  set1 ⊇ set2   = all (∈ set1) set2
+  set1 /⊆ set2  = not (set1 /⊆ set2)
+  set1 /⊇ set2  = not (set1 /⊇ set2)
+  set1 /∩ set2  = not (any (∈ set2) set1)
+
+infix 4 ∈, ∉, ⊆, ⊇, /⊆, /⊇, /∩
+infixl 6 ∪, ∖
+infixl 7 ∩
+
+instance Eq a ⇒ SetLike [] a where
+  emptySet      = []
+  singleton a   = [a]
+
+instance Eq a ⇒ SetLike2 [] [] a where
+  (∪)           = L.union
+  (∩)           = L.intersect
+  (∖)           = (L.\\)
+
+instance Ord a ⇒ SetLike2 [] S.Set a where
+  (∪)           = L.union <$.> toList
+  (∩)           = L.intersect <$.> toList
+  (∖)           = (L.\\) <$.> toList
+
+instance Ord a ⇒ SetLike S.Set a where
+  isEmptySet    = S.null
+  (∈)           = S.member
+  emptySet      = S.empty
+  singleton     = S.singleton
+
+instance Ord a ⇒ SetLike2 S.Set S.Set a where
+  (⊆)           = S.isSubsetOf
+  set1 /∩ set2  = isEmptySet (set1 ∩ set2)
+  (∪)           = S.union
+  (∩)           = S.intersection
+  (∖)           = (S.\\)
+
+instance Ord a ⇒ SetLike2 S.Set [] a where
+  (⊆)           = (⊆) <$.> S.fromList
+  set1 ⊇ list2  = all (∈ set1) list2
+  set1 /∩ list2 = all (∉ set1) list2
+  (∪)           = foldr S.insert
+  (∩)           = (∩) <$.> S.fromList
+  (∖)           = foldr S.delete

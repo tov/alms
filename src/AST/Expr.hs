@@ -18,8 +18,7 @@ module AST.Expr (
   exBVar, exBCon,
   exChar, exStr, exInt, exFloat,
   exSeq,
-  -- ** Optimizing expression constructors
-  exLet', exLetVar', exAbs', exAbsVar',
+  ToExpr(..),
 
   -- * Expression accessors and updaters
   syntacticValue, isAnnotated, getExprAnnot, cafakepatt,
@@ -120,6 +119,10 @@ instance Relocatable (ExprNote i) where
 
 -- | Types with free variable analyses
 instance Tag i => Fv (N (ExprNote i) a) i where fv = efv_ . noteOf
+
+instance Dv (N (ExprNote i) (Binding' i)) i where
+  dv (N _ (BnBind f _)) = [f]
+  dv (N _ (BnAnti _))   = []
 
 instance Notable (ExprNote i) where
   newNote = ExprNote {
@@ -250,51 +253,32 @@ exFloat  = exLit . LtFloat
 exSeq :: Tag i => Expr i -> Expr i -> Expr i
 exSeq e1 e2 = exLet paWild e1 e2
 
--- | Constructs a let expression, but with a special case:
---
---   @let x      = e in x        ==   e@
---   @let (x, y) = e in (x, y)   ==   e@
---
--- This is always safe to do.
-exLet' :: Tag i => Patt i -> Expr i -> Expr i -> Expr i
-exLet' x e1 e2 = if (x -==+ e2) then e1 else exLet x e1 e2
+class ToExpr a i | a → i where
+  toExpr ∷ a → Expr i
 
--- | Constructs a let expression whose pattern is a variable.
-exLetVar' :: Tag i => VarId i -> Expr i -> Expr i -> Expr i
-exLetVar'  = exLet' . paVar
+instance ToExpr (Expr i) i where
+  toExpr = id
 
--- | Constructs a lambda expression, but with a special case:
---
---    @exAbs' x     (exApp (exVar f) x)      ==  exVar f@
---    @exAbs' (x,y) (exApp (exVar f) (x,y))  ==  exVar f@
---
--- This eta-contraction is always safe, because f has no effect
-exAbs' :: Tag i => Patt i -> Expr i -> Expr i
-exAbs' x e = case view e of
-  ExApp e1 e2 -> case view e1 of
-    ExVar (J p f) | x -==+ e2
-              -> exVar (J p f)
-    _         -> exAbs x e
-  _           -> exAbs x e
+instance Tag i ⇒ ToExpr (QVarId i) i where
+  toExpr = exVar
 
--- | Construct an abstraction whose pattern is just a variable.
-exAbsVar' :: Tag i => VarId i -> Expr i -> Expr i
-exAbsVar'  = exAbs' . paVar
+instance Tag i ⇒ ToExpr (VarId i) i where
+  toExpr = exBVar
 
--- | Does a pattern exactly match an expression?  That is, is
---   @let p = e1 in e@ equivalent to @e1@?  Note that we cannot
---   safely handle data constructors, because they may fail to match.
-(-==+) :: Tag i => Patt i -> Expr i -> Bool
-p -==+ e = case (dataOf p, dataOf e) of
-  (PaVar l,      ExVar (J [] l'))
-    -> l == l'
-  (PaCon (J [] (ConId (Uid _ "()"))) Nothing,
-   ExCon (J [] (ConId (Uid _ "()"))) Nothing)
-    -> True
-  (PaPair p1 p2, ExPair e1 e2)
-    -> p1 -==+ e1 && p2 -==+ e2
-  _ -> False
-infix 4 -==+
+instance (Tag i, ToExpr a i, ToExpr b i) ⇒ ToExpr (a, b) i where
+  toExpr (a, b) = exPair (toExpr a) (toExpr b)
+
+instance Tag i ⇒ ToExpr String i where
+  toExpr = exStr
+
+instance Tag i ⇒ ToExpr Int i where
+  toExpr = exInt
+
+instance Tag i ⇒ ToExpr Char i where
+  toExpr = exChar
+
+instance Tag i ⇒ ToExpr Double i where
+  toExpr = exFloat
 
 -- | Is the expression conservatively side-effect free?
 syntacticValue :: Expr i -> Bool
@@ -352,5 +336,3 @@ cafakepatt ca0 = case view ca0 of
   CaClause x _ → x
   CaPrj u mx _ → paCon (qident ('#':idName u)) mx
   CaAnti a     → $antierror
-
-

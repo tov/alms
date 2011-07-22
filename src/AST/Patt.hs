@@ -3,6 +3,9 @@ module AST.Patt (
   Patt'(..), Patt, PattNote(..), newPatt,
   -- ** Constructors
   paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn, paBang, paAnti,
+  -- ** Synthetic pattern constructors
+  paChar, paStr, paInt, paFloat,
+  ToPatt(..),
 ) where
 
 import Util
@@ -103,8 +106,44 @@ newPatt p0 = flip N p0 $ case p0 of
       pdv_    = antierror "dv" a
     }
 
-instance Tag i => Dv (N (PattNote i) a) i where
+instance Dv (N (PattNote i) a) i where
   dv = pdv_ . noteOf
 
 deriveNotable 'newPatt (''Tag, [0]) ''Patt
+
+paChar :: Tag i => Char -> Patt i
+paChar = paLit . LtChar
+
+paStr :: Tag i => String -> Patt i
+paStr  = paLit . LtStr
+
+paInt :: (Tag i, Integral a) => a -> Patt i
+paInt  = paLit . LtInt . toInteger
+
+paFloat :: Tag i => Double -> Patt i
+paFloat  = paLit . LtFloat
+
+class ToPatt a i | a → i where
+  toPatt ∷ a → Patt i
+
+instance ToPatt (Patt i) i where
+  toPatt = id
+
+instance Tag i ⇒ ToPatt (VarId i) i where
+  toPatt = paVar
+
+instance (Tag i, ToPatt a i, ToPatt b i) ⇒ ToPatt (a, b) i where
+  toPatt (a, b) = paPair (toPatt a) (toPatt b)
+
+instance Tag i ⇒ ToPatt String i where
+  toPatt = paStr
+
+instance Tag i ⇒ ToPatt Int i where
+  toPatt = paInt
+
+instance Tag i ⇒ ToPatt Char i where
+  toPatt = paChar
+
+instance Tag i ⇒ ToPatt Double i where
+  toPatt = paFloat
 
