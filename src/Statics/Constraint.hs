@@ -1388,6 +1388,8 @@ simplifyQual q = do
 --
 -- As a last ditch effort, use a simple SAT solver to find a
 -- decent literal-only substitution.
+runSat ∷ MonadConstraint tv r m ⇒
+         QCState tv → Bool → m (QCState tv)
 runSat state doIt = do
   let sols    = SAT.solve =<< SAT.assertTrue formula SAT.newSatSolver
   traceN 4 ("runSat", formula, sols)

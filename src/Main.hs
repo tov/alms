@@ -7,6 +7,7 @@ module Main (
 import Util
 import Util.MonadRef
 import Util.UndoIO
+import Syntax.ImplicitThreading
 import Syntax.Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
                    printDoc, hPrintDoc)
 import qualified Syntax.Ppr as Ppr
@@ -92,28 +93,36 @@ loadString st name src = do
   case parseFile name src of
     Left e     -> Exn.throwIO e
     Right ast  -> do
-      (st', _, ast') <- runAlmsErrorIO (statics (st, prog2decls ast))
-      (st'', _)      <- dynamics (st', ast')
-      return st''
+      ast1           <- runAlmsErrorIO (mapM threadDecl (prog2decls ast))
+      (st2, _, ast2) <- runAlmsErrorIO (statics (st, ast1))
+      (st3, _)       <- dynamics (st2, ast2)
+      return st3
 
 batch :: String -> IO String -> (Option -> Bool) -> ReplState -> IO ()
-batch filename msrc opt st0 = do
+batch filename msrc opt st = do
       src <- msrc
       case parseFile filename src of
         Left e    -> Exn.throwIO e
-        Right ast -> check ast where
+        Right ast -> thread ast where
+          thread  :: Prog Raw -> IO ()
           check   :: Prog Raw -> IO ()
           execute :: Prog Renamed -> IO ()
 
-          check ast0 = do
-            (ast1, mt) <- typeCheckProg (rsStatics st0) ast0
+          thread ast0 = do
+            ast1 <- runAlmsErrorIO (threadProg ast0)
+            when (opt Verbose) $
+              mumble "THREADING" ast1
+            check ast1
+
+          check ast1 = do
+            (ast2, mt) <- runAlmsErrorIO (typeCheckProg (rsStatics st) ast1)
             when (opt Verbose) $
               mumble "TYPE" mt
-            execute ast1
+            execute ast2
 
           execute ast2 =
             unless (opt Don'tExecute) $ do
-              v <- eval (rsDynamics st0) ast2
+              v <- eval (rsDynamics st) ast2
               when (opt Verbose) $
                 mumble "RESULT" v
 
@@ -178,13 +187,14 @@ interactive opt rs0 = do
         Just (row', ast) -> do
           st' <- doLine st ast `handleExns` (st, return st)
           repl row' st'
-    doLine st0 ast0 = do
-      (st1, newDefs, ast1) <- runUndoIO (runAlmsErrorIO (statics (st0, ast0)))
-      (st2, newVals)       <- if opt Don'tExecute
-                              then return (st1, empty)
-                              else dynamics (st1, ast1)
+    doLine st ast = do
+      ast1                 <- runAlmsErrorIO (threadDecls ast)
+      (st2, newDefs, ast2) <- runUndoIO (runAlmsErrorIO (statics (st, ast1)))
+      (st3, newVals)       <- if opt Don'tExecute
+                              then return (st2, empty)
+                              else dynamics (st2, ast2)
       printResult newDefs newVals
-      return st2
+      return st3
     say    = if opt Quiet then const (return ()) else printDoc
     getln' = if opt NoLineEdit then getline else readline
     getln  = if opt Quiet then const (getln' "") else getln'

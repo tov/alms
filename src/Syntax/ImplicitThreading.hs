@@ -1,9 +1,7 @@
 -- | Translation of bang patterns, which introduce implicit threading.
 module Syntax.ImplicitThreading (
-  threadDecl, threadProg,
+  threadDecls, threadDecl, threadProg,
 ) where
-
-import Debug.Trace
 
 import Util
 import AST
@@ -18,18 +16,19 @@ import Data.Generics (Data, everywhere, mkT, extT)
 import qualified Data.Map as M
 import qualified Data.Set as S
 
-t x = trace (show x) x
-
 type R = Raw
 type ThreadTrans a = MonadAlmsError m ⇒ a → m a
 
-threadProg ∷ ThreadTrans (Prog R)
-threadDecl ∷ ThreadTrans (Decl R)
+threadProg  ∷ ThreadTrans (Prog R)
+threadDecls ∷ ThreadTrans [Decl R]
+threadDecl  ∷ ThreadTrans (Decl R)
 
 threadProg [prQ| $list:ds in $opt:me |] = do
   ds' ← mapM threadDecl ds
   me' ← mapM threadExpr me
   return [prQ| $list:ds' in $opt:me' |]
+
+threadDecls = mapM threadDecl
 
 threadDecl d0 = withLocation d0 $ case d0 of
   [dc| let $π = $e |]
@@ -112,9 +111,9 @@ threadCaseAlt ca0 = case ca0 of
   [caQ| $antiC:a |] → $antifail
 
 threadExpr ∷ ThreadTrans (Expr R)
-threadExpr e0 = case e0 of
-  [ex| $qvid:_ |]               → return e0
-  [ex| $lit:_   |]              → return e0
+threadExpr e = case e of
+  [ex| $qvid:_ |]               → return e
+  [ex| $lit:_   |]              → return e
   [ex| $qcid:c $opt:me |]
     → do
     me'         ← mapM threadExpr me
@@ -135,30 +134,30 @@ threadExpr e0 = case e0 of
     e0'         ← threadExpr e0
     cas'        ← mapM threadCaseAlt cas
     return [ex| match $e0' with $list:cas' |]
-  [ex| let rec $list:bns in $e |]
+  [ex| let rec $list:bns in $e1 |]
     → do
     bns'        ← mapM threadBinding bns
-    e'          ← threadExpr e
-    return [ex| let rec $list:bns' in $e' |]
-  [ex| let $decl:d in $e |]
+    e1'         ← threadExpr e1
+    return [ex| let rec $list:bns' in $e1' |]
+  [ex| let $decl:d in $e1 |]
     → do
     d'          ← threadDecl d
-    e'          ← threadExpr e
-    return [ex| let $decl:d' in $e' |]
+    e1'         ← threadExpr e1
+    return [ex| let $decl:d' in $e1' |]
   [ex| ($e1, $e2) |]
     → do
     e1'         ← threadExpr e1
     e2'         ← threadExpr e2
     return [ex| ($e1', $e2') |]
-  [ex| λ $π → $e |]
+  [ex| λ $π → $e2 |]
     | (π', xs@(_:_)) ← patternBangRename π
     → do
-    e'          ← beginTranslate xs e
-    return [ex| λ $π' → $e' |]
+    e2'         ← beginTranslate xs e2
+    return [ex| λ $π' → $e2' |]
     | otherwise
     → do
-    e'          ← threadExpr e
-    return [ex| λ $π → $e' |]
+    e2'         ← threadExpr e2
+    return [ex| λ $π → $e2' |]
   [ex| $e1 $e2 |]
     → do
     e1'         ← threadExpr e1
@@ -168,19 +167,19 @@ threadExpr e0 = case e0 of
     → do
     me'         ← mapM threadExpr me
     return [ex| `$uid:c $opt:me' |]
-  [ex| #$uid:c $e |]
+  [ex| #$uid:c $e2 |]
     → do
-    e'          ← threadExpr e
-    return [ex| #$uid:c $e' |]
-  [ex| $e : $annot |]
+    e2'         ← threadExpr e2
+    return [ex| #$uid:c $e2' |]
+  [ex| $e1 : $annot |]
     → do
-    e'          ← threadExpr e
-    return [ex| $e' : $annot |]
-  [ex| $e :> $annot |]
+    e1'         ← threadExpr e1
+    return [ex| $e1' : $annot |]
+  [ex| $e1 :> $annot |]
     → do
-    e'          ← threadExpr e
-    return [ex| $e' :> $annot |]
-  [ex| $anti:_ |] → return e0
+    e1'         ← threadExpr e1
+    return [ex| $e1' :> $annot |]
+  [ex| $anti:_ |] → return e
 
 -- Synthesized attributes
 data Synth
@@ -192,11 +191,11 @@ data Synth
   deriving Show
 
 beginTranslate ∷ MonadAlmsError m ⇒ [VarId R] → Expr R → m (Expr R)
-beginTranslate env0 e0 = do
-  let e0_env = S.fromList env0
-  e0' ← loop e0_env M.empty e0
+beginTranslate env0 e00 = do
+  let e00_env = S.fromList env0
+  e00' ← loop e00_env M.empty e00
   return $
-    exLet' (r1 -*- vars e0') (code e0') $
+    exLet' (r1 -*- vars e00') (code e00') $
       r1 -*- ren env0
   where
   loop env funs e = withLocation e $ case e of
@@ -378,7 +377,7 @@ beginTranslate env0 e0 = do
                     = let (πi', newi) = patternBangRename πi
                        in (dv πi, newi ∖ used, Right (c, Just πi'), ei, loc)
             decompose [caQ|@=loc $antiC:a |] = $antierror
-        let (dv_πs, news, mπs', es, locs)
+        let (dv_πs, news, eπs', es, locs)
                     = unzip5 (decompose <$> cas)
             hides   = ren ((used ∖) <$> dv_πs)
             ei_envs = zipWith (\dv_πi newi → (env ∖ dv_πi) ∪ used ∪ newi)
@@ -391,12 +390,12 @@ beginTranslate env0 e0 = do
             cas'    = [ let body = censorVars (toList hidei)          $
                                    exLet' (r -*- vars ei') (code ei') $
                                      coercei -*- e_vars
-                         in case renOnly used mπi' of
+                         in case renOnly used eπi' of
                               Left πi'
                                 → [caQ|@=loc $πi' → $body |]
                               Right (c, mπi')
                                 → [caQ|@=loc #$uid:c $opt:mπi' → $body |]
-                      | mπi'    ← mπs'
+                      | eπi'    ← eπs'
                       | hidei   ← hides
                       | ei'     ← synths
                       | coercei ← coerces
@@ -533,17 +532,17 @@ coerceType ∷ [[VarId R]] → [[VarId R]] → Expr R
 coerceType _            []           = toExpr r
 coerceType reste        restg
   | reste == restg                   = toExpr r
-coerceType []           (gets:restg) =
+coerceType []           (gots:restg) =
   exAbsVar' r1 $
-    optExAbs gets $
+    optExAbs gots $
       exLetVar' r (exApp (toExpr r) (toExpr r1)) $
-        coerceType [] restg -*- gets
-coerceType (exps:reste) (gets:restg) =
+        coerceType [] restg -*- gots
+coerceType (exps:reste) (gots:restg) =
   exAbsVar' r1 $
-    optExAbs gets $
+    optExAbs gots $
       exLet' (r -*- exps)
              (optExApp (exApp (toExpr r) (toExpr r1)) exps) $
-        coerceType reste restg -*- gets
+        coerceType reste restg -*- gots
 
 -- | Shadow some variables with @()@.
 censorVars        ∷ [VarId R] → Expr R → Expr R
@@ -992,8 +991,8 @@ expr2patt vs0 e0 =
     [ex| `$uid:c $opt:me |]             → do
       mπ ← mapM loop me
       return [pa| `$uid:c $opt:mπ |]
-    [ex| $e : $annot |]                 → do
-      π ← loop e
+    [ex| $e1 : $annot |]                → do
+      π ← loop e1
       return [pa| $π : $annot |]
     [ex| $qvid:_ |]                     → mzero
     [ex| let $_ = $_ in $_ |]           → mzero
