@@ -3,6 +3,8 @@ module Syntax.ImplicitThreading (
   threadDecl, threadProg,
 ) where
 
+import Debug.Trace
+
 import Util
 import AST
 import Data.Loc
@@ -15,6 +17,8 @@ import Prelude ()
 import Data.Generics (Data, everywhere, mkT, extT)
 import qualified Data.Map as M
 import qualified Data.Set as S
+
+t x = trace (show x) x
 
 type R = Raw
 type ThreadTrans a = MonadAlmsError m ⇒ a → m a
@@ -185,6 +189,7 @@ data Synth
       typ       ∷ ![[VarId R]],
       vars      ∷ ![VarId R]
     }
+  deriving Show
 
 beginTranslate ∷ MonadAlmsError m ⇒ [VarId R] → Expr R → m (Expr R)
 beginTranslate env0 e0 = do
@@ -201,15 +206,13 @@ beginTranslate env0 e0 = do
           e1_env    = (env ∖ dv π) ∪ new
       e1' ← loop e1_env funs e1
       let latent    = vars e1' ∖ ren new
-          body      = exLet' (r1 -*- vars e1') (code e1') $
-                        r1 -*- ren new ++ latent
+          body      = optExAbs latent                           $
+                        exLet' (r1 -*- vars e1') (code e1')     $
+                          r1 -*- ren new ++ latent
       return S {
-          vars = emptySet,
-          typ  = latent : typ e1',
-          code = case latent of
-                   []   → [ex| λ $π' → $body |]
-                   v:vs → [ex| λ $π' $vvs → $body |]
-                          where vvs = v -*- vs
+        vars = emptySet,
+        typ  = latent : typ e1',
+        code = [ex| λ $π' → $body |]
       }
     --
     [ex| $e1 $e2 |]
@@ -356,8 +359,55 @@ beginTranslate env0 e0 = do
           typ  = [],
           code = e
         }
-    [ex| match $_ with $list:_ |]
-      → error "XXX undefined TODO"
+    --
+    [ex| match $e0 with $list:cas |]
+      → do
+        (used, changed, rhs) ←
+          case expr2patt env e0 of
+            Just (_, dv_π0) → return (S.fromList dv_π0, [], ren e0)
+            Nothing         → do
+              e0' ← loop env funs e0
+              assertCapture e0' "expression in match" e0
+              return (emptySet, vars e0', code e0')
+        let decompose [caQ|@=loc $πi → $ei |]
+                    = let (πi', newi) = patternBangRename πi
+                       in (dv πi, newi ∖ used, Left πi', ei, loc)
+            decompose [caQ|@=loc #$uid:c → $ei |]
+                    = ([], [], Right (c, Nothing), ei, loc)
+            decompose [caQ|@=loc #$uid:c $πi → $ei |]
+                    = let (πi', newi) = patternBangRename πi
+                       in (dv πi, newi ∖ used, Right (c, Just πi'), ei, loc)
+            decompose [caQ|@=loc $antiC:a |] = $antierror
+        let (dv_πs, news, mπs', es, locs)
+                    = unzip5 (decompose <$> cas)
+            hides   = ren ((used ∖) <$> dv_πs)
+            ei_envs = zipWith (\dv_πi newi → (env ∖ dv_πi) ∪ used ∪ newi)
+                              dv_πs news
+        synths  ← zipWithM (loop <-> funs) ei_envs es
+        let e_vars  = foldl' (∪) (changed ∪ ren used)
+                                 (zipWith (∖) (vars <$> synths) (ren news))
+            e_typ   = foldl' joinType [] (typ <$> synths)
+            coerces = (`coerceType` e_typ) <$> typ <$> synths
+            cas'    = [ let body = censorVars (toList hidei)          $
+                                   exLet' (r -*- vars ei') (code ei') $
+                                     coercei -*- e_vars
+                         in case renOnly used mπi' of
+                              Left πi'
+                                → [caQ|@=loc $πi' → $body |]
+                              Right (c, mπi')
+                                → [caQ|@=loc #$uid:c $opt:mπi' → $body |]
+                      | mπi'    ← mπs'
+                      | hidei   ← hides
+                      | ei'     ← synths
+                      | coercei ← coerces
+                      | loc     ← locs]
+        return S {
+          vars = e_vars,
+          typ  = e_typ,
+          code = exLet' (r -*- changed) rhs $
+                 [ex| match $vid:r with $list:cas' |]
+        }
+    --
     [ex| let rec $list:bns in $e2 |]
       → do
         -- We infer the types of recursive functions by iterating to
@@ -469,6 +519,32 @@ beginTranslate env0 e0 = do
       return ((f, typ e'), [bnQ| $vid:f = $e_code |])
     [bnQ| $antiB:a |]    → $antifail
 
+
+-- Find the least-upper bound of two variable/effect types.
+joinType ∷ [[VarId R]] → [[VarId R]] → [[VarId R]]
+joinType (vs1:rest1) (vs2:rest2) = (vs1 ∪ vs2) : joinType rest1 rest2
+joinType []          τ2          = τ2
+joinType τ1          []          = τ1
+
+-- | Coerce a value whose variable/effect type is the first argument
+--   to have the effect of the second. Assumes that the second subsumes
+--   the first.  Assumes that the value is named @r@.
+coerceType ∷ [[VarId R]] → [[VarId R]] → Expr R
+coerceType _            []           = toExpr r
+coerceType reste        restg
+  | reste == restg                   = toExpr r
+coerceType []           (gets:restg) =
+  exAbsVar' r1 $
+    optExAbs gets $
+      exLetVar' r (exApp (toExpr r) (toExpr r1)) $
+        coerceType [] restg -*- gets
+coerceType (exps:reste) (gets:restg) =
+  exAbsVar' r1 $
+    optExAbs gets $
+      exLet' (r -*- exps)
+             (optExApp (exApp (toExpr r) (toExpr r1)) exps) $
+        coerceType reste restg -*- gets
+
 -- | Shadow some variables with @()@.
 censorVars        ∷ [VarId R] → Expr R → Expr R
 censorVars []     = id
@@ -480,6 +556,12 @@ optExApp  ∷ (Tag i, ToExpr a i) ⇒ Expr i → [a] → Expr i
 optExApp e0 []          = e0
 optExApp e0 (e1:es)     = exApp e0 (e1 -*- es)
 
+-- Given an expression and a list, abstract to a tuple pattern
+-- of the list only if the list is non-empty.
+optExAbs  ∷ (Tag i, ToPatt a i) ⇒ [a] → Expr i → Expr i
+optExAbs []      e0    = e0
+optExAbs (π1:πs) e0    = exAbs' (π1 -*- πs) e0
+
 -- Split a type into the latent effect and the codomain
 splitType ∷ [[a]] → ([a], [[a]])
 splitType []     = ([], [])
@@ -490,30 +572,30 @@ splitType (v:vs) = (v, vs)
 patternBangRename ∷ Patt R → (Patt R, [VarId R])
 patternBangRename = runWriter . loop False
   where
-  loop ren π0 = case π0 of
+  loop doIt π0 = case π0 of
     [pa| $vid:x  |]
-      | ren                       → do
-        let x' = ident (idName x ++ "!")
+      | doIt                       → do
         tell [x]
+        let x' = ren x
         return [pa| $vid:x' |]
       | otherwise                 → return π0
     [pa| _ |]                     → return π0
     [pa| $qcid:c $opt:mπ |]       → do
-      mπ' ← mapM (loop ren) mπ
+      mπ' ← mapM (loop doIt) mπ
       return [pa| $qcid:c $opt:mπ' |]
     [pa| ($π1, $π2) |]            → do
-      π1' ← loop ren π1
-      π2' ← loop ren π2
+      π1' ← loop doIt π1
+      π2' ← loop doIt π2
       return [pa| ($π1', $π2') |]
     [pa| $lit:_ |]                → return π0
     [pa| $π as $vid:x |]          → do
-      π' ← loop ren π
+      π' ← loop doIt π
       return [pa| $π' as $vid:x |]
     [pa| `$uid:c $opt:mπ |]       → do
-      mπ' ← mapM (loop ren) mπ
+      mπ' ← mapM (loop doIt) mπ
       return [pa| `$uid:c $opt:mπ' |]
     [pa| $π : $annot |]           → do
-      π' ← loop ren π
+      π' ← loop doIt π
       return [pa| $π' : $annot |]
     [pa| ! $π |]                  → loop True π
     [pa| $anti:a |]               → $antifail
@@ -835,209 +917,49 @@ renOnly set = everywhere (mkT each) where
                    ((r2, !new), e2.vars \ !new) in
                (r2, rnew, e.vars)
 
-  e ::= match π0 with
-        | π1 → e1
-        ⋮
-        | πk → ek
-
-    [ dv π0 nonempty ⊆ e.env ]
-
-    newᵢ   = bangvars(πᵢ)
-    hideᵢ  = dv πᵢ \ (dv π0 \ newᵢ)
-
-    eᵢ.env = (e.env \ hideᵢ) ∪ newᵢ
-    e.vars = dv π0 ∪ (e1.vars \ new1) ∪ ... ∪ (ek.vars \ newk)
-    e.type = e1.type ⊔ ... ⊔ ek.type    || ERROR!
-    e.code = match π0 with
-             | π1 → let dv π0 \ dv π1 = () ... () in
-                    let (r, e1.vars) = e1.code in
-                      (r, e.vars)
-             ⋮
-             | πk → let dv π0 \ dv πk = () ... () in
-                    let (r, ek.vars) = ek.code in
-                      (r, e.vars)
-
   e ::= match e0 with
         | π1 → e1
         ⋮
         | πk → ek
 
+  {
+    [ e0 = π0 ⋀ dv π0 nonempty ⊆ e.env ]
+
+      used    = dv π0
+      changed = ∅
+      rhs     = !π0
+
     [ e0.type ≠ 1 ]
 
-    ERROR
+      ERROR
 
     [ otherwise ]
 
-    newᵢ   = bangvars(πᵢ)
+      used    = ∅
+      changed = e0.vars
+      rhs     = e0.code
+  }
 
-    eᵢ.env = e.env ∪ newᵢ
-    e.vars = e0.vars ∪ (e1.vars \ new1) ∪ ... ∪ (ek.vars \ newk)
-    e.type = e1.type ⊔ ... ⊔ ek.type    || ERROR!
-    e.code = let (r0, e0.vars) = e1 in
-             match r0 with
-             | π1 → let (r, e1.vars) = e1.code in
-                      (r, e.vars)
-             ⋮
-             | πk → let (r, ek.vars) = ek.code in
-                      (r, e.vars)
+    newᵢ   = bangvars(πᵢ) \ used
+    hideᵢ  = !(used \ dv πᵢ)
+    eᵢ.env = (e.env \ dv πᵢ) ∪ used ∪ newᵢ
 
--}
+    e.vars = !used ∪ changed ∪ (e1.vars \ !new1) ∪ ... ∪ (ek.vars \ !newk)
+    e.type = e1.type ⊔ ... ⊔ ek.type
+    coerceᵢ= eᵢ.type ⇝ e.type
 
-{-
-transform :: Tag i => S.Set (Lid i) -> Expr i -> ([Lid i], Expr i)
-transform env = loop where
-  capture e1
-    | vars <- [ v | J [] v <- M.keys (fv e1),
-                    v `S.member` env ],
-      code <- translate paVar (exBVar . ren) vars .
-              kill (ren vars)
-        = Just (ren vars, code)
-    | otherwise
-        = Nothing
+    e.code = let (r, changed) = rhs in
+               match r with
+               | [!used][!new]π1 →
+                   let hide1        = () ... () in
+                   let (r, e1.vars) = e1.code in
+                     (coerce1 r, e.vars)
+               ⋮
+               | [!used][!new]πk →
+                   let hidek        = () ... () in
+                   let (r, ek.vars) = ek.code in
+                     (coercek r, e.vars)
 
-  unop kont (e1_vars, e1_code)
-    | Just (k_vars, k_code) <- capture (kont exUnit),
-      vars <- k_vars `L.union` e1_vars,
-      code <- k_code $
-              exLet' (paVar r1 -:: e1_vars) e1_code $
-                (kont (exBVar r1) +:: vars)
-      = (vars, code)
-  unop kont ([],      e1_code)
-      = ([], kont e1_code +:: [])
-  unop kont (e1_vars, e1_code)
-    | vars <- e1_vars,
-      code <- exLet' (paPair (paVar r1) (paVar r2)) e1_code $
-                exPair (kont (exBVar r1)) (exBVar r2)
-      = (vars, code)
-
-  binder kont (e1_vars, e1_code)
-    | Just (k_vars, k_code) <- capture (kont exUnit),
-      vars <- k_vars `L.union` e1_vars,
-      code <- k_code $
-              kont $
-              exLet' (paVar r1 -:: e1_vars) e1_code $
-              (exBVar r1 +:: vars)
-      = (vars, code)
-    | vars <- e1_vars,
-      code <- kont e1_code
-      = (vars, code)
-
-  binop kont e1 e2 =
-    case (loop e1, loop e2) of
-      (([],      e1_code), ([],      e2_code))
-          -> ([], kont e1_code e2_code +:: [])
-      (([],      e1_code), (e2_vars, e2_code))
-        | syntacticValue e1_code,
-          vars <- e2_vars,
-          code <- exLet' (paVar r2 -:: e2_vars) e2_code $
-                    kont e1_code (exBVar r2) +:: vars
-          -> (vars, code)
-      ((e1_vars, e1_code), ([],      e2_code))
-        | syntacticValue e2_code,
-          vars <- e1_vars,
-          code <- exLet' (paVar r1 -:: e1_vars) e1_code $
-                  kont (exBVar r1) e2_code +:: vars
-          -> (vars, code)
-      ((e1_vars, e1_code), (e2_vars, e2_code))
-        | vars <- e1_vars `L.union` e2_vars,
-          code <- exLet' (paVar r1 -:: e1_vars) e1_code $
-                  exLet' (paVar r2 -:: e2_vars) e2_code $
-                    kont (exBVar r1) (exBVar r2) +:: vars
-          -> (vars, code)
-
-  shadow vs e = transform (env `S.difference` vs) e
-
-  loop e  = let (vars, e') = loop' e in (vars, e' <<@ e)
-
-  loop' e = case view e of
-    ExId (J [] (Var x))
-      | x `S.member` env,
-        vars <- [ren x]
-        -> (vars, ren (exBVar x) +:+ [exUnit])
-
-    ExCase e0 bs
-      | Just p0 <- expr2patt env S.empty e0,
-        not (dv p0 `disjoint` env),
-        e0_vars <- toList (dv (ren p0)),
-        e0_code <- ren e0,
-        bs'  <-
-          [ case parseBangPatt pj of
-              Nothing  ->
-                (renOnly (dv p0) pj,
-                 shadow (dv pj `S.difference` dv p0) ej)
-              Just pj' ->
-                (ren pj',
-                 transform (env `S.union` dv pj) ej)
-          | N _ (CaClause pj ej) <- bs ],
-        vars <- [ v | v <- foldl L.union e0_vars (map (fst . snd) bs'),
-                      v `S.member` ren env ],
-        code <- exCase e0_code $
-                  [ caClause pj (kill (dv (ren p0) `S.difference` dv pj) $
-                         exLet' (paVar r1 -:: ej_vars) ej_code $
-                           (exBVar r1 +:: vars))
-                  | (pj, (ej_vars, ej_code)) <- bs' ]
-        -> (vars, code)
-
-      | (e0_vars, e0_code) <- loop e0,
-        bs'  <-
-          [ case parseBangPatt pj of
-              Nothing  -> (pj, shadow (dv pj) ej)
-              Just pj' -> exAddSigma
-                            (length bs == 1)
-                            (\vars patt expr -> (patt, (vars, expr)))
-                            env pj' ej
-          | N _ (CaClause pj ej) <- bs ],
-        vars <- foldl L.union e0_vars (map (fst . snd) bs'),
-        code <- exLet' (paVar r1 -:: e0_vars) e0_code $
-                exCase (exBVar r1) $
-                  [ caClause pj
-                             (exLet' (paVar r2 -:: ej_vars) ej_code $
-                                exBVar r2 +:: vars)
-                  | (pj, (ej_vars, ej_code)) <- bs' ]
-        -> (vars, code)
-
-    ExLetRec bs e1
-        -> binder (exLetRec bs)
-             (shadow (S.fromList (map (bnvar . dataOf) bs)) e1)
-
-    ExLetDecl ds e1
-        -> binder (exLetDecl ds) (loop e1)
-
-    ExPair e1 e2
-        -> binop exPair e1 e2
-
-    ExApp e1 e2
-      | Just p2 <- expr2patt env S.empty e2,
-        not (dv p2 `disjoint` env),
-        (e1_vars, e1_code) <- loop e1,
-        vars <- e1_vars `L.union` toList (dv (ren p2)),
-        (v1, f1) <- if null e1_vars
-                      then (e1_code, id)
-                      else (exBVar r1,
-                            exLet' (paVar r1 -:: e1_vars) e1_code),
-        code <- f1 $
-                exLet' (paPair (paVar r2) (flatpatt (ren p2)))
-                       (exApp v1 (ren e2)) $
-                exBVar r2 +:: vars
-        -> (vars, code)
-
-      | otherwise
-        -> binop exApp e1 e2
-
-    ExTApp e1 t2
-        -> unop (flip exTApp t2) (loop e1)
-
-    ExPack mt t1 e2
-        -> unop (exPack mt t1) (loop e2)
-
-    ExCast e1 t2 b
-        -> unop (flip (flip exCast t2) b) (loop e1)
-
-    _ | Just (k_vars, k_code) <- capture e
-        -> (k_vars, k_code $ e +:: k_vars)
-
-      | vars <- []
-        -> (vars, e +:: vars)
 -}
 
 r, r1, r2 :: VarId R

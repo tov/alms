@@ -123,7 +123,7 @@ substExpr e' x' = loop where
       | x' ∈ qdv π              → [ex| let $π = $e1' in $e2 |]
       | otherwise               → [ex| let $π' = $e1' in $e2' |]
       where e1'        = loop e1
-            (π', e2'0) = avoidCapture fv_e' π e2
+            (π', e2'0) = avoidCapture fv_e' x' π e2
             e2'        = loop e2'0
     [ex| match $e0 with $list:cas |]
                                 → [ex| match $e0' with $list:cas' |]
@@ -137,7 +137,7 @@ substExpr e' x' = loop where
       | otherwise               → [ex| let rec $list:bns' in $e2' |]
       where
       (fs, es)       = unzip [ (fi, ei) | [bnQ|! $vid:fi = $ei |] ← bns ]
-      (fs', renamer) = avoidCapture' fv_e' fs (e2:es)
+      (fs', renamer) = avoidCapture' fv_e' x' fs (e2:es)
       bns'           = reverse (fst (foldl' eachBn ([], fs') bns))
       e2'            = loop (renamer e2)
       eachBn (acc, fi':rest) [bnQ| $vid:_ = $ei |]
@@ -156,7 +156,7 @@ substExpr e' x' = loop where
       | x' ∈ qdv π1             → e
       | otherwise               → [ex| λ $π1' → $e2' |]
       where (π1', e2')  = second loop
-                        $ avoidCapture fv_e' π1 e2
+                        $ avoidCapture fv_e' x' π1 e2
     [ex| $e1 $e2 |]             → [ex| $e1' $e2' |]
       where e1' = loop e1
             e2' = loop e2
@@ -177,7 +177,7 @@ substCaseAlt e' x' ca = case ca of
     | otherwise                 → [caQ| $π1' → $e2' |]
       where (π1', e2') = second (substExpr e' x')
                        $ avoidCapture [ x | J [] x ← M.keys (fv e') ]
-                                      π1 e2
+                                      x' π1 e2
   [caQ| #$uid:c → $e2 |]        → [caQ| #$uid:c → $e2' |]
       where e2'         = substExpr e' x' e2
   [caQ| #$uid:c $π1 → $e2 |]
@@ -185,7 +185,7 @@ substCaseAlt e' x' ca = case ca of
     | otherwise                 → [caQ| #$uid:c $π1' → $e2' |]
       where (π1', e2') = second (substExpr e' x')
                        $ avoidCapture [ x | J [] x ← M.keys (fv e') ]
-                                      π1 e2
+                                      x' π1 e2
   [caQ| $antiC:_ |]             → ca
 
 substBinding ∷ Tag i ⇒ Expr i → QVarId i → Binding i → Binding i
@@ -196,28 +196,33 @@ substBinding e' x' bn = case bn of
       where
       (f', e2') = second (substExpr e' x')
                 $ avoidCapture [ x | J [] x ← M.keys (fv e') ]
-                               f e2
+                               x' f e2
   [bnQ| $antiB:_ |]             → bn
 
--- | Given a list of names not to capture, a pattern, and an expression
+-- | Given a list of names not to capture, the variable being
+--  substituted, a pattern, and an expression
 -- in the scope of the pattern, rename the pattern and expression
 -- together so that it's safe to substitute the names under the pattern.
 avoidCapture ∷ (Data a, Dv a i, Tag i) ⇒
-               [VarId i] → a → Expr i → (a, Expr i)
-avoidCapture fv_e' π e = second ($ e) (avoidCapture' fv_e' π e)
+               [VarId i] → QVarId i → a → Expr i → (a, Expr i)
+avoidCapture fv_e' x' π e = second ($ e) (avoidCapture' fv_e' x' π e)
 
--- | Given a list of names not to capture, a pattern, and an expression
+-- | Given a list of names not to capture, the variable being
+-- substituted, a pattern, and an expression
 -- in the scope of the pattern, rename the pattern and expression
 -- together so that it's safe to substitute the names under the pattern.
 avoidCapture' ∷ (Data a, Dv a i, Fv b i, Tag i) ⇒
-                [VarId i] → a → b → (a, Expr i → Expr i)
-avoidCapture' fv_e' π e =
-  let fv_e  = [ idName x | J [] x ← M.keys (fv e) ]
-      vs    = dv π ∩ fv_e'
-      vs'   = ident <$> freshNames (Just . idName <$> vs) fv_e []
-      π'    = foldr2 (\v v' → renameGeneric v' v) π vs vs'
-      r e'  = foldr2 (\v v' → substExpr (exBVar v') (J [] v)) e' vs vs'
-   in (π', r)
+                [VarId i] → QVarId i → a → b → (a, Expr i → Expr i)
+avoidCapture' fv_e' x' π e
+  | x' ∈ qdv π || x' `M.notMember` fv e = (π, id)
+  | otherwise                           = (π', r)
+  where
+    fv_e  = [ idName x | J [] x ← M.keys (fv e) ]
+    vs    = dv π ∩ fv_e'
+    vs'   = ident <$> freshNames (Just . idName <$> vs)
+                                 (fv_e ++ (idName <$> fv_e')) []
+    π'    = foldr2 (\v v' → renameGeneric v' v) π vs vs'
+    r e'  = foldr2 (\v v' → substExpr (exBVar v') (J [] v)) e' vs vs'
 
 -- | Rename a variable
 renameGeneric ∷ (Tag i, Data a) ⇒ VarId i → VarId i → a → a
