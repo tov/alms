@@ -215,7 +215,7 @@ beginTranslate env0 e00 = do
       }
     --
     [ex| $e1 $e2 |]
-      | Just (_, dv_π2) ← expr2patt env e2
+      | Just (_, dv_π2@(_:_)) ← expr2patt env e2
       → do
         e1'     ← loop env funs e1
         let (latent, cod_e1_typ) = splitType (typ e1')
@@ -295,7 +295,7 @@ beginTranslate env0 e00 = do
                    [ex| $qcid:c1 $vid:r |] -*- vars e2'
         }
     [ex| let $π = $e1 in $e2 |]
-      | Just (_, dv_π1) ← expr2patt env e1
+      | Just (_, dv_π1@(_:_)) ← expr2patt env e1
       → do
         let (π', new) = patternBangRename π
             hidden    = dv_π1 ∖ (dv π ∖ new)
@@ -343,13 +343,13 @@ beginTranslate env0 e00 = do
               return S {
                 vars = e_vars,
                 typ  = typ e2',
-                code = (exLet (r1 -*- vars e1') (code e1')      $
-                        exLet' (r2 -*- r : (vars e2' ∖ ren new))
-                               (exLet' π' (toExpr r1)    $
+                code = (exLet' (r1 -*- vars e1') (code e1')      $
+                        exLet' (r -*- (vars e2' ∖ ren new))
+                               (exLet π' (toExpr r1)    $
                                 exLet' (r2 -*- vars e2') (code e2') $
                                   ((r2 -*- ren new ∷ Expr Raw)
                                      -*- (vars e2' ∖ ren new)))  $
-                          (r2 -*- r : e_vars))
+                          (r -*- e_vars))
                       <<@ _loc
               }
     [ex| $lit:_ |]
@@ -363,8 +363,9 @@ beginTranslate env0 e00 = do
       → do
         (used, changed, rhs) ←
           case expr2patt env e0 of
-            Just (_, dv_π0) → return (S.fromList dv_π0, [], ren e0)
-            Nothing         → do
+            Just (_, dv_π0@(_:_)) →
+              return (S.fromList dv_π0, [], ren e0)
+            _                     → do
               e0' ← loop env funs e0
               assertCapture e0' "expression in match" e0
               return (emptySet, vars e0', code e0')
@@ -910,11 +911,11 @@ renOnly set = everywhere (mkT each) where
     e.type = e2.type
 
     e.code = let (r1, e1.vars) = e1.code in
-             let ((r2, rnew), e2.vars \ !new) =
+             let (r, e2.vars \ !new) =
                  let [!new]π       = r1 in
                  let (r2, e2.vars) = e2.code in
                    ((r2, !new), e2.vars \ !new) in
-               (r2, rnew, e.vars)
+               (r, e.vars)
 
   e ::= match e0 with
         | π1 → e1

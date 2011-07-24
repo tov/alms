@@ -189,6 +189,7 @@ interactive opt rs0 = do
           repl row' st'
     doLine st ast = do
       ast1                 <- runAlmsErrorIO (threadDecls ast)
+      when (opt Verbose) (mumble "THREADING" ast1)
       (st2, newDefs, ast2) <- runUndoIO (runAlmsErrorIO (statics (st, ast1)))
       (st3, newVals)       <- if opt Don'tExecute
                               then return (st2, empty)
