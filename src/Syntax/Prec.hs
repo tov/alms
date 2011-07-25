@@ -54,7 +54,7 @@ precDot   =  1 -- in, else, of, .
 precExSemi=  1 -- ;  (expressions only)
 precCast  =  2 -- :>
 precArr   =  3 -- ->
-precEq    =  5 -- != = < > | & $ as
+precEq    =  4 -- != = < > | & $ as
 precCaret =  5 -- ^ (infixr)
 precPlus  =  6 -- - +
 precStar  =  7 -- % / *
