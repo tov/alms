@@ -57,6 +57,9 @@ primBasis  = [
     -- Bool needs to be known to the parser for if expression
     dec [sgQ| type bool = false | true |],
 
+    -- Lists need to be known by the parser for list syntax
+    dec [sgQ| type `a list = [] | (::) of `a * `a list |],
+
     submod "INTERNALS" [
       submod "PrimTypes" [
         dec [sgQ| type unit      = type unit |],
@@ -66,6 +69,7 @@ primBasis  = [
         dec [sgQ| type unlimited = type unlimited |],
         dec [sgQ| type affine    = type affine |],
         dec [sgQ| type bool      = type bool |],
+        dec [sgQ| type list      = type list |],
         val "nilRecord" -: [ty| (unlimited, rowend) record |]
           -= MultiplicativeRecord []
       ]
@@ -74,9 +78,6 @@ primBasis  = [
     -- Sums
     dec [sgQ| type `a option = None | Some of `a |],
     dec [sgQ| type `a + `b = Left of `a | Right of `b |],
-
-    -- Lists
-    dec [sgQ| type `a list = Nil | Cons of `a * `a list |],
 
     -- Arithmetic
     binArith "+" (+),
