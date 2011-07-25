@@ -987,6 +987,11 @@ renamePatt x00 = evalStateT (loop x00) M.empty where
       x' <- loop x
       l' <- var _loc l
       return [pa|+ $x' as $vid:l' |]
+    [pa| { $uid:u = $x | $y } |] -> do
+      let u' = trivialRename u
+      x' <- loop x
+      y' <- loop y
+      return [pa|! { $uid:u' = $x' | $y' } |]
     [pa| ! $x |] -> do
       x' <- loop x
       return [pa| ! $x' |]

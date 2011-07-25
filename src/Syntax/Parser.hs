@@ -1201,12 +1201,19 @@ pattpP p = mark $ case () of
           paInj  <$> varinjp <*> pure Nothing,
           paLit  <$> litp,
           antiblep,
+          braces recordpap,
           parens (pattpP precMin <|> pure paUnit)
         ]
     | otherwise     → next
   where
   next = pattpP (p + 1)
   mark  = ("pattern" @@)
+
+recordpap ∷ Tag i ⇒ P (Patt i)
+recordpap = do
+  flds ← commaSep1 ((,) <$> llabelp <* reservedOp "=" <*> pattp)
+  ext  ← option paWild (reservedOp "|" *> pattp)
+  return (foldr (uncurry paRec) ext flds)
 
 litp :: P Lit
 litp = (<?> "literal") $ choice [

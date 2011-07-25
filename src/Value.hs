@@ -338,6 +338,7 @@ instance Valuable VRecord where
       AdditiveRecord kvs → finish "{+" ((fst &&& snd . snd) <$> kvs) "+}"
       MultiplicativeRecord kvs → finish "{" (second vppr <$> kvs) "}"
     where
+      finish lb []  rb = text lb <> text rb
       finish lb kvs rb =
         text lb <+> Ppr.fsep (Ppr.punctuate (char ',')
           [ ppr (show (uidToLid k)) <+> char '=' <+> ppr v

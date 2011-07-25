@@ -19,7 +19,7 @@ module AST (
 
   -- * Unfold syntax to lists
   unfoldExAbs, unfoldTyQu, unfoldTyMu, unfoldTyRow,
-  unfoldExApp, unfoldTyFun,
+  unfoldExApp, unfoldPaRec, unfoldTyFun,
   unfoldTupleExpr, unfoldTuplePatt, unfoldSeWith,
 ) where
 
@@ -129,6 +129,12 @@ unfoldExApp  = unscanl each where
   each e = case view e of
     ExApp e1 e2 -> Just (e2, e1)
     _           -> Nothing
+
+-- | Get the list of argument types and result type of a function type
+unfoldPaRec :: Patt i -> ([(Uid i, Patt i)], Patt i)
+unfoldPaRec  = unscanr each where
+  each (N _ (PaRec u π1 π2)) = Just ((u, π1), π2)
+  each _                     = Nothing
 
 -- | Get the list of argument types and result type of a function type
 unfoldTyFun :: Type i -> ([Type i], Type i)

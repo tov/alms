@@ -92,7 +92,8 @@ import Control.Monad.RWS.Strict ( RWST(..), runRWST, execRWST, evalRWST,
 import Control.Monad.Reader     ( MonadReader(..), ReaderT(..), mapReaderT,
                                   asks, runReader )
 import Control.Monad.State.Strict ( MonadState(..), StateT(..), evalStateT,
-                                    evalState, gets, modify, mapStateT )
+                                    execStateT, evalState, gets, modify,
+                                    mapStateT )
 import Control.Monad.Trans    ( MonadTrans(..), MonadIO(..) )
 import Control.Monad.Writer.Strict ( MonadWriter(..), WriterT(..),
                                      runWriter, execWriterT, execWriter,

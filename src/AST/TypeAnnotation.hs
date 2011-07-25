@@ -101,6 +101,7 @@ instance Tag i => HasAnnotations (Patt' i) i where
     [pa|' $x as $vid:_ |]       → afm var con cmb x
     [pa|' `$uid:_ $opt:mx |]    → afm var con cmb mx
     [pa|' $x : $t |]            → afm var con cmb (x, t)
+    [pa|' {$uid:_ = $x | $y} |] → afm var con cmb (x, y)
     [pa|' ! $x |]               → afm var con cmb x
     [pa|' $anti:a |]            → $antierror
 

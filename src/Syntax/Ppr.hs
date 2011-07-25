@@ -529,6 +529,18 @@ instance Ppr (Patt i) where
   ppr [pa| `$uid:u |]       = char '`' <> ppr u
   ppr [pa| `$uid:u $x |]    = prec precApp $
                                 char '`' <> ppr u <+> ppr1 x
+  ppr π0@[pa| { $uid:_ = $_ | $_ } |]
+                            =
+    atPrec precStart $
+      char '{' <+>
+      fsep (punctuate comma
+             [ ppr (uidToLid ui) <+> equals <+> ppr πi
+             | (ui, πi) ← flds ]
+            ++ case π2 of
+                 [pa|! _ |] → []
+                 _          → [char '|' <+> ppr π2])
+      <+> char '}'
+    where (flds, π2) = unfoldPaRec π0
   ppr [pa| ! $x |]          = prec precBang $
                                 char '!' <> ppr1 x
   ppr [pa| $x : $t |]       = prec precCast $

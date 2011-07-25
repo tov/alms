@@ -237,7 +237,7 @@ beginTranslate env0 e00 = do
       }
     --
     [ex| $e1 $e2 |]
-      | Just (_, dv_π2@(_:_)) ← expr2patt env e2
+      | Just dv_π2@(_:_) ← expr2pattVars env e2
       → do
         e1'     ← loop env funs e1
         let (latent, cod_e1_typ) = splitType (typ e1')
@@ -317,7 +317,7 @@ beginTranslate env0 e00 = do
                    [ex| $qcid:c1 $vid:r |] -*- vars e2'
         }
     [ex| let $π = $e1 in $e2 |]
-      | Just (_, dv_π1@(_:_)) ← expr2patt env e1
+      | Just dv_π1@(_:_) ← expr2pattVars env e1
       → do
         let (π', new) = patternBangRename π
             hidden    = dv_π1 ∖ (dv π ∖ new)
@@ -384,8 +384,8 @@ beginTranslate env0 e00 = do
     [ex| match $e0 with $list:cas |]
       → do
         (used, changed, rhs) ←
-          case expr2patt env e0 of
-            Just (_, dv_π0@(_:_)) →
+          case expr2pattVars env e0 of
+            Just dv_π0@(_:_) →
               return (S.fromList dv_π0, [], ren e0)
             _                     → do
               e0' ← loop env funs e0
@@ -667,6 +667,10 @@ patternBangRename = runWriter . loop False
     [pa| $π : $annot |]           → do
       π' ← loop doIt π
       return [pa| $π' : $annot |]
+    [pa| {$uid:u = $π1 | $π2} |]  → do
+      π1' ← loop doIt π1
+      π2' ← loop doIt π2
+      return [pa| { $uid:u = $π1' | $π2' } |]
     [pa| ! $π |]                  → loop True π
     [pa| $anti:a |]               → $antifail
 
@@ -680,6 +684,7 @@ patternHasBang π0 = case π0 of
   [pa| $π as $vid:_ |]          → patternHasBang π
   [pa| `$uid:_ $opt:mπ |]       → maybe False patternHasBang mπ
   [pa| $π : $_ |]               → patternHasBang π
+  [pa| {$uid:_ = $π1 | $π2} |]  → patternHasBang π1 || patternHasBang π2
   [pa| ! $_ |]                  → True
   [pa| $anti:a |]               → $antierror
 
@@ -1039,32 +1044,22 @@ r2      = ident "r2.!"
 
 -- | Transform an expression into a pattern, if possible, using only
 --   the specified variables, and return the set of variables used.
-expr2patt ∷ S.Set (VarId R) → Expr R → Maybe (Patt R, [VarId R])
-expr2patt vs0 e0 =
-  second (reverse . snd) <$> runStateT (loop e0) (vs0, [])
+expr2pattVars ∷ S.Set (VarId R) → Expr R → Maybe [VarId R]
+expr2pattVars vs0 e0 = evalStateT (loop e0) vs0
   where
   loop e = case e of
     [ex| $vid:x |]                      → do
-      (possible, seen) ← get
+      possible ← get
       if x `S.member` possible
         then do
-          put (S.delete x possible, x:seen)
-          return [pa| $vid:x |]
+          put (S.delete x possible)
+          return [x]
         else mzero
-    [ex| $lit:lit |]                    → return [pa| $lit:lit |]
-    [ex| $qcid:c $opt:me |]             → do
-      mπ ← mapM loop me
-      return [pa| $qcid:c $opt:mπ |]
-    [ex| ($e1, $e2) |]                  → do
-      π1 ← loop e1
-      π2 ← loop e2
-      return [pa| ($π1, $π2) |]
-    [ex| `$uid:c $opt:me |]             → do
-      mπ ← mapM loop me
-      return [pa| `$uid:c $opt:mπ |]
-    [ex| $e1 : $annot |]                → do
-      π ← loop e1
-      return [pa| $π : $annot |]
+    [ex| $lit:_ |]                      → return []
+    [ex| $qcid:_ $opt:me |]             → concatMapM loop me
+    [ex| ($e1, $e2) |]                  → mappend <$> loop e1 <*> loop e2
+    [ex| `$uid:_ $opt:me |]             → concatMapM loop me
+    [ex| $e1 : $_ |]                    → loop e1
     [ex| $qvid:_ |]                     → mzero
     [ex| let $_ = $_ in $_ |]           → mzero
     [ex| match $_ with $list:_ |]       → mzero
@@ -1073,30 +1068,15 @@ expr2patt vs0 e0 =
     [ex| λ $_ → $_ |]                   → mzero
     [ex| $_ $_ |]                       → mzero
     [ex| #$uid:_ $_ |]                  → mzero
-    [ex| { $list:_ | $_ } |]            → mzero -- XXX
-    [ex| {+ $list:_ | $_ +} |]          → mzero -- XXX
+    [ex| { $list:flds | $e2 } |]        → mappend <$> concatMapM loopField flds
+                                                  <*> loop e2
+    [ex| {+ $list:_ | $_ +} |]          → mzero
     [ex| $_.$uid:_ |]                   → mzero
     [ex| $anti:_ |]                     → mzero
     [ex| $_ :> $_ |]                    → mzero
-
--- | Transform a pattern to an expression.
-patt2expr :: Patt R -> Expr R
-patt2expr π0 = case π0 of
-  [pa| $vid:x |]                → [ex| $vid:x |]
-  [pa| _ |]                     → [ex| () |]
-  [pa| $qcid:x $opt:mπ |]       → [ex| $qcid:x $opt:me |]
-                                  where me = patt2expr <$> mπ
-  [pa| ($π1, $π2) |]            → [ex| ($e1, $e2) |]
-                                  where e1 = patt2expr π1
-                                        e2 = patt2expr π2
-  [pa| $lit:lit |]              → [ex| $lit:lit |]
-  [pa| $π as $vid:_ |]          → patt2expr π
-  [pa| `$uid:c $opt:mπ |]       → [ex| `$uid:c $opt:me |]
-                                  where me = patt2expr <$> mπ
-  [pa| $π : $annot |]           → [ex| $e : $annot |]
-                                  where e = patt2expr π
-  [pa| ! $π |]                  → patt2expr π
-  [pa| $anti:a |]               → $antierror
+  --
+  loopField [fdQ| $uid:_ = $ei |]       = loop ei
+  loopField [fdQ| $antiF:_ |]           = mzero
 
 ---
 --- Producing errors

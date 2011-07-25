@@ -99,6 +99,14 @@ tcPatt δ γ π0 mσ0 e0 = do
       σ  ← mσ ?≤ σ'
       loop π1 (Just σ')
       return σ
+    [pa| { $uid:u = $π1 | $π2 } |] → do
+      [_, mσRow]        ← splitCon mσ tcRecord
+      (mσ1, mσ2)        ← splitRow mσRow u
+      σ1                ← loop π1 mσ1
+      σ2                ← loop π2 (tyRecord tyUn <$> mσ2)
+      σ2'               ← newTVTy
+      tyRecord tyUn σ2' =: σ2
+      mσ ?≤ tyRecord tyUn (TyRow u σ1 σ2')
     [pa| ! $_ |]                  →
       typeBug "tcPatt" "Encountered bang (!) pattern"
     [pa| $anti:a |]               → $(AST.antifail)
@@ -142,6 +150,8 @@ isPattTotal γ = loop where
   loop [pa| $π as $vid:_ |]     = loop π
   loop [pa| `$uid:_ $opt:_ |]   = False
   loop [pa| $π : $_ |]          = loop π
+  loop [pa| { $uid:_ = $π1 | $π2 } |]
+                                = loop π1 && loop π2
   loop [pa| ! $π |]             = loop π
   loop [pa| $anti:a |]          = $(AST.antierror)
 
@@ -157,8 +167,8 @@ extractPattAnnot δ γ = loop where
     mσ2 ← loop π2
     case (mσ1, mσ2) of
       (Just σ1, Just σ2)   → return (Just (tyTuple σ1 σ2))
-      (Just σ1, Nothing)   → Just . tyTuple σ1 <$> newTVTy
       (Nothing, Just σ2)   → Just . flip tyTuple σ2 <$> newTVTy
+      (Just σ1, Nothing)   → Just . tyTuple σ1 <$> newTVTy
       (Nothing, Nothing)   → return Nothing
   loop [pa| $lit:_ |]           = return Nothing
   loop [pa| $π as $vid:_ |]     = loop π
@@ -169,6 +179,21 @@ extractPattAnnot δ γ = loop where
       Just σ  → Just . TyRow uid σ <$> newTVTy
       Nothing → return Nothing
   loop [pa| $_ : $annot |]      = Just <$> tcType δ γ annot
+  loop [pa| { $uid:uid = $π1 | $π2 } |]
+                                = do
+    mσ1 ← loop π1
+    mσ2 ← loop π2
+    case (mσ1, mσ2) of
+      (Just σ1, Just (TyApp _ [qual, σ2])) →
+        return (Just (tyRecord qual (TyRow uid σ1 σ2)))
+      (Nothing, Just (TyApp _ [qual, σ2])) → do
+        σ1 ← newTVTy
+        return (Just (tyRecord qual (TyRow uid σ1 σ2)))
+      (Just σ1, _) → do
+        qual ← newTVTy' KdQual
+        σ2   ← newTVTy
+        return (Just (tyRecord qual (TyRow uid σ1 σ2)))
+      (Nothing, _) → return Nothing
   loop [pa| ! $π |]             = loop π
   loop [pa| $anti:a |]          = $(AST.antierror)
 

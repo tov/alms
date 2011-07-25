@@ -29,7 +29,7 @@ module Type.Internal (
   tyNulOp, tyUnOp, tyBinOp,
   tyFun, tyArr, tyLol, tyTuple, tyQLit,
   tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
-  tyRowEnd, tyRowMap, tyRowHole,
+  tyRecord, tyRowEnd, tyRowMap, tyRowHole,
   (.->.), (.-*.), (.*.),
   -- *** For testing
   tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun,
@@ -340,10 +340,11 @@ tyQLit Qa = tyAf
 tyQLit Qu = tyUn
 
 -- | Binary types
-tyTuple, tyRowMap ∷ Type tv → Type tv → Type tv
+tyTuple, tyRowMap, tyRecord ∷ Type tv → Type tv → Type tv
 
 tyTuple  = tyBinOp tcTuple
 tyRowMap = tyBinOp tcRowMap
+tyRecord = tyBinOp tcRecord
 
 -- | Nullary types
 tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,

@@ -296,6 +296,12 @@ bindPatt x0 v env = case x0 of
       return (env' =+= l =:!= v)
   [pa| $x : $_ |]
     -> bindPatt x v env
+  [pa| { $uid:u = $x | $y } |]
+    -> do
+       MultiplicativeRecord fields <- vprjM v
+       (v', fields') <- extractField u fields
+       env' <- bindPatt x v' env
+       bindPatt y (vinj (MultiplicativeRecord fields')) env'
   [pa| ! $x |]
     -> bindPatt x v env
   [pa| $anti:a |]
@@ -305,6 +311,15 @@ bindPatt x0 v env = case x0 of
   where perr = fail $
                  "BUG! In bindPat, pattern match failure should " ++
                  "raise PatternMatch exception, but didn’t!"
+
+-- | Extract the first matching field from an associating list,
+-- returning the remaining list as well.
+extractField ∷ (Eq k, Monad m) =>
+             k -> [(k, v)] -> m (v, [(k, v)])
+extractField _ [] = fail "BUG! missing record field in pattern match"
+extractField k ((k',v):kvs)
+  | k == k'     = return (v, kvs)
+  | otherwise   = second ((k',v):) `liftM` extractField k kvs
 
 throwPatternMatch :: Value -> [String] -> E -> IO a
 throwPatternMatch v ps _ =

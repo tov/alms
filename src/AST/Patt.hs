@@ -2,7 +2,8 @@ module AST.Patt (
   -- * Patterns
   Patt'(..), Patt, PattNote(..), newPatt,
   -- ** Constructors
-  paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn, paBang, paAnti,
+  paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn,
+  paBang, paRec, paAnti,
   -- ** Synthetic pattern constructors
   paChar, paStr, paInt, paFloat, paUnit,
   ToPatt(..),
@@ -39,6 +40,8 @@ data Patt' i
   | PaInj (Uid i) (Maybe (Patt i))
   -- | type annotation on a pattern
   | PaAnn (Patt i) (Type i)
+  -- | record pattern
+  | PaRec (Uid i) (Patt i) (Patt i)
   -- | imperative/threaded binding
   | PaBang (Patt i)
   -- | antiquote
@@ -96,6 +99,10 @@ newPatt p0 = flip N p0 $ case p0 of
   PaAnn x _        ->
     newNote {
       pdv_    = dv x
+    }
+  PaRec _ x y      ->
+    newNote {
+      pdv_    = dv x `mappend` dv y
     }
   PaBang x         ->
     newNote {
