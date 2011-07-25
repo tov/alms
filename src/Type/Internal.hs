@@ -417,18 +417,21 @@ instance Qualifier AST.Occurrence tv where
 
 instance Ord tv ⇒ Qualifier (Type tv) tv where
   qualToType        = qualToType . qualifier
-  qualifierEnv env0 = foldTypeEnv env0 fquant fbvar ffvar fcon frow frec
+  qualifierEnv env0 = foldTypeEnv (Left <$$> env0)
+                                  fquant fbvar ffvar fcon frow frec
     where
-    fquant ∷ Quant → [(Name, QLit)] → ([QLit] → (QExpV tv → QExpV tv) → a) → a
-    frec   ∷ Name → (QLit → (QExpV tv → QExpV tv) → a) → a
-    fquant Forall αs k     = k (Qu <$ αs) bumpQExp
-    fquant Exists αs k     = k (snd <$> αs) bumpQExp
-    fbvar _ _    (Just Qu) = qlitexp Qu
-    fbvar (i,j) n _        = qvarexp (Bound i j n)
+    fquant ∷ Quant → [(Name, QLit)] →
+             ([Either QLit QLit] → (QExpV tv → QExpV tv) → a) → a
+    frec   ∷ Name → (Either QLit QLit → (QExpV tv → QExpV tv) → a) → a
+    fquant Forall αs k     = k (Right Qu <$ αs) bumpQExp
+    fquant Exists αs k     = k (Right . snd <$> αs) bumpQExp
+    fbvar _ _    (Just (Right ql)) = qlitexp ql
+    fbvar _ _    (Just (Left Qu))  = qlitexp Qu
+    fbvar (i,j) n _                = qvarexp (Bound i j n)
     ffvar                  = qvarexp . Free
     fcon tc qes            = extractQual (tcQual tc) qes
     frow _ qe1 qe2         = qe1 ⊔ qe2
-    frec _ k               = k Qu bumpQExp
+    frec _ k               = k (Right Qu) bumpQExp
     --
     bumpQExp QeA           = QeA
     bumpQExp (QeU tvs)     = QeU (S.map (bumpVar (-1)) tvs)
