@@ -131,9 +131,9 @@ pprVariantRow pre t post =
                    _ → text "of" <+> ppr1 ti
              | (ni, ti) ← sortBy (compare`on`show.fst) items ]
     end'   = case end of
-      [ty| '$x |]     → [ppr1 x]
-      [ty| $anti:a |] → [ppr1 a]
-      _               → []
+      [ty| $qtid:n |] | show n == tnRowEnd
+                      → []
+      _               → [ppr1 end]
 
 pprRecordType ∷ Type i → Doc
 pprRecordType t = case items' ++ end' of
@@ -151,9 +151,9 @@ pprRecordType t = case items' ++ end' of
     items' = [ ppr ni <> colon <+> ppr1 ti
              | (ni, ti) ← sortBy (compare`on`show.fst) items ]
     end'   = case end of
-      [ty| '$x |]     → [ppr1 x]
-      [ty| $anti:a |] → [ppr1 a]
-      _               → []
+      [ty| $qtid:n |] | show n == tnRowEnd
+                      → []
+      _               → [ppr1 end]
 
 instance Ppr (TyPat i) where
   ppr tp0 = case tp0 of

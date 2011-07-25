@@ -15,6 +15,8 @@ module Syntax.Parser (
     parseQExp, parseExpr, parsePatt,
     parseCaseAlt, parseBinding,
     parseSigExp, parseSigItem,
+  -- ** For parsing with row dots
+  withDots,
   -- * Convenience parsers (quick and dirty)
   pp, pds, pd, pme, ptd, pt, ptp, pqe, pe, px
 ) where
@@ -36,8 +38,9 @@ import qualified Text.ParserCombinators.Parsec.Error as PE
 import System.IO.Unsafe (unsafePerformIO)
 
 data St   = St {
-              stAnti  :: Bool,
-              stPos   :: SourcePos
+              stAnti  :: !Bool,
+              stPos   :: !SourcePos,
+              stDots  :: !Bool
             }
 
 instance TokenEnd St where
@@ -51,7 +54,8 @@ type P a  = CharParser St a
 state0 :: St
 state0 = St {
            stAnti  = False,
-           stPos   = toSourcePos bogus
+           stPos   = toSourcePos bogus,
+           stDots  = False
          }
 
 -- | Run a parser, given the source file name, on a given string
@@ -274,6 +278,24 @@ antilist1p sep p  = antiblep
 antilistp :: Antible a => P b -> P a -> P [a]
 antilistp  = option [] <$$> antilist1p
 
+-- | Accept or don't accept row type dots.
+withDots     :: Bool -> P a -> P a
+withDots b p  = do
+  saved  <- getState
+  setState saved { stDots = b }
+  result <- p
+  state  <- getState
+  setState state { stDots = stDots saved }
+  return result
+
+-- | Assert that we are accepting dots.
+assertDots   :: P ()
+assertDots    = do
+  state  <- getState
+  if stDots state
+    then return ()
+    else pzero
+
 -- Just uppercase identifiers
 uidp :: Tag i => P (Uid i)
 uidp  = ident <$> Lexer.uid
@@ -486,6 +508,7 @@ typepP p = "type" @@ case () of
       tyapp' [tyApp tc [t]]
     <|>
     do
+      assertDots
       ellipsis
       tyapp' [tyRowDots t]
   tyapp' ts  = do
@@ -508,6 +531,7 @@ tyrowp ∷ Tag i ⇒ P (Type i)
 tyrowp = "row type" @@
          antiblep
      <|> tyrowp1
+     <|> dotsrowp
      <|> AST.tyVar    <$> tyvarp
      <|> AST.tyRowEnd <$  whiteSpace
 
@@ -520,7 +544,11 @@ recrowp = antiblep
       <|> AST.tyRow <$> llabelp <* colon
                        <*> typepP precStart
                        <*> option AST.tyRowEnd (comma *> recrowp)
+      <|> dotsrowp
       <|> AST.tyVar <$> tyvarp
+
+dotsrowp ∷ Tag i ⇒ P (Type i)
+dotsrowp = try $ tyRowDots <$> withDots False (typepP precApp) <* ellipsis
 
 tybinopp :: Tag i => Prec -> P (Type i -> Type i -> Type i)
 tybinopp p = try $ do
@@ -726,7 +754,7 @@ tyDecp = "type declaration" @@ addLoc $ choice
   where
   -- Try to parse the right-hand side of a type synonym
   tryTySyn name ps = do
-    t    <- typep
+    t    <- withDots True typep
     alts <- many $ do
       reservedOp "|"
       tp <- typatp
@@ -736,7 +764,7 @@ tyDecp = "type declaration" @@ addLoc $ choice
           "non-matching type operators ‘" ++ show name' ++
           "’ and ‘" ++ show name ++ "’ in type pattern"
       reservedOp "="
-      ti <- typep
+      ti <- withDots True typep
       return (ps', ti)
     return (tdSyn name ((ps,t):alts))
   --

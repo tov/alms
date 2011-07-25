@@ -82,7 +82,7 @@ pa, ty, ex, dc, meQ, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ
 
 ex  = mkQuasi "ex" parseExpr
 dc  = mkQuasi "dc" parseDecl
-ty  = mkQuasi "ty" parseType
+ty  = mkQuasi "ty" (withDots True parseType)
 pa  = mkQuasi "pa" parsePatt
 meQ = mkQuasi "meQ" parseModExp
 prQ = mkQuasi "prQ" parseProg
