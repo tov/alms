@@ -76,10 +76,13 @@ instance Ppr (Type i) where
               sep [ ppr1 t1,
                     text Strings.arrowPre <> ppr0 q <>
                     text Strings.arrowPost <+> pprRight t2 ]
+  ppr [ty| U |]     = char 'U'
+  ppr [ty| A |]     = char 'A'
   ppr [ty| [ $t ] |]
                     = atPrec precStart $
                         pprVariantRow (lbrack <+>) t (<+> rbrack)
-  ppr [ty| { $t } |] = pprRecordType t
+  ppr [ty| {+ $t +} |] = pprRecordType "{+" t "+}"
+  ppr [ty| { $t } |]   = pprRecordType "{" t "}"
   ppr [ty| $t ... |] = prec precApp $ sep [ ppr t, text Strings.ellipsis ]
   ppr [ty| $t $qtid:n |]
     | show n == tnRowHole
@@ -135,25 +138,26 @@ pprVariantRow pre t post =
                       → []
       _               → [ppr1 end]
 
-pprRecordType ∷ Type i → Doc
-pprRecordType t = case items' ++ end' of
-  []   → braces mempty
+pprRecordType ∷ String → Type i → String → Doc
+pprRecordType lb t rb = case items' ++ end' of
+  []   → text lb <> text rb
   docs → atPrec precStart .
          fsep .
-         mapHead (lbrace <+>) .
+         mapHead (text lb <+>) .
          mapTail (nest 2) .
-         mapLast (<+> rbrace) .
-         mapInit (<> comma) $
+         mapLast (<+> text rb) $
            docs
   where
     (uitems, end) = unfoldTyRow t
     items         = first uidToLid <$> uitems
-    items' = [ ppr ni <> colon <+> ppr1 ti
-             | (ni, ti) ← sortBy (compare`on`show.fst) items ]
+    items' = punctuate comma
+               [ ppr ni <> colon <+> ppr1 ti
+               | (ni, ti) ← sortBy (compare`on`show.fst) items ]
     end'   = case end of
       [ty| $qtid:n |] | show n == tnRowEnd
                       → []
-      _               → [ppr1 end]
+      _               → [(if null items' then mempty else char '|')
+                         <+> ppr1 end]
 
 instance Ppr (TyPat i) where
   ppr tp0 = case tp0 of
@@ -366,6 +370,7 @@ instance Ppr (Expr i) where
   ppr e0 = case e0 of
     _ | Just doc <- pprInfix unfoldExpr e0
                        -> doc
+    [ex| { } |]        -> braces mempty -- Must come before ExVar case
     [ex| $qvid:x |]    -> ppr x
     [ex| $lit:lt |]    -> ppr lt
     [ex| $qcid:x |]    -> ppr x
@@ -427,6 +432,13 @@ instance Ppr (Expr i) where
           sep [ ppr e,
                 colon     <+> ppr t1,
                 text ":>" <+> ppr t2 ]
+    [ex| { $list:flds | $e2 } |] ->
+      pprRecord "{" flds e2 "}"
+    [ex| {+ $list:flds | $e2 +} |] ->
+      pprRecord "{+" flds e2 "+}"
+    [ex| $e . $uid:sel |] ->
+      prec precSel $
+        pprPrec precSel e <> char '.' <> ppr (uidToLid sel)
     [ex| ( $e : $t1 ) |] ->
       prec precCast $
         atPrec (precCast + 2) $
@@ -442,6 +454,20 @@ instance Ppr (Expr i) where
     unfoldExpr [ex| ($name:x $e1) $e2 |] = Just (e1, x, Just e2)
     unfoldExpr [ex| $name:x $e1 |]       = Just (e1, x, Nothing)
     unfoldExpr _                          = Nothing
+
+pprRecord    ∷ String → [Field i] → Expr i → String → Doc
+pprRecord bl flds e2 br =
+  atPrec precStart $
+    text bl <+>
+    fsep (punctuate comma (ppr <$> flds)
+          ++ case e2 of
+               [ex|! { } |] → []
+               _            → [char '|' <+> ppr e2])
+    <+> text br
+
+instance Ppr (Field i) where
+  ppr [fdQ| $uid:u = $e |] = pprLet (ppr (uidToLid u)) e False
+  ppr [fdQ| $antiF:a |]    = ppr a
 
 pprBinding :: String -> Binding i -> Doc
 pprBinding kw [bnQ| $lid:x = $e |] = pprLet (text kw <+> ppr x) e True

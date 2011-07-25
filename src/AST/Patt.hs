@@ -4,7 +4,7 @@ module AST.Patt (
   -- ** Constructors
   paWild, paVar, paCon, paPair, paLit, paAs, paInj, paAnn, paBang, paAnti,
   -- ** Synthetic pattern constructors
-  paChar, paStr, paInt, paFloat,
+  paChar, paStr, paInt, paFloat, paUnit,
   ToPatt(..),
 ) where
 
@@ -122,6 +122,9 @@ paInt  = paLit . LtInt . toInteger
 
 paFloat :: Tag i => Double -> Patt i
 paFloat  = paLit . LtFloat
+
+paUnit :: Tag i => Patt i
+paUnit  = paCon idUnitVal Nothing
 
 class ToPatt a i | a → i where
   toPatt ∷ a → Patt i

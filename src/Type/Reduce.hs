@@ -41,15 +41,18 @@ headNormalizeTypeK k0 σ0 = loop k0 (reductionSequence σ0) where
   loop k (_:σs) = loop (k - 1) σs
 
 -- | Given two types, try to reduce them to a pair with a common
---   head constructor.
+--   head constructor.  We assume that the two types given don't
+--   match in the head already.
 matchReduce ∷ Ord tv ⇒ Type tv → Type tv → Maybe (Type tv, Type tv)
 matchReduce σ1 σ2 =
   List.find isCandidate
-            (allPairsBFS (majorReductionSequence σ1)
-                         (majorReductionSequence σ2))
+            (safeTail (allPairsBFS (majorReductionSequence σ1)
+                                   (majorReductionSequence σ2)))
   where
     isCandidate (TyApp tc _, TyApp tc' _) = tc == tc'
     isCandidate _                         = True
+    safeTail []     = []
+    safeTail (_:σs) = σs
 
 -- | Returns all pairs of a pair of lists, breadth first
 allPairsBFS ∷ [a] → [b] → [(a, b)]
@@ -64,9 +67,6 @@ allPairsBFS xs0 ys0 = loop [(xs0, ys0)] where
 majorReductionSequence ∷ Ord tv ⇒ Type tv → [Type tv]
 majorReductionSequence = clean . reductionSequence where
   clean []        = []
-  clean (TyApp tc _:σ:σs)
-    | tc == tcRowMap
-                  = clean (σ:σs)
   clean (σ:σs)    = σ : cleanWith σ σs
   cleanWith σ@(TyApp tc _) ((TyApp tc' _) : σs)
     | tc == tc'  = cleanWith σ σs

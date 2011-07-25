@@ -216,7 +216,7 @@ maybeGen ∷ MonadConstraint tv r m ⇒
            AST.Expr R → Request tv → Γ tv → Type tv → m (Type tv)
 maybeGen e0 φ γ σ = do
   let value = AST.syntacticValue e0
-  traceN 4 ("maybeGen", value, φ, γ, σ)
+  traceN 4 ("maybeGen", value, φ, σ)
   checkEscapingEx φ
   (if rqAll φ then generalize value (Rank.inc (rankΓ γ)) else return)
     >=>

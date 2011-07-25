@@ -13,7 +13,7 @@ module Syntax.Parser (
   parseProg, parseRepl, parseDecls, parseDecl, parseModExp,
     parseTyDec, parseAbsTy, parseType, parseTyPat,
     parseQExp, parseExpr, parsePatt,
-    parseCaseAlt, parseBinding,
+    parseCaseAlt, parseBinding, parseField,
     parseSigExp, parseSigItem,
   -- ** For parsing with row dots
   withDots,
@@ -342,8 +342,6 @@ lidnatp = ident <$> (Lexer.lid <|> show <$> natural)
 typidp :: Tag i => P (TypId i)
 typidp  = antiblep
       <|> TypId <$> (lidnatp <|> operatorp)
-      <|> ident "A" <$ qualA
-      <|> ident "U" <$ qualU
   <?> "type constructor"
 
 -- Infix type identifiers
@@ -390,6 +388,8 @@ pathp p = (antiblep <|>) . try $ do
 -- Qualified type identifiers
 qtypidp :: Tag i => P (QTypId i)
 qtypidp  = pathp (flip J <$> typidp)
+       <|> qident tnAf <$ qualA
+       <|> qident tnUn <$ qualU
   <?> "(qualified) type constructor"
 
 -- Qualified variable occurrences
@@ -492,8 +492,8 @@ typepP p = "type" @@ case () of
   tyatom  = tyVar <$> tyvarp
         <|> tyApp <$> qtypidp <*> pure []
         <|> antiblep
-        <|> variantp
-        <|> recordp
+        <|> varianttyp
+        <|> recordtyp
         <|> parens (typepP precMin)
         <|> do
               ops <- many1 $ addLoc $
@@ -517,9 +517,11 @@ typepP p = "type" @@ case () of
   --
   next = typepP (p + 1)
 
-variantp ∷ Tag i ⇒ P (Type i)
-variantp = AST.tyVariant <$> brackets tyrowp
+-- A variant type
+varianttyp ∷ Tag i ⇒ P (Type i)
+varianttyp = AST.tyVariant <$> brackets tyrowp
 
+-- A non-empty type row, in variant style
 tyrowp1 ∷ Tag i ⇒ P (Type i)
 tyrowp1 = AST.tyRow <$> varinjp
                        <*> option AST.tyUnit
@@ -527,28 +529,35 @@ tyrowp1 = AST.tyRow <$> varinjp
                        <*> option AST.tyRowEnd
                              (reservedOp "|" *> tyrowp)
 
+-- A possibly empty type row, in variant style
 tyrowp ∷ Tag i ⇒ P (Type i)
 tyrowp = "row type" @@
          antiblep
      <|> tyrowp1
-     <|> dotsrowp
-     <|> AST.tyVar    <$> tyvarp
+     <|> extensionp
      <|> AST.tyRowEnd <$  whiteSpace
 
-recordp ∷ Tag i ⇒ P (Type i)
-recordp = AST.tyRecord <$$> braces $
-  recrowp <|> AST.tyRowEnd <$ whiteSpace
+-- A record type
+recordtyp ∷ Tag i ⇒ P (Type i)
+recordtyp = AST.tyRecordAdditive <$>
+              plusbraces (recrowp <|> pure AST.tyRowEnd)
+        <|> AST.tyRecordMultiplicative <$>
+              braces (recrowp <|> pure AST.tyRowEnd)
 
+-- A type row in record style
 recrowp ∷ Tag i ⇒ P (Type i)
 recrowp = antiblep
       <|> AST.tyRow <$> llabelp <* colon
                        <*> typepP precStart
-                       <*> option AST.tyRowEnd (comma *> recrowp)
-      <|> dotsrowp
-      <|> AST.tyVar <$> tyvarp
+                       <*> option AST.tyRowEnd
+                             (comma *> recrowp
+                          <|> reservedOp "|" *> extensionp)
+      <|> extensionp
 
-dotsrowp ∷ Tag i ⇒ P (Type i)
-dotsrowp = try $ tyRowDots <$> withDots False (typepP precApp) <* ellipsis
+-- A row extension variable or dot form
+extensionp ∷ Tag i ⇒ P (Type i)
+extensionp = try (tyRowDots <$> withDots False (typepP precApp) <* ellipsis)
+         <|> AST.tyVar <$> tyvarp 
 
 tybinopp :: Tag i => Prec -> P (Type i -> Type i -> Type i)
 tybinopp p = try $ do
@@ -869,8 +878,8 @@ typatpP p = "type pattern" @@ case () of
   tpatom  = tpvar
         <|> tpApp <$> qtypidp <*> pure []
         <|> antiblep
-        <|> tpApp (qident "U") [] <$ qualU
-        <|> tpApp (qident "A") [] <$ qualA
+        <|> tpApp (qident tnUn) [] <$ qualU
+        <|> tpApp (qident tnAf) [] <$ qualA
         <|> tpvariant
         <|> tprecord
         <|> parens (typatpP precMin)
@@ -1074,6 +1083,8 @@ exprpP p = mark $ case () of
           exEmb <$> varembp <*> next,
           chainl1 next (addLoc (return exApp))
         ]
+    | p == precSel    → do
+        foldl' exSel <$> next <*> many (dot *> llabelp)
     | p == precBang   → do
         ops <- many $ addLoc $ exBVar <$> varopp (Right precBang)
         arg <- next
@@ -1086,7 +1097,8 @@ exprpP p = mark $ case () of
           exCon <$> qconidp <*> pure Nothing,
           exLit <$> litp,
           antiblep,
-          parens (exprpP precMin <|> pure (exBCon (ident "()") Nothing))
+          parens (exprpP precMin <|> pure exUnit),
+          recordp
         ]
     | Just (Left _) <- fixities p ->
         chainl1last next (opappp (Left p)) exprp
@@ -1096,6 +1108,28 @@ exprpP p = mark $ case () of
   where
   next = exprpP (p + 1)
   mark = ("expression" @@)
+
+-- | Parse a record expression
+recordp :: Tag i ⇒ P (Expr i)
+recordp  = plusbraces (recordbodyp True <|> pure exNilRecord)
+       <|> braces (recordbodyp False <|> pure exNilRecord)
+
+-- | Parse a record expression body
+recordbodyp :: Tag i => Bool → P (Expr i)
+recordbodyp additive = "record field" @@ do
+   fields ← antilist1p comma fieldp
+   end    ← reservedOp "|" *> exprp
+        <|> pure exNilRecord
+   return (exRec additive fields end)
+
+-- | Parse a record field
+fieldp :: Tag i ⇒ P (Field i)
+fieldp  = "record field" @@ antiblep <|>
+  fdField <$> llabelp
+          <*> (buildargsp
+                <*> (buildannotp
+                      <*  reservedOp "="
+                      <*> exprp))
 
 -- Parse a match clause
 casealtp :: Tag i => P (CaseAlt i)
@@ -1167,7 +1201,7 @@ pattpP p = mark $ case () of
           paInj  <$> varinjp <*> pure Nothing,
           paLit  <$> litp,
           antiblep,
-          parens (pattpP precMin <|> pure (paCon (qident "()") Nothing))
+          parens (pattpP precMin <|> pure paUnit)
         ]
     | otherwise     → next
   where
@@ -1217,6 +1251,8 @@ parsePatt     :: Tag i => P (Patt i)
 parseCaseAlt  :: Tag i => P (CaseAlt i)
 -- | Parse a let rec binding
 parseBinding  :: Tag i => P (Binding i)
+-- | Parse a record field
+parseField    :: Tag i => P (Field i)
 -- | Parse a signature
 parseSigExp   :: Tag i => P (SigExp i)
 -- | Parse a signature item
@@ -1236,6 +1272,7 @@ parseExpr      = finish exprp
 parsePatt      = finish pattp
 parseCaseAlt   = finish casealtp
 parseBinding   = finish bindingp
+parseField     = finish fieldp
 parseSigExp    = finish sigexpp
 parseSigItem   = finish sigitemp
 

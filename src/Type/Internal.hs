@@ -251,8 +251,9 @@ tcTuple      = internalTC (-11) "*"     (qvarexp 0 ⊔ qvarexp 1)
 tcRowEnd     = internalTC (-12) "rowend"
 tcVariant    = internalTC (-13) "variant" (qvarexp 0)
                                           [(Covariant, Qa, False)]
-tcRecord     = internalTC (-14) "record"  (qvarexp 0)
-                                          [(Covariant, Qa, False)]
+tcRecord     = internalTC (-14) "record"  (qvarexp 1)
+                                          [(QCovariant, Qa, False),
+                                           (Covariant, Qa, False)]
 tcRowMap     = internalTC (-15) "rowmap#"  (qvarexp 0 ⊔ qvarexp 1)
                                            [(Covariant, Qa, False),
                                            (Invariant, Qa, False)]

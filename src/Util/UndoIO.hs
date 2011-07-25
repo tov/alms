@@ -17,8 +17,6 @@ import Control.Monad
 import Control.Monad.Trans
 import Data.IORef
 
-import Debug.Trace
-
 -- | A layer on top of the IO monad with an undo facility.
 newtype UndoIO a
   = UndoIO {

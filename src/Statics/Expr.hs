@@ -41,7 +41,7 @@ infer  ∷ MonadConstraint tv r m ⇒
          Request tv → Δ tv → Γ tv → AST.Expr R → Maybe (Type tv) →
          m (AST.Expr R, Type tv)
 infer φ0 δ γ e0 mσ0 = do
-  traceN 1 (TraceIn ("infer", φ0, γ, e0, mσ0))
+  traceN 1 (TraceIn ("infer", φ0, e0, mσ0))
   mσ ← mapM subst mσ0
   let φ = maybe id prenexFlavors mσ φ0
   σ ← withLocation e0 $ case e0 of
@@ -170,6 +170,22 @@ infer φ0 δ γ e0 mσ0 = do
       σ'                ← maybeGen e0 φ γ (tyUnOp tcVariant (TyRow c σ1 σ2'))
       return ([ex| #$uid:c $e1' |], σ')
     --
+    [ex| { $list:flds | $e2 } |] → do
+      (flds', e2', σ') ← inferRecordExp False e0 φ δ γ flds e2 mσ
+      return ([ex| { $list:flds' | $e2' } |], σ')
+    [ex| {+ $list:flds | $e2 +} |] → do
+      (flds', e2', σ') ← inferRecordExp True e0 φ δ γ flds e2 mσ
+      return ([ex| {+ $list:flds' | $e2' +} |], σ')
+    --
+    [ex| $e1 . $uid:u |] → do
+      (([e1'], σ), αs)  ← collectTVs $ do
+        σField            ← newTVTy
+        σRow              ← newTVTy
+        let σSel = tyBinOp tcRecord tyAf (TyRow u σField σRow) `tyLol` σField
+        inferApp δ γ σSel [e1]
+      σ'                ← maybeInstGen e0 (request φ γ αs) γ σ
+      return ([ex| $e1' . $uid:u |], σ')
+    --
     [ex| $e : $annot |]         → do
       σ                 ← tcType δ γ annot
       (e', αs)          ← collectTVs . withPinnedTVs σ $ do
@@ -187,12 +203,44 @@ infer φ0 δ γ e0 mσ0 = do
   traceN 1 (TraceOut ("infer", σ))
   return σ
 
+-- | Infer the type of a record expression.
+inferRecordExp ∷ MonadConstraint tv r m ⇒
+                 Bool → AST.Expr R →
+                 Request tv → Δ tv → Γ tv →
+                 [AST.Field R] → AST.Expr R → Maybe (Type tv) →
+                 m ([AST.Field R], AST.Expr R, Type tv)
+inferRecordExp bqual e0 φ δ γ flds e2 mσ = do
+  let qual = if bqual then tyAf else tyUn
+  [_, mσRow]         ← splitCon mσ tcRecord
+  let eachFld mσRow' [fdQ| $uid:ui = $ei |] = do
+        when bqual . tassert (AST.syntacticValue ei) $
+          [msg|
+            In an additive-record expression, all fields must be syntactic
+            values:
+            <dl>
+              <dt>field:      <dd>$1
+              <dt>expression: <dd>$5:ei
+            </dl>
+          |] (AST.uidToLid ui)
+        (mσi, mσRow'')  ← splitRow mσRow' ui
+        (ei', σi)       ← infer request δ γ ei mσi
+        tell ([[fdQ| $uid:ui = $ei' |]], Endo (TyRow ui σi))
+        return mσRow''
+      eachFld _      [fdQ| $antiF:a |] = $(AST.antifail)
+  (mσ2, (flds', σs)) ← runWriterT (foldM eachFld mσRow flds)
+  (e2', σ2)          ← infer request δ γ e2 (tyBinOp tcRecord qual <$> mσ2)
+  σRow               ← newTVTy
+  σ2 <: tyBinOp tcRecord qual σRow
+  σ'                 ← maybeGen e0 φ γ
+                         (tyBinOp tcRecord qual (appEndo σs σRow))
+  return (flds', e2', σ')
+
 -- | Infer the type of an n-ary application expression
 inferApp ∷ MonadConstraint tv r m ⇒
            Δ tv → Γ tv → Type tv → [AST.Expr R] →
            m ([AST.Expr R], Type tv)
 inferApp δ γ ρ e1n = do
-  traceN 2 (TraceIn ("inferApp", γ, ρ, e1n))
+  traceN 2 (TraceIn ("inferApp", ρ, e1n))
   (σ1m, σ)              ← funmatchN (length e1n) ρ
   refs                  ← replicateM (length σ1m) (newRef Nothing)
   withPinnedTVs ρ $

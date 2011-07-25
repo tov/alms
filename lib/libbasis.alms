@@ -4,9 +4,10 @@ module INTERNALS = struct
     type variant = type variant
     type record  = type record
     type rowend  = type rowend
-    type U       = type U
-    type A       = type A
+    type unlimited = type unlimited
+    type affine    = type affine
     type bool    = type bool
+    let nilRecord = nilRecord
   end
 
   module Exn = struct

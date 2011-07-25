@@ -806,6 +806,18 @@ renameExpr e00 = withAnnotationTVs e00 $ loop e00 where
       e1' <- loop e1
       e2' <- loop e2
       return [ex|+ $e1' $e2' |]
+    [ex| { $list:flds | $e2 } |] -> do
+      flds' <- mapM renameField flds
+      e2'   <- loop e2
+      return [ex|+ { $list:flds' | $e2' } |]
+    [ex| {+ $list:flds | $e2 +} |] -> do
+      flds' <- mapM renameField flds
+      e2'   <- loop e2
+      return [ex|+ {+ $list:flds' | $e2' +} |]
+    [ex| $e1.$uid:u |] -> do
+      let u' = trivialRename u
+      e1' <- loop e1
+      return [ex|+ $e1'.$uid:u' |]
     [ex| ( $e : $t) |] -> do
       e'  <- loop e
       t'  <- renameType t
@@ -861,6 +873,14 @@ renameBindings bns = withAnnotationTVs bns $ withLocation bns $ do
               e'  <- renameExpr e
               return [bnQ|+ $vid:x' = $e' |]
   return (bns', md)
+
+-- | Rename a record field
+renameField :: Field Raw → R (Field Renamed)
+renameField [fdQ| $uid:u = $e |] = do
+  let u' = trivialRename u
+  e' ← renameExpr e
+  return [fdQ|+ $uid:u' = $e' |]
+renameField [fdQ| $antiF:a |] = $antifail
 
 -- | Rename a type
 renameType :: Type Raw -> R (Type Renamed)

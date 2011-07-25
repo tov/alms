@@ -185,6 +185,7 @@ test_g0 = mempty
   =+= AST.ident "rowend"        =:= tcRowEnd
   =+= AST.ident "variant"       =:= tcVariant
   =+= AST.ident "record"        =:= tcRecord
+    =+= AST.ident "nilRecord"     =:= TyApp tcRecord [tyUn, tyRowEnd]
   =+= AST.ident "rowmap"        =:= tcRowMap
   =+= AST.ident "rowhole"       =:= tcRowHole
   =+= AST.ident "option"        =:= tcOption
@@ -199,4 +200,3 @@ test_g0 = mempty
   =+= AST.ident "x"             =:= tyInt
   =+= AST.ident "bot"           =:= TyQu Forall [(Nope, Qa)] (bvTy 0 0 Nope)
   =+= AST.ident "botU"          =:= TyQu Forall [(Nope, Qu)] (bvTy 0 0 Nope)
-

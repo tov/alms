@@ -10,7 +10,7 @@ module Syntax.Lexer (
   opP,
   semis, bang, star,
   pragma,
-  lolli, arrow, funbraces,
+  lolli, arrow, funbraces, plusbraces,
   lambda, forall, exists, mu,
   qualbox,
   qualU, qualA, qjoin, qjoinArr, ellipsis,
@@ -44,8 +44,8 @@ tok = T.makeTokenParser T.LanguageDef {
     T.nestedComments = True,
     T.identStart     = noλμ $ upper <|> lower <|> oneOf "_",
     T.identLetter    = alphaNum <|> oneOf "_'′₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹ᵢⱼₐₑₒₓⁱⁿ",
-    T.opStart        = satisfy isOpStart,
-    T.opLetter       = satisfy isOpLetter,
+    T.opStart        = satisfy isOpStart <|> plusNoBrace,
+    T.opLetter       = satisfy isOpLetter <|> plusNoBrace,
     T.reservedNames  = ["fun", "λ",
                         "if", "then", "else",
                         "match", "with", "as", "_",
@@ -58,16 +58,17 @@ tok = T.makeTokenParser T.LanguageDef {
                         "all", "ex", "mu", "μ", "of",
                         "type", "qualifier" ],
     T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
-                         "∀", "∃", "⋁", "\\/", "...", "…" ],
+                         "∀", "∃", "⋁", "\\/", "...", "…", "{+", "+}" ],
     T.caseSensitive = True
   }
   -- 'λ' is not an identifier character, so that we can use it as
   -- a reserved operator. Otherwise, we'd need a space after it.
-  where noλμ p = notFollowedBy (char 'λ' <|> char 'μ') *> p
+  where noλμ p      = notFollowedBy (char 'λ' <|> char 'μ') *> p
+        plusNoBrace = char '+' <* notFollowedBy (char '}')
 
 isOpStart, isOpLetter :: Char -> Bool
 isOpStart c
-  | isAscii c = c `elem` "!$%&*+-/<=>?@^|~"
+  | isAscii c = c `elem` "!$%&*-/<=>?@^|~"
   | otherwise = case generalCategory c of
       ConnectorPunctuation  -> True
       DashPunctuation       -> True
@@ -80,7 +81,7 @@ isOpStart c
       ClosePunctuation      -> True
       _                     -> False
 isOpLetter c
-  | isAscii c = c `elem` "!$%&*+-/<=>?@^|~.:"
+  | isAscii c = c `elem` "!$%&*-/<=>?@^|~.:"
   | otherwise = case generalCategory c of
       ConnectorPunctuation  -> True
       DashPunctuation       -> True
@@ -209,6 +210,10 @@ oldFunbraceRight    = () <$ try (symbol "]>")
 funbraces       :: T.TokenEnd st => CharParser st a -> CharParser st a
 funbraces        = liftM2 (<|>) (between oldFunbraceLeft oldFunbraceRight)
                                 (between funbraceLeft funbraceRight)
+
+-- | Curly braces with + symbols
+plusbraces      :: T.TokenEnd st => CharParser st a -> CharParser st a
+plusbraces       = between (try (symbol "{+")) (try (symbol "+}"))
 
 -- | The left part of the $|[_]$ annotation
 qualboxLeft     :: T.TokenEnd st => CharParser st ()

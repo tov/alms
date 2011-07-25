@@ -9,6 +9,8 @@ module Value (
   Vinj(..), VExn(..),
   -- *** Exception IDs
   ExnId(..),
+  -- ** Records
+  VRecord(..),
 
   -- * Utilities for algebraic data types
   enumTypeDecl,
@@ -20,9 +22,10 @@ import qualified Data.Char as Char
 import Data.Generics
 
 import Util
-import AST (Type, Renamed, Id(..), Uid, ConId)
+import AST (Type, Renamed, Id(..), Uid, ConId, uidToLid)
 import Syntax.Ppr (Doc, text, Ppr(..), hang, sep, char, (<>), (<+>),
             prec, prec1, ppr1, atPrec, precCom, precApp)
+import qualified Syntax.Ppr as Ppr
 
 import qualified Control.Exception as Exn
 
@@ -311,6 +314,38 @@ data ExnId i = ExnId {
 
 instance Eq (ExnId Renamed) where
   ei == ei'  =  eiName ei == eiName ei'
+
+--
+-- Representation of records
+--
+
+data VRecord
+  = AdditiveRecord [(Uid Renamed, (IO Value, Doc))]
+  | MultiplicativeRecord [(Uid Renamed, Value)]
+  deriving Typeable
+
+instance Valuable VRecord where
+  veq (MultiplicativeRecord kvs0) (MultiplicativeRecord kvs0') =
+    loop (sortFst kvs0) (sortFst kvs0')
+    where
+    sortFst = List.sortBy (compare`on`fst)
+    loop []          []             = True
+    loop ((k,v):kvs) ((k',v'):kvs') = k == k' && veq v v' && loop kvs kvs'
+    loop _           _              = False
+  veq _ _ = False
+  vppr record =
+    case record of
+      AdditiveRecord kvs → finish "{+" ((fst &&& snd . snd) <$> kvs) "+}"
+      MultiplicativeRecord kvs → finish "{" (second vppr <$> kvs) "}"
+    where
+      finish lb kvs rb =
+        text lb <+> Ppr.fsep (Ppr.punctuate (char ',')
+          [ ppr (show (uidToLid k)) <+> char '=' <+> ppr v
+          | (k, v) ← kvs ])
+        <+> text rb
+
+instance Ppr VRecord where ppr = vppr
+instance Show VRecord where showsPrec = Ppr.showFromPpr
 
 -- nasty syb stuff
 

@@ -15,7 +15,7 @@ import qualified Data.Map as M
 import qualified Language.Haskell.TH as TH
 
 litAntis, pattAntis,
-  exprAntis, bindingAntis, caseAltAntis,
+  exprAntis, bindingAntis, caseAltAntis, fieldAntis,
   typeAntis, tyPatAntis, quantAntis, qExpAntis, tyVarAntis,
   declAntis, tyDecAntis, absTyAntis, modExpAntis,
   sigExpAntis, sigItemAntis,
@@ -46,6 +46,9 @@ bindingAntis
 caseAltAntis
   = "case"   =:  Nothing
   & "antiC"  =:< 'CaAnti
+fieldAntis
+  = "field"  =:  Nothing
+  & "antiF"  =:< 'FdAnti
 typeAntis
   = "type"   =:! Nothing
   & "anti"   =:< 'TyAnti
@@ -151,6 +154,7 @@ syntaxTable =
   , ''Expr    =:: 'ExAnti    $: 'exprAntis    !: 'newExpr    >: (''Tag, [0])
   , ''Binding =:: 'BnAnti    $: 'bindingAntis !: 'newBinding >: (''Tag, [0])
   , ''CaseAlt =:: 'CaAnti    $: 'caseAltAntis !: 'newCaseAlt >: (''Tag, [0])
+  , ''Field   =:: 'FdAnti    $: 'fieldAntis   !: 'newField   >: (''Tag, [0])
   , ''Type    =:: 'TyAnti    $: 'typeAntis    !: 'newN
   , ''TyPat   =:: 'TpAnti    $: 'tyPatAntis   !: 'newN
   , ''Quant   =:: 'QuantAnti $: 'quantAntis

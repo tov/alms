@@ -1,6 +1,6 @@
 module Meta.Quasi (
   pa, ty, ex, dc,
-  prQ, tdQ, atQ, caQ, bnQ, meQ, qeQ, tpQ, seQ, sgQ,
+  prQ, tdQ, atQ, caQ, bnQ, fdQ, meQ, qeQ, tpQ, seQ, sgQ,
 ) where
 
 import Meta.QuoteData
@@ -77,7 +77,7 @@ mkvarP n   = TH.varP (TH.mkName n)
 --- Quasiquoters
 ---
 
-pa, ty, ex, dc, meQ, prQ, tdQ, atQ, caQ, bnQ, qeQ, tpQ, seQ, sgQ
+pa, ty, ex, dc, meQ, prQ, tdQ, atQ, caQ, bnQ, fdQ, qeQ, tpQ, seQ, sgQ
   :: QuasiQuoter
 
 ex  = mkQuasi "ex" parseExpr
@@ -90,6 +90,7 @@ tdQ = mkQuasi "tdQ" parseTyDec
 atQ = mkQuasi "atQ" parseAbsTy
 caQ = mkQuasi "caQ" parseCaseAlt
 bnQ = mkQuasi "bnQ" parseBinding
+fdQ = mkQuasi "fdQ" parseField
 qeQ = mkQuasi "qeQ" parseQExp
 tpQ = mkQuasi "tpQ" parseTyPat
 seQ = mkQuasi "seQ" parseSigExp

@@ -80,17 +80,17 @@ infix 4 -==+
 -- for it.
 nextRedex ∷ Tag i ⇒ QVarId i → Expr i → Bool
 nextRedex x = loop where
-  loop2 e1 e2 = loop e1
-             || syntacticValue e1
-                && x `M.notMember` fv e1
-                && loop e2
+  e1 >*> b2 = loop e1
+           || syntacticValue e1
+              && x `M.notMember` fv e1
+              && b2
   loop e = case e of
     [ex| $qvid:x' |]            → x == x'
     [ex| $lit:_ |]              → False
     [ex| $qcid:_ $opt:me |]     → maybe False loop me
     [ex| let $vid:x' = $e1 in $e2 |]
       | J [] x' == x            → loop e1
-      | otherwise               → loop2 e1 e2
+      | otherwise               → e1 >*> loop e2
     [ex| let $_ = $e1 in $_ |]  → loop e1
     [ex| match $e0 with $list:_ |]
                                 → loop e0
@@ -99,11 +99,16 @@ nextRedex x = loop where
                                && x ∉ qdv bns
                                && loop e2
     [ex| let $decl:_ in $_ |]   → False
-    [ex| ($e1, $e2) |]          → loop2 e1 e2
+    [ex| ($e1, $e2) |]          → e1 >*> loop e2
     [ex| λ $_ → $_ |]           → False
-    [ex| $e1 $e2 |]             → loop2 e1 e2
+    [ex| $e1 $e2 |]             → e1 >*> loop e2
     [ex| `$uid:_ $opt:me2 |]    → maybe False loop me2
     [ex| #$uid:_ $e2 |]         → loop e2
+    [ex| { $list:flds | $e2 } |]
+                                → foldr (>*>) (loop e2)
+                                        (fdexpr . view <$> flds)
+    [ex| {+ $list:_ | $e2 +} |] → loop e2
+    [ex| $e1.$uid:_ |]          → loop e1
     [ex| $e1 : $_ |]            → loop e1
     [ex| $e1 :> $_ |]           → loop e1
     [ex| $anti:a |]             → $antierror
@@ -164,6 +169,16 @@ substExpr e' x' = loop where
       where me2' = loop <$> me2
     [ex| #$uid:c $e2 |]         → [ex| #$uid:c $e2' |]
       where e2' = loop e2
+    [ex| { $list:flds | $e2 } |]
+                                → [ex| { $list:flds' | $e2' } |]
+      where flds' = substField e' x' <$> flds
+            e2'   = loop e2
+    [ex| {+ $list:flds | $e2 +} |]
+                                → [ex| {+ $list:flds' | $e2' +} |]
+      where flds' = substField e' x' <$> flds
+            e2'   = loop e2
+    [ex| $e1.$uid:u |]          → [ex| $e1'.$uid:u |]
+      where e1' = loop e1
     [ex| $e1 : $annot |]        → [ex| $e1' : $annot |]
       where e1' = loop e1
     [ex| $e1 :> $annot |]       → [ex| $e1' : $annot |]
@@ -198,6 +213,12 @@ substBinding e' x' bn = case bn of
                 $ avoidCapture [ x | J [] x ← M.keys (fv e') ]
                                x' f e2
   [bnQ| $antiB:_ |]             → bn
+
+substField ∷ Tag i ⇒ Expr i → QVarId i → Field i → Field i
+substField e' x' fld = case fld of
+  [fdQ| $uid:u = $e2 |] → [fdQ| $uid:u = $e2' |]
+    where e2' = substExpr e' x' e2
+  [fdQ| $antiF:_ |]     → fld
 
 -- | Given a list of names not to capture, the variable being
 --  substituted, a pattern, and an expression

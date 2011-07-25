@@ -509,7 +509,11 @@ subtypeTypes unify = check where
       decomp τ1 (openTy 0 [τ2] τ2')
     _ | Just (τ1', τ2') ← matchReduce τ1 τ2 →
       check τ1' τ2'
-      | otherwise →
+    (TyApp tc1 [τ11, τ12], TyApp tc2 [τ21, τ22])
+      | tc1 == tcRowMap && tc2 == tcRowMap → do
+        check τ11 τ21
+        check τ12 τ22
+    _ | otherwise →
       tErrExp
         (if unify
            then [msg| Cannot unify: |]

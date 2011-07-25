@@ -16,6 +16,7 @@ module AST.Type (
   -- ** Convenience constructors
   tyArr, tyLol,
   tyAll, tyEx,
+  tyRecordAdditive, tyRecordMultiplicative,
 
   -- * Miscellany
   dumpType
@@ -100,8 +101,8 @@ tnRowDots      = "rowdots#"
 tnRowMap       = "rowmap#"
 tnRowHole      = "rowhole#"
 tnTuple        = "INTERNALS.PrimTypes.*"
-tnUn           = "INTERNALS.PrimTypes.U"
-tnAf           = "INTERNALS.PrimTypes.A"
+tnUn           = "INTERNALS.PrimTypes.unlimited"
+tnAf           = "INTERNALS.PrimTypes.affine"
 
 --- Convenience constructors
 
@@ -140,7 +141,7 @@ tyRowEnd       = tyAppN tnRowEnd
 tyVariant     :: Tag i => Type i -> Type i
 tyVariant      = tyAppN tnVariant
 
-tyRecord      :: Tag i => Type i -> Type i
+tyRecord      :: Tag i => Type i -> Type i -> Type i
 tyRecord       = tyAppN tnRecord
 
 tyRowDots     :: Tag i => Type i -> Type i
@@ -160,6 +161,10 @@ tyUn           = tyAppN tnUn
 
 tyAf          :: Tag i => Type i
 tyAf           = tyAppN tnAf
+
+tyRecordAdditive, tyRecordMultiplicative :: Tag i => Type i -> Type i
+tyRecordAdditive       = tyRecord tyAf
+tyRecordMultiplicative = tyRecord tyUn
 
 ---
 --- Debugging

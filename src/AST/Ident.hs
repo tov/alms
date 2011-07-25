@@ -23,6 +23,9 @@ module AST.Ident (
   isOperator, uidToLid, lidToUid,
   -- * Fresh names
   tvalphabet, freshName, freshNames,
+  -- * Build-in names
+  idUnitVal, idNilRecord,
+  internalPath, internalName, internalIdent,
   -- * Free and defined vars
   Occurrence, occToQLit,
   FvMap, Fv(..), Dv(..), ADDITIVE(..),
@@ -462,6 +465,28 @@ freshNames (pn:pns) avoid cands =
    in n' : freshNames pns (n':avoid) cands
 
 ---
+--- SOME BUILT-IN NAMES
+---
+
+{-# INLINE internalPath #-}
+internalPath  ∷ String
+internalPath  = "INTERNALS.PrimTypes"
+
+{-# INLINE internalName #-}
+internalName  ∷ String → String
+internalName  = (internalPath ++) . ('.':)
+
+{-# INLINE internalIdent #-}
+internalIdent ∷ (Id a, Tag i) ⇒ String → Q a i
+internalIdent = qident . internalName
+
+idUnitVal   ∷ Tag i ⇒ QConId i
+idNilRecord ∷ Tag i ⇒ QVarId i
+
+idUnitVal   = internalIdent "()"
+idNilRecord = internalIdent "nilRecord"
+
+---
 --- FREE VARIABLES and OCCURRENCE ANALYSIS
 ---
 
@@ -492,7 +517,7 @@ instance Dv (VarId i) i  where dv a = [a]
 instance Dv (QVarId i) i where qdv a = [a]
 
 instance Fv a i => Fv [a] i where
-  fv = foldr (|+|) M.empty . map fv
+  fv = foldr (|*|) M.empty . map fv
 
 instance Dv a i => Dv [a] i where
   qdv = concatMap qdv

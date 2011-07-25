@@ -110,6 +110,14 @@ threadCaseAlt ca0 = case ca0 of
     return [caQ| #$uid:c $opt:mπ → $e' |]
   [caQ| $antiC:a |] → $antifail
 
+threadField ∷ ThreadTrans (Field R)
+threadField fd0 = case fd0 of
+  [fdQ| $uid:u = $e |]
+    → do
+    e' ← threadExpr e
+    return [fdQ| $uid:u = $e' |]
+  [fdQ| $antiF:a |] → $antifail
+
 threadExpr ∷ ThreadTrans (Expr R)
 threadExpr e = case e of
   [ex| $qvid:_ |]               → return e
@@ -171,6 +179,20 @@ threadExpr e = case e of
     → do
     e2'         ← threadExpr e2
     return [ex| #$uid:c $e2' |]
+  [ex| { $list:flds | $e2 } |]
+    → do
+    flds'       ← mapM threadField flds
+    e2'         ← threadExpr e2
+    return [ex| { $list:flds' | $e2' } |]
+  [ex| {+ $list:flds | $e2 +} |]
+    → do
+    flds'       ← mapM threadField flds
+    e2'         ← threadExpr e2
+    return [ex| {+ $list:flds' | $e2' +} |]
+  [ex| $e1.$uid:u |]
+    → do
+    e1'         ← threadExpr e1
+    return [ex| $e1'.$uid:u |]
   [ex| $e1 : $annot |]
     → do
     e1'         ← threadExpr e1
@@ -246,7 +268,7 @@ beginTranslate env0 e00 = do
       → do
         e1'     ← loop env funs e1
         e2'     ← loop env funs e2
-        assertCapture e2' "operand of an application expression" e2
+        assertNotFun e2' "operand of an application expression" e2
         let (latent, cod_e1_typ) = splitType (typ e1')
             e_vars = toList (vars e1' ∪ vars e2' ∪ latent)
         return S {
@@ -287,7 +309,7 @@ beginTranslate env0 e00 = do
     [ex| $qcid:c1 $e2 |]
       → do
         e2' ← loop env funs e2
-        assertCapture e2' "argument of a data constructor" e2
+        assertNotFun e2' "argument of a data constructor" e2
         return S {
           vars = vars e2',
           typ  = [],
@@ -335,7 +357,7 @@ beginTranslate env0 e00 = do
                        <<@ _loc
               }
           _ → do
-              assertCapture e1' "right-hand side of a let expression" e1
+              assertNotFun e1' "right-hand side of a let expression" e1
               let (π', new)     = patternBangRename π
                   e2_env        = env ∪ new
               e2'               ← loop e2_env funs e2
@@ -367,7 +389,7 @@ beginTranslate env0 e00 = do
               return (S.fromList dv_π0, [], ren e0)
             _                     → do
               e0' ← loop env funs e0
-              assertCapture e0' "expression in match" e0
+              assertNotFun e0' "expression in match" e0
               return (emptySet, vars e0', code e0')
         let decompose [caQ|@=loc $πi → $ei |]
                     = let (πi', newi) = patternBangRename πi
@@ -443,8 +465,8 @@ beginTranslate env0 e00 = do
       → do
         e1' ← loop env funs e1
         e2' ← loop env funs e2
-        assertCapture e1' "tuple component" e1
-        assertCapture e2' "tuple component" e2
+        assertNotFun e1' "tuple component" e1
+        assertNotFun e2' "tuple component" e2
         let e_vars = vars e1' ∪ vars e2'
         return S {
           vars  = e_vars,
@@ -462,7 +484,7 @@ beginTranslate env0 e00 = do
     [ex| `$uid:c1 $e2 |]
       → do
         e2' ← loop env funs e2
-        assertCapture e2' "argument of a variant constructor" e2
+        assertNotFun e2' "argument of a variant constructor" e2
         return S {
           vars = vars e2',
           typ  = [],
@@ -472,12 +494,60 @@ beginTranslate env0 e00 = do
     [ex| #$uid:c1 $e2 |]
       → do
         e2' ← loop env funs e2
-        assertCapture e2' "argument of a variant embedding" e2
+        assertNotFun e2' "argument of a variant embedding" e2
         return S {
           vars = vars e2',
           typ  = [],
           code = exLet' (r -*- vars e2') e2 $
                    [ex| #$uid:c1 $vid:r |] -*- vars e2'
+        }
+    [ex| { $list:flds1 | $e2 } |]
+      → let eachField [] =
+              withLocation e2 $ do
+                e2' ← loop env funs e2
+                assertNotFun e2' "record in extension expression" e2
+                return e2'
+            eachField ([fdQ|@=loci $uid:ui = $ei |]:flds) =
+              withLocation loci $ do
+                ei'       ← loop env funs ei
+                flds'     ← eachField flds
+                assertNotFun ei' "field of record" ei
+                let each_vars = vars ei' ∪ vars flds'
+                return S {
+                  vars = each_vars,
+                  typ  = [],
+                  code = exLet' (r1 -*- vars ei') (code ei') $
+                         exLet' (r2 -*- vars flds') (code flds') $
+                           [ex| { $uid:ui = $vid:r1 | $vid:r2 } |]
+                             -*- each_vars
+                }
+            eachField ([fdQ|! $antiF:a |]:_) = $antifail
+         in eachField flds1
+    [ex| {+ $list:flds1 | $e2 +} |]
+      → do
+        sequence_
+          [ withLocation loci $ do
+              ei' ← loop env funs ei
+              assertNotFun ei' "field of record" ei
+              assertNoCapture ei' "Additive-record field"
+          | [fdQ|@=loci $uid:_ = $ei |] ← flds1 ]
+        e2' ← loop env funs e2
+        assertNotFun e2' "record in extension expression" e2
+        assertNoCapture e2' "Additive-record in extension expression"
+        return S {
+          vars = [],
+          typ  = [],
+          code = e
+        }
+    [ex| $e1.$uid:u |]
+      → do
+        e1' ← loop env funs e1
+        assertNotFun e1' "record in selector expression" e1
+        return S {
+          vars = vars e1',
+          typ  = [],
+          code = exLet' (r1 -*- vars e1') (code e1') $
+                   [ex| $vid:r1.$uid:u |] -*- vars e1'
         }
     [ex| $e1 : $annot |]
       → do
@@ -1003,6 +1073,9 @@ expr2patt vs0 e0 =
     [ex| λ $_ → $_ |]                   → mzero
     [ex| $_ $_ |]                       → mzero
     [ex| #$uid:_ $_ |]                  → mzero
+    [ex| { $list:_ | $_ } |]            → mzero -- XXX
+    [ex| {+ $list:_ | $_ +} |]          → mzero -- XXX
+    [ex| $_.$uid:_ |]                   → mzero
     [ex| $anti:_ |]                     → mzero
     [ex| $_ :> $_ |]                    → mzero
 
@@ -1024,12 +1097,6 @@ patt2expr π0 = case π0 of
                                   where e = patt2expr π
   [pa| ! $π |]                  → patt2expr π
   [pa| $anti:a |]               → $antierror
-
-exUnit :: Expr R
-exUnit  = [ex|! () |]
-
-paUnit :: Patt R
-paUnit  = [pa|! () |]
 
 ---
 --- Producing errors
@@ -1067,9 +1134,9 @@ bassert False m = bangError m
 --   indicating that the term it belongs to hasn't captured any bang
 --   vars.  Also takes a description of the role of the term and the
 --   term itself.
-assertCapture   ∷ (MonadAlmsError m, Ppr.Ppr a, Ppr.Ppr b) ⇒ 
+assertNotFun   ∷ (MonadAlmsError m, Ppr.Ppr a, Ppr.Ppr b) ⇒ 
                   Synth → a → b → m ()
-assertCapture e' =
+assertNotFun e' =
   bassert (null (typ e')) <$$>
     [msg|
       In implicit threading syntax expansion, the $2 cannot be a
@@ -1081,3 +1148,14 @@ assertCapture e' =
     |]
     (fromOpt [] (typ e'))
 
+assertNoCapture ∷ (MonadAlmsError m, Ppr.Ppr a) ⇒
+                  Synth → a → m ()
+assertNoCapture e' =
+  bassert (null (vars e')) <$>
+    [msg|
+      $2 may not capture implicitly threaded variables:
+      <dl>
+        <dt>captures: <dd>$1
+      </dl>
+    |]
+    (vars e')

@@ -208,7 +208,9 @@ intrinsicNames = first tcId <$>
     (tcRecord,   AST.tnRecord),
     (tcRowEnd,   AST.tnRowEnd),
     (tcRowHole,  AST.tnRowHole),
-    (tcRowMap,   AST.tnRowMap) ]
+    (tcRowMap,   AST.tnRowMap),
+    (tcUn,       AST.tnUn),
+    (tcAf,       AST.tnAf) ]
 
 -- | Find the best name to refer to a type constructor.
 --   The goal here is to get the shortest unambiguous name.

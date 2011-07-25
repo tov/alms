@@ -219,6 +219,33 @@ valOf e env = case e of
       _         -> runtimeBug "valOf" $
         "applied non-function ‘" ++ show v1 ++
         "’ to argument ‘" ++ show v2 ++ "’"
+  [ex| { $list:flds | $e2 } |] -> do
+    newFields ← sequence
+      [ (ui,) <$> valOf ei env
+      | [fdQ|! $uid:ui = $ei |] ← flds ]
+    v2 ← valOf e2 env
+    MultiplicativeRecord oldFields ← vprjM v2
+    return . vinj $ MultiplicativeRecord (newFields ++ oldFields)
+  [ex| {+ $list:flds | $e2 +} |] -> do
+    let newFields = [ (ui, (valOf ei env, ppr ei))
+                    | [fdQ|! $uid:ui = $ei |] ← flds ]
+    v2     ← valOf e2 env
+    record ← vprjM v2
+    let oldFields = case record of
+          AdditiveRecord olds       → olds
+          MultiplicativeRecord olds →
+            [ (ui, (return vi, ppr vi)) | (ui, vi) ← olds ]
+    return . vinj $ AdditiveRecord (newFields ++ oldFields)
+  [ex| $e1.$uid:u |]             -> do
+    v1     ← valOf e1 env
+    record ← vprjM v1
+    case record of
+      AdditiveRecord flds       → case lookup u flds of
+        Just (mv, _) → mv
+        Nothing      → runtimeBug "valOf" "missing record field (&)"
+      MultiplicativeRecord flds → case lookup u flds of
+        Just v  → return v
+        Nothing → runtimeBug "valOf" "missing record field (⊗)"
   [ex| ( $e1 : $_ ) |]           -> valOf e1 env
   [ex| ( $_ :> $_ ) |]           -> runtimeBug "valOf" $
       "TODO: Cast is unimplemented" -- XXX

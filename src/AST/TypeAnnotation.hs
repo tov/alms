@@ -120,6 +120,11 @@ instance Tag i ⇒ HasAnnotations (Expr' i) i where
     [ex|' $e1 $e2 |]            → afm var con cmb (e1, e2)
     [ex|' `$uid:_ $opt:me |]    → afm var con cmb me
     [ex|' #$uid:_ $e |]         → afm var con cmb e
+    [ex|' { $list:flds | $e2 } |]
+                                → afm var con cmb (flds, e2)
+    [ex|' {+ $list:flds | $e2 +} |]
+                                → afm var con cmb (flds, e2)
+    [ex|' $e1.$uid:_ |]         → afm var con cmb e1
     [ex|' $e : $t |]            → afm var con cmb (e, t)
     [ex|' $e :> $t |]           → afm var con cmb (e, t)
     [ex|' $anti:a |]            → $antierror
@@ -135,3 +140,8 @@ instance Tag i ⇒ HasAnnotations (Binding' i) i where
   annotFtvMap var con cmb bn0 = case bn0 of
     [bnQ|' $lid:_ = $e |]       → afm var con cmb  e
     [bnQ|' $antiB:a |]          → $antierror
+
+instance Tag i ⇒ HasAnnotations (Field' i) i where
+  annotFtvMap var con cmb bn0 = case bn0 of
+    [fdQ|' $uid:_ = $e |]       → afm var con cmb  e
+    [fdQ|' $antiF:a |]          → $antierror

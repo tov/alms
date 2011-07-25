@@ -5,7 +5,7 @@ module Basis (
 
 import Util
 import BasisUtils
-import Value (Valuable(..), Value(..))
+import Value (Valuable(..), Value(..), VRecord(..))
 import AST
 import Type
 
@@ -37,26 +37,30 @@ primBasis  = [
     --- name    -: type -= value
 
     -- Primitive types:
-    "unit"   `primtype` tcUnit,
-    "exn"    `primtype` tcExn,
-    "int"    `primtype` tcInt,
-    "char"   `primtype` tcChar,
-    "float"  `primtype` tcFloat,
-    "string" `primtype` tcString,
-    "U"      `primtype` tcUn,
-    "A"      `primtype` tcAf,
-    "*"      `primtype` tcTuple,
-    "record" `primtype` tcRecord,
-    "variant"`primtype` tcVariant,
-    "rowend" `primtype` tcRowEnd,
-    "rowdots#" `primtype` tcRowDots, -- Needed by renamer
-    "\\/"    `primtype` tcJoin,
-    "->"     `primtype` tcFun,
+    "unit"      `primtype` tcUnit,
+    "exn"       `primtype` tcExn,
+    "int"       `primtype` tcInt,
+    "char"      `primtype` tcChar,
+    "float"     `primtype` tcFloat,
+    "string"    `primtype` tcString,
+    "unlimited" `primtype` tcUn,
+    "affine"    `primtype` tcAf,
+    "*"         `primtype` tcTuple,
+    "record"    `primtype` tcRecord,
+    "variant"   `primtype` tcVariant,
+    "rowend"    `primtype` tcRowEnd,
+    "rowdots#"  `primtype` tcRowDots, -- Needed by renamer
+    "\\/"       `primtype` tcJoin,
+    "->"        `primtype` tcFun,
 
     -- Sums
     dec [sgQ| type bool = false | true |],
     dec [sgQ| type `a option = None | Some of `a |],
     dec [sgQ| type `a + `b = Left of `a | Right of `b |],
+
+    -- The empty record
+    val "nilRecord" -: [ty| (unlimited, rowend) record |]
+      -= MultiplicativeRecord [],
 
     -- Lists
     dec [sgQ| type `a list = Nil | Cons of `a * `a list |],

@@ -7,7 +7,7 @@ module Syntax.Prec (
   -- * Precedences for reserved operators needed by the parser
   precMin, precStart, precMax, precCast,
   precCom, precDot, precExSemi, precTySemi, precEq, precCaret, precArr,
-  precPlus, precStar, precAt, precApp, precBang,
+  precPlus, precStar, precAt, precApp, precBang, precSel,
 ) where
 
 import Data.Char
@@ -46,7 +46,7 @@ precOp ""             = Left precApp
 
 precMin, precStart, precMax, precCast,
   precCom, precDot, precExSemi, precTySemi, precEq, precCaret, precArr,
-  precPlus, precStar, precAt, precApp, precBang :: Int
+  precPlus, precStar, precAt, precApp, precSel, precBang :: Int
 precMin   = -1
 precCom   = -1 -- ,
 precStart =  0 -- includes "|" for row types
@@ -61,8 +61,9 @@ precStar  =  7 -- % / *
 precTySemi=  8 -- ; "\\/" "⋁" (types only)
 precAt    =  9 -- @ ** (infixr)
 precApp   = 10 -- f x
-precBang  = 11 -- ! ~ ? (prefix)
-precMax   = 11
+precSel   = 11 -- record selection
+precBang  = 12 -- ! ~ ? (prefix)
+precMax   = 12
 
 {-# INLINE fixities #-}
 -- To find out the fixity of a precedence level

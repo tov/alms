@@ -4,20 +4,23 @@ module AST.Expr (
   -- ** Letrec and case
   Binding'(..), Binding, newBinding,
   CaseAlt'(..), CaseAlt, newCaseAlt,
+  Field'(..), Field, newField,
 
   -- * Two-level expression constructors
   -- | These fill in the source location field based on the
   -- subexpressions and perform the free variable analysis
   -- | variables
   exVar, exLit, exCon, exLet, exCase, exLetRec, exLetDecl,
-  exPair, exAbs, exApp, exInj, exEmb, exCast, exAnti,
+  exPair, exAbs, exApp, exInj, exEmb, exCast, exRec, exSel, exAnti,
 
   caClause, caPrj, caAnti,
   bnBind, bnAnti,
+  fdField, fdAnti,
   -- ** Synthetic expression constructors
   exBVar, exBCon,
   exChar, exStr, exInt, exFloat,
   exSeq,
+  exUnit, exNilRecord,
   ToExpr(..),
 
   -- * Expression accessors and updaters
@@ -42,6 +45,7 @@ import qualified Data.Map as M
 type Expr i    = N (ExprNote i) (Expr' i)
 type Binding i = N (ExprNote i) (Binding' i)
 type CaseAlt i = N (ExprNote i) (CaseAlt' i)
+type Field i   = N (ExprNote i) (Field' i)
 
 -- | The underlying expression type, which we can pattern match without
 -- dealing with the common fields above.
@@ -70,6 +74,11 @@ data Expr' i
   | ExInj (Uid i) (Maybe (Expr i))
   -- | open variant embedding
   | ExEmb (Uid i) (Expr i)
+  -- | record extension
+  --   (@True@ means additive rather than multiplicative records)
+  | ExRec Bool [Field i] (Expr i)
+  -- | record lookup
+  | ExSel (Expr i) (Uid i)
   -- | dynamic promotion (True) or static type ascription (False)
   | ExCast (Expr i) (Type i) Bool
   -- | antiquotes
@@ -99,6 +108,16 @@ data CaseAlt' i
     }
   -- | Antiquote
   | CaAnti Anti
+  deriving (Typeable, Data)
+
+data Field' i
+  -- | Normal match clauses
+  = FdField {
+      fdsel  :: Uid i,
+      fdexpr :: Expr i
+    }
+  -- | Antiquote
+  | FdAnti Anti
   deriving (Typeable, Data)
 
 -- | The annotation on every expression
@@ -155,7 +174,7 @@ newExpr e0 = flip N e0 $ case e0 of
   ExLetRec bns e2 ->
     newNote {
       efv_  = let vs  = map (J [] . bnvar . dataOf) bns
-                  pot = fv e2 |+| fv bns
+                  pot = fv e2 |*| fv bns
               in foldl (|-|) pot vs,
       eloc_ = getLoc (bns, e2)
     }
@@ -188,6 +207,21 @@ newExpr e0 = flip N e0 $ case e0 of
     newNote {
       efv_  = fv e2,
       eloc_ = getLoc e2
+    }
+  ExRec True flds e2 ->
+    newNote {
+      efv_  = fv (ADDITIVE flds) |*| fv e2,
+      eloc_ = getLoc (flds, e2)
+    }
+  ExRec False flds e2 ->
+    newNote {
+      efv_  = fv flds |*| fv e2,
+      eloc_ = getLoc (flds, e2)
+    }
+  ExSel e1 _ ->
+    newNote {
+      efv_  = fv e1,
+      eloc_ = getLoc e1
     }
   ExCast e1 t2 _ ->
     newNote {
@@ -228,9 +262,22 @@ newCaseAlt ca0 = flip N ca0 $ case ca0 of
       efv_  = antierror "fv" a
     }
 
+newField :: Tag i => Field' i -> Field i
+newField f0 = flip N f0 $ case f0 of
+  FdField _ e ->
+    newNote {
+      efv_  = fv e,
+      eloc_ = getLoc e
+    }
+  FdAnti a ->
+    newNote {
+      efv_  = antierror "fv" a
+    }
+
 deriveNotable 'newExpr    (''Tag, [0]) ''Expr
 deriveNotable 'newCaseAlt (''Tag, [0]) ''CaseAlt
 deriveNotable 'newBinding (''Tag, [0]) ''Binding
+deriveNotable 'newField   (''Tag, [0]) ''Field
 
 exBVar :: Tag i => VarId i -> Expr i
 exBVar  = exVar . J []
@@ -252,6 +299,10 @@ exFloat  = exLit . LtFloat
 
 exSeq :: Tag i => Expr i -> Expr i -> Expr i
 exSeq e1 e2 = exLet paWild e1 e2
+
+exUnit, exNilRecord :: Tag i => Expr i
+exUnit      = exCon idUnitVal Nothing
+exNilRecord = exVar idNilRecord
 
 class ToExpr a i | a → i where
   toExpr ∷ a → Expr i
@@ -298,6 +349,11 @@ syntacticValue e = case view e of
   ExApp _ _      → False
   ExInj _ me     → maybe True syntacticValue me
   ExEmb _ e1     → syntacticValue e1
+  ExRec b flds e2
+                 → b ||
+                   (and [ syntacticValue ei | FdField _ ei ← view <$> flds ]
+                    && syntacticValue e2)
+  ExSel _ _      → False
   ExCast e1 _ b  → syntacticValue e1 && not b
   ExAnti a       → antierror "syntacticValue" a
 
@@ -320,6 +376,8 @@ isAnnotated e = case view e of
   ExApp _ _      → False
   ExInj _ _      → False
   ExEmb _ _      → False
+  ExRec _ _ _    → False
+  ExSel _ _      → False
   ExCast _ _ _   → True
   ExAnti a       → antierror "syntacticValue" a
 

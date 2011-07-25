@@ -99,8 +99,8 @@ tcPatt δ γ π0 mσ0 e0 = do
       σ  ← mσ ?≤ σ'
       loop π1 (Just σ')
       return σ
-    [pa| ! $_ |]                  → do
-      typeBug "tcPatt" "TODO: Bang patterns not yet implemented" -- XXX
+    [pa| ! $_ |]                  →
+      typeBug "tcPatt" "Encountered bang (!) pattern"
     [pa| $anti:a |]               → $(AST.antifail)
   --
   occOf n  = fromMaybe 0 (M.lookup (J [] n) (AST.fv e0))
