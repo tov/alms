@@ -1,14 +1,5 @@
 module INTERNALS = struct
-  module PrimTypes = struct
-    type unit    = type unit
-    type variant = type variant
-    type record  = type record
-    type rowend  = type rowend
-    type unlimited = type unlimited
-    type affine    = type affine
-    type bool    = type bool
-    let nilRecord = nilRecord
-  end
+  module PrimTypes = INTERNALS.PrimTypes
 
   module Exn = struct
     open Prim.Exn
@@ -173,6 +164,9 @@ let (⇒) = (=>!)
 
 let (←) = (<-)
 let (⇐) = (<-!)
+
+type (|->)  = type Prim.Row.(|->)
+let rowCase = Prim.Row.rowCase
 
 module Exn      = INTERNALS.Exn
 module Contract = INTERNALS.Contract

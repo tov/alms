@@ -19,6 +19,7 @@ import qualified Basis.Channel
 import qualified Basis.MVar
 import qualified Basis.Future
 import qualified Basis.Array
+import qualified Basis.Row
 
 import qualified IO
 import qualified System.Environment as Env
@@ -53,14 +54,26 @@ primBasis  = [
     "\\/"       `primtype` tcJoin,
     "->"        `primtype` tcFun,
 
-    -- Sums
+    -- Bool needs to be known to the parser for if expression
     dec [sgQ| type bool = false | true |],
+
+    submod "INTERNALS" [
+      submod "PrimTypes" [
+        dec [sgQ| type unit      = type unit |],
+        dec [sgQ| type variant   = type variant |],
+        dec [sgQ| type record    = type record |],
+        dec [sgQ| type rowend    = type rowend |],
+        dec [sgQ| type unlimited = type unlimited |],
+        dec [sgQ| type affine    = type affine |],
+        dec [sgQ| type bool      = type bool |],
+        val "nilRecord" -: [ty| (unlimited, rowend) record |]
+          -= MultiplicativeRecord []
+      ]
+    ],
+
+    -- Sums
     dec [sgQ| type `a option = None | Some of `a |],
     dec [sgQ| type `a + `b = Left of `a | Right of `b |],
-
-    -- The empty record
-    val "nilRecord" -: [ty| (unlimited, rowend) record |]
-      -= MultiplicativeRecord [],
 
     -- Lists
     dec [sgQ| type `a list = Nil | Cons of `a * `a list |],
@@ -200,7 +213,8 @@ primBasis  = [
     submod "Prim" [
       submod "Socket" Basis.Socket.entries,
       submod "Exn"    Basis.Exn.entries,
-      submod "Array"  Basis.Array.entries
+      submod "Array"  Basis.Array.entries,
+      submod "Row"     Basis.Row.entries
     ]
   ]
 

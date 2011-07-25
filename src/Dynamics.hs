@@ -4,6 +4,8 @@ module Dynamics (
   E, addVal, addMod, NewValues,
   -- * Dynamic API
   eval, addDecls, Result,
+  -- * Throwing exceptions
+  throwFailure,
   -- * Re-export to remove warning (!)
   -- | We need to import Quasi for the TH phase, but using it at the
   --   TH phase isn't sufficient to prevent an unused import warning.
@@ -331,6 +333,12 @@ throwBadLetRec :: String -> IO a
 throwBadLetRec v =
   throw VExn {
     exnValue = VaCon (ident "UninitializedLetRec") (Just (vinj v))
+  }
+
+throwFailure :: String -> IO a
+throwFailure v =
+  throw VExn {
+    exnValue = VaCon (ident "Failure") (Just (vinj v))
   }
 
 runtimeBug :: String -> String -> IO a

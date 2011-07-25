@@ -22,13 +22,13 @@ module BasisUtils (
   MkFun(..), baseMkFun, vapp,
 
   -- * Re-exports
-  text, Id(..),
+  text, Id(..), throwFailure,
   module Meta.Quasi,
 ) where
 
 import Util
 import Util.MonadRef
-import Dynamics (E, addVal, addMod)
+import Dynamics (E, addVal, addMod, throwFailure)
 import Env (GenEmpty(..), domain)
 import Error (MonadAlmsError, almsBug, throwAlms, Phase(DynamicsPhase))
 import Meta.Quasi
