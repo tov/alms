@@ -21,7 +21,7 @@ instance Tv tv ⇒ Viewable (Type tv) where
   view = headNormalizeTypeK 1000
 
 -- | Reduce a type to head normal form
-headNormalizeType ∷ Type tv → Type tv
+headNormalizeType ∷ Ord tv ⇒ Type tv → Type tv
 headNormalizeType = last . reductionSequence
 
 -- | Allow @k0@ steps to reduce a type to head normal form, or call
@@ -42,7 +42,7 @@ headNormalizeTypeK k0 σ0 = loop k0 (reductionSequence σ0) where
 
 -- | Given two types, try to reduce them to a pair with a common
 --   head constructor.
-matchReduce ∷ Type tv → Type tv → Maybe (Type tv, Type tv)
+matchReduce ∷ Ord tv ⇒ Type tv → Type tv → Maybe (Type tv, Type tv)
 matchReduce σ1 σ2 =
   List.find isCandidate
             (allPairsBFS (majorReductionSequence σ1)
@@ -61,23 +61,26 @@ allPairsBFS xs0 ys0 = loop [(xs0, ys0)] where
 
 -- | A major reduction sequence is a reduction sequence filtered
 --   to show only changes in the head constructor.
-majorReductionSequence ∷ Type tv → [Type tv]
+majorReductionSequence ∷ Ord tv ⇒ Type tv → [Type tv]
 majorReductionSequence = clean . reductionSequence where
   clean []        = []
+  clean (TyApp tc _:σ:σs)
+    | tc == tcRowMap
+                  = clean (σ:σs)
   clean (σ:σs)    = σ : cleanWith σ σs
   cleanWith σ@(TyApp tc _) ((TyApp tc' _) : σs)
     | tc == tc'  = cleanWith σ σs
   cleanWith _ σs = clean σs
 
 -- | The reduction sequence of a type
-reductionSequence ∷ Type tv → [Type tv]
+reductionSequence ∷ Ord tv ⇒ Type tv → [Type tv]
 reductionSequence σ = (σ:) $ case headReduceType σ of
   Next σ' → reductionSequence σ'
   _       → []
 
 -- | The reduction sequence of a type along with a final status
 --   indicator
-reductionSequence' ∷ Type tv → ([Type tv], ReductionState ())
+reductionSequence' ∷ Ord tv ⇒ Type tv → ([Type tv], ReductionState ())
 reductionSequence' σ = first (σ:) $ case headReduceType σ of
   Next σ' → reductionSequence' σ'
   rs      → ([], () <$ rs)
@@ -98,12 +101,14 @@ data ReductionState t
   deriving (Eq, Ord, Show, Functor, Typeable, Data)
 
 -- | Perform one head reduction step.
-headReduceType ∷ Type tv → ReductionState (Type tv)
+headReduceType ∷ Ord tv ⇒ Type tv → ReductionState (Type tv)
 headReduceType σ0 = case σ0 of
   TyQu _ _ _  → Done
   TyVar _     → Done
   TyRow _ _ _ → Done
   TyMu _ σ    → Next $ openTy 0 [σ0] σ
+  TyApp tc [σ1, σ2] | tc == tcRowMap
+              → applyRowMap σ1 σ2
   TyApp tc σs → maybe Done (clauses tc σs) (tcNext tc)
   where
   --
@@ -130,6 +135,21 @@ headReduceType σ0 = case σ0 of
     _             → case headReduceType σ of
       Done            → Left Stuck
       rs              → Left rs
-  patt (TpRow _)      _           = throw $
-    almsBug StaticsPhase "headReduceType"
-      "Row patterns are not yet implemented."
+  patt (TpRow _)      σ           = Right [σ]
+
+applyRowMap ∷ Ord tv ⇒ Type tv → Type tv → ReductionState (Type tv)
+applyRowMap σcxt σarg = case σarg of
+  TyRow lab σ1 σ2
+    → Next $ TyRow lab (plugHole σcxt σ1) (tyRowMap σcxt σ2)
+  TyApp tc [] | tc == tcRowEnd
+    → Next tyRowEnd
+  _ → tyRowMap σcxt <$> headReduceType σarg
+
+plugHole         ∷ Ord tv ⇒ Type tv → Type tv → Type tv
+plugHole σcxt σ' = foldType (mkQuF TyQu) (mkBvF bvTy) fvTy fcon
+                            TyRow (mkMuF TyMu) σcxt
+  where
+    fcon tc σs =
+      if tc == tcRowHole
+        then σ'
+        else TyApp tc σs

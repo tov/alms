@@ -29,6 +29,7 @@ module Type.Internal (
   tyNulOp, tyUnOp, tyBinOp,
   tyFun, tyArr, tyLol, tyTuple, tyQLit,
   tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
+  tyRowEnd, tyRowMap, tyRowHole,
   (.->.), (.-*.), (.*.),
   -- *** For testing
   tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun,
@@ -252,13 +253,13 @@ tcVariant    = internalTC (-13) "variant" (qvarexp 0)
                                           [(Covariant, Qa, False)]
 tcRecord     = internalTC (-14) "record"  (qvarexp 0)
                                           [(Covariant, Qa, False)]
-tcRowMap     = internalTC (-15) "rowmap"  (qvarexp 0 ⊔ qvarexp 1)
-                                          [(Covariant, Qa, False),
+tcRowMap     = internalTC (-15) "rowmap#"  (qvarexp 0 ⊔ qvarexp 1)
+                                           [(Covariant, Qa, False),
                                            (Invariant, Qa, False)]
-tcRowDots    = internalTC (-16) "rowdots" (qvarexp 0)
-                                          [(Covariant, Qa, True)]
-tcRowHole    = internalTC (-17) "rowhole" (qvarexp 0)
-                                          [(Covariant, Qa, True)]
+tcRowDots    = internalTC (-16) "rowdots#" (qvarexp 0)
+                                           [(Covariant, Qa, True)]
+tcRowHole    = internalTC (-17) "rowhole#" (qvarexp 0)
+                                           [(Covariant, Qa, True)]
 
 -- Types for testing
 
@@ -332,16 +333,20 @@ tyArr = tyFun <-> Qu
 tyLol ∷ Type tv → Type tv → Type tv
 tyLol = tyFun <-> Qa
 
--- | The pair type
-tyTuple ∷ Type tv → Type tv → Type tv
-
 -- | Type from a 'QLit'
 tyQLit ∷ QLit → Type tv
 tyQLit Qa = tyAf
 tyQLit Qu = tyUn
 
+-- | Binary types
+tyTuple, tyRowMap ∷ Type tv → Type tv → Type tv
+
+tyTuple  = tyBinOp tcTuple
+tyRowMap = tyBinOp tcRowMap
+
 -- | Nullary types
-tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn ∷ Type tv
+tyAf, tyUn, tyUnit, tyInt, tyChar, tyFloat, tyString, tyExn,
+  tyRowEnd, tyRowHole ∷ Type tv
 
 tyAf     = tyNulOp tcAf
 tyUn     = tyNulOp tcUn
@@ -351,7 +356,8 @@ tyChar   = tyNulOp tcChar
 tyFloat  = tyNulOp tcFloat
 tyString = tyNulOp tcString
 tyExn    = tyNulOp tcExn
-tyTuple  = tyBinOp tcTuple
+tyRowEnd = tyNulOp tcRowEnd
+tyRowHole= tyNulOp tcRowHole
 
 (.*.), (.->.), (.-*.) ∷ Type tv → Type tv → Type tv
 (.*.)    = tyTuple

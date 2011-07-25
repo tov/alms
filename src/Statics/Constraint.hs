@@ -483,7 +483,7 @@ subtypeTypes unify = check where
       | αs1 == αs2 →
       check τ1' τ2'
     (TyApp tc1 τs1, TyApp tc2 τs2)
-      | tc1 == tc2 && length τs1 == length τs2 →
+      | tc1 == tc2 && tc1 /= tcRowMap && length τs1 == length τs2 →
       sequence_
         [ if unify
             then if isQVariance var
@@ -493,8 +493,6 @@ subtypeTypes unify = check where
         | var ← tcArity tc1
         | τ1' ← τs1
         | τ2' ← τs2 ]
-      | Just (τ1', τ2') ← matchReduce τ1 τ2 →
-      check τ1' τ2'
     (TyRow n1 τ11 τ12, TyRow n2 τ21 τ22)
       | n1 == n2 → do
         check τ11 τ21
@@ -509,7 +507,9 @@ subtypeTypes unify = check where
       decomp (openTy 0 [τ1] τ1') τ2
     (_, TyMu _ τ2') →
       decomp τ1 (openTy 0 [τ2] τ2')
-    _ →
+    _ | Just (τ1', τ2') ← matchReduce τ1 τ2 →
+      check τ1' τ2'
+      | otherwise →
       tErrExp
         (if unify
            then [msg| Cannot unify: |]
