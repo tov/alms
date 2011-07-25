@@ -21,8 +21,8 @@ module Type.Internal (
   abstractTyCon, mkTC,
   -- ** Built-in
   tcUnit, tcInt, tcChar, tcFloat, tcString, tcExn, tcTuple, tcFun,
-  tcUn, tcAf, tcJoin, tcRowEnd, tcRecord, tcVariant, tcRowDots,
-  tcRowHole,
+  tcUn, tcAf, tcJoin, tcRowEnd, tcRecord, tcVariant, tcRowMap,
+  tcRowDots, tcRowHole,
   -- ** Convenient constructors and projections
   fvTy, bvTy, fromFreeTV,
   -- ** Pre-constructed types
@@ -226,7 +226,7 @@ internalTC i s = mkTC i (AST.J [] (AST.identT (AST.Ren_ i) s))
 
 tcUnit, tcInt, tcChar, tcFloat, tcString,
   tcExn, tcUn, tcAf, tcJoin, tcTuple, tcFun,
-  tcRowEnd, tcRecord, tcVariant, tcRowDots, tcRowHole ∷ TyCon
+  tcRowEnd, tcRecord, tcVariant, tcRowMap, tcRowDots, tcRowHole ∷ TyCon
 
 tcFun        = internalTC (-1) "->"     (qvarexp 1)
                                         [(Contravariant, Qa, False),
@@ -252,9 +252,12 @@ tcVariant    = internalTC (-13) "variant" (qvarexp 0)
                                           [(Covariant, Qa, False)]
 tcRecord     = internalTC (-14) "record"  (qvarexp 0)
                                           [(Covariant, Qa, False)]
-tcRowDots    = internalTC (-15) "rowdots" (qvarexp 0)
-                                          [(Covariant, Qa, False)]
-tcRowHole    = internalTC (-16) "rowhole" (qvarexp 0)
+tcRowMap     = internalTC (-15) "rowmap"  (qvarexp 0 ⊔ qvarexp 1)
+                                          [(Covariant, Qa, False),
+                                           (Invariant, Qa, False)]
+tcRowDots    = internalTC (-16) "rowdots" (qvarexp 0)
+                                          [(Covariant, Qa, True)]
+tcRowHole    = internalTC (-17) "rowhole" (qvarexp 0)
                                           [(Covariant, Qa, True)]
 
 -- Types for testing

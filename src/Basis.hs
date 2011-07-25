@@ -49,10 +49,7 @@ primBasis  = [
     "record" `primtype` tcRecord,
     "variant"`primtype` tcVariant,
     "rowend" `primtype` tcRowEnd,
-    "rowdots#"
-             `primtype` tcRowDots,
-    "rowhole#"
-             `primtype` tcRowHole,
+    "rowdots#" `primtype` tcRowDots, -- Needed by renamer
     "\\/"    `primtype` tcJoin,
     "->"     `primtype` tcFun,
 

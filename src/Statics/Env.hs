@@ -185,7 +185,8 @@ test_g0 = mempty
   =+= AST.ident "rowend"        =:= tcRowEnd
   =+= AST.ident "variant"       =:= tcVariant
   =+= AST.ident "record"        =:= tcRecord
-  =+= AST.ident "rowdots"       =:= tcRowDots
+  =+= AST.ident "rowmap"        =:= tcRowMap
+  =+= AST.ident "rowhole"       =:= tcRowHole
   =+= AST.ident "option"        =:= tcOption
     =+= AST.ident "None"          =:= Left tcOption
     =+= AST.ident "Some"          =:= Left tcOption

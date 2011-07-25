@@ -46,7 +46,7 @@ tyPatToType ∷ TyPat → Type Int
 tyPatToType tp0 = evalState (loop tp0) [0..]
   where
   loop (TpVar _)      = fvTy <$> next
-  loop (TpRow _)      = tyUnOp tcRowDots . fvTy <$> next
+  loop (TpRow _)      = tyBinOp tcRowMap (tyNulOp tcRowHole) . fvTy <$> next
   loop (TpApp tc tps) = TyApp tc <$> mapM loop tps
   next = do
     i:rest ← get

@@ -200,7 +200,7 @@ getNameStatus ss tag tid =
   where ql = J (map (AST.renId bogus) (jpath tid))
                (AST.ident (AST.idName (jname tid)))
 
--- | Names know to the pretty-printer that should always be used
+-- | Names known to the pretty-printer that should always be used
 --   exactly like this so that things print nicely.
 intrinsicNames ∷ [(Int, String)]
 intrinsicNames = first tcId <$>
@@ -208,7 +208,7 @@ intrinsicNames = first tcId <$>
     (tcRecord,   AST.tnRecord),
     (tcRowEnd,   AST.tnRowEnd),
     (tcRowHole,  AST.tnRowHole),
-    (tcRowDots,  AST.tnRowDots) ]
+    (tcRowMap,   AST.tnRowMap) ]
 
 -- | Find the best name to refer to a type constructor.
 --   The goal here is to get the shortest unambiguous name.

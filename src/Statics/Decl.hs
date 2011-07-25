@@ -17,7 +17,7 @@ import Statics.Sealing
 
 import Prelude ()
 import Data.IORef (IORef)
-import qualified Data.List as List
+import qualified Data.List as L
 import qualified Data.Map  as M
 import qualified Data.Set  as S
 
@@ -277,12 +277,16 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
               have the same number of parameters. |]
       (cs', infos) ← unzip <$$> for cs $ \(tps, rhs) → do
         (tps', αss)     ← unzip <$> mapM (tcTyPat γ) tps
-        αss'            ← mapM (mapM (const newTV)) αss
-        let αs          = concat αss
-            αs'         = concat αss'
-        σ               ← tcType (αs -:*- αs') γ rhs
+        αss'            ← mapM (mapM (const newTV . fst)) αss
+        let (dot, nonDot)
+                        = L.partition (snd . fst)
+                            (zip (concat αss) (concat αss'))
+            dot_αs      = first fst <$> dot
+            αs          = fst . fst <$> nonDot
+            αs'         = snd <$> nonDot
+        σ               ← tcTypeRowDots (αs -:*- αs') dot_αs γ rhs
         qlss            ← mapM getTVBounds αss'
-        let σ'          = toEmptyF (closeTy 0 αs' σ)
+        let σ'          = toEmptyF (closeTy 0 (concat αss') σ)
             -- For each pattern, for each of its type variables,
             -- a triple of its variance, inclusion in the qualifer,
             -- and guardedness:
@@ -347,7 +351,7 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
             qual        = case qualifier σ of
               QeA       → QeA
               QeU βs    → bigJoin
-               [ case List.findIndex (β `elem`) qinvolveds of
+               [ case L.findIndex (β `elem`) qinvolveds of
                    Nothing → QeA
                    Just ix
                      | Qu:_ ← drop ix bounds → qlitexp Qu
@@ -384,7 +388,7 @@ tcTyDec γ td (tid, tc) = withLocation td $ case view td of
 indexQuals ∷ MonadAlmsError m ⇒
              [AST.TyVar R] → AST.QExp R → m (QExp Int)
 indexQuals params = qInterpret resolver where
-  resolver tv = case List.findIndex (== tv) params of
+  resolver tv = case L.findIndex (== tv) params of
     Nothing → typeBug "indexQuals" "tv not found in type params"
     Just ix → return ix
 
