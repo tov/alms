@@ -12,37 +12,37 @@ module type AARRAY_PRIM = sig
   type ('t, 'c) readcap qualifier A
   type 't writecap = ('t, 1) readcap
 
-  val new    : all 'a. int -> 'a -> ex 't. ('a, 't) array * 't writecap
-  val build  : all 'a. int -> (int -> 'a) ->
-                 ex 't. ('a, 't) array * 't writecap
-  val split  : all 't 'c. ('t, 'c) readcap ->
+  val new    : ∀ 'a. int → 'a → ∃ 't. ('a, 't) array * 't writecap
+  val build  : ∀ 'a. int → (int → 'a) →
+                 ∃ 't. ('a, 't) array * 't writecap
+  val split  : ∀ 't 'c. ('t, 'c) readcap →
                  ('t, 'c/2) readcap * ('t, 'c/2) readcap
-  val join   : all 't 'c.  ('t, 'c/2) readcap * ('t, 'c/2) readcap ->
+  val join   : ∀ 't 'c.  ('t, 'c/2) readcap * ('t, 'c/2) readcap →
                  ('t, 'c) readcap
-  val get    : all 'a 't 'c. ('a, 't) array -> int -> ('t, 'c) readcap ->
+  val get    : ∀ 'a 't 'c. ('a, 't) array → int → ('t, 'c) readcap →
                  'a * ('t, 'c) readcap
-  val set    : all 'a 't. ('a, 't) array -> int -> 'a ->
-                 't writecap -> 't writecap
-  val size   : all 'a 't. ('a, 't) array -> int
+  val set    : ∀ 'a 't. ('a, 't) array → int → 'a →
+                 't writecap → 't writecap
+  val size   : ∀ 'a 't. ('a, 't) array → int
 end
 
 module AArray : sig
   include AARRAY_PRIM
 
-  val par    : all 't 'c `r1 `r2.
-                 (all 'd. ('t, 'd) readcap -> `r1 * ('t, 'd) readcap) ->
-                 (all 'd. ('t, 'd) readcap -> `r2 * ('t, 'd) readcap) ->
-                 ('t, 'c) readcap ->
+  val par    : ∀ 't 'c `r1 `r2.
+                 (∀ 'd. ('t, 'd) readcap → `r1 * ('t, 'd) readcap) →
+                 (∀ 'd. ('t, 'd) readcap → `r2 * ('t, 'd) readcap) →
+                 ('t, 'c) readcap →
                  `r1 * `r2 * ('t, 'c) readcap
-  val fold   : all 'a 't 'c `r.
-                 ('a -> `r -> `r) -> `r -> ('a, 't) array -[r]>
-                 ('t, 'c) readcap -[r]>
+  val fold   : ∀ 'a 't 'c `r.
+                 ('a → `r → `r) → `r → ('a, 't) array -r>
+                 ('t, 'c) readcap -r>
                  `r * ('t, 'c) readcap
-  val map    : all 'a 't 'c 'b.
-                 ('a -> 'b) -> ('a, 't) array -> ('t, 'c) readcap ->
-                 (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap
+  val map    : ∀ 'a 't 'c 'b.
+                 ('a → 'b) → ('a, 't) array → ('t, 'c) readcap →
+                 (∃ 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap
   val putArray
-             : all 'a 't 'c. ('a, 't) array -> ('t, 'c) readcap ->
+             : ∀ 'a 't 'c. ('a, 't) array → ('t, 'c) readcap →
                  ('t, 'c) readcap
 end = struct
   module A = Array
@@ -55,43 +55,39 @@ end = struct
     type ('t, 'c) readcap = unit
     type 't writecap = ('t, 1) readcap
 
-    let new['a] (size: int) (x : 'a) =
-      Pack[ex 't. ('a, 't) array * unit]
-          (unit, A.new['a] size x, ())
+    let new size x : ∃ 't. ('a, 't) array * 't writecap =
+          (A.new size x, ())
 
-    let build['a] (size: int) (builder : int -> 'a) =
-      Pack[ex 't. ('a, 't) array * unit]
-          (unit, A.build['a] size builder, ())
+    let build size builder : ∃ 't. ('a, 't) array * 't writecap =
+          (A.build size builder, ())
 
-    let split['t,'c] () = ((), ())
+    let split () = ((), ())
 
-    let join['t,'c] (_: unit * unit) = ()
+    let join (_: unit * unit) = ()
 
-    let get['a,'t,'c] (arr: ('a, 't) array) (ix: int) () =
+    let get (arr: ('a, 't) array) (ix: int) () =
       (A.get arr ix, ())
 
-    let set['a,'t] (arr: ('a, 't) array) (ix: int) (new: 'a) () =
+    let set (arr: ('a, 't) array) (ix: int) (new: 'a) () =
       A.set arr ix new
 
-    let size['a,'t] (arr: ('a, 't) array) =
+    let size (arr: ('a, 't) array) =
       A.size arr
   end : AARRAY_PRIM
 
-  let par ['t,'c,`r1,`r2]
-          (left:  all 'd. ('t, 'd) readcap -> `r1 * ('t, 'd) readcap)
-          (right: all 'd. ('t, 'd) readcap -> `r2 * ('t, 'd) readcap)
+  let par (left:  ∀ 'd. ('t, 'd) readcap → `r1 * ('t, 'd) readcap)
+          (right: ∀ 'd. ('t, 'd) readcap → `r2 * ('t, 'd) readcap)
           (c: ('t, 'c) readcap)
           : `r1 * `r2 * ('t, 'c) readcap =
     let (c1, c2) = split c in
-    let future   = Future.new (fun () -> left c1) in
+    let future   = Future.new (λ () → left c1) in
     let (r2, c2) = right c2 in
     let (r1, c1) = Future.sync future in
       (r1, r2, join (c1, c2))
 
-  let fold ['a,'t,'c,`r]
-           (f: 'a -> `r -> `r) (z: `r)
+  let fold (f: 'a → `r → `r) (z: `r)
            (a: ('a, 't) array) (c: ('t, 'c) readcap) =
-    let rec loop (i: int) (z: `r)| (c: ('t, 'c) readcap)
+    let rec loop (i: int) (z: `r) (c: ('t, 'c) readcap)
                  : `r * ('t, 'c) readcap =
       if i < size a
         then let (elt, c) = get a i c in
@@ -99,26 +95,25 @@ end = struct
         else (z, c)
      in loop 0 z c
 
-  let map ['a,'t,'c,'b]
-          (f: 'a -> 'b)
+  let map (f: 'a → 'b)
           (a: ('a, 't) array) (c: ('t, 'c) readcap)
-          : (ex 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap =
+          : (∃ 's. ('b, 's) array * 's writecap) * ('t, 'c) readcap =
     let holder = ref (Some c) in
     let builder (ix : int) = match holder <- None with
-                     | None -> failwith "can't happen"
-                     | Some c ->
+                     | None → failwith "can't happen"
+                     | Some c →
                          let (x, c) = get a ix c in
                            holder <- Some c;
                            f x in
     let res = build (size a) builder in
       match holder <- None with
-      | None   -> failwith "can't happen"
-      | Some c -> (res, c)
+      | None   → failwith "can't happen"
+      | Some c → (res, c)
 
-  let putArray['a,'t,'c] (a: ('a, 't) array) (c: ('t, 'c) readcap) =
+  let putArray (a: ('a, 't) array) (c: ('t, 'c) readcap) =
     putStr "[";
     let (_, c) =
-      fold (fun (x: 'a) (comma: bool) ->
+      fold (λ (x: 'a) (comma: bool) →
               (if comma then putStr "," else ());
               putStr (string_of x);
               true)

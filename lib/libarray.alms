@@ -20,13 +20,13 @@ end = struct
   exception ArrayIndex
   type `a array = `a Prim.Array.array
 
-  let new['a] (size : int) (elt : 'a) =
-    build size (fun (_: int) -> elt)
+  let new (size : int) (elt : 'a) =
+    build size (fun _ -> elt)
 
-  let swap[`a] (a : `a array) (ix : int) (elt : `a) =
+  let swap (a : `a array) (ix : int) (elt : `a) =
     try swap a ix elt
     with _ -> raise ArrayIndex
 
-  let set[`a] (a : `a array) (ix : int) (elt : `a) =
+  let set (a : `a array) (ix : int) (elt : `a) =
     swap a ix elt; ()
 end

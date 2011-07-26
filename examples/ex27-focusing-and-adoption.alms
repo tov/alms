@@ -12,74 +12,60 @@
     x, y: `a           stored value
     xs: `a list        region representation
 
-  T[[ { p |-> t } ]]     = (p, T[[ t ]]) region1
-  T[[ { p |->^w t } ]]   = (p, T[[ t ]]) region
+  T[[ { p |→ t } ]]     = (p, T[[ t ]]) region1
+  T[[ { p |→^w t } ]]   = (p, T[[ t ]]) region
   T[[ Ptr t ]]           = T[[ t ]] ptr
 
 *)
 
-let length[`a] (xs: `a list) : int * `a list =
-  foldr (fun (x: `a) (n: int, xs: `a list) ->
-           (n + 1, Cons (x, xs)))
-        (0, Nil[`a]) xs
+let snoc x xs = append xs [x]
 
-let snoc[`a] (x: `a) |[a] (xs: `a list) : `a list =
-  foldr (fun (x: `a) (xs: `a list) -> Cons (x, xs))
-        (Cons (x, Nil[`a])) xs
+let rec revAppN n xs acc =
+    match n with
+    | 0 → (acc, xs)
+    | _ → match xs with
+           | x ∷ xs → revAppN (n - 1) xs (x ∷ acc)
+           | xs     → (acc, xs)
 
-let revAppN =
-  let rec loop[`a] (n: int) (xs: `a list) |[a] (acc: `a list)
-                    : `a list * `a list =
-        match n with
-        | 0 -> (acc, xs)
-        | _ -> match xs with
-               | Cons(x, xs) -> loop (n - 1) xs (Cons (x, acc))
-               | xs          -> (acc, xs)
-  in loop
+let swapN ix y xs =
+  let (x ∷ xs, acc) = revAppN ix xs [] in
+    (x, revApp acc (y ∷ xs))
 
-let rev[`a] (xs: `a list) : `a list =
-  let (_, acc) = revAppN (-1) xs Nil[`a] 
-   in acc
-
-let swapN[`a] (ix: int) (y: `a) |[a] (xs: `a list)
-       : `a * `a list =
-  let (Cons(x, xs), acc) = revAppN ix xs Nil[`a] in
-  let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
-    (x, xs)
-
-module Region : sig
-  type ('t, `a) region : A
+module type REGION = sig
+  type ('t, `a) region  : A
   type ('t, `a) region1 : A
   type 't ptr
 
-  val newRgn    : unit -> ex 't. ('t,`a) region
-  val mallocIn  : ('t,`a) region -> `a -o 't ptr * ('t,`a) region
-  val swap      : ('t,`a) region -> 't ptr -o `a -o `a * ('t,`a) region
-  val malloc    : unit -> ex 't. ('t,unit) region1 * 't ptr
-  val free      : ('t,`a) region1 -> unit
-  val adopt     : ('t1,`a) region -> ('t2,`a) region1 -o 't2 ptr -o
+  val newRgn    : unit → ∃ 't. ('t,`a) region
+  val mallocIn  : ('t,`a) region → `a -A> 't ptr * ('t,`a) region
+  val swap      : ('t,`a) region → 't ptr -A> `a -A> `a * ('t,`a) region
+  val malloc    : unit → ∃ 't. ('t,unit) region1 * 't ptr
+  val free      : ('t,`a) region1 → unit
+  val adopt     : ('t1,`a) region → ('t2,`a) region1 -A> 't2 ptr -A>
                   't1 ptr * ('t1,`a) region
-  val focus     : ('t,`a) region -> 't ptr -o
-                  ex 't1. ('t1,`a) region1 * 't1 ptr *
-                          (('t1,`a) region1 -o ('t,`a) region)
-end = struct
+  val focus     : ('t,`a) region → 't ptr -A>
+                  ∃ 't1. ('t1,`a) region1 * 't1 ptr *
+                          (('t1,`a) region1 -A> ('t,`a) region)
+end
+
+module Region = struct
   type ('t, `a) region = `a list
   type ('t, `a) region1 = `a
   type 't ptr = int
 
-  let newRgn () = Nil
+  let newRgn () = [] : ∃ 't. ('t,`a) region
 
   let freeRgn _ = ()
 
   let mallocIn (xs: `a list) (a: `a) =
-    let (ix, xs) = length xs in
+    let (ix, xs) = lengthA xs in
       (ix, snoc a xs)
 
   let swap (xs: `a list) (ix: 't ptr) (x: `a) =
     let (y, xs) = swapN ix x xs in
       (y, xs)
 
-  let malloc () = ((), 0)
+  let malloc () = ((), 0) : ∃ 't. ('t,unit) region1 * 't ptr
 
   let swap1 (x: `a) _ (y: `b) = (x, y)
 
@@ -88,7 +74,10 @@ end = struct
   let adopt (rgn: `a list) (x: `a) _ =
     mallocIn rgn x
 
-  let focus (xs: `a list) (ix: 't ptr) =
-     let (Cons (x, xs), acc) = revAppN ix xs Nil in
-       (x, 0, fun (y: `a) -> fst (revAppN (-1) acc (Cons (y, xs))))
+  let focus xs ix
+        : ∃ 't1. ('t1,`a) region1 * 't1 ptr *
+                 (('t1,`a) region1 -A> ('t,`a) region)
+        =
+     let (x ∷ xs, acc) = revAppN ix xs [] in
+       (x, 0, λ y → revApp acc (y ∷ xs))
 end
