@@ -33,6 +33,7 @@ module Type.Internal (
   (.->.), (.-*.), (.*.),
   -- *** For testing
   tcCycle, tcConst, tcIdent, tcConsTup, tcOption, tcIdfun,
+  tcSessOne, tcSessSend, tcSessRecv, tcSessSemi, tcSessDual,
 
   -- * Standard forms
   standardizeType, standardizeQuals,
@@ -291,6 +292,21 @@ tcIdfun      = internalTC (-55) "idfun" [(Invariant, Qa, False)]
                                 (AST.ident "Poly",
                                  Just (TyQu Forall [(Nope, Qa)]
                                         (bvTy 0 0 Nope .->. bvTy 0 0 Nope)))])
+
+tcSessOne, tcSessSend, tcSessRecv, tcSessSemi, tcSessDual ∷ TyCon
+tcSessOne        = internalTC (-56) "1"
+tcSessSend       = internalTC (-57) "!" [(-1, Qa, False)]
+tcSessRecv       = internalTC (-58) "?" [(1, Qa, False)]
+tcSessSemi       = internalTC (-59) ";" [(1, Qu, False), (1, Qu, True)]
+tcSessDual       = internalTC (-60) "dual" [(-1, Qu, False)]
+     [([TpApp tcSessOne []],
+       TyApp tcSessOne []),
+      ([TpApp tcSessSemi [TpApp tcSessSend [TpVar Nope], TpVar Nope]],
+       TyApp tcSessSemi [TyApp tcSessRecv [TyVar (Bound 0 0 Nope)],
+                         TyApp tcSessDual [TyVar (Bound 0 1 Nope)]]),
+      ([TpApp tcSessSemi [TpApp tcSessRecv [TpVar Nope], TpVar Nope]],
+       TyApp tcSessSemi [TyApp tcSessSend [TyVar (Bound 0 0 Nope)],
+                         TyApp tcSessDual [TyVar (Bound 0 1 Nope)]])]
 
 ---
 --- Convenience constructors
