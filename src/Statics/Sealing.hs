@@ -139,7 +139,7 @@ subsumeSig γ = eachSig where
             "number of type parameters" (length . tcArity)
           sigAss (all2 (⊑) (tcArity tc') (tcArity tc))
             "variance" tcArity
-          sigAss (all2 (⊑) (tcBounds tc') (tcBounds tc))
+          sigAss (all2 (⊒) (tcBounds tc') (tcBounds tc))
             "parameter bounds" tcBounds
           sigAss (tcQual tc' ⊑ tcQual tc)
             "qualifier" tcQual
