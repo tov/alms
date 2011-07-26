@@ -1,11 +1,11 @@
 let ap : (int -> int) -> int -> int =
-  fun f: (int -> int) ->
-    fun x: int ->
+  fun (f: int -> int) ->
+    fun (x: int) ->
       f x
 
 let inc : int -> int =
-  fun y: int ->
-    let g = (fun z:int  -> z + 1 : int -> int :> int -o int) in
+  fun (y: int) ->
+    let g = (fun (z:int) -> z + 1 : int -> int :> int -o int) in
       ap g y         (* g: (int -o int) is used as an (int -> int) *)
 
-in print[int] (inc 5)
+in print (inc 5)

@@ -1,3 +1,3 @@
 (* Can't duplicate type `a (type error) *)
 
-let dup[`a] (x: `a) = (x, x)
+let dup : ∀ `a. `a → `a * `a = λ x → (x, x)

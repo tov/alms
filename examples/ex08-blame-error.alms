@@ -1,16 +1,16 @@
 (* A Lying Interface *)
 
 let ap : (int -> int) -> int -> int =
-  fun f: (int -> int) ->
-    fun x: int ->
+  fun (f: int -> int) ->
+    fun (x: int) ->
       f (f x)    (* f is used twice here, despite what iap2 claims *)
 
 let iap2 = (ap :> (int -o int) -> int -o int)
 
 let inc : int -> int =
-  fun y: int ->
-    (fun g: (int -o int) ->
+  fun (y: int) ->
+    (fun (g: int -o int) ->
        iap2 g y)
-    (fun z: int -> z + 1)
+    (fun (z: int) -> z + 1)
 
-in print[int] (inc 5)
+in print (inc 5)

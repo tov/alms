@@ -1,12 +1,11 @@
-let ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
-  fun 'a 'b ->
-    fun f: ('a -> 'b) ->
-      fun x: 'a ->
+let ap : all 'c 'd. ('c -> 'd) -> 'c -> 'd =
+    fun (f: 'a -> 'b) ->
+      fun (x: 'a) ->
         f x
 
 let inc : int -> int =
-  fun y: int ->
-    let g = (fun z:int  -> z + 1 : int -> int :> int -o int) in
-      ap[int,int] g y    (* g: (int -o int) is used as an (int -> int) *)
+  fun (y: int) ->
+    let g = (fun (z:int) -> z + 1 : int -> int :> int -o int) in
+      ap g y    (* g: (int -o int) is used as an (int -> int) *)
 
-in print[int] (inc 5)
+in print (inc 5)

@@ -1,9 +1,9 @@
 let ap : (int -> int) -> int -> int =
-  fun f: (int -> int) ->
-    fun x: int ->
+  fun (f: int -> int) ->
+    fun (x: int) ->
       f x
 
 let inc : int -> int =
-  fun y: int -> ap (fun z: int -> z + 1) y
+  fun (y: int) -> ap (fun (z: int) -> z + 1) y
 
-in print[int] (inc 5)
+in print (inc 5)

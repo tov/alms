@@ -1,11 +1,7 @@
 (* A Type-Correct, Blame-Free Program *)
 
-let ap =
-  fun f: (int -o int) ->
-    fun x: int ->
-      f x
+let ap (f: int -A> int) x = f x
 
-let inc =
-  fun y: int -> ap (fun z:int -> z + 1) y
+let inc y = ap ((+) 1) y
 
 in print (inc 5)

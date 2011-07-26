@@ -1,15 +1,15 @@
 (* A Dynamic Promotion Intervenes (like ex7.aff) *)
 
 let ap : (int -> int) -> int -> int =
-  fun f: (int -> int) ->
-    fun x: int ->
+  fun (f: int -> int) ->
+    fun (x: int) ->
       f x
 
 let inc : int -> int =
-  fun y: int ->
-    (fun g: (int -o int) ->
+  fun (y: int) ->
+    (fun (g: int -o int) ->
        (ap : (int -> int) -> int -> int
            :> (int -o int) -> int -o int) g y)
-    (fun z: int -> z + 1)
+    (fun (z: int) -> z + 1)
 
-in print[int] (inc 5)
+in print (inc 5)

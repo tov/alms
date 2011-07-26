@@ -1,10 +1,7 @@
 (* Polymorphic version: A Type-Correct, Blame-Free Program *)
 
-let ap =
-  fun `a `b (f: `a -o `b) (x: `a) ->
-    f x
+let ap (f: `a -A> `b) x = f x
 
-let inc =
-  fun y: int -> ap (fun z:int -> z + 1) y
+let inc y = ap ((+) 1) y
 
 in print (inc 5)

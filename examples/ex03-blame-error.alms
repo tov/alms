@@ -1,12 +1,10 @@
 (* A Blameworthy Coercion *)
 
-let ap =
-  fun f: (int -o int) ->
-    ( (fun x: int -> f x) :> int -> int )
+let ap (f: int -o int) =
+    ((fun x -> f x) :> int -> int)
 
-let inc2 =
-  fun y: int ->
-    let g = ap (fun z: int -> z + 1) in
-      g (g y)   (* g is used twice here *)
+let inc2 y =
+  let g = ap ((+) 1) in
+    g (g y)   (* g is used twice here *)
 
 in print (inc2 5)

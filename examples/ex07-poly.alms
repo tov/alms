@@ -1,17 +1,16 @@
 (* Polymorphic version: An Interface Intervenes *)
 
-let ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
-  fun 'a 'b ->
-    fun f: ('a -> 'b) ->
-      fun x: 'a ->
-        f x
+let ap : all 'c 'd. ('c -> 'd) -> 'c -> 'd =
+  fun (f: 'a -> 'b) ->
+    fun (x: 'a) ->
+      f x
 
 let iap = (ap :> all 'a 'b. ('a -o 'b) -> 'a -o 'b)
 
 let inc : int -> int =
-  fun y: int ->
-    (fun g: (int -o int) ->
-       iap[int,int] g y)
-    (fun z: int -> z + 1)
+  fun (y: int) ->
+    (fun (g: int -o int) ->
+       iap g y)
+    (fun (z: int) -> z + 1)
 
-in print[int] (inc 5)
+in print (inc 5)

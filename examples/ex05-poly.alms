@@ -1,10 +1,5 @@
-let ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b =
-  fun 'a 'b ->
-    fun f: ('a -> 'b) ->
-      fun x: 'a ->
-        f x
+let ap : all 'a 'b. ('a -> 'b) -> 'a -> 'b = fun f x -> f x
 
-let inc : int -> int =
-  fun y: int -> ap[int,int] (fun z: int -> z + 1) y
+let inc y = ap ((+) 1) y
 
-in print[int] (inc 5)
+in print (inc 5)

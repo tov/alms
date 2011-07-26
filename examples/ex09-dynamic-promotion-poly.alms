@@ -1,16 +1,15 @@
 (* Polymorphic version: A Dynamic Promotion Intervenes (like ex7.aff) *)
 
-let ap : all 'a. ('a -> 'a) -> 'a -> 'a =
-  fun 'a ->
-    fun f: ('a -> 'a) ->
-      fun x: 'a ->
-        f x
+let ap : all 'c. ('c -> 'c) -> 'c -> 'c =
+  fun (f: 'a -> 'a) ->
+    fun (x: 'a) ->
+      f x
 
 let inc : int -> int =
-  fun y: int ->
-    (fun g: (int -o int) ->
-       (ap[int] :  (int -> int) -> int -> int
-                :> (int -o int) -> int -o int) g y)
-    (fun z: int -> z + 1)
+  fun (y: int) ->
+    (fun (g: int -o int) ->
+       (ap :  (int -> int) -> int -> int
+           :> (int -o int) -> int -o int) g y)
+    (fun (z: int) -> z + 1)
 
-in print[int] (inc 5)
+in print (inc 5)

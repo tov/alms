@@ -1,13 +1,9 @@
 (* An Ill-Typed Module (type error) *)
 
-let ap =
-  fun f: (int -o int) ->
-    fun x: int ->
-      f x
+let ap (f: int -o int) x = f x
 
-let inc2 =
-  fun y: int ->
-    let g = ap (fun z: int -> z + 1) in
-      g (g y)   (* g: (int -o int) is used twice here *)
+let inc2 y =
+  let g = ap ((+) 1) in
+    g (g y)   (* g: (int -o int) is used twice here *)
 
-in print[int] (inc2 5)
+in print (inc2 5)

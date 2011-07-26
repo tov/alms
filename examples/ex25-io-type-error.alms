@@ -1,0 +1,41 @@
+(* Typestate file IO *)
+
+open IO
+
+abstype in_channel' = InChannel of handle with
+  let open_in s = InChannel (openFile s ReadMode)
+  let input_char (InChannel h) = hGetChar h
+  let input_line (InChannel h) = hGetLine h
+  let eof_in (InChannel h)     = hIsEOF h
+  let close_in (InChannel h)   = hClose h
+end
+
+abstype out_channel = OutChannel of handle with
+  let open_out s = OutChannel (openFile s WriteMode)
+  let output_char (OutChannel h)   = hPutChar h
+  let output_string (OutChannel h) = hPutStr h
+  let eof_out (OutChannel h)       = hIsEOF h
+  let close_out (OutChannel h)     = hClose h
+end
+
+abstype in_channel : A = InChannel of in_channel' with
+  let a_open_in s = InChannel (open_in s)
+  let a_input_char (InChannel rep as ic) =
+        (input_char rep, ic)
+  let a_input_line (InChannel rep as ic) =
+        (input_line rep, ic)
+  let a_close_in (InChannel rep) =
+        close_in rep
+  let a_eof_in (InChannel rep as ic) =
+    if eof_in rep
+      then close_in rep; None
+      else Some ic
+end
+
+let cat filename =
+  let rec loop ic =
+    match a_eof_in ic with
+    | None    -> ()
+    | Some ic -> let (c, _) = a_input_char ic in
+                   putChar c; loop ic
+  in loop (a_open_in filename)

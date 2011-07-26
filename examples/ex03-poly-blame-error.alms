@@ -1,12 +1,10 @@
 (* Polymorphic version: A Blameworthy Coercion *)
 
-let ap =
-  fun 'a 'b (f: 'a -o 'b) (x: 'a) -> f x
+let ap (f: 'a -o 'b) x = f x
 
-let inc2 =
-  fun y: int ->
-    let g = (ap :> all 'a 'b. ('a -A> 'b) -> 'a -U> 'b)
-            (fun z: int -> z + 1) in
-      g (g y)   (* g is used twice here *)
+let inc2 y =
+  let g = (ap :> ('a -A> 'b) -> 'a -U> 'b)
+          ((+) 1) in
+    g (g y)   (* g is used twice here *)
 
 in print (inc2 5)

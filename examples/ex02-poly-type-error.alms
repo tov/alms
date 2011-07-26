@@ -1,15 +1,9 @@
 (* Polymorphic version: An Ill-Typed Module (type error) *)
 
-let ap =
-  fun `a ->
-    fun `b ->
-      fun f: (`a -o `b) ->
-        fun x: `a ->
-          f x
+let ap (f: `a -A> `b) x = f x
 
-let inc2 =
-  fun y: int ->
-    let g = ap (fun z: int -> z + 1) in
+let inc2 y =
+    let g = ap ((+) 1) in
       g (g y)   (* g: (int -o int) is used twice here *)
 
 in print (inc2 5)
