@@ -107,18 +107,16 @@ type EnvMap f i = M.Map (f Raw) (f Renamed, Loc, i)
 --   a pair of modules.  Note that while type variables are not actual
 --   module items, they are exported from patterns, so it's useful to
 --   have them here.
-data Module
-  = MdNil
-  | MdApp     !Module !Module
-  | MdTycon   !Loc !(TypId Raw) !(TypId Renamed) ![ConId Raw]
+type Module = [ModItem]
+
+data ModItem
+  = MdTycon   !Loc !(TypId Raw) !(TypId Renamed) ![ConId Raw]
   | MdVar     !Loc !(VarId Raw) !(VarId Renamed)
   | MdDatacon !Loc !(ConId Raw) !(ConId Renamed)
   | MdModule  !Loc !(ModId Raw) !(ModId Renamed) !Module
   | MdSig     !Loc !(SigId Raw) !(SigId Renamed) !Module
   | MdTyvar   !Loc !(TyVar Raw) !(TyVar Renamed)
   deriving Show
-
-instance Bogus Module where bogus = MdNil
 
 -- | The renaming context, which includes the environment (which is
 --   persistant), and other information with is not
@@ -164,25 +162,22 @@ instance Monoid Env where
 
 instance Bogus Env where bogus = mempty
 
-instance Monoid Module where
-  mempty  = MdNil
-  mappend = MdApp
-
 -- | Open a module into an environment
 envify :: Module -> Env
-envify MdNil            = mempty
-envify (MdApp md1 md2)  = envify md1 `mappend` envify md2
-envify (MdTycon loc l l' dcs)
+envify  = foldMap envifyItem
+
+envifyItem :: ModItem -> Env
+envifyItem (MdTycon loc l l' dcs)
   = mempty { tycons   = M.singleton l (l', loc, dcs) }
-envify (MdVar loc l l')
+envifyItem (MdVar loc l l')
   = mempty { vars = M.singleton l (l', loc, ()) }
-envify (MdDatacon loc u u')
+envifyItem (MdDatacon loc u u')
   = mempty { datacons = M.singleton u (u', loc, ()) }
-envify (MdModule loc u u' md)
+envifyItem (MdModule loc u u' md)
   = mempty { modules = M.singleton u (u',loc,(md,envify md)) }
-envify (MdSig loc u u' md)
+envifyItem (MdSig loc u u' md)
   = mempty { sigs = M.singleton u (u',loc,(md,envify md)) }
-envify (MdTyvar loc tv tv')
+envifyItem (MdTyvar loc tv tv')
   = mempty { tyvars = M.singleton (tvname tv)
                                   (tvname tv',loc,(tvqual tv', True)) }
 
@@ -286,11 +281,10 @@ steal = R . censor (const mempty) . listen . unR
 
 -- | Get all the variable names, included qualified, bound in a module
 getAllVariables :: Module -> [QVarId Renamed]
-getAllVariables = S.toList . loop where
-  loop (MdApp md1 md2)      = loop md1 `S.union` loop md2
+getAllVariables = S.toList . foldMap loop where
   loop (MdVar _ _ l')       = S.singleton (J [] l')
   loop (MdModule _ _ u' md) = S.mapMonotonic (\(J us l) -> J (u':us) l)
-                                             (loop md)
+                                             (foldMap loop md)
   loop _                    = S.empty
 
 -- | Look up something in an environment
@@ -399,7 +393,7 @@ getTyvar (TVAnti a) = $antifail
 -- | Get a new name for a variable binding
 bindGeneric :: (Ord ident, Show ident, Antible ident) =>
                (Renamed -> ident -> ident') ->
-               (Loc -> ident -> ident' -> Module) ->
+               (Loc -> ident -> ident' -> ModItem) ->
                ident -> R ident'
 bindGeneric ren build x = do
   case prjAnti x of
@@ -408,7 +402,7 @@ bindGeneric ren build x = do
   new <- newRenamed
   loc <- getLocation
   let x' = ren new x
-  tell (build loc x x')
+  tell [build loc x x']
   return x'
 
 -- | Allocate a new 'Renamed' token if we're in the right mode.
@@ -612,7 +606,7 @@ renameTyDec mqe (N note td)      = withLocation note $ do
         cons' <- forM cons $ \(u, mt) -> withLocation mt $ do
           -- XXX Why trivial?
           let u' = renId trivialId u
-          tell (MdDatacon (getLoc mt) u u')
+          tell [MdDatacon (getLoc mt) u u']
           mt'   <- traverse renameType mt
           return (u', mt')
         return (tdDat l' tvs' cons')
@@ -660,17 +654,19 @@ renameSigExp se0 = withLocation se0 $ case se0 of
 
 checkSigDuplicates :: Module -> R ()
 checkSigDuplicates md = case md of
-    MdNil                -> return ()
-    MdApp md1 md2        -> do
-      checkSigDuplicates md1
-      inModule md1 $ checkSigDuplicates md2
-    MdTycon   loc l  _ _ -> mustFail loc "Type"        l $ getTycon (J [] l)
-    MdVar     loc l  _   -> mustFail loc "Variable"    l $ getVar (J [] l)
-    MdDatacon loc u  _   -> mustFail loc "Constructor" u $ getDatacon (J [] u)
-    MdModule  loc u  _ _ -> mustFail loc "Structure"   u $ getModule (J [] u)
-    MdSig     loc u  _ _ -> mustFail loc "Signature"   u $ getSig (J [] u)
-    MdTyvar   loc tv _   -> mustFail loc "Tyvar"      tv $ getTyvar tv
+    []                   -> return ()
+    md1:md2              -> do
+      checkItem md1
+      inModule [md1] $ checkSigDuplicates md2
+
   where
+    checkItem item = case item of
+      MdTycon   loc l  _ _ -> mustFail loc "Type"        l $ getTycon (J [] l)
+      MdVar     loc l  _   -> mustFail loc "Variable"    l $ getVar (J [] l)
+      MdDatacon loc u  _   -> mustFail loc "Constructor" u $ getDatacon (J [] u)
+      MdModule  loc u  _ _ -> mustFail loc "Structure"   u $ getModule (J [] u)
+      MdSig     loc u  _ _ -> mustFail loc "Signature"   u $ getSig (J [] u)
+      MdTyvar   loc tv _   -> mustFail loc "Tyvar"      tv $ getTyvar tv
     mustFail loc kind which check = do
       failed <- (False <$ check) `catchError` \_ -> return True
       unless failed $ do
@@ -678,28 +674,26 @@ checkSigDuplicates md = case md of
           repeated kind which "signature" []
 
 sealWith :: Module -> R ()
-sealWith = loop Nothing where
-  loop b md = case md of
-    MdNil              -> return ()
-    MdApp md1 md2      -> do loop b md1; loop b md2
+sealWith = mapM_ (each Nothing) where
+  each b moditem = case moditem of
     MdTycon   _ l _ _  -> do
       (l', loc, cs') <- locate b "type constructor" tycons l
-      tell (MdTycon loc l l' cs')
+      tell [MdTycon loc l l' cs']
     MdVar     _ l _   -> do
       (l', loc, _) <- locate b "variable" vars l
-      tell (MdVar loc l l')
+      tell [MdVar loc l l']
     MdDatacon _ u _   -> do
       (u', loc, _) <- locate b "data constructor" datacons u
-      tell (MdDatacon loc u u')
+      tell [MdDatacon loc u u']
     MdModule  _ u _ md2 -> do
       (u', loc, (md1, _)) <- locate b "module" modules u
-      ((), md1') <- steal $ onlyInModule md1 $ loop b md2
-      tell (MdModule loc u u' md1')
+      ((), md1') <- steal $ onlyInModule md1 $ mapM_ (each b) md2
+      tell [MdModule loc u u' md1']
     MdSig     _ u _ md2 -> do
       (u', loc, (md1, _)) <- locate b "module type" sigs u
-      ((), _   ) <- steal $ onlyInModule md2 $ loop (Just (Left u)) md1
-      ((), md1') <- steal $ onlyInModule md1 $ loop (Just (Right u)) md2
-      tell (MdSig loc u u' md1')
+      ((), _   ) <- steal $ onlyInModule md2 $ mapM_ (each (Just (Left u))) md1
+      ((), md1') <- steal $ onlyInModule md1 $ mapM_ (each (Just (Right u))) md2
+      tell [MdSig loc u u' md1']
     MdTyvar   _ _ _   ->
       renameBug "sealWith" "signature can’t declare type variable"
   locate b what prj name = do
@@ -1023,14 +1017,14 @@ addVal = bindVar
 addType l i dcs = do
   let l' = renId i l
   loc <- getLocation
-  tell (MdTycon loc l l' dcs)
+  tell [MdTycon loc l l' dcs]
   return l'
 
 addMod u body = do
   let u' = renId trivialId u
   (a, md) <- steal body
   loc <- getLocation
-  tell (MdModule loc u u' md)
+  tell [MdModule loc u u' md]
   return (u', a)
 
 -- | Result for 'getRenamingInfo'
