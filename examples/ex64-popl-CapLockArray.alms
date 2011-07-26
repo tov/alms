@@ -18,14 +18,14 @@ module CapLockArray : CAP_LOCK_ARRAY = struct
   type ('a,'b) array = ('a,'b) CapArray.array × 'b cap MVar.mvar
 
   let new' (size: int) (init: 'a) =
-    let ('b, a, cap) = new size init in
+    let (a, cap) = new size init in
       (a, MVar.new cap)
 
   let acquire (a: ('a,'b) array) = MVar.take (snd a)
   let release (a: ('a,'b) array) = MVar.put (snd a)
 
   let new (size: int) (init: 'a) =
-    let a = new' size init in (a, acquire a)
+    let (a : ('a,'b) array) = new' size init in (a, acquire a)
 
   let set (a: ('a,'b) array)      = set (fst a)
   let get (a: ('a,'b) array)      = get (fst a)

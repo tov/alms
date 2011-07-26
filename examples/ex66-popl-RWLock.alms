@@ -45,9 +45,9 @@ module RWLock : RW_LOCK = struct
   type write
   type 'β@'γ = unit
 
-  let new (size: int) (init: 'α) =
+  let new (size: int) (init: 'α) : ∃'β. ('α, 'β) array =
     (A.new size init, MVar.new ((Queue.empty : queue), 0))
-  let build (size: int) (builder: int → 'α) =
+  let build (size: int) (builder: int → 'α) : ∃'β. ('α, 'β) array =
     (A.build size builder, MVar.new ((Queue.empty : queue), 0))
 
   (* To see what's happening, uncomment the rest of show. *)
@@ -95,7 +95,7 @@ module RWLock : RW_LOCK = struct
   let acquireR ((rep, lock) : ('α,'t) array) =
     let (q, count) = MVar.take lock in
     show "acquireR" (q, count);
-    let wait = MVar.newEmpty[unit] () in
+    let wait = MVar.newEmpty () in
       MVar.put lock (Queue.enqueue (Left wait) q, count);
       wake lock;
       MVar.take wait
@@ -104,7 +104,7 @@ module RWLock : RW_LOCK = struct
   let acquireW ((rep, lock) : ('α,'β) array) =
     let (q, count) = MVar.take lock in
     show "acquireW" (q, count);
-    let wait = MVar.newEmpty[unit] () in
+    let wait = MVar.newEmpty () in
       MVar.put lock (Queue.enqueue (Right wait) q, count);
       wake lock;
       MVar.take wait
@@ -179,18 +179,18 @@ module RWLockTest = struct
           else ())
 
   let go (iters: int) =
-    let next   = makeCounter () in
-    let ('β,a) = build 10 (fun x:int → x) in
-    let rec start (n: int) : U Future.future list =
+    let next = makeCounter () in
+    let a    = build 10 (fun x → x) in
+    let rec start (n: int) =
       if n < 1
-        then Nil[any]
-        else Cons (if random_int () % 8 == 0
-                     then writer (next ()) a
-                     else reader (next ()) a,
-                   start (n - 1)) in
-    let rec stop (fs: U Future.future list) : unit =
+        then []
+        else (if random_int () % 8 == 0
+                then writer (next ()) a
+                else reader (next ()) a)
+             ∷ start (n - 1) in
+    let rec stop fs =
       match fs with
-      | Nil         → ()
-      | Cons(f, fs) → Future.sync f; stop fs in
+      | []     → ()
+      | f ∷ fs → Future.sync f; stop fs in
     stop (start iters)
 end

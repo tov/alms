@@ -20,46 +20,46 @@ end = struct
 
   type 'a achan = 'a repr M.mvar
 
-  let new['a] () = M.new (Writers Q.empty['a])
+  let new () = M.new (Writers Q.empty)
 
-  let recv['a] (mv : 'a achan) =
+  let recv (mv : 'a achan) =
     let wait (readers : 'a mvar queue) =
-      let reader = M.newEmpty['a] () in
+      let reader = M.newEmpty () in
         (Readers (Q.enqueue reader readers),
          fun () -> M.take reader) in
-    M.modify mv (fun repr : 'a repr ->
+    M.modify mv (fun repr ->
       match repr with
       | Readers readers -> wait readers
       | Writers writers ->
           match Q.dequeueA writers with
-          | None          -> wait Q.empty['a mvar]
+          | None          -> wait Q.empty
           | Some (x, xs)  -> (Writers xs, fun () -> x))
       ()
 
-  let send['a] (mv : 'a achan) (x : 'a) =
-    M.modify_ mv (fun repr : 'a repr ->
+  let send (mv : 'a achan) (x : 'a) =
+    M.modify_ mv (fun repr ->
       match repr with
       | Writers writers -> Writers (Q.enqueue x writers)
       | Readers readers ->
           match Q.dequeueA readers with
-          | None -> Writers (Q.enqueue x Q.empty['a])
+          | None -> Writers (Q.enqueue x Q.empty)
           | Some (reader, readers')
                  -> M.put reader x;
                     Readers readers')
 
-  let tryRecv['a] (mv : 'a achan) =
-    M.modify mv (fun repr : 'a repr ->
+  let tryRecv (mv : 'a achan) =
+    M.modify mv (fun repr ->
       match repr with
-      | Readers readers -> (repr, None['a])
+      | Readers readers -> (repr, None)
       | Writers writers ->
           match Q.dequeueA writers with
-          | None          -> (repr, None['a])
+          | None          -> (repr, None)
           | Some (x, xs)  -> (Writers xs, Some x))
 
   (* Send always succeeds, but trySend succeeds only if there's
      a reader ready to receive the send. *)
-  let trySend['a] (mv : 'a achan) (x : 'a) =
-    M.modify mv (fun repr : 'a repr ->
+  let trySend (mv : 'a achan) (x : 'a) =
+    M.modify mv (fun repr ->
       match repr with
       | Writers writers -> (repr, false)
       | Readers readers ->
@@ -69,7 +69,7 @@ end = struct
                  -> M.put reader x;
                     (Readers readers', true))
 
-  let size['a] (mv : 'a achan) =
+  let size (mv : 'a achan) =
     match M.read mv with
     | Writers writers -> Q.size writers
     | Readers readers -> ~(Q.size readers)

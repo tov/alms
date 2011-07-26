@@ -48,7 +48,7 @@ module type REGION = sig
                           (('t1,`a) region1 -A> ('t,`a) region)
 end
 
-module Region = struct
+module Region : REGION = struct
   type ('t, `a) region = `a list
   type ('t, `a) region1 = `a
   type 't ptr = int

@@ -28,7 +28,8 @@ module Fractional : FRACTIONAL = struct
   type 'c / 'd
   type ('b,'c) cap = unit
 
-  let new (size: int) (init: 'a) = (A.new size init, ())
+  let new (size: int) (init: 'a) : ∃'b. ('a,'b) array × ('b,1) cap =
+    (A.new size init, ())
 
   let get (ar: 'a A.array) (ix: int) _ = (A.get ar ix, ())
   let set (ar: 'a A.array) (ix: int) (new: 'a) _ =

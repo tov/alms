@@ -4,7 +4,7 @@ module A : sig
   type `a t qualifier a
 end = struct
   type `a t = unit
-  let f[`b] (x: `b t) = (x, x)
+  let f (x: `b t) = (x, x)
 end
 
-let f['b] (x: 'b A.t) = (x, x)
+let f (x: 'b A.t) = (x, x)

@@ -9,8 +9,7 @@ type 'a protocol = !'a; !'a; ?'a; 1
                    |+|
                    !'a; ?'a; 1
 
-let server =
-  fun c : int protocol dual channel ->
+let server (c : int protocol dual channel) =
     match follow c with
     | Left c ->
         let (x, c) = recv c in
@@ -22,19 +21,17 @@ let server =
           send c (0 - x);
           ()
 
-let client =
-  fun c : int protocol channel ->
-    fun (x : int) (y : int) ->
+(* swaps receive and send *)
+let client c x y =
       let c = sel1 c in
       let c = send c x in
       let (r, c) = recv c in
       let _ = send c y in
         r
 
-let main =
-  fun (x : int) (y : int) ->
-    let rv = newRendezvous[int protocol] () in
-      AThread.fork (fun () -> server (accept rv));
-      client (request rv) x y
+let main x y =
+  let rv = newRendezvous () in
+    AThread.fork (fun () -> server (accept rv));
+    client (request rv) x y
 
 in print (main 3 4)

@@ -38,14 +38,14 @@ let deposit (a: int AfArray.array) (ix: int) (amount: int) =
 module A = AfArray
 
 (* Swap the values at the given array indices *)
-let swapIndices (a: 'a A.array) (i: int) (j: int) =
+let swapIndices a i j =
   let (ai, a) = A.get a i in
   let (aj, a) = A.get a j in
     A.set (A.set a i aj) j ai
 
 (* Fisher-Yates shuffle *)
-let inPlaceShuffle (a: 'a A.array) =
-  let rec loop (i: int) (a: 'a A.array) : 'a A.array =
+let inPlaceShuffle a =
+  let rec loop i a =
     if i == 0
       then a
       else let j = random_int () % (i + 1) in
@@ -54,12 +54,11 @@ let inPlaceShuffle (a: 'a A.array) =
     loop (n - 1) a
 
 (* Quicksort *)
-let inPlaceSort (a: int A.array) =
-  let rec quicksort (start: int) (limit: int) (a: int A.array) : int A.array =
+let inPlaceSort a =
+  let rec quicksort start limit a =
     if limit > start
       then let (pivot, a) = A.get a limit in
-           let rec loop (i: int) (j: int) (a: int A.array)
-                     : int * int A.array =
+           let rec loop i j a =
              if i < limit
                then let (ai, a) = A.get a i in
                       if ai ≤ pivot
@@ -75,27 +74,26 @@ let inPlaceSort (a: int A.array) =
     quicksort 0 (n - 1) a
 
 (* For testing: *)
-let listToArray (Cons(x,xs): 'a list) =
+let listToArray (x ∷ xs) =
   let n = length xs + 1 in
-  let rec loop (i: int) (xs: 'a list) (a: 'a A.array) : 'a A.array =
+  let rec loop i xs a =
     match xs with
-    | Nil        → a
-    | Cons(x,xs) → loop (i + 1) xs (A.set a i x)
+    | []     → a
+    | x ∷ xs → loop (i + 1) xs (A.set a i x)
    in loop 1 xs (A.new n x)
 
-let arrayToList (a: 'a A.array) =
+let arrayToList a =
   let (n, a) = A.size a in
-  let rec loop (i: int) (xs: 'a list) (a: 'a A.array)
-            : 'a list * 'a A.array =
+  let rec loop i xs a =
         if i < 0
           then (xs, a)
           else let (ai, a) = A.get a i in
-                 loop (i - 1) (Cons(ai, xs)) a
-   in loop (n - 1) Nil a
+                 loop (i - 1) (ai ∷ xs) a
+   in loop (n - 1) [] a
 
 module Tests = struct
-  let unsorted  = Cons(4,Cons(1,Cons(0,Cons(3,Cons(2,Nil)))))
-  let sorted    = Cons(0,Cons(1,Cons(2,Cons(3,Cons(4,Nil)))))
+  let unsorted  = [4, 1, 0, 3, 2]
+  let sorted    = [0, 1, 2, 3, 4]
   let sorted'   = fst(arrayToList(inPlaceSort(listToArray(unsorted))))
   let () = if sorted == sorted'
              then ()
