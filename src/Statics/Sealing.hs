@@ -1,5 +1,6 @@
 module Statics.Sealing (
-  sealWith
+  sealWith,
+  replaceTyCons, getSigTyCons, getSigItemTyCons,
 ) where
 
 import Util
@@ -372,6 +373,11 @@ instance SubstTyCon (SigItem tv) where
     SgMod n sig → SgMod n (applyTCSInTyCon s sig)
     SgSig n sig → SgSig n (applyTCS s sig)
 
+-- | Replace all the type constructors whose indices match the ones in the
+--   list with the ones in the list.
+replaceTyCons ∷ SubstTyCon a ⇒ [TyCon] → a → a
+replaceTyCons tcs = substTyCons tcs tcs
+
 -- Give a list of tycons to replace and a list of tycons to replace them
 -- with, replaces them all recursively, including knot-tying
 substTyCons ∷ SubstTyCon a ⇒ [TyCon] → [TyCon] → a → a
@@ -380,3 +386,15 @@ substTyCons tcs tcs' = applyTCS (makeTyConSubst tcs tcs')
 -- | Replace all occurrences of the first tycon with the second
 substTyCon ∷ SubstTyCon a ⇒ TyCon → TyCon → a → a
 substTyCon tc tc' = substTyCons [tc] [tc']
+
+-- | Get all the tycons that are bound in a signature
+getSigTyCons ∷ Signature tv → [TyCon]
+getSigTyCons = concatMap getSigItemTyCons
+
+-- | Get all the tycons that are bound in a signature item
+getSigItemTyCons ∷ SigItem tv → [TyCon]
+getSigItemTyCons (SgVal _ _)   =  []
+getSigItemTyCons (SgTyp _ tc)  = [tc]
+getSigItemTyCons (SgExn _ _)   =  []
+getSigItemTyCons (SgMod _ sig) = getSigTyCons sig
+getSigItemTyCons (SgSig _ sig) = getSigTyCons sig

@@ -51,7 +51,7 @@ tcDecl μ γ d0 = withLocation d0 $ case d0 of
   [dc| abstype $list:at with $list:ds end |]    → do
     (sigC, sigA)        ← tcAbsTys μ γ at
     (ds', _, sig1)      ← tcDecls μ (γ =+= sigC) ds
-    let sig             = sigA ++ sig1
+    let sig             = sigA ++ replaceTyCons (getSigTyCons sigA) sig1
     γ'                  ← γ !+! sig
     return ([dc| abstype $list:at with $list:ds' end |], γ', sig)
   [dc| type $list:tds |]                        → do
