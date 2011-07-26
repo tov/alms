@@ -1,7 +1,9 @@
 -- | The main driver program, which performs all manner of unpleasant
 --   tasks to tie everything together
 module Main (
-  main
+  main,
+  -- * For interactive exploration from GHCi
+  makeRS0, check,
 ) where
 
 import Util
@@ -55,18 +57,17 @@ data ReplState = RS {
   rsDynamics    :: E
 }
 
+instance Show ReplState where showsPrec = showsPrec <$.> rsStatics
+
 -- | The main procedure
 main :: IO ()
 main  = do
   args <- getArgs
   processArgs [] args $ \opts mmsrc filename -> do
-  (primBasis', r0) <- basis2renv primBasis
-  g0 <- basis2tenv (staticsState0 r0) primBasis'
-  e0 <- basis2venv primBasis'
+  st0 <- makeRS0
   case mmsrc of
     Nothing | Quiet `notElem` opts -> hPutStrLn stderr versionString
     _ -> return ()
-  let st0 = RS g0 e0
   st1 <- (if NoBasis `elem` opts
             then return st0
             else findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis)
@@ -90,6 +91,17 @@ loadFile st name = do
     name' <- shortenPath name
     loadString st name' src
 
+makeRS0 :: IO ReplState
+makeRS0  = do
+  (primBasis', r0) <- basis2renv primBasis
+  g0 <- basis2tenv (staticsState0 r0) primBasis'
+  e0 <- basis2venv primBasis'
+  return (RS g0 e0)
+
+-- For trying things from GHCi
+check :: ReplState -> String -> IO ReplState
+check rs = loadString rs "<check>"
+
 loadString :: ReplState -> String -> String -> IO ReplState
 loadString st name src = do
   case parseFile name src of
@@ -106,17 +118,17 @@ batch filename msrc opt st = do
       case parseFile filename src of
         Left e    -> Exn.throwIO e
         Right ast -> thread ast where
-          thread  :: Prog Raw -> IO ()
-          check   :: Prog Raw -> IO ()
-          execute :: Prog Renamed -> IO ()
+          thread    :: Prog Raw -> IO ()
+          typecheck :: Prog Raw -> IO ()
+          execute   :: Prog Renamed -> IO ()
 
           thread ast0 = do
             ast1 <- runAlmsErrorIO (threadProg ast0)
             when (opt Verbose) $
               mumble "THREADING" ast1
-            check ast1
+            typecheck ast1
 
-          check ast1 = do
+          typecheck ast1 = do
             (ast2, mt) <- runAlmsErrorIO (typeCheckProg (rsStatics st) ast1)
             when (opt Verbose) $
               mumble "TYPE" mt

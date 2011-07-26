@@ -46,6 +46,7 @@ data StaticsState r
       ssCon     ∷ !(ConstraintState (TV r) r),
       ssEnv     ∷ !(Γ (TV r))
     }
+    deriving Show
 
 -- | The initial state of the type checker, parameterized by the
 --   initial renaming state.
