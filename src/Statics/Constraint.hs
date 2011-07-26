@@ -464,13 +464,15 @@ subtypeTypes unify = check where
           lift (makeEquivTVs r1 r2)
           addEdge r1 r2
     (TyVar (Free r1), _)
-      | tvFlavorIs Universal r1 → do
-      τ2' ← lift $ occursCheck r1 τ2 >>= if unify then return else copyType
+      | tvFlavorIs Universal r1 →
+      occursCheck r1 τ2 decomp $ \τ2'' → do
+      τ2' ← if unify then return τ2'' else copyType τ2''
       unifyVar r1 τ2'
       unless unify (check τ2' τ2)
     (_, TyVar (Free r2))
       | tvFlavorIs Universal r2 → do
-      τ1' ← lift $ occursCheck r2 τ1 >>= if unify then return else copyType
+      occursCheck r2 τ1 (flip decomp) $ \τ1'' → do
+      τ1' ← if unify then return τ1'' else copyType τ1''
       unifyVar r2 τ1'
       unless unify (check τ1 τ1')
     (TyQu Forall αs1 τ1', TyQu Forall αs2 τ2')
@@ -605,22 +607,38 @@ unifyVar α τ0 = do
 --   size-equivalent to @α@ appear guarded by a type constructor that
 --   permits recursion, in which case we roll up @τ@ as a recursive type
 --   and return that.
-occursCheck ∷ MonadSubst tv r m ⇒ tv → Type tv → ConstraintT_ tv r m (Type tv)
-occursCheck α τ = do
-  gtraceN 3 ("occursCheck", α, τ)
-  let (guarded, unguarded) = (M.keys***M.keys) . M.partition id $ ftvG τ
-  whenM (anyA (checkEquivTVs α) unguarded) $
-    typeError [msg|
-      Occurs check failed.
-      Cannot construct an infinite type when unifying:
-      <dl>
-        <dt>type variable <dd>$α
-        <dt>type          <dd>$τ
-      </dl>
-    |]
-  recVars ← filterM (checkEquivTVs α) guarded
-  when (not (null recVars)) $ gtraceN 3 ("occursCheck", "recvars", recVars)
-  return (foldr closeRec τ recVars)
+occursCheck ∷ MonadSubst tv r m ⇒
+              tv → Type tv →
+              (Type tv → Type tv → SeenT tv r m ()) →
+              (Type tv → SeenT tv r m ()) →
+              SeenT tv r m ()
+occursCheck α τ0 kv kt = do
+  lift (gtraceN 3 ("occursCheck", α, τ0))
+  loop S.empty τ0
+  where
+  loop seen τ = do
+    let (guarded, unguarded) = (M.keys***M.keys) . M.partition id $ ftvG τ
+    apparentCycle ← lift $ anyA (checkEquivTVs α) unguarded
+    if apparentCycle
+      then case headReduceType τ of
+        Next τ'@(TyVar (Free _)) → kv (fvTy α) τ'
+        Next τ' | τ' ∉ seen      → loop (S.insert τ' seen) τ'
+        _ →
+          -- | This type error has to throw because continuing will
+          --   likely cause the type checker to diverge.
+          typeError' [msg|
+            Occurs check failed.
+            Cannot construct an infinite type when unifying:
+            <dl>
+              <dt>type variable <dd>$α
+              <dt>type          <dd>$τ0
+            </dl>
+          |]
+      else do
+        recVars ← lift $ filterM (checkEquivTVs α) guarded
+        unless (null recVars) $
+          lift (gtraceN 3 ("occursCheck", "recvars", recVars))
+        kt (foldr closeRec τ recVars)
 
 -- | Records that two type variables have the same size.
 makeEquivTVs  ∷ MonadSubst tv r m ⇒ tv → tv → ConstraintT_ tv r m ()
