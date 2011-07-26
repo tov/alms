@@ -7,6 +7,7 @@ module Paths (
 
 import Util
 
+import Prelude ()
 import Language.Haskell.TH
 import System.FilePath
 import System.Directory (doesFileExist, getCurrentDirectory)
@@ -70,7 +71,7 @@ almsLibPath = do
 findAlmsLib :: FilePath -> IO (Maybe FilePath)
 findAlmsLib name = do
   path <- almsLibPath
-  findFirstInPath [ name, name <.> "alms" ] path
+  findFirstInPath (nameAdjustments name) path
 
 -- | Find an Alms library with the given name, first looking
 --   relative to the given path
@@ -81,7 +82,15 @@ findAlmsLibRel name rel = do
                "."  -> "."
                "-"  -> "."
                _    -> dropFileName rel
-  findFirstInPath [ name, name <.> "alms" ] (rel' : path)
+  findFirstInPath (nameAdjustments name) (rel' : path)
+
+-- | Produce a sequence of names to try to load based on a base name
+nameAdjustments ∷ FilePath -> [FilePath]
+nameAdjustments name =
+  [ name , name <.> "alms" ]
+  ++ if pathSeparator `elem` name
+       then []
+       else [ "lib" ++ name <.> "alms" ]
 
 shortenPath :: FilePath -> IO FilePath
 shortenPath fp = do
