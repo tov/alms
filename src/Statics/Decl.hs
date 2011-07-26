@@ -212,8 +212,9 @@ tcTyDecs' μ γ tds = do
       → typeBug "tcTyDecs'" "Saw type synonym with 0 clauses."
     AST.TdAnti a
       → $(AST.antifail)
-  iterChanging <-> stub_sig $ \sig →
+  real_sig ← iterChanging <-> stub_sig $ \sig →
     zipWithM (tcTyDec (γ =+= Env.fromList sig)) tds sig
+  return (second (replaceTyCons (snd <$> real_sig)) <$> real_sig)
   where
     allocStub tid bounds = do
       ix ← tvUniqueID <$> newTV
