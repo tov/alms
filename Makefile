@@ -22,7 +22,7 @@ default: Setup dist/setup-config $(SRC)
 	./Setup build
 	cp dist/build/alms/alms .
 
-alms.cabal: alms.cabal.sh Makefile src/extensions.txt
+alms.cabal: alms.cabal.sh Makefile src/extensions.txt $(HS_SRC)
 	./alms.cabal.sh > alms.cabal
 
 dist/setup-config config: Setup alms.cabal

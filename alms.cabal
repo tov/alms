@@ -95,11 +95,11 @@ Executable alms
                         Basis.Future
                         Basis.IO
                         Basis.MVar
+                        Basis.Row
                         Basis.Socket
                         Basis.Thread
                         Basis
                         BasisUtils
-                        Coercion
                         Compat
                         Data.Empty
                         Data.Lattice
@@ -121,7 +121,7 @@ Executable alms
                         Meta.QuoteData
                         Meta.THHelpers
                         Paths
-                        Sigma
+                        Statics.Coercion
                         Statics.Constraint
                         Statics.Decl
                         Statics.Env
@@ -135,6 +135,8 @@ Executable alms
                         Statics.Subsume
                         Statics.Type
                         Statics
+                        Syntax.Construction
+                        Syntax.ImplicitThreading
                         Syntax.Lexer
                         Syntax.Parser
                         Syntax.Ppr
