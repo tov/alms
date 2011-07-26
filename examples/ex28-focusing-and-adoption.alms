@@ -6,75 +6,58 @@
     't 's               capability name
 *)
 
-let length[`a] (xs: `a list) : int * `a list =
-  foldr (fun (x: `a) (n: int, xs: `a list) ->
-           (n + 1, Cons (x, xs)))
-        (0, Nil[`a]) xs
+let snoc x xs = append xs [x]
 
-let snoc[`a] (x: `a) |[a] (xs: `a list) : `a list =
-  foldr (fun (x: `a) (xs: `a list) -> Cons (x, xs))
-        (Cons (x, Nil[`a])) xs
+let rec revAppN n xs acc =
+    match n with
+    | 0 → (acc, xs)
+    | _ → match xs with
+           | x ∷ xs → revAppN (n - 1) xs (x ∷ acc)
+           | xs     → (acc, xs)
 
-let revAppN =
-  let rec loop[`a] (n: int) (xs: `a list) | (acc: `a list)
-                    : `a list * `a list =
-        match n with
-        | 0 -> (acc, xs)
-        | _ -> match xs with
-               | Cons(x, xs) -> loop (n - 1) xs (Cons (x, acc))
-               | xs          -> (acc, xs)
-  in loop
+let swapN ix y xs =
+  let (x ∷ xs, acc) = revAppN ix xs [] in
+    (x, revApp acc (y ∷ xs))
 
-let swapN[`a] (ix: int) (y: `a) |[a] (xs: `a list)
-       : `a * `a list =
-  let (Cons(x, xs), acc) = revAppN ix xs Nil[`a] in
-  let (xs, _) = revAppN (-1) acc (Cons (y, xs)) in
-    (x, xs)
-
-abstype 't tr qualifier U = Tr
-    and ('t, `a) cap qualifier A = Cap of `a * (unit -o unit) list
-    and ('t, `a) guarded qualifier U =
-                    Guarded of (`a * (unit -o unit) list) option ref
+abstype 't tr            = Tr
+    and ('t, `a) cap : A = Cap of `a * (unit -A> unit) list
+    and ('t, `a) guarded =
+                    Guarded of (`a * (unit -A> unit) list) option ref
 with
-  let new[`a] (x: `a) : ex 't. ('t, `a) cap * 't tr =
-        Pack[ex 't. ('t, `a) cap * 't tr]
-            (unit, Cap[unit, `a] (x, Nil[unit -o unit]), Tr[unit])
-  let swap[`a,`b,'t] ((Cap (x, fs), _) : ('t, `a) cap * 't tr) |
-                       (y                : `b)
-                       : ('t, `b) cap * `a =
-    (Cap['t] (y, fs), x)
-  let free[`a, 't] (Cap (_, fs): ('t, `a) cap) =
-    let rec loop (fs : (unit -o unit) list) : unit =
-      match fs with
-      | Nil         -> ()
-      | Cons(f, fs) -> f (); loop fs
-    in loop fs
+  let new (x: `a) : ∃ 't. ('t, `a) cap * 't tr =
+    (Cap (x, []), Tr)
 
-  let adoptByThen[`a,'ta,`b,'tb]
-      ((Cap adoptee, _)                : ('ta, `a) cap * 'ta tr) |
+  let swap ((Cap (x, fs), _) : ('t, `a) cap * 't tr) (y : `b)
+    : ('t, `b) cap * `a =
+    (Cap (y, fs), x)
+
+  let free (Cap (_, fs)) = map (λ f → f ()) fs; ()
+
+  let adoptByThen
+      ((Cap adoptee, _)                : ('ta, `a) cap * 'ta tr)
       ((Cap (adoptor, destructors), _) : ('tb, `b) cap * 'tb tr)
-      (destroy                         : ('ta, `a) cap -o unit)
+      (destroy                         : ('ta, `a) cap -A> unit)
       : ('tb, `b) cap * ('tb, `a) guarded =
     let r    = ref (Some adoptee) in
     let g () = match r <- None with
-               | None   -> failwith "Can't happen"
-               | Some c -> destroy (Cap['ta] c) in
-      (Cap['tb] (adoptor, Cons(g, destructors)), Guarded['tb] r)
-  let adoptBy[`a,'ta,`b,'tb]
-      (adoptee : ('ta, `a) cap * 'ta tr) |
+               | None   → failwith "Can't happen"
+               | Some c → destroy (Cap c) in
+      (Cap (adoptor, g ∷ destructors), Guarded r)
+  let adoptBy
+      (adoptee : ('ta, `a) cap * 'ta tr)
       (adoptor : ('tb, `b) cap * 'tb tr)
       : ('tb, `b) cap * ('tb, `a) guarded
-      = adoptByThen adoptee adoptor (fun (_: ('ta, `a) cap) -> ())
+      = adoptByThen adoptee adoptor (λ (_: ('ta, `a) cap) → ())
 
-  let focusIn[`a,'t,`b,`r]
-      ((guard, Guarded r) : ('t, `a) cap * ('t, `b) guarded) |
-      (body               : (all 's. ('s, `b) cap * 's tr -o
-                                     ('s, `b) cap * `r))
+  let focusIn
+      ((guard, Guarded r) : ('t, `a) cap * ('t, `b) guarded)
+      (body               : (∀ 's. ('s, `b) cap * 's tr -A>
+                                   ('s, `b) cap * `r))
       : ('t, `a) cap * `r =
       match r <- None with
-      | None   -> failwith "Can't happen"
-      | Some c ->
-          let (Cap c, result) = body[unit] (Cap[unit] c, Tr[unit])
+      | None   → failwith "Can't happen"
+      | Some c →
+          let (Cap c, result) = body (Cap c, Tr)
            in r <- Some c;
               (guard, result)
 end

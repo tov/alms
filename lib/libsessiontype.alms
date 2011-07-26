@@ -4,7 +4,7 @@
 
 module type SESSION_TYPE = sig
   type 1
-  type +'a ; +'s
+  type +'a ; +'s rec 's
   type ! -`a
   type ? +`a
   type +'a |+| +'b
@@ -51,35 +51,33 @@ module SessionType : SESSION_TYPE = struct
   type 's channel    = rep
   type 's rendezvous = rep C.channel
 
-  let newRendezvous['s] () =
-    (C.new['s channel] ())
+  let newRendezvous () = C.new ()
 
-  let request['s] (r: 's rendezvous) =
-    C.recv r
+  let request (r: 's rendezvous) = C.recv r
 
-  let accept['s] (r: 's rendezvous) =
-    let c = C.new[bool] () in
+  let accept (r: 's rendezvous) =
+    let c = C.new () in
       C.send r c;
       c
 
-  let send[`a, 's] (c: rep)| (a: `a) =
-    C.send c (Unsafe.unsafeCoerce[bool] a);
+  let send (c: rep) (a: `a) =
+    C.send c (Unsafe.unsafeCoerce a);
     c
 
-  let recv[`a, 's] (c: rep) =
-    (Unsafe.unsafeCoerce[`a] (C.recv c),  c)
+  let recv (c: rep) =
+    (Unsafe.unsafeCoerce (C.recv c),  c)
 
-  let sel1['s1, 's2] (c: ('s1 |+| 's2) channel)
+  let sel1 (c: ('s1 |+| 's2) channel)
                      : 's1 channel =
     C.send c true;
     c
 
-  let sel2['s1, 's2] (c: rep) =
+  let sel2 (c: rep) =
     C.send c false;
     c
 
-  let follow['s1, 's2] (c: rep) =
+  let follow (c: rep) =
     if C.recv c
-      then Left [rep, rep] c
-      else Right[rep, rep] c
+      then Left  c
+      else Right c
 end

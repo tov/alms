@@ -7,11 +7,11 @@ module Socket = struct
     module S = Prim.Socket
   with
     let getAddrByName (host: string) (port: string) : S.sockAddr =
-      let info = S.AddrInfo(Nil[S.addrInfoFlag], S.AF_INET,
+      let info = S.AddrInfo([], S.AF_INET,
                             S.Stream, S.defaultProtocol,
-                            S.SockAddrInet(S.PortNum 0, 0), None[string]) in
+                            S.SockAddrInet(S.PortNum 0, 0), None) in
       match S.getAddrInfo (Some info) (Some host) (Some port) with
-      | Cons (S.AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
+      | S.AddrInfo (_, _, _, _, sockAddr, _) ∷ _ -> sockAddr
       | _ -> failwith ("Could not resolve address "^host^":"^port)
 
     type socket = S.socket

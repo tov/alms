@@ -7,25 +7,21 @@ open SessionType
 
 type protocol = !int; !int; ?int; 1
 
-let server =
-  fun c : protocol dual channel ->
-    let (x, c) = recv c in
-    let (y, c) = recv c in
-      send c (x + y);
-      ()
+let server (c : protocol dual channel) =
+  let (x, c) = recv c in
+  let (y, c) = recv c in
+    send c (x + y);
+    ()
 
-let client =
-  fun c : protocol channel ->
-    fun (x : int) (y : int) ->
-      let c = send c x in
-      let c = send c y in
-      let (r, _) = recv c in
-        r
+let client (c : protocol channel) (x : int) (y : int) =
+  let c = send c x in
+  let c = send c y in
+  let (r, _) = recv c in
+    r
 
-let main =
-  fun (x : int) (y : int) ->
-    let rv = newRendezvous[protocol] () in
-      AThread.fork (fun () -> server (accept rv));
-      client (request rv) x y
+let main (x : int) (y : int) =
+  let rv = newRendezvous () in
+    AThread.fork (λ _ → server (accept rv));
+    client (request rv) x y
 
 in print (main 3 4)
