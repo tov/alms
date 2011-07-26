@@ -12,6 +12,7 @@ import Type
 import Statics.Env
 import Statics.Error
 import Statics.Constraint
+import Statics.Coercion
 import Statics.InstGen
 import Statics.Subsume
 import Statics.Type
@@ -194,8 +195,13 @@ infer φ0 δ γ e0 mσ0 = do
         return e'
       σ'                ← maybeGen e0 (request φ γ αs) γ σ
       return ([ex| $e' : $annot |], σ')
-    [ex| $_ :> $_ |]      → do
-      typeBug "tcExpr" "TODO: cast (:>) unimplemented" --XXX
+    [ex| $e1 :> $annot |]       → do
+      σ                 ← tcType δ γ annot
+      let φ'            = prenexFlavors σ request
+      (e1', σ1)         ← infer (request φ') δ γ e1 Nothing
+      (e', αs)          ← collectTVs (coerceExpression e1' σ1 σ)
+      σ'                ← maybeGen e0 (request φ γ αs) γ σ
+      return (e', σ')
     --
     [ex| $anti:a |]             → $(AST.antifail)
     [ex| $antiL:a |]            → $(AST.antifail)

@@ -249,8 +249,7 @@ valOf e env = case e of
         Just v  → return v
         Nothing → runtimeBug "valOf" "missing record field (⊗)"
   [ex| ( $e1 : $_ ) |]           -> valOf e1 env
-  [ex| ( $_ :> $_ ) |]           -> runtimeBug "valOf" $
-      "TODO: Cast is unimplemented" -- XXX
+  [ex| ( $_ :> $_ ) |]           -> runtimeBug "valOf" "encountered cast"
   [ex| $anti:a |]                -> $antifail
 
 bindPatt :: Monad m => Patt R -> Value -> E -> m E
