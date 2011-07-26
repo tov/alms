@@ -67,11 +67,13 @@ main  = do
     Nothing | Quiet `notElem` opts -> hPutStrLn stderr versionString
     _ -> return ()
   let st0 = RS g0 e0
-  st1 <- if NoBasis `elem` opts
-           then return st0
-           else findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis
+  st1 <- (if NoBasis `elem` opts
+            then return st0
+            else findAlmsLib srcBasis >>= tryLoadFile st0 srcBasis)
+    `handleExns` (st0, exitFailure)
   st2 <- foldM (\st n -> findAlmsLibRel n "." >>= tryLoadFile st n)
                st1 (reverse [ name | LoadFile name <- opts ])
+    `handleExns` (st1, exitFailure)
   maybe interactive (batch filename) mmsrc (`elem` opts) st2
     `handleExns` (st2, exitFailure)
 
