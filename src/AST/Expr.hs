@@ -21,6 +21,7 @@ module AST.Expr (
   exChar, exStr, exInt, exFloat,
   exSeq,
   exUnit, exNilRecord,
+  exNil, exCons,
   ToExpr(..),
 
   -- * Expression accessors and updaters
@@ -303,6 +304,12 @@ exSeq e1 e2 = exLet paWild e1 e2
 exUnit, exNilRecord :: Tag i => Expr i
 exUnit      = exCon idUnitVal Nothing
 exNilRecord = exVar idNilRecord
+
+exCons :: Tag i => Expr i -> Expr i -> Expr i
+exCons = exCon idConsList . Just <$$> exPair
+
+exNil :: Tag i => Expr i
+exNil  = exCon idNilList Nothing
 
 class ToExpr a i | a → i where
   toExpr ∷ a → Expr i

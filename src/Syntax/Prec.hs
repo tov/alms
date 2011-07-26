@@ -31,7 +31,7 @@ precOp (c:cs)
   | c `elem` "=<>|&$" = Left precEq
   | c `elem` "*×/%"   = Left precStar
   | c `elem` "+-"     = Left precPlus
-  | c `elem` "^"      = Right precCaret
+  | c `elem` "^:∷"    = Right precCaret
   | c `elem` "@"      = Right precAt
   | c `elem` "!~?"    = Right precBang
   | otherwise = case generalCategory c of
@@ -55,7 +55,7 @@ precExSemi=  1 -- ;  (expressions only)
 precCast  =  2 -- :>
 precArr   =  3 -- ->
 precEq    =  4 -- != = < > | & $ as
-precCaret =  5 -- ^ (infixr)
+precCaret =  5 -- ^ : (infixr)
 precPlus  =  6 -- - +
 precStar  =  7 -- % / *
 precTySemi=  8 -- ; "\\/" "⋁" (types only)

@@ -35,9 +35,9 @@ import AST.Patt
 import AST.Expr
 import AST.Decl
 import AST.SyntaxTable
-import Data.Lattice
 
 import Util
+import Data.Lattice
 
 deriveAntibles syntaxTable
 

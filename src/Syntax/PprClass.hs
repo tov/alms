@@ -2,7 +2,7 @@ module Syntax.PprClass (
   -- * Documents
   Doc,
   -- * Pretty-printing class
-  Ppr(..), IsInfix(..), ListStyle(..),
+  Ppr(..), IsInfix(..), ListStyle(..), listStyleBrack,
   -- ** Helpers
   ppr0, ppr1, pprPrec1, pprDepth,
   -- ** Context operations
@@ -124,6 +124,17 @@ class Ppr p where
     listStyleDelimitSingleton = False,
     listStyleJoiner           = fsep
   }
+
+-- | Style for printing square-bracketed lists.
+listStyleBrack ∷ ListStyle
+listStyleBrack = ListStyle {
+  listStyleBegin            = lbrack,
+  listStyleEnd              = rbrack,
+  listStylePunct            = comma,
+  listStyleDelimitEmpty     = True,
+  listStyleDelimitSingleton = True,
+  listStyleJoiner           = fsep
+}
 
 -- | Print at top level.
 ppr0      :: Ppr p => p -> Doc

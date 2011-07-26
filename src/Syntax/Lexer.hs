@@ -8,7 +8,7 @@ module Syntax.Lexer (
 
   -- * Operators
   opP,
-  semis, bang, star,
+  cons, semis, bang, star,
   pragma,
   lolli, arrow, funbraces, plusbraces,
   lambda, forall, exists, mu,
@@ -58,7 +58,7 @@ tok = T.makeTokenParser T.LanguageDef {
                         "all", "ex", "mu", "μ", "of",
                         "type", "qualifier" ],
     T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
-                         "∀", "∃", "⋁", "\\/", "...", "…", "{+", "+}" ],
+                         "∀", "∃", "⋁", "\\/", "...", "…", "::", "∷" ],
     T.caseSensitive = True
   }
   -- 'λ' is not an identifier character, so that we can use it as
@@ -242,6 +242,10 @@ exists           = reserved "ex" <|> reservedOp "∃"
 mu              :: T.TokenEnd st => CharParser st ()
 mu               = reserved "mu" <|> reservedOp "μ"
 
+-- | The list constructor
+cons            :: T.TokenEnd st => CharParser st ()
+cons             = reservedOp "::" <|> reservedOp "∷"
+
 -- | @;@, @;;@, ...
 semis           :: T.TokenEnd st => CharParser st String
 semis            = lexeme (many1 (char ';'))
@@ -300,6 +304,8 @@ isUpperIdentifier :: String -> Bool
 isUpperIdentifier "true"  = True
 isUpperIdentifier "false" = True
 isUpperIdentifier "()"    = True
+isUpperIdentifier "[]"    = True
+isUpperIdentifier "::"    = True
 isUpperIdentifier (c:_)   = isUpper c
 isUpperIdentifier _       = False
 
@@ -314,7 +320,7 @@ lid              = try $ do
 -- | Lex an uppercase identifer
 uid        :: T.TokenEnd st => CharParser st String
 uid              = try $ do
-  s <- identifier <|> symbol "()"
+  s <- identifier <|> symbol "()" <|> symbol "[]"
   if isUpperIdentifier s
     then return s
     else pzero <?> "uppercase identifier"

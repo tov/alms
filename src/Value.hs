@@ -84,23 +84,20 @@ class Typeable a => Valuable a where
   --   by 'Show' for printing 'String's differently than other
   --   lists.)
   vpprList :: [a] -> Doc
-  vpprList []     = text "nil"
-  vpprList (x:xs) = prec precApp $ prec1 $
-                      hang (text "cons" <+> vppr x)
-                           1
-                           (vpprList xs)
+  vpprList =
+    Ppr.brackets . atPrec 0 . Ppr.fsep . Ppr.punctuate Ppr.comma . map vppr
 
   -- | Inject a list.  As with the above, this lets us special-case
   --   lists at some types (e.g. we inject Haskell 'String' as object
   --   language @string@ rather than @char list@)
   vinjList     :: [a] -> Value
-  vinjList []     = VaCon (ident "Nil") Nothing
-  vinjList (x:xs) = VaCon (ident "Cons") (Just (vinj (x, xs)))
+  vinjList []     = VaCon (ident "[]") Nothing
+  vinjList (x:xs) = VaCon (ident "::") (Just (vinj (x, xs)))
 
   -- | Project a list.  (Same deal.)
   vprjListM    :: Monad m => Value -> m [a]
-  vprjListM (VaCon (idName -> "Nil") Nothing) = return []
-  vprjListM (VaCon (idName -> "Cons") (Just v)) = do
+  vprjListM (VaCon (idName -> "[]") Nothing) = return []
+  vprjListM (VaCon (idName -> "::") (Just v)) = do
     (x, xs) <- vprjM v
     return (x:xs)
   vprjListM _ = fail "vprjM: not a list"
@@ -214,6 +211,7 @@ instance Valuable Value where
                               = n == m && c == d && v == w
   veq (VaDyn a)   b           = veqDyn a b
   veq _           _           = False
+  vppr v | Just vs ← vprjM v  = vppr (vs ∷ [Value])
   vppr (VaFun n _)            = ppr n
   vppr (VaCon c Nothing)      = ppr c
   vppr (VaCon c (Just v))     = prec precApp $

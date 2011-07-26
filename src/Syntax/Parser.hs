@@ -364,6 +364,7 @@ varopp p = VarId <$> oplevelp p
 conidp :: Tag i => P (ConId i)
 conidp  = antiblep
       <|> ConId <$> uidp
+      <|> ConId (ident "::") <$ parens cons
   <?> "data constructor"
 
 -- Module names
@@ -1016,11 +1017,11 @@ exprpP p = mark $ case () of
          ec  <- exprp
          clt <- addLoc $ do
            reserved "then"
-           caClause (paCon (qident "INTERNALS.PrimTypes.true") Nothing)
+           caClause (paCon idTrueValue Nothing)
                 <$> exprp
          clf <- addLoc $ do
            reserved "else"
-           caClause (paCon (qident "INTERNALS.PrimTypes.false") Nothing)
+           caClause (paCon idFalseValue Nothing)
                 <$> exprp
          return (exCase ec [clt, clf]),
       do reserved "match"
@@ -1097,9 +1098,14 @@ exprpP p = mark $ case () of
           exCon <$> qconidp <*> pure Nothing,
           exLit <$> litp,
           antiblep,
+          brackets (listexp <|> pure exNil),
           parens (exprpP precMin <|> pure exUnit),
           recordp
         ]
+    | p == precCaret
+          -> chainr1last next
+                         (opappp (Right p) <|> opconsp exCon exPair)
+                         exprp
     | Just (Left _) <- fixities p ->
         chainl1last next (opappp (Left p)) exprp
     | Just (Right _) <- fixities p ->
@@ -1108,6 +1114,10 @@ exprpP p = mark $ case () of
   where
   next = exprpP (p + 1)
   mark = ("expression" @@)
+
+-- | The body of a list.
+listexp ∷ Tag i ⇒ P (Expr i)
+listexp = foldr exCons exNil <$> commaSep1 exprp
 
 -- | Parse a record expression
 recordp :: Tag i ⇒ P (Expr i)
@@ -1152,6 +1162,11 @@ opappp p = do
   op  <- addLoc (exBVar <$> varopp p)
   return (\e1 e2 -> op `exApp` e1 `exApp` e2)
 
+-- Parse list cons
+opconsp  :: Tag i => (QConId i -> Maybe a -> a) → (a -> a -> a) →
+                   P (a -> a -> a)
+opconsp con pair = cons *> return (con idConsList . Just <$$> pair)
+
 -- Parse some number of argument patterns and return the function
 -- that adds them to a body expression to build a lambda.
 buildargsp :: Tag i => P (Expr i -> Expr i)
@@ -1193,6 +1208,8 @@ pattpP p = mark $ case () of
         option id (paBang <$ bang) <*> next
     | p == precCom    →
         foldl1 paPair <$> commaSep1 next
+    | p == precCaret  →
+        chainr1last next (opconsp paCon paPair) pattp
     | p > precMax     → choice
         [
           paWild <$  reserved "_",
@@ -1201,6 +1218,7 @@ pattpP p = mark $ case () of
           paInj  <$> varinjp <*> pure Nothing,
           paLit  <$> litp,
           antiblep,
+          brackets (listpap <|> pure paNil),
           braces recordpap,
           parens (pattpP precMin <|> pure paUnit)
         ]
@@ -1208,6 +1226,10 @@ pattpP p = mark $ case () of
   where
   next = pattpP (p + 1)
   mark  = ("pattern" @@)
+
+-- | The body of a list.
+listpap ∷ Tag i ⇒ P (Patt i)
+listpap = foldr paCons paNil <$> commaSep1 pattp
 
 recordpap ∷ Tag i ⇒ P (Patt i)
 recordpap = do

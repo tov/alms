@@ -20,6 +20,7 @@ fun, arrow ∷ String
 -- | Quantifiers
 all, ex, mu ∷ String
 
+{-# INLINE cons #-}
 {-# INLINE product #-}
 {-# INLINE uArrow #-}
 {-# INLINE aArrow #-}
@@ -27,7 +28,7 @@ all, ex, mu ∷ String
 {-# INLINE arrowPost #-}
 {-# INLINE join #-}
 -- | Infix type constructors
-product, uArrow, aArrow, arrowPre, arrowPost, join ∷ String
+cons, product, uArrow, aArrow, arrowPre, arrowPost, join ∷ String
 
 {-# INLINE affine #-}
 {-# INLINE unlimited #-}
@@ -52,6 +53,7 @@ tvNames         = [ 'a' .. 'z' ]
 all             = "∀"
 ex              = "∃"
 mu              = "μ"
+cons            = "∷"
 product         = "×"
 uArrow          = "→"
 aArrow          = "-A>"
@@ -76,6 +78,7 @@ tvNames         = [ 'a' .. 'z' ]
 all             = "all"
 ex              = "ex"
 mu              = "mu"
+cons            = "::"
 product         = "*"
 uArrow          = "->"
 aArrow          = "-A>"

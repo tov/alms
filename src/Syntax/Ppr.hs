@@ -311,7 +311,7 @@ pprModExp add modexp = case modexp of
   [meQ| $qmid:n |] -> add (ppr n)
   [meQ| $qmid:n $list:qls |] ->
     add (ppr n) <+>
-    brackets (fsep (punctuate comma (map ppr qls)))
+    pprStyleList listStyleBrack qls
   [meQ| struct $list:ds end |] ->
     add (text "struct")
     $$ nest 2 (vcat (map ppr0 ds))
@@ -330,7 +330,7 @@ pprSigExp add se0 = body >+> withs where
     [seQ| $qsid:n |] -> add (ppr n)
     [seQ| $qsid:n $list:qls |] ->
       add (ppr n) <+>
-      brackets (fsep (punctuate comma (map ppr qls)))
+      pprStyleList listStyleBrack qls
     [seQ| sig $list:sgs end |] ->
       add (text "sig")
       $$ nest 2 (vcat (map ppr0 sgs))
@@ -370,7 +370,11 @@ instance Ppr (Expr i) where
   ppr e0 = case e0 of
     _ | Just doc <- pprInfix unfoldExpr e0
                        -> doc
+      | Just es <- unfoldExList e0
+                       -> pprStyleList listStyleBrack es
     [ex| { } |]        -> braces mempty -- Must come before ExVar case
+    [ex| $e1 :: $e2 |] -> prec precCaret $
+                            ppr1 e1 <+> text Strings.cons <+> ppr e2
     [ex| $qvid:x |]    -> ppr x
     [ex| $lit:lt |]    -> ppr lt
     [ex| $qcid:x |]    -> ppr x
@@ -455,6 +459,12 @@ instance Ppr (Expr i) where
     unfoldExpr [ex| $name:x $e1 |]       = Just (e1, x, Nothing)
     unfoldExpr _                          = Nothing
 
+unfoldExList ∷ Expr i → Maybe [Expr i]
+unfoldExList [ex| [] |]        = Just []
+unfoldExList [ex| [ ] |]       = Just []
+unfoldExList [ex| $e1 ∷ $e2 |] = (e1 :) <$> unfoldExList e2
+unfoldExList _                 = Nothing
+
 pprRecord    ∷ String → [Field i] → Expr i → String → Doc
 pprRecord bl flds e2 br =
   atPrec precStart $
@@ -516,8 +526,12 @@ resugarLet e =
         _                → (args, rhs0, Nothing)
 
 instance Ppr (Patt i) where
+  ppr π0 | Just πs ← unfoldPaList π0
+                            = pprStyleList listStyleBrack πs
   ppr [pa| _ |]             = text "_"
   ppr [pa| $lid:l |]        = ppr l
+  ppr [pa| $x :: $y |]      = prec precCaret $
+                                 ppr1 x <+> text Strings.cons <+> ppr y
   ppr [pa| $qcid:qu |]      = ppr qu
   ppr [pa| $qcid:qu $x |]   = prec precApp $
                                  ppr qu <+> ppr1 x
@@ -548,6 +562,12 @@ instance Ppr (Patt i) where
                                      2
                                      (colon <+> ppr0 t)
   ppr [pa| $anti:a |]       = ppr a
+
+unfoldPaList ∷ Patt i → Maybe [Patt i]
+unfoldPaList [pa| [] |]        = Just []
+unfoldPaList [pa| [ ] |]       = Just []
+unfoldPaList [pa| $π1 ∷ $π2 |] = (π1 :) <$> unfoldPaList π2
+unfoldPaList _                 = Nothing
 
 instance Ppr Lit where
   ppr (LtInt i)   = integer i

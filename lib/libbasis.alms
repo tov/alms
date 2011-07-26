@@ -36,38 +36,38 @@ module INTERNALS = struct
 
       (* Flat contracts for unlimited values. *)
       let flat (pred: 'a -> bool) : 'a contract =
-        fun (neg: party, pos: party) (a: 'a) ->
+        λ (neg: party, pos: party) (a: 'a) ->
           if pred a
             then a
             else Exn.raiseBlame pos "violated contract"
 
       (* Flat contracts for affine values. *)
       let flatA (pred: `a -> bool * `a) : `a contract =
-        fun (neg: party, pos: party) (a: `a) ->
+        λ (neg: party, pos: party) (a: `a) ->
           match pred a with
           | (true, a)  -> a
           | (false, _) -> Exn.raiseBlame pos "violated contract"
 
       (* The identity contract. *)
       let any : `a contract =
-        fun (_: party, _: party) (a: `a) -> a
+        λ (_: party, _: party) (a: `a) -> a
 
       (* Add domain and codomain contracts to a function. *)
       let func
                (dom: (`a1, `a2) coercion)
                (cod: (`b1, `b2) coercion)
               : (`a2 -[`q]> `b1, `a1 -[`q]> `b2) coercion =
-        fun (neg: party, pos: party) (f: `a2 -[`q]> `b1) ->
-          fun (a: `a1) -> cod (neg, pos) (f (dom (pos, neg) a))
+        λ (neg: party, pos: party) (f: `a2 -[`q]> `b1) ->
+          λ (a: `a1) -> cod (neg, pos) (f (dom (pos, neg) a))
 
       (* Coerce an affine function to an unlimited function, and
          check dynamically that it's applied only once. *)
       let affunc (dom: (`a1, `a2) coercion)
                  (cod: (`b1, `b2) coercion)
                 : (`a2 -o `b1, `a1 -> `b2) coercion =
-        fun (neg: party, pos: party) (f: `a2 -o `b1) ->
+        λ (neg: party, pos: party) (f: `a2 -o `b1) ->
           let rf = ref (Some f) in
-            fun (a: `a1) ->
+            λ (a: `a1) ->
               match rf <- None with
               | Some f -> cod (neg, pos) (f (dom (pos, neg) a))
               | None   -> Exn.raiseBlame neg "reused one-shot function"
@@ -77,8 +77,8 @@ module INTERNALS = struct
       let unfunc (dom: (`a1, `a2) coercion)
                  (cod: (`b1, `b2) coercion)
                 : (`a2 -> `b1, `a1 -> `b2) coercion =
-        fun (neg: party, pos: party) (f: `a2 -> `b1) ->
-          fun (x: `a1) ->
+        λ (neg: party, pos: party) (f: `a2 -> `b1) ->
+          λ (x: `a1) ->
             let x' = dom (pos, neg) x in
             let y  = try f x' with
                      | Exn.Blame(p, "reused one-shot function")
@@ -88,78 +88,105 @@ module INTERNALS = struct
   end
 end
 
-let not (b: bool) = if b then false else true
-let (!=) (x: 'a) (y: 'a) = not (x == y)
+module Function = struct
+  let id x             = x
+  let const _ x        = x
+  let flip f y x       = f x y
+  let curry f x y      = f (x, y)
+  let uncurry f (x, y) = f x y
+  let compose f g x    = f (g x)
+  let ($) f x          = f x
+end
 
-let flip (f: 'a -> 'b -> 'c) (y: 'b) (x: 'a) = f x y
+open Function
 
-let (<) (x: int) (y: int) = not (y <= x)
-let (>) = flip (<)
-let (>=) = flip (<=)
-let (>.) = flip (<.)
-let (>=.) = flip (<=.)
+module Bool = struct
+  let not (b: bool) = if b then false else true
+  let (!=) (x: 'a) (y: 'a) = not (x == y)
+end
 
-type `a × `b = `a * `b
-(* These have too-tight precedences *)
-let (≠)  = (!=)
-let (≤)  = (<=)
-let (≥)  = (>=)
-let (≤.) = (<=.)
-let (≥.) = (>=.)
+open Bool
 
-let null = fun (x : 'a list) ->
-  match x with
-  | Nil -> true
-  | _   -> false
-let anull = fun (xs : `a list) ->
-  match xs with
-  | Nil          -> (Nil, true)
-  | Cons(x, xs') -> (Cons(x, xs'), false)
-let hd = fun (xs : 'a list) ->
-  let Cons(x, _) = xs in x
-let tl = fun (xs : 'a list) ->
-  let Cons(_, xs') = xs in xs'
-let rec foldr f z xs =
-  match xs with
-  | Nil -> z
-  | Cons(x,xs) -> f x (foldr f z xs)
-let rec foldl f z xs =
-  match xs with
-  | Nil -> z
-  | Cons(x,xs) -> foldl f (f x z) xs
-let map f xs =
-  foldr (λ x xs' -> Cons (f x, xs')) Nil xs
-let filter f xs =
-  foldr (λ x xs' -> if f x then Cons(x, xs') else xs')
-        Nil
-let mapFilterA (f: `a -> `b option) (xs: `a list) =
-      foldr (fun (x: `a) (xs': `b list) ->
-               match f x with
-               | Some y -> Cons(y, xs')
-               | None   -> xs')
-            Nil
-            xs
-let revApp (xs : `c list) (ys : `c list) =
-  let cons (x : `c) (acc : `c list) = Cons (x, acc) in
-    foldl cons ys xs
-let rev (xs : `b list) = revApp xs Nil
-let append (xs : `a list) = revApp (rev xs)
-let length (xs : `a list) =
-  foldr (fun (x : `a) -> (+) 1) 0 xs
-let lengthA (xs : `a list) =
-  let count (x : `a) (n : int, xs' : `a list) =
-       (1 + n, Cons (x, xs')) in
-    foldr count (0, Nil) xs
+module Int = struct
+  let (<) (x: int) (y: int) = not (y <= x)
+  let (>) = flip (<)
+  let (>=) = flip (<=)
+  let (>.) = flip (<.)
+  let (>=.) = flip (<=.)
 
-let rec openFoldr f z o xs = match xs with
-  | #Nil         → z
-  | #Cons(x,xs') → f x (openFoldr f z o xs')
-  | other        → o other
+  type `a × `b = `a * `b
+  (* These have too-tight precedences *)
+  let (≠)  = (!=)
+  let (≤)  = (<=)
+  let (≥)  = (>=)
+  let (≤.) = (<=.)
+  let (≥.) = (>=.)
+end
 
-let fst (x: `a, _: `b) = x
-let snd (_: `a, y: `b) = y
+open Int
 
-let (=>!)  (x: `a)  (y: `b) = (y, x)
+module List = struct
+  let null x =
+    match x with
+    | [] -> true
+    | _  -> false
+
+  let anull xs =
+    match xs with
+    | []       -> ([], true)
+    | x :: xs' -> (x :: xs', false)
+
+  let hd (x :: _) = x
+
+  let tl (_ :: xs) = xs
+
+  let rec foldr f z xs =
+    match xs with
+    | []      -> z
+    | x :: xs -> f x (foldr f z xs)
+
+  let rec foldl f z xs =
+    match xs with
+    | []      -> z
+    | x :: xs -> foldl f (f x z) xs
+
+  let map f = foldr (λ x xs' -> f x :: xs') []
+
+  let filter f xs = foldr (λ x xs' -> if f x then x :: xs' else xs') []
+
+  let mapFilterA f =
+        foldr (λ x xs' ->
+                 match f x with
+                 | Some y -> y :: xs'
+                 | None   -> xs')
+              []
+
+  let revApp xs ys =
+    let cons x acc = x :: acc in
+      foldl cons ys xs
+
+  let rev xs = revApp xs []
+
+  let append xs = revApp (rev xs)
+
+  let length = foldr (λ _ -> (+) 1) 0
+
+  let lengthA xs =
+    let count x (n, xs') = (1 + n, x :: xs') in
+      foldr count (0, []) xs
+
+  let rec openFoldr f z o xs = match xs with
+    | #Nil         -> z
+    | #Cons(x,xs') -> f x (openFoldr f z o xs')
+    | other        -> o other
+end
+
+open List
+
+let fst (x, _) = x
+let snd (_, y) = y
+
+let (=>!) x y = (y, x)
 let (⇒) = (=>!)
 
 let (←) = (<-)

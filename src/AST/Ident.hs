@@ -24,7 +24,8 @@ module AST.Ident (
   -- * Fresh names
   tvalphabet, freshName, freshNames,
   -- * Build-in names
-  idUnitVal, idNilRecord,
+  idUnitVal, idNilRecord, idNilList, idConsList,
+  idTrueValue, idFalseValue,
   internalPath, internalName, internalIdent,
   -- * Free and defined vars
   Occurrence, occToQLit,
@@ -480,11 +481,16 @@ internalName  = (internalPath ++) . ('.':)
 internalIdent ∷ (Id a, Tag i) ⇒ String → Q a i
 internalIdent = qident . internalName
 
-idUnitVal   ∷ Tag i ⇒ QConId i
+idUnitVal, idNilList, idConsList, idTrueValue, idFalseValue
+            ∷ Tag i ⇒ QConId i
 idNilRecord ∷ Tag i ⇒ QVarId i
 
-idUnitVal   = internalIdent "()"
-idNilRecord = internalIdent "nilRecord"
+idUnitVal    = internalIdent "()"
+idNilRecord  = internalIdent "nilRecord"
+idNilList    = internalIdent "[]"
+idConsList   = internalIdent "::"
+idTrueValue  = internalIdent "true"
+idFalseValue = internalIdent "false"
 
 ---
 --- FREE VARIABLES and OCCURRENCE ANALYSIS
