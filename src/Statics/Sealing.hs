@@ -5,7 +5,6 @@ module Statics.Sealing (
 
 import Util
 import qualified AST
-import Syntax.PprClass (MAYBE(..))
 import Type
 import Statics.Constraint
 import Statics.Env as Env
@@ -147,7 +146,7 @@ subsumeSig γ = eachSig where
       emσ'      ← γ !.! n
       case emσ' of
         Left _    → typeBug "subsumeSig" "Datacon where exn expected"
-        Right mσ' → matchExnParams n mσ' mσ
+        Right mσ' → matchParamType mσ' mσ [msg| exception $q:n |]
     SgMod n sig → do
       (_, γ')   ← γ !.! n
       subsumeSig γ' sig
@@ -157,19 +156,18 @@ subsumeSig γ = eachSig where
 
 -- | Check that exception parameter types match, given the constructor
 --   name, the actual type, and the expected type.
-matchExnParams ∷ MonadConstraint tv r m ⇒
-                 ConId → Maybe (Type Empty) → Maybe (Type Empty) →
+matchParamType ∷ MonadConstraint tv r m ⇒
+                 Maybe (Type Empty) → Maybe (Type Empty) →
+                 Message H →
                  m ()
-matchExnParams n mσ mσ' = case (mσ, mσ') of
+matchParamType mσ mσ' what = case (mσ, mσ') of
   (Nothing, Nothing)
     → return ()
   (Just σ,  Just σ')
     → elimEmptyF σ =: elimEmptyF σ' `addErrorContext`
-        [msg| In signature matching, type mismatch in parameter
-              type of exception $q:n. |]
+        [msg| In signature matching, type mismatch in parameter of $msg:what |]
   _ → tErrExp
-    [msg| In signature matching, parameter type of exception $q:n
-          does not match |]
+    [msg| In signature matching, parameter of $msg:what does not match |]
     (maybe [msg| no parameter |] pprMsg mσ)
     (maybe [msg| no parameter |] pprMsg mσ')
 
@@ -191,7 +189,7 @@ matchSigs = loop where
       loop (substTyCon tc1 tc2 sgs1) sgs2
   loop (SgExn n1 mσ1 : sgs1)    (SgExn n2 mσ2 : sgs2)
     | n1 == n2              = do
-      matchExnParams n1 mσ2 mσ1
+      matchParamType mσ2 mσ1 [msg| exception $q:n1 |]
       loop sgs1 sgs2
   loop (SgMod n1 sig1 : sgs1)   (SgMod n2 sig2 : sgs2)
     | n1 == n2              = do
@@ -242,7 +240,7 @@ getGenTycons = execWriter . eachSig where
     SgSig _ _   → return ()
 
 -- | Check that two type constructors match exactly.
-matchTyCons ∷ MonadAlmsError m ⇒ TyCon → TyCon → m ()
+matchTyCons ∷ MonadConstraint tv r m ⇒ TyCon → TyCon → m ()
 matchTyCons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
   (AbstractType, AbstractType) → do
     tcArity tc1  ==! tcArity tc2        $ "arity or variance"
@@ -255,7 +253,7 @@ matchTyCons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
         rhs2 = tcCons tc2
     forM_ (Env.toList rhs1) $ \(k, mσ1) → do
       mσ2 ← rhs2 !.! k
-      MAYBE mσ1  ==! MAYBE mσ2          $ "parameter of constructor " ++ show k
+      matchParamType mσ2 mσ1 [msg| constructor $q:k |]
   (OperatorType, _)            | tyconExtEq tc1 tc2 → return ()
   (_,            OperatorType) | tyconExtEq tc1 tc2 → return ()
   (OperatorType, OperatorType) → do
@@ -279,7 +277,7 @@ matchTyCons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
   where
     (a1 ==! a2) what =
       tAssExp (a1 == a2)
-        [msg| In signature match, cannot match definition for type
+        [msg| In signature matching, cannot match definition for type
               $q:tc1 because the $words:what does not match: |]
         (pprMsg a1)
         (pprMsg a2)
