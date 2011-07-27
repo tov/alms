@@ -1117,7 +1117,7 @@ bassert False m = bangError m
 assertNotFun   ∷ (MonadAlmsError m, Ppr.Ppr a, Ppr.Ppr b) ⇒ 
                   Synth → a → b → m ()
 assertNotFun e' =
-  bassert (null (typ e')) <$$>
+  bassert (all null (typ e')) <$$>
     [msg|
       In implicit threading syntax expansion, the $2 cannot be a
       function that captures some imperative variables.
