@@ -18,17 +18,16 @@ module type SESSION_TYPE = sig
   type 's rendezvous
   type +'s channel qualifier A
 
-  val newRendezvous : all 's. unit -> 's rendezvous
+  val newRendezvous : unit → 's rendezvous
 
-  val request   : all 's. 's rendezvous -> 's channel
-  val accept    : all 's. 's rendezvous -> 's dual channel
+  val request   : 's rendezvous → 's channel
+  val accept    : 's rendezvous → 's dual channel
 
-  val send      : all `a. `a -> all 's. (!`a; 's) channel -[a]>
-                    unit * 's channel
-  val recv      : all `a 's. (?`a; 's) channel -> `a * 's channel
+  val send      : `a → (!`a; 's) channel → unit * 's channel
+  val recv      : (?`a; 's) channel → `a * 's channel
 
-  val follow    : all `c. ?-> `c channel -> unit * `c
-  val choose    : all 's `c. ('s channel -> `c) -> !-> `c channel ->
+  val follow    : ?-> `c channel → unit * `c
+  val choose    : ('s channel → `c) → !-> `c channel →
                     unit * 's dual channel
 end
 
@@ -47,11 +46,11 @@ module SessionType : SESSION_TYPE = struct
   type ?-> `c = ?`c; 1
   type !-> `c = !`c; 1
 
-  type rep = any C.channel
+  type rep = int C.channel
   type 's channel    = rep
   type 's rendezvous = rep C.channel
 
-  let newRendezvous () = C.new[rep] ()
+  let newRendezvous () = C.new ()
 
   let request (r: unit rendezvous) = C.recv r
 
@@ -64,16 +63,16 @@ module SessionType : SESSION_TYPE = struct
     let c = C.new () in
       (c, c)
 
-  let send[`a] (a: `a) (c: rep) =
+  let send (a: `a) (c: rep) =
     C.send c (Unsafe.unsafeCoerce a);
     ((), c)
 
-  let recv[`a] (c: rep) = (C.recv c, c)
+  let recv (c: rep) = (Unsafe.unsafeCoerce (C.recv c), c)
 
   let follow (c: rep) =
     let (c', _) = recv c in ((), c')
 
-  let choose[`c] (ctor: rep -> `c) (c: rep) =
+  let choose (ctor: rep → `c) (c: rep) =
     let (theirs, mine) = newPair () in
       send (ctor theirs) c;
       ((), mine)
@@ -87,12 +86,13 @@ module SessionType2Test = struct
               | More of (!int; ?->state2) channel
               | Again of (?int; state1) channel
 
+
   let client (c: state1 channel) =
-    let rec s1 !(c: state1 channel) : int * 1 channel =
+    let rec s1 !c =
               send 1 c;
               follow c;
               s2 c
-        and s2 !(c: state2) : int * 1 channel =
+        and s2 !c =
           match c with
           | Done c  -> recv c
           | More c  -> send 2 c;
@@ -103,7 +103,7 @@ module SessionType2Test = struct
      in fst (s1 c)
 
   let server (c: state1 dual channel) =
-    let rec s1 !(c : state1 dual channel) : unit * 1 channel =
+    let rec s1 !c =
       match recv c with
         | 0 -> choose More c;
                let z' = recv c in

@@ -147,11 +147,7 @@ subsumeSig γ = eachSig where
       emσ'      ← γ !.! n
       case emσ' of
         Left _    → typeBug "subsumeSig" "Datacon where exn expected"
-        Right mσ' → tAssExp (mσ == mσ')
-          [msg| In signature matching, parameter type of exception $q:n
-                does not match |]
-          (maybe [msg| no parameter |] pprMsg mσ')
-          (maybe [msg| no parameter |] pprMsg mσ)
+        Right mσ' → matchExnParams n mσ' mσ
     SgMod n sig → do
       (_, γ')   ← γ !.! n
       subsumeSig γ' sig
@@ -159,20 +155,44 @@ subsumeSig γ = eachSig where
       (sig', _) ← γ !.! n
       matchSigs sig' sig
 
+-- | Check that exception parameter types match, given the constructor
+--   name, the actual type, and the expected type.
+matchExnParams ∷ MonadConstraint tv r m ⇒
+                 ConId → Maybe (Type Empty) → Maybe (Type Empty) →
+                 m ()
+matchExnParams n mσ mσ' = case (mσ, mσ') of
+  (Nothing, Nothing)
+    → return ()
+  (Just σ,  Just σ')
+    → elimEmptyF σ =: elimEmptyF σ' `addErrorContext`
+        [msg| In signature matching, type mismatch in parameter
+              type of exception $q:n. |]
+  _ → tErrExp
+    [msg| In signature matching, parameter type of exception $q:n
+          does not match |]
+    (maybe [msg| no parameter |] pprMsg mσ)
+    (maybe [msg| no parameter |] pprMsg mσ')
+
 -- | Check that two signatures match EXACTLY.
 --   First signature is what we have, and second is what we want.
-matchSigs ∷ (Ord tv, MonadAlmsError m) ⇒
+matchSigs ∷ MonadConstraint tv r m ⇒
             Signature tv → Signature tv → m ()
 matchSigs = loop where
   loop [] []                = return ()
   loop (SgVal n1 σ1 : sgs1)     (SgVal n2 σ2 : sgs2)
-    | n1 == n2, σ1 == σ2    = loop sgs1 sgs2
+    | n1 == n2              = do
+      σ1 =: σ2 `addErrorContext`
+        [msg| In matching signatures, types do not match for
+              value binding $q:n1. |]
+      loop sgs1 sgs2
   loop (SgTyp n1 tc1 : sgs1)    (SgTyp n2 tc2 : sgs2)
     | n1 == n2              = do
-      matchTyCons tc1 tc2
+      matchTyCons tc2 tc1
       loop (substTyCon tc1 tc2 sgs1) sgs2
   loop (SgExn n1 mσ1 : sgs1)    (SgExn n2 mσ2 : sgs2)
-    | n1 == n2, mσ1 == mσ2  = loop sgs1 sgs2
+    | n1 == n2              = do
+      matchExnParams n1 mσ2 mσ1
+      loop sgs1 sgs2
   loop (SgMod n1 sig1 : sgs1)   (SgMod n2 sig2 : sgs2)
     | n1 == n2              = do
       matchSigs sig1 sig2

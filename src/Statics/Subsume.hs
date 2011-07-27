@@ -35,12 +35,24 @@ subsumeN σs0 = subsumeOneOf σs0 >>= subsumeN
 σ1 ≤ σ2 = do
   traceN 2 ("≤", σ1, σ2)
   subsumeBy (<:) σ1 σ2
+    `addErrorContext`
+      [msg| When subsuming types (using instantiation and subtyping):
+              <dl>
+                <dt>actual:   <dd>$5:σ1
+                <dt>expected: <dd>$5:σ2
+              </dl> |]
 
 -- | Subsumption
 (≤≥)  ∷ MonadConstraint tv r m ⇒ Type tv → Type tv → m ()
 σ1 ≤≥ σ2 = do
   traceN 2 ("≤≥", σ1, σ2)
   subsumeBy (=:) σ1 σ2
+    `addErrorContext`
+      [msg| When subsuming types (using instantiation and unification):
+              <dl>
+                <dt>actual:   <dd>$5:σ1
+                <dt>expected: <dd>$5:σ2
+              </dl> |]
 
 subsumeBy ∷ MonadConstraint tv r m ⇒
             (Type tv → Type tv → m ()) → Type tv → Type tv → m ()

@@ -14,63 +14,63 @@ module type ASOCKET = sig
   type 't socket
 
   (* The socket states *)
-  type 't initial   qualifier A
-  type 't bound     qualifier A
-  type 't listening qualifier A
-  type 't connected qualifier A
+  type 't initial   : A
+  type 't bound     : A
+  type 't listening : A
+  type 't connected : A
 
   (* Socket operations *)
-  val socket  : unit -> ex 't. 't socket * 't initial
-  val bind    : all 't. 't socket -> int -> 't initial -> 't bound
-  val connect : all 't.  't socket -> string -> string ->
-                  't initial + 't bound -> 't connected
-  val listen  : all 't. 't socket -> 't bound -> 't listening
-  val accept  : all 't. 't socket -> 't listening ->
-                  (ex 's. 's socket * 's connected) * 't listening
-  val send    : all 't. 't socket -> string ->
-                  't connected -> 't connected
-  val recv    : all 't. 't socket -> int ->
-                  't connected -> string * 't connected
-  val close   : all 't.'t socket -> 't connected -> unit
+  val socket  : unit → ∃ 't. 't socket × 't initial
+  val bind    : 't socket → int → 't initial → 't bound
+  val connect : 't socket → string → string →
+                  't initial + 't bound → 't connected
+  val listen  : 't socket → 't bound → 't listening
+  val accept  : 't socket → 't listening →
+                  (∃ 's. 's socket × 's connected) × 't listening
+  val send    : 't socket → string →
+                  't connected → 't connected
+  val recv    : 't socket → int →
+                  't connected → string × 't connected
+  val close   : 't socket → 't connected → unit
 
   (* When we raise an exception, we "freeze" the capability.
    * We can thaw the frozen capability if we have the socket that
    * it goes with.  (This requires a dynamic check.)  This lets us
    * recover the capability with a type paramater that matches any
    * extant sockets that go with it. *)
-  type frozenInitial   qualifier A
-  type frozenBound     qualifier A
-  type frozenListening qualifier A
-  type frozenConnected qualifier A
+  type frozenInitial   : A
+  type frozenBound     : A
+  type frozenListening : A
+  type frozenConnected : A
 
   (* Operations for reassociating frozen capabilities with their
      sockets. *)
-  val thawInitial   : all 't. 't socket -> frozenInitial ->
+  val thawInitial   : 't socket → frozenInitial →
                         frozenInitial + 't initial
-  val thawBound     : all 't. 't socket -> frozenBound ->
+  val thawBound     : 't socket → frozenBound →
                         frozenBound + 't bound
-  val thawListening : all 't. 't socket -> frozenListening ->
+  val thawListening : 't socket → frozenListening →
                         frozenListening + 't listening
-  val thawConnected : all 't. 't socket -> frozenConnected ->
+  val thawConnected : 't socket → frozenConnected →
                         frozenConnected + 't connected
 
   (* Operations for catching the error state associated with a given
      socket. *)
-  val catchInitial   : all 't `a. 't socket ->
-                         (unit -o `a) -> ('t initial -o `a) -o `a
-  val catchBound     : all 't `a.  't socket ->
-                         (unit -o `a) -> ('t bound -o `a) -o `a
-  val catchListening : all 't `a.  't socket ->
-                         (unit -o `a) -> ('t listening -o `a) -o `a
-  val catchConnected : all 't `a.  't socket ->
-                         (unit -o `a) -> ('t connected -o `a) -o `a
+  val catchInitial   : 't socket →
+                         (unit -o `a) → ('t initial -o `a) -o `a
+  val catchBound     : 't socket →
+                         (unit -o `a) → ('t bound -o `a) -o `a
+  val catchListening : 't socket →
+                         (unit -o `a) → ('t listening -o `a) -o `a
+  val catchConnected : 't socket →
+                         (unit -o `a) → ('t connected -o `a) -o `a
 
   (* Socket exceptions *)
   exception SocketError    of string
-  exception StillInitial   of frozenInitial * string
-  exception StillBound     of frozenBound * string
-  exception StillListening of frozenListening * string
-  exception StillConnected of frozenConnected * string
+  exception StillInitial   of frozenInitial × string
+  exception StillBound     of frozenBound × string
+  exception StillListening of frozenListening × string
+  exception StillConnected of frozenConnected × string
 end
 
 module ASocket : ASOCKET = struct
@@ -80,102 +80,6 @@ module ASocket : ASOCKET = struct
   type rep        = S.socket
   type 't socket  = S.socket
 
-  exception SocketError    of string
-  exception StillInitial   of rep * string
-  exception StillBound     of rep * string
-  exception StillListening of rep * string
-  exception StillConnected of rep * string
-
-  let socket () =
-    try (S.socket (), ())
-    with
-      IOError s -> raise (SocketError s)
-
-  let bind['t] (sock: rep) (port: int) () =
-    try S.bind sock port
-    with
-      IOError msg -> raise (StillInitial (sock, msg))
-
-  let connect['t] (sock: rep) (host: string) (port: string)
-                  (cap: unit + unit) =
-    try S.connect sock host port
-    with
-      IOError msg -> match cap with
-        | Left _  -> raise (StillInitial (sock, msg))
-        | Right _ -> raise (StillBound (sock, msg))
-
-  let listen['t] (sock: rep) () =
-    try S.listen sock
-    with
-      IOError msg -> raise (StillBound (sock, msg))
-
-  let accept['t] (sock: rep) () =
-    try (S.accept sock, (), ())
-    with
-      IOError msg -> raise (StillListening (sock, msg))
-
-  let send['t] (sock: rep) (data: string) () =
-    try
-      S.send sock data;
-      ()
-    with
-      IOError msg -> raise (SocketError msg)
-
-  let recv['t] (sock: rep) (len: int) () =
-    try (S.recv sock len, ())
-    with
-      IOError msg -> raise (SocketError msg)
-
-  let close['t] (sock: rep) () =
-    try S.close sock
-    with
-      IOError msg -> raise (SocketError msg)
-
-  (* Convenience functions for catching and thawing frozen socket
-   * capabilities. *)
-  let thaw  ['t] (sock: rep) (sock': rep) =
-    if sock == sock'
-      then Right ()
-      else Left  sock'
-
-  let thawInitial     = thaw
-  let thawBound       = thaw
-  let thawListening   = thaw
-  let thawConnected   = thaw
-
-  let catchInitial['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
-    try body () with
-    | StillInitial (frz, msg) ->
-        match thawInitial sock frz with
-        | Left frz  -> raise (StillInitial (frz, msg))
-        | Right cap -> handler cap
-
-  let catchBound['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
-    try body () with
-    | StillBound (frz, msg) ->
-        match thawBound sock frz with
-        | Left frz  -> raise (StillBound (frz, msg))
-        | Right cap -> handler cap
-
-  let catchListening['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
-    try body () with
-    | StillListening (frz, msg) ->
-        match thawListening sock frz with
-        | Left frz  -> raise (StillListening (frz, msg))
-        | Right cap -> handler cap
-
-  let catchConnected['t,`a] (sock: rep) (body: unit -o `a)
-                           (handler: unit -o `a) =
-    try body () with
-    | StillConnected (frz, msg) ->
-        match thawConnected sock frz with
-        | Left frz  -> raise (StillConnected (frz, msg))
-        | Right cap -> handler cap
-
-  (* Types for the interface *)
   type 't initial   = unit
   type 't bound     = unit
   type 't listening = unit
@@ -185,5 +89,100 @@ module ASocket : ASOCKET = struct
   type frozenBound     = rep
   type frozenListening = rep
   type frozenConnected = rep
+
+  exception SocketError    of string
+  exception StillInitial   of rep × string
+  exception StillBound     of rep × string
+  exception StillListening of rep × string
+  exception StillConnected of rep × string
+
+  let socket () : ∃'t. 't socket × 't initial =
+    try (S.socket (), ())
+    with
+      IOError s → raise (SocketError s)
+
+  let bind (sock: rep) (port: int) () =
+    try S.bind sock port
+    with
+      IOError msg → raise (StillInitial (sock, msg))
+
+  let connect (sock: rep) (host: string) (port: string)
+              (cap: unit + unit) =
+    try S.connect sock host port
+    with
+      IOError msg → match cap with
+        | Left _  → raise (StillInitial (sock, msg))
+        | Right _ → raise (StillBound (sock, msg))
+
+  let listen (sock: rep) () =
+    try S.listen sock
+    with
+      IOError msg → raise (StillBound (sock, msg))
+
+  let accept (sock: rep) () =
+    try ((S.accept sock, ()) : ∃'s. 's socket × 's connected, ())
+    with
+      IOError msg → raise (StillListening (sock, msg))
+
+  let send (sock: rep) (data: string) () =
+    try
+      S.send sock data;
+      ()
+    with
+      IOError msg → raise (SocketError msg)
+
+  let recv (sock: rep) (len: int) () =
+    try (S.recv sock len, ())
+    with
+      IOError msg → raise (SocketError msg)
+
+  let close (sock: rep) () =
+    try S.close sock
+    with
+      IOError msg → raise (SocketError msg)
+
+  (* Convenience functions for catching and thawing frozen socket
+   * capabilities. *)
+  let thaw (sock: rep) (sock': rep) =
+    if sock == sock'
+      then Right ()
+      else Left  sock'
+
+  let thawInitial     = thaw
+  let thawBound       = thaw
+  let thawListening   = thaw
+  let thawConnected   = thaw
+
+  let catchInitial (sock: rep) (body: unit -o `a)
+                   (handler: unit -o `a) =
+    try body () with
+    | StillInitial (frz, msg) →
+        match thawInitial sock frz with
+        | Left frz  → raise (StillInitial (frz, msg))
+        | Right cap → handler cap
+
+  let catchBound (sock: rep) (body: unit -o `a)
+                 (handler: unit -o `a) =
+    try body () with
+    | StillBound (frz, msg) →
+        match thawBound sock frz with
+        | Left frz  → raise (StillBound (frz, msg))
+        | Right cap → handler cap
+
+  let catchListening (sock: rep) (body: unit -o `a)
+                     (handler: unit -o `a) =
+    try body () with
+    | StillListening (frz, msg) →
+        match thawListening sock frz with
+        | Left frz  → raise (StillListening (frz, msg))
+        | Right cap → handler cap
+
+  let catchConnected (sock: rep) (body: unit -o `a)
+                     (handler: unit -o `a) =
+    try body () with
+    | StillConnected (frz, msg) →
+        match thawConnected sock frz with
+        | Left frz  → raise (StillConnected (frz, msg))
+        | Right cap → handler cap
 end
 

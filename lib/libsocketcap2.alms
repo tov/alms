@@ -70,6 +70,13 @@ module ASocket : ASOCKET = struct
   type rep        = S.socket
   type 't socket  = S.socket
 
+  type 't @@ 's = unit
+  type initial
+  type bound
+  type listening
+  type connected
+  type 's frozen = rep
+
   type socketError = StillInitial   of rep
                    | StillBound     of rep
                    | StillListening of rep
@@ -132,44 +139,36 @@ module ASocket : ASOCKET = struct
       then Right ()
       else Left  sock'
 
-  let catchInitial[`a] (sock: rep) (body: unit -o `a)
-                       (handler: unit -o `a) =
+  let catchInitial (sock: rep) (body: unit -o `a)
+                   (handler: unit -o `a) =
     try body () with
     | SocketError (StillInitial frz, msg) ->
         match thaw sock frz with
         | Left frz  -> error (StillInitial frz) msg
         | Right cap -> handler cap
 
-  let catchBound[`a] (sock: rep) (body: unit -o `a)
-                     (handler: unit -o `a) =
+  let catchBound (sock: rep) (body: unit -o `a)
+                 (handler: unit -o `a) =
     try body () with
     | SocketError (StillBound frz, msg) ->
         match thaw sock frz with
         | Left frz  -> error (StillBound frz) msg
         | Right cap -> handler cap
 
-  let catchListening[`a] (sock: rep) (body: unit -o `a)
-                         (handler: unit -o `a) =
+  let catchListening (sock: rep) (body: unit -o `a)
+                     (handler: unit -o `a) =
     try body () with
     | SocketError (StillListening frz, msg) ->
         match thaw sock frz with
         | Left frz  -> error (StillListening frz) msg
         | Right cap -> handler cap
 
-  let catchConnected[`a] (sock: rep) (body: unit -o `a)
-                         (handler: unit -o `a) =
+  let catchConnected (sock: rep) (body: unit -o `a)
+                     (handler: unit -o `a) =
     try body () with
     | SocketError (StillConnected frz, msg) ->
         match thaw sock frz with
         | Left frz  -> error (StillConnected frz) msg
         | Right cap -> handler cap
-
-  (* Types for the interface *)
-  type 't @@ 's = unit
-  type initial
-  type bound
-  type listening
-  type connected
-  type 's frozen = rep
 end
 
