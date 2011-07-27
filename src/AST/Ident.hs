@@ -363,8 +363,9 @@ instance Show (Lid i) where
   showsPrec p (LidAnti a) = showsPrec p a
 
 instance Show (Uid i) where
-  showsPrec _ (Uid _ s)   = showsIdent s
-  showsPrec p (UidAnti a) = showsPrec p a
+  showsPrec _ (Uid _ s@('?':_)) = showString s
+  showsPrec _ (Uid _ s)         = showsIdent s
+  showsPrec p (UidAnti a)       = showsPrec p a
 
 -- | Show an identifier with parens if necessary
 showsIdent ∷ String → ShowS
