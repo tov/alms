@@ -132,9 +132,9 @@ primBasis  = [
 
     -- Strings
     fun "explode"  -: [ty| string -> char list |]
-      -= map char2integer,
+      -= (map vinj ∷ String → [Value]),
     fun "implode"  -: [ty| char list -> string |]
-      -= map integer2char,
+      -= (map vprj ∷ [Value] → String),
     fun "^" -: [ty| string -> string -> string |]
       -= ((++) :: String -> String -> String),
     fun "string_of" -: [ty| all 'a. 'a -> string |]
