@@ -14,8 +14,8 @@ CONTENTS
 
 GETTING STARTED
 
-  Alms requires GHC to build.  It is known to work with GHC 6.12.1 and
-  6.10.4, and likely no longer works with GHC 6.8.
+  Alms requires GHC to build.  It is known to work with GHC 7.0.2, and
+  and likely no longer works with GHC 6.
 
   Provided that a recent ghc is in your path, to build on UNIX it ought
   to be be sufficient to type:
@@ -89,7 +89,7 @@ WHAT TO TRY
 
   You can load libraries from the command line like this:
 
-    % ./alms -l libsocketcap
+    % ./alms -lsocketcap
 
   Or from within the REPL like this:
 
@@ -99,11 +99,9 @@ WHAT TO TRY
   REPL about identifiers:
 
     #- #i list Exn *
-    type +`a list : a = Cons of `a * `a list | Nil
-        -- built-in
-    module Exn
-        -- defined at "lib/libbasis.alms" (line 2, col. 3 to line 23, col. 3)
-    type +`a * +`b : a \/ b   -- built-in
+    type +`a list : `a = (::) of `a * `a list | ([])   -- built-in
+    module Exn    -- defined at lib/libbasis.alms:198:1-32
+    type +`a * +`b : `a \/ `b   -- built-in
     val ( * ) : int -> int -> int   -- built-in
 
 
@@ -117,10 +115,10 @@ implemented, except for issues of pretty printing:
   \forall \exists \lambda         all ex fun   (binders)
   \alpha                          'a           (unlimited type variable)
   \hat\alpha                      `a           (affine type variable)
-  \to^A                           -o           (affine arrow)
-  \to^{\hat\alpha}                -[a]>        (arrow with qualifier)
-  \sqcup \sqcap                   \/ /\        (qualifier join and meet)
-  \pm \baro + -                   = * + -      (variances)
+  \to^A                           -A>          (affine arrow)
+  \to^{\hat\alpha}                -a>          (arrow with qualifier)
+  \sqcup                          \/           (qualifier join)
+  \pm \baro + -                   = 0 + -      (variances)
 
 
 EDITLINE TROUBLE
