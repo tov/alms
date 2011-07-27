@@ -16,8 +16,8 @@ type plane = [ `Plane of float * float * float * float ]
 -- We use the plane `Plane(a, b, c, d) to represent the open half-space
 -- { Point(x, y, z) | ax + by + cz + d > 0 }
 
-let string_of_point { x = x, y = y, z = z } =
-    "(" ^ string_of x ^ ", " ^ string_of y ^ ", " ^ string_of z ^ ")"
+let string_of_point p =
+    "(" ^ string_of p.x ^ ", " ^ string_of p.y ^ ", " ^ string_of p.z ^ ")"
 
 let string_of_plane (`Plane(a, b, c, d): plane) =
     string_of a ^ "x + " ^ string_of b ^ "y + " ^
