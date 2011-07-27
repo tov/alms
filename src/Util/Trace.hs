@@ -32,7 +32,7 @@ class Monad m ⇒ MonadTrace m where
   modifyTraceIndent ∷ (Int → Int) → m ()
   modifyTraceIndent f = getTraceIndent >>= putTraceIndent . f
   putTraceString    ∷ String → m ()
-  putTraceString    = (return $!) . unsafePerformIO . putStr
+  putTraceString s  = unsafePerformIO (putStr s) `seq` return ()
 
 class TraceMessage a where
   pprTrace        ∷ a → Doc
@@ -65,8 +65,7 @@ traceLow a = do
     EQ → return (n0, id)
     GT → putTraceIndent (n0 + 2) >> return (n0, (Ppr.<+> char '{'))
   let doc = nest n (brace (pprTrace a))
-  putTraceString (show doc)
-  putTraceString "\n"
+  putTraceString (show doc ++ "\n")
 
 ---
 --- MonadTrace instances

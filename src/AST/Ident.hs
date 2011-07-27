@@ -3,9 +3,9 @@ module AST.Ident (
   -- * Identifier classes
   Id(..),
   -- ** Tags
-  Tag(..), Raw(..), Renamed(..), renamed0,
+  Tag(..), Raw(..), Renamed(..), renamed0, renTrivial,
   -- *** Dirty tricks
-  trivialRename, trivialRename2,
+  dirtyTrivialRename,
   -- * Identifiers
   -- ** High level
   TypId(..), QTypId,
@@ -95,15 +95,9 @@ renamed0 :: Renamed
 renamed0  = Ren_ 1
 
 -- | This is super dirty
-trivialRename :: forall f i j. (Tag i, Tag j, Data (f i)) => f i -> f j
-trivialRename  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
-  each :: i -> i
-  each _ = Unsafe.Coerce.unsafeCoerce (trivialId :: j)
-
-trivialRename2 :: forall f g h i j.
-                 (Tag i, Tag j, Data (f (g i) (h i))) =>
-                 f (g i) (h i) -> f (g j) (h j)
-trivialRename2  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
+{-# NOINLINE dirtyTrivialRename #-}
+dirtyTrivialRename :: forall f i j. (Tag i, Tag j, Data (f i)) => f i -> f j
+dirtyTrivialRename  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
   each :: i -> i
   each _ = Unsafe.Coerce.unsafeCoerce (trivialId :: j)
 
@@ -132,6 +126,9 @@ class (Typeable1 a,
     []   -> J [] (ident "")
     x:xs -> J (map ident (reverse xs)) (ident x)
   renId        = identT <$.> idName
+
+renTrivial ∷ (Id a, Tag i) ⇒  a i' → a i
+renTrivial = renId trivialId
 
 ---
 --- LOW-LEVEL IDENTIFIERS

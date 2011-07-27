@@ -170,7 +170,7 @@ basis2renv =
     return DecEn { enSrc = d' }
   each TypEn { enTypName = l, enTyCon = tc } = do
     l' <- Rename.addType l (idTag (jname (tcName tc)))
-                           (trivialRename <$> domain (tcCons tc))
+                           (dirtyTrivialRename <$> domain (tcCons tc))
     return TypEn { enTypName = l', enTyCon = tc }
   each ModEn { enModName = u, enEnts = es } = do
     (u', es') <- Rename.addMod u $ renameMapM each es

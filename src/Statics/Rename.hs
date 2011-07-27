@@ -605,7 +605,7 @@ renameTyDec mqe (N note td)      = withLocation note $ do
             repeated "Data constructor" u "type declaration" []
         cons' <- forM cons $ \(u, mt) -> withLocation mt $ do
           -- XXX Why trivial?
-          let u' = renId trivialId u
+          let u' = renTrivial u
           tell [MdDatacon (getLoc mt) u u']
           mt'   <- traverse renameType mt
           return (u', mt')
@@ -764,11 +764,11 @@ renameExpr e00 = withAnnotationTVs e00 $ loop e00 where
       me' <- traverse loop me
       return [ex|+ $qcid:qu' $opt:me' |]
     [ex| `$uid:u $opt:me |] -> do
-      let u' = trivialRename u
+      let u' = renTrivial u
       me' <- traverse loop me
       return [ex|+ `$uid:u' $opt:me' |]
     [ex| #$uid:u $e |] -> do
-      let u' = trivialRename u
+      let u' = renTrivial u
       e' <- loop e
       return [ex|+ #$uid:u' $e' |]
     [ex| let $x = $e1 in $e2 |] -> do
@@ -809,7 +809,7 @@ renameExpr e00 = withAnnotationTVs e00 $ loop e00 where
       e2'   <- loop e2
       return [ex|+ {+ $list:flds' | $e2' +} |]
     [ex| $e1.$uid:u |] -> do
-      let u' = trivialRename u
+      let u' = renTrivial u
       e1' <- loop e1
       return [ex|+ $e1'.$uid:u' |]
     [ex| ( $e : $t) |] -> do
@@ -836,11 +836,11 @@ renameCaseAlt ca0 = withLocation ca0 $ case ca0 of
     e' <- inModule md $ renameExpr e
     return [caQ|+ $x' -> $e' |]
   [caQ| #$uid:lab -> $e |] -> do
-    let lab' = trivialRename lab
+    let lab' = renTrivial lab
     e' <- renameExpr e
     return [caQ|+ #$uid:lab' -> $e' |]
   [caQ| #$uid:lab $x -> $e |] -> do
-    let lab' = trivialRename lab
+    let lab' = renTrivial lab
     (x', md) <- steal $ renamePatt x
     e' <- inModule md $ renameExpr e
     return [caQ|+ #$uid:lab' $x' -> $e' |]
@@ -871,7 +871,7 @@ renameBindings bns = withAnnotationTVs bns $ withLocation bns $ do
 -- | Rename a record field
 renameField :: Field Raw → R (Field Renamed)
 renameField [fdQ| $uid:u = $e |] = do
-  let u' = trivialRename u
+  let u' = renTrivial u
   e' ← renameExpr e
   return [fdQ|+ $uid:u' = $e' |]
 renameField [fdQ| $antiF:a |] = $antifail
@@ -900,7 +900,7 @@ renameType t0 = withLocation t0 $ case t0 of
     t' <- inModule md $ renameType t
     return [ty|+ mu '$tv'. $t' |]
   [ty| `$uid:u of $t1 | $t2 |] -> do
-    let u' = trivialRename u
+    let u' = renTrivial u
     t1' <- renameType t1
     t2' <- renameType t2
     return [ty| `$uid:u' of $t1' | $t2' |]
@@ -967,7 +967,7 @@ renamePatt x00 = evalStateT (loop x00) M.empty where
       mx' <- traverse loop mx
       return [pa|+ $qcid:qu' $opt:mx' |]
     [pa| `$uid:qu $opt:mx |] -> do
-      let qu' = trivialRename qu
+      let qu' = renTrivial qu
       mx' <- traverse loop mx
       return [pa|+ `$uid:qu' $opt:mx' |]
     [pa| ($x1, $x2) |] -> do
@@ -982,7 +982,7 @@ renamePatt x00 = evalStateT (loop x00) M.empty where
       l' <- var _loc l
       return [pa|+ $x' as $vid:l' |]
     [pa| { $uid:u = $x | $y } |] -> do
-      let u' = trivialRename u
+      let u' = renTrivial u
       x' <- loop x
       y' <- loop y
       return [pa|! { $uid:u' = $x' | $y' } |]
@@ -1021,7 +1021,7 @@ addType l i dcs = do
   return l'
 
 addMod u body = do
-  let u' = renId trivialId u
+  let u' = renTrivial u
   (a, md) <- steal body
   loc <- getLocation
   tell [MdModule loc u u' md]
@@ -1055,7 +1055,7 @@ getRenamingInfo name RenameState { savedEnv = e } =
 renamingEnterScope    :: ModId i -> RenameState -> RenameState
 renamingEnterScope u r =
   let e  = savedEnv r in
-  case M.lookup (renId trivialId u) (modules e) of
+  case M.lookup (renTrivial u) (modules e) of
     Nothing -> r
     Just (_, _, (_, e'))
             -> r { savedEnv = e `mappend` e' }
