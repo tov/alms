@@ -548,11 +548,14 @@ recordtyp = AST.tyRecordAdditive <$>
 -- A type row in record style
 recrowp ∷ Tag i ⇒ P (Type i)
 recrowp = antiblep
-      <|> AST.tyRow <$> llabelp <* colon
-                       <*> typepP precStart
-                       <*> option AST.tyRowEnd
-                             (comma *> recrowp
-                          <|> reservedOp "|" *> extensionp)
+      <|> do
+            labs ← commaSep1 llabelp
+            colon
+            t    ← typepP precStart
+            rest ← option AST.tyRowEnd $
+                         comma *> recrowp
+                     <|> reservedOp "|" *> extensionp
+            return (foldr (AST.tyRow <-> t) rest labs)
       <|> extensionp
 
 -- A row extension variable or dot form
@@ -1134,12 +1137,11 @@ recordbodyp additive = "record field" @@ do
 
 -- | Parse a record field
 fieldp :: Tag i ⇒ P (Field i)
-fieldp  = "record field" @@ antiblep <|>
-  fdField <$> llabelp
-          <*> (buildargsp
-                <*> (buildannotp
-                      <*  reservedOp "="
-                      <*> exprp))
+fieldp  = "record field" @@ antiblep <|> do
+  lab ← llabelp
+  e   ← option (exBVar (VarId (uidToLid lab))) $
+    buildargsp <*> (buildannotp <* reservedOp "=" <*> exprp)
+  return (fdField lab e)
 
 -- Parse a match clause
 casealtp :: Tag i => P (CaseAlt i)
@@ -1233,7 +1235,10 @@ listpap = foldr paCons paNil <$> commaSep1 pattp
 
 recordpap ∷ Tag i ⇒ P (Patt i)
 recordpap = do
-  flds ← commaSep1 ((,) <$> llabelp <* reservedOp "=" <*> pattp)
+  flds ← commaSep1 $ do
+    lab ← llabelp
+    π   ← option (paVar (VarId (uidToLid lab))) (reservedOp "=" *> pattp)
+    return (lab, π)
   ext  ← option paWild (reservedOp "|" *> pattp)
   return (foldr (uncurry paRec) ext flds)
 

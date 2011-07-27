@@ -10,7 +10,7 @@ open SessionType
 --
 
 -- Points and planes in R^3.
-type point = { x : float, y : float, z : float }
+type point = { x, y, z : float }
 type plane = [ `Plane of float * float * float * float ]
 
 -- We use the plane `Plane(a, b, c, d) to represent the open half-space
@@ -73,25 +73,22 @@ let parsePlane (s: string) : plane =
       `Plane (foil a, foil b, foil c, foil d)
 
 -- Is the point above the plane?  (i.e., in the semi-space)
-let isPointAbovePlane ({ x = x, y = y, z = z }: point)
-                         (`Plane(a, b, c, d): plane): bool =
+let isPointAbovePlane { x, y, z } (`Plane(a, b, c, d)) =
   a *. x +. b *. y +. c *. z +. d >. 0.0
 
 -- Does the line segment between the two points intersect the plane,
 -- and if so, where?
-let intersect ({ x = x1, y = y1, z = z1 } as p1 : point)
-                 ({ x = x2, y = y2, z = z2 } as p2 : point)
-                 (`Plane(a, b, c, d) as plane : plane): point option =
+let intersect p1 p2 (`Plane(a, b, c, d) as plane) =
  if isPointAbovePlane p1 plane == isPointAbovePlane p2 plane
    then None
-   else let t = (a *. x1 +. b *. y1 +. c *. z1 +. d) /.
-                (a *. (x1 -. x2) +.
-                 b *. (y1 -. y2) +.
-                 c *. (z1 -. z2)) in
-        let x = x1 +. (x2 -. x1) *. t in
-        let y = y1 +. (y2 -. y1) *. t in
-        let z = z1 +. (z2 -. z1) *. t in
-          Some { x = x, y = y, z = z }
+   else let t = (a *. p1.x +. b *. p1.y +. c *. p1.z +. d) /.
+                (a *. (p1.x -. p2.x) +.
+                 b *. (p1.y -. p2.y) +.
+                 c *. (p1.z -. p2.z)) in
+        let x = p1.x +. (p2.x -. p1.x) *. t in
+        let y = p1.y +. (p2.y -. p1.y) *. t in
+        let z = p1.z +. (p2.z -. p1.z) *. t in
+          Some { x, y, z }
 
 --
 -- In sublanguage A, our protocol is to send an unbounded
