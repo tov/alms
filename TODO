@@ -1,4 +1,1 @@
  - some termination checking for type operators
- - remove direct dependency of Parser on Sigma (! patterns)
- - row types for protocols
- - type inference
