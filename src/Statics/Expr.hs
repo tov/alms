@@ -383,14 +383,14 @@ arrowQualifier γ e =
 --   types and a result type of at most the given arity.
 funmatchN ∷ MonadConstraint tv r m ⇒
             Int → Type tv → m ([Type tv], Type tv)
-funmatchN n0 σ0 = loop n0 =<< subst σ0
+funmatchN n0 σ0 = loop False n0 =<< subst σ0
   where
-  loop 0 σ = return ([], σ)
-  loop n σ = case σ of
+  loop _    0 σ = return ([], σ)
+  loop okay n σ = case σ of
     TyApp tc [σ1, _, σ']        | tc == tcFun
-      → first (σ1:) <$> loop (n - 1) σ'
+      → first (σ1:) <$> loop True (n - 1) σ'
     TyApp _ _                   | Next σ' ← headReduceType σ
-      → loop n σ'
+      → loop okay n σ'
     TyVar (Free α)              | tvFlavorIs Universal α
       → do
       β1 ← newTVTy
@@ -399,8 +399,11 @@ funmatchN n0 σ0 = loop n0 =<< subst σ0
       σ =: tyFun β1 qe β2
       return ([β1], β2)
     TyMu _ σ1
-      → loop n (openTy 0 [σ] σ1)
-    _ → do
+      → loop okay n (openTy 0 [σ] σ1)
+    _ | okay
+      → return ([], σ)
+      | otherwise
+      → do
       tErrExp_
         [msg| In application expression, operator is not a function: |]
         [msg| $σ |]
