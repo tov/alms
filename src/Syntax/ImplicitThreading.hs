@@ -313,7 +313,7 @@ beginTranslate env0 e00 = do
         return S {
           vars = vars e2',
           typ  = [],
-          code = exLet' (r -*- vars e2') e2 $
+          code = exLet' (r -*- vars e2') (code e2') $
                    [ex| $qcid:c1 $vid:r |] -*- vars e2'
         }
     [ex| let $π = $e1 in $e2 |]
@@ -488,7 +488,7 @@ beginTranslate env0 e00 = do
         return S {
           vars = vars e2',
           typ  = [],
-          code = exLet' (r -*- vars e2') e2 $
+          code = exLet' (r -*- vars e2') (code e2') $
                    [ex| `$uid:c1 $vid:r |] -*- vars e2'
         }
     [ex| #$uid:c1 $e2 |]
@@ -498,7 +498,7 @@ beginTranslate env0 e00 = do
         return S {
           vars = vars e2',
           typ  = [],
-          code = exLet' (r -*- vars e2') e2 $
+          code = exLet' (r -*- vars e2') (code e2') $
                    [ex| #$uid:c1 $vid:r |] -*- vars e2'
         }
     [ex| { $list:flds1 | $e2 } |]
@@ -555,7 +555,7 @@ beginTranslate env0 e00 = do
         return S {
           vars = vars e1',
           typ  = typ e1',
-          code = exLet' (r -*- vars e1') e1 $
+          code = exLet' (r -*- vars e1') (code e1') $
                    [ex| $vid:r : $annot |] -*- vars e1'
         }
     [ex| $e1 :> $annot |]
@@ -564,7 +564,7 @@ beginTranslate env0 e00 = do
         return S {
           vars = vars e1',
           typ  = typ e1',
-          code = exLet' (r -*- vars e1') e1 $
+          code = exLet' (r -*- vars e1') (code e1') $
                    [ex| $vid:r :> $annot |] -*- vars e1'
         }
     [ex| $anti:a |]
