@@ -17,7 +17,6 @@ Data-Files:     lib/*.alms examples/*.alms examples/*.sh
                 examples/*.in examples/*.out
                 README Makefile
 
-
 Description:
     Alms is an experimental, general-purpose programming language that
     supports practical affine types. To offer the expressiveness of
@@ -31,6 +30,10 @@ Description:
     restrictions of its implementation. This form of sealing allows the type
     system to naturally and directly express a variety of resource
     management protocols from special-purpose type systems.
+
+Source-Repository head
+  Type:     git
+  Location: git://github.com/tov/alms.git
 
 Flag unicode
   Description: Use Unicode symbols for pretty-printing
