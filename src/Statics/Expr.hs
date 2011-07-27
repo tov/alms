@@ -76,26 +76,24 @@ infer φ0 δ γ e0 mσ0 = do
       -- that none was given.  If it is, then instantiate it using the
       -- propagated parameters, and propagate the instantated parameter
       -- type downward.  Force the result to subsume the expected type.
-      me' ← case mσ1 of
+      case mσ1 of
         Nothing → do
           tassert (isNothing me)
             [msg| In expression, nullary data constructor $q:c is
                   applied to an argument. |]
-          return Nothing
+          σ' ← maybeGen e0 φ γ (TyApp tc σs)
+          return ([ex| $qcid:c |], σ')
         Just σ1E → do
           let σ1 = openTy 0 σs (elimEmptyF σ1E)
           case me of
             Just e  → do
               (e', σ1') ← infer request δ γ e (Just σ1)
               σ1' ≤ σ1
-              return (Just e')
+              σ' ← maybeGen e0 φ γ (TyApp tc σs)
+              return ([ex| $qcid:c $e' |], σ')
             Nothing → do
-              typeError_
-                [msg| In expression, unary data constructor $q:c is used
-                      with no argument. |]
-              return Nothing
-      σ'  ← maybeGen e0 φ γ (TyApp tc σs)
-      return ([ex| $qcid:c $opt:me' |], σ')
+              σ' ← maybeGen e0 φ γ (tyArr σ1 (TyApp tc σs))
+              return ([ex|+ λ x → $qcid:c x |], σ')
     --
     [ex| let $π = $e1 in $e2 |] → do
       mσ1               ← extractPattAnnot δ γ π

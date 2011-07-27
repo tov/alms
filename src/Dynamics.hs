@@ -217,7 +217,6 @@ valOf e env = case e of
     v2  <- valOf e2 env
     case v1 of
       VaFun n f -> f v2 >>! nameApp n (pprPrec (precApp + 1) v2) 
-      VaCon c _ -> return (VaCon c (Just v2))
       _         -> runtimeBug "valOf" $
         "applied non-function ‘" ++ show v1 ++
         "’ to argument ‘" ++ show v2 ++ "’"
