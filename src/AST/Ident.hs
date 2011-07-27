@@ -359,25 +359,22 @@ instance Id TyVar where
 ---
 
 instance Show (Lid i) where
-  showsPrec _ (Lid _ s) =
-    case s of
-      '_':_             -> (s++)
-      c  :_ | isAlpha c -> (s++)
-      c  :_ | isDigit c -> (s++)
-      _  :_ | head s == '*' || last s == '*'
-                        -> ("( "++) . (s++) . (" )"++)
-      _                 -> ('(':) . (s++) . (')':)
-    {-
-    . let z = Unsafe.Coerce.unsafeCoerce i :: Renamed in
-         if z == Unsafe.Coerce.unsafeCoerce Raw_
-           then id
-           else showChar '[' . shows z . showChar ']'
-  -}
+  showsPrec _ (Lid _ s)   = showsIdent s
   showsPrec p (LidAnti a) = showsPrec p a
 
 instance Show (Uid i) where
-  showsPrec _ (Uid _ s)   = (s++)
+  showsPrec _ (Uid _ s)   = showsIdent s
   showsPrec p (UidAnti a) = showsPrec p a
+
+-- | Show an identifier with parens if necessary
+showsIdent ∷ String → ShowS
+showsIdent s = case s of
+  '_':_             -> (s++)
+  c  :_ | isAlpha c -> (s++)
+  c  :_ | isDigit c -> (s++)
+  _  :_ | head s == '*' || last s == '*'
+                    -> ("( "++) . (s++) . (" )"++)
+  _                 -> ('(':) . (s++) . (')':)
 
 instance Show (BIdent i) where
   showsPrec p (Var x) = showsPrec p x
