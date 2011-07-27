@@ -1,17 +1,14 @@
 (* An example with threads. *)
 
-let printer : unit -> unit =
-  let rec loop (_ : unit) : unit =
-    Thread.delay 100000;
-    putStr "x";
-    flush ();
-    loop ()
-  in loop
+let rec printer () =
+  Thread.delay 100000;
+  putStr "x";
+  flush ();
+  printer ()
 
-let timer : unit -> unit =
-  fun _: unit ->
-    let id = Thread.fork printer in
-      Thread.delay 2000000;
-      Thread.kill id
+let timer () =
+  let id = Thread.fork printer in
+    Thread.delay 2000000;
+    Thread.kill id
 
 in timer ()

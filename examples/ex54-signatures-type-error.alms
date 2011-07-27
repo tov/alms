@@ -7,4 +7,4 @@ end = struct
   let f (x: `b t) = (x, x)
 end
 
-let f (x: `b A.t) = (x, x)
+let f (x: unit aref A.t) = (x, x)

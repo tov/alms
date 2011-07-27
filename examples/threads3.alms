@@ -1,32 +1,27 @@
 (* A bad example with threads.  (type error!) *)
 
-let printer : unit -> unit =
-  let rec loop (_ : unit) : unit =
-    Thread.delay 100000;
-    putStr "x";
-    flush ();
-    loop ()
-  in loop
+#load "libthread"
 
-let startStop : unit -> unit -o unit =
-  fun _: unit ->
-    let id = Thread.fork printer in
-    let id = Thread.print id in
-      fun _: unit ->
-        Thread.kill id
+let rec printer () =
+  AThread.delay 100000;
+  putStr "x";
+  flush ();
+  printer ()
 
-let after : int -> (unit -o unit) -> unit =
-  fun delay: int ->
-    fun stop: (unit -o unit) ->
-      Thread.fork (fun _:unit  -> Thread.delay delay; stop ());
-      ()
+let startStop () =
+  let id = AThread.fork printer in
+  let id = AThread.print id in
+    λ _ → AThread.kill id
 
-let main : unit -> unit =
-  fun _: unit ->
-    let stop = startStop () in
-      after 2000000 stop;
-      getLine ();
-      stop ()    (* stop used twice! *)
+let after delay stop =
+  AThread.fork (λ _ → AThread.delay delay; stop ());
+  ()
+
+let main () =
+  let stop = startStop () in
+    after 2000000 stop;
+    getLine ();
+    stop ()    (* stop used twice! *)
 
 in main ()
 

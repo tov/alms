@@ -5,7 +5,7 @@ open Prim.Socket
 local
   open IO
 with
-  let rec sendThread (sock: socket): unit =
+  let rec sendThread sock =
     if hIsEOF stdin
       then
         shutdown sock ShutdownSend
@@ -14,39 +14,37 @@ with
           send sock (getLine () ^ "\r\n");
           sendThread sock
         with
-          IOError _ -> ()
+          IOError _ → ()
 
-  let rec recvThread (sock: socket): unit =
+  let rec recvThread sock =
     try
-      putStr (recv sock 1024); recvThread sock
+      putStr (recv sock 1024);
+      recvThread sock
     with
-      IOError _ -> ()
+      IOError _ → ()
 end
 
-let setupConnection (addr: sockAddr): socket =
+let setupConnection addr =
   let s = socket AF_INET Stream defaultProtocol in
     connect s addr;
     s
 
-let teardownConnection (sock: socket): unit =
-  close sock
-
-let getAddr (): sockAddr =
+let getAddr () =
   match getArgs () with
-  | Cons(host, Cons(port, Nil))
-      -> let info = AddrInfo(Nil[addrInfoFlag], AF_INET,
-                             Stream, defaultProtocol,
-                             SockAddrInet(PortNum 0, 0), None[string]) in
-         (match getAddrInfo (Some info) (Some host) (Some port) with
-          | Cons (AddrInfo (_, _, _, _, sockAddr, _), _) -> sockAddr
-          | _ -> failwith ("Could not resolve address "^host^":"^port))
-  | _ -> failwith ("Usage: " ^ getProgName () ^ " HOST SERVICE")
+  | [host, port]
+      → let info = AddrInfo([], AF_INET,
+                            Stream, defaultProtocol,
+                            SockAddrInet(PortNum 0, 0), None) in
+        (match getAddrInfo (Some info) (Some host) (Some port) with
+         | AddrInfo (_, _, _, _, sockAddr, _) ∷ _ → sockAddr
+         | _ → failwith ("Could not resolve address "^host^":"^port))
+  | _ → failwith ("Usage: " ^ getProgName () ^ " HOST SERVICE")
 
 let main () =
   let sock = setupConnection (getAddr ()) in
-  let wait = Future.new (fun () -> recvThread sock) in
+  let wait = Future.new (λ () → recvThread sock) in
     sendThread sock;
     Future.sync wait;
-    teardownConnection sock
+    close sock
 
 in main ()

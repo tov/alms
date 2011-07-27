@@ -10,21 +10,22 @@
 open AArray
 
 module SkewnessExample = struct
-  let sum ['t,'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let sum (a: (float, 't) array) (c: ('t, 'c) readcap) =
     fold (+.) 0.0 a c
   
-  let mean ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let mean (a: (float, 't) array) (c: ('t, 'c) readcap) =
     let (total, c) = sum a c in
       (total /. float_of_int (size a), c)
   
-  let stdDev ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let stdDev (a: (float, 't) array) (c: ('t, 'c) readcap) =
     let (mean, c) = mean a c in
     let (num, c)  = fold
-                      (fun (x: float) (acc: float) -> (x -. mean) ** 2.0)
+                      (fun (x: float) (acc: float) ->
+                         acc +. (x -. mean) ** 2.0)
                       0.0 a c in
       (sqrt (num /. float_of_int (size a)), c)
   
-  let skewness ['t, 'c] (a: (float, 't) array) (c: ('t, 'c) readcap) =
+  let skewness (a: (float, 't) array) (c: ('t, 'c) readcap) =
     let n         = float_of_int (size a) in
     let (m, c)    = mean a c in
     let (s, c)    = stdDev a c in
@@ -36,67 +37,65 @@ module SkewnessExample = struct
   
   type transformation = T of string * (float -> float)
   
-  let reduceSkewness ['t]
-                      (ts: transformation list)
-                      (a: (float, 't) array)
-                      (c0: 't writecap) =
+  let reduceSkewness (ts: transformation list)
+                     (a: (float, 't) array)
+                     (c0: 't writecap) =
     let rec replace (i: int)
                     (T(_, ft) as t: transformation)
                     (c: 't writecap)
                     : 't writecap =
       if i < size a
-        then let (x, c) = at a i c in
-             let c      = update a i (ft x) c in
+        then let (x, c) = get a i c in
+             let c      = set a i (ft x) c in
                replace (i + 1) t c
         else c in
-    let rec find ['c] (ix: int)
-                      (ts: transformation list)
-                      (c: ('t, 'c) readcap)
-                      : float * transformation * ('t, 'c) readcap =
-      match ts with
-      | Nil -> let (sk, c) = skewness a c in
-                 (sk, T("identity", fun f: float -> f), c)
-      | Cons(T(_, ft) as t, ts)
-            -> let ((sk1, t1), (sk2, t2), c) =
-                 par
-                   (fun 'c (c: ('t, 'c) readcap) -> find['c] (ix + 1) ts c)
-                   (fun 'c (c: ('t, 'c) readcap) ->
-                     let (Pack('s, b, d), c) = map ft a c in
-                     let (sk, d) = skewness b d in
-                       (sk, t, c))
-                   c
-                in if absf sk2 <. absf sk1
-                     then (replace 0 t1 c0; (sk2, t2, c))
-                     else (sk1, t1, c) in
-    find 0 ts c0
+    (* Need type annotation for polymorphic recursion: *)
+    let rec find :
+        ∀ 'd. int → transformation list → ('t, 'd) readcap →
+              float * transformation * ('t, 'd) readcap =
+      λ ix ts c →
+        match ts with
+        | []  -> let (sk, c) = skewness a c in
+                   (sk, T("identity", fun f -> f), c)
+        | (T(_, ft) as t) ∷ ts
+              -> let ((sk1, t1), (sk2, t2), c) =
+                   par
+                     (fun (c: ('t, 'c) readcap) -> find (ix + 1) ts c)
+                     (fun (c: ('t, 'c) readcap) ->
+                       let ((b, d), c) = map ft a c in
+                       let (sk, d) = skewness b d in
+                         (sk, t, c))
+                     c
+                  in if absf sk2 <. absf sk1
+                       then replace 0 t1 c0; (sk2, t2, c)
+                       else (sk1, t1, c) in
+    let (sk, t, c) = find 0 ts c0 in
+      (sk, t, replace 0 t c)
   
-  let newDistribution
-           (n: int) (T(_, gen): transformation)
-           : ex 't. (float, 't) array * 't writecap =
-    let Pack('t, a, c) = new[float] n in
-      let rec loop (i: int) (c: 't writecap): 't writecap =
+  let newDistribution (n: int) (T(_, gen): transformation)
+                         : ex 't. (float, 't) array * 't writecap =
+    let (a, c) = new n 0.0 in
+      let rec loop (i: int) c =
         if i < n
-          then loop (i + 1) (update a i (gen (float_of_int (i + 1))) c)
+          then loop (i + 1) (set a i (gen (float_of_int (i + 1))) c)
           else c in
-        Pack[ex 't. (float, 't) array * 't writecap]('t, a ,loop 0 c)
-  
-  let (^:) `a (t: `a) (ts: `a list) = Cons(t, ts)
+        (a, loop 0 c)
   
   let functions (n: int) =
-    T("1",         fun (ix: float) -> 1.0) ^:
-    T("x",         fun (ix: float) -> ix) ^:
-    T("x^2",       flip ( ** ) 2.0) ^:
-    T("sqrt x",    sqrt) ^:
-    T("x^5",       flip ( ** ) 5.0) ^:
-    T("x^1/5",     flip ( ** ) 0.2) ^:
-    T("e^x",       ( ** ) 2.718) ^:
-    T("log x",     log) ^:
-    T("1/x",       (/.) 1.0) ^:
-    T("-x",        (-.) (float_of_int n)) ^:
-    Nil
+    [T("1",         fun (ix: float) -> 1.0)
+    ,T("x",         fun (ix: float) -> ix)
+    ,T("x^2",       flip ( ** ) 2.0)
+    ,T("sqrt x",    sqrt)
+    ,T("x^5",       flip ( ** ) 5.0)
+    ,T("x^1/5",     flip ( ** ) 0.2)
+    ,T("e^x",       ( ** ) 2.718)
+    ,T("log x",     log)
+    ,T("1/x",       (/.) 1.0)
+    ,T("-x",        (-.) (float_of_int n))
+    ]
   
   let testCase (n: int) (T(name, _) as t: transformation) =
-    let Pack('t, a, c)       = newDistribution n t in
+    let (a, c)               = newDistribution n t in
     let (sk0, c)             = skewness a c in
     let (sk, T(name', _), c) = reduceSkewness (functions n) a c in
       putStrLn ("Distribution:      " ^ name);
@@ -104,7 +103,7 @@ module SkewnessExample = struct
       putStrLn ("Improved skewness: " ^ string_of sk);
       putStrLn ("Winning function:  " ^ name');
       putStrLn ""
-
+  
   let tests (n: int) =
     foldl (fun (t: transformation) () -> testCase n t)
           () (functions n)

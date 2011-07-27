@@ -13,33 +13,26 @@
 
 #load "libthread"
 
-let printer : unit -> unit =
-  let rec loop (_ : unit) : unit =
-    AThread.delay 100000;
-    putStr "x";
-    flush ();
-    loop ()
-  in loop
+let rec printer () =
+  AThread.delay 100000;
+  putStr "x";
+  flush ();
+  printer ()
 
-let startStop : unit -> unit -> unit =
-  fun _: unit ->
-    let id = AThread.fork printer in
-    let id = AThread.print id in
-      (fun () -> AThread.kill id :> unit -> unit)
+let startStop () =
+  let id = AThread.fork printer in
+  let id = AThread.print id in
+    (λ _ → AThread.kill id) :> unit → unit
 
-let after : int -> (unit -o unit) -> unit =
-  fun delay: int ->
-    fun stop: (unit -o unit) ->
-      AThread.fork (fun () -> AThread.delay delay; stop ());
-      ()
+let after delay stop =
+  AThread.fork (λ _ → AThread.delay delay; stop ());
+  ()
 
-let main : unit -> unit =
-  fun _: unit ->
-    putStrLn "Press <ENTER> to exit.";
-    let stop = startStop () in
-      after 4000000 stop;
-      getLine ();
-      stop ()
+let main () =
+  let stop = startStop () in
+    after 2000000 stop;
+    getLine ();
+    stop ()    (* stop used twice! *)
 
 in main ()
 

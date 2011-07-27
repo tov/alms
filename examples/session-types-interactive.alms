@@ -10,20 +10,18 @@ open SessionType
 type protocol = ?int; 1 |+| !int; protocol
 
 let server =
-  let rec loop (acc : int)
-               (c   : protocol dual channel)
-               : unit =
+  let rec loop acc (c : protocol dual channel) =
       match follow c with
-      | Left c ->
+      | Left c →
           send c acc;
           ()
-      | Right c ->
+      | Right c →
           let (x, c) = recv c in
             loop (acc + x) c
    in loop 0
 
 let client =
-  let rec loop (c : protocol channel) : int =
+  let rec loop (c : protocol channel) =
     let s = getLine () in
       if s == ""
                 then
@@ -36,11 +34,10 @@ let client =
             loop c
    in loop
 
-let main =
-  fun _ : unit ->
-    let rv = newRendezvous[protocol] () in
-      AThread.fork (fun _:unit -> server (accept rv));
-      client (request rv)
+let main () =
+  let rv : protocol rendezvous = newRendezvous () in
+    AThread.fork (λ () -> server (accept rv));
+    client (request rv)
 
 in print (main ())
 
