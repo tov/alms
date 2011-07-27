@@ -41,7 +41,7 @@ module type ASOCKET = sig
    * extant sockets that go with it. *)
   type 'a frozen qualifier A
 
-  val thaw : all 't. 't socket -> all 's. 's frozen -> 's frozen + 't@@'s
+  val thaw : all 't 's. 't socket -> 's frozen -> 's frozen + 't@@'s
 
   (* Operations for catching the error state associated with a given
      socket. *)
@@ -88,7 +88,7 @@ module ASocket : ASOCKET = struct
     raise (SocketError (se, msg))
 
   let socket () =
-    try (S.socket (), ())
+    try (S.socket (), ()) : ∃ 't. 't socket × 't@@initial
     with
       IOError msg -> error Disconnected msg
 
@@ -111,7 +111,7 @@ module ASocket : ASOCKET = struct
       IOError msg -> error (StillBound sock) msg
 
   let accept (sock: rep) () =
-    try (S.accept sock, (), ())
+    try ((S.accept sock, ()) : ∃ 't. 't socket × 't@@initial, ())
     with
       IOError msg -> error (StillListening sock) msg
 
