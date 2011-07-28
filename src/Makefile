@@ -21,16 +21,20 @@ HS_SRC   = *.hs \
 HSBOOT_SRC  = AST/*.hs-boot Statics/*.hs-boot
 
 HCOPTS  = -W -Wall -O0 $(EDITING) $(PARSEC) $(HIOPTS)
-HIOPTS  = $(NOWARN) $(IMPARR) $(UNICODE) $(LANGUAGE)
+HIOPTS  = $(NOWARN) $(UNICODE) $(LANGUAGE)
 EDITING = -DUSE_READLINE=System.Console.Editline.Readline
 PARSEC  = -DPARSEC_VERSION=3
-# IMPARR  = -DANNOTATION_PRINTING_RULE=Rule0
 NOWARN  = -fno-warn-unused-do-bind -fno-warn-orphans
 UNICODE = -DUNICODE
 LANGUAGE= `sed 's/^/-X/' extensions.txt`
 
+PROFILING = -prof -auto-all -osuf p_o -rtsopts
+
 $(EXE) $(EXE)-%: $(SRC)
 	$(GHC) -o $@ --make Main.hs $(HCOPTS)
+
+$(EXE)_p: $(EXE)
+	$(GHC) -o $@ --make Main.hs $(HCOPTS) $(PROFILING)
 
 %.hi: $(HS_SRC) $(HSBOOT_SRC)
 	$(GHC) --make `echo "$*" | sed 's@\.@/@g'`.hs $(HCOPTS)
@@ -39,8 +43,8 @@ $(EXE) $(EXE)-%: $(SRC)
 	$(GHCI) \*`echo "$*" | sed 's@\.@/@g'` $(HIOPTS)
 
 $(EXE)-%:     GHC     = ghc-$*
-$(EXE)-6.8.%: EDITING = -DUSE_READLINE=System.Console.Readline
 $(EXE)-6.%:   PARSEC  = -DPARSEC_VERSION=2
+$(EXE)-6.%:   HCOPTS += -F -pgmF ../ghc6-quasis.sh
 
 not-compiled:
 	@find . -name \*.hs | sed 's@^\./@@' | while read hs; do \
@@ -51,6 +55,7 @@ not-compiled:
 clean:
 	$(RM) $(HS_SRC:.hs=.hi) $(HS_SRC:.hs=.o)
 	$(RM) $(HSBOOT_SRC:.hs-boot=.hi-boot) $(HSBOOT_SRC:.hs-boot=.o-boot)
+	$(RM) $(HS_SRC:.hs=.p_o) $(HSBOOT_SRC:.hs-boot=.p_o-boot) *.prof
 	$(RM) $(EXE) $(EXE)-6.*
 
 wc.%:

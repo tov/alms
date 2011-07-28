@@ -1,11 +1,14 @@
 *.hi
 *.o
+*.p_o
+*.p_o-boot
 stamp
 .DS_Store
 .svn
 .*.sw?
 Setup
 alms
+alms_p
 alms-6.*
 alms-7.*
 affine
@@ -16,3 +19,4 @@ html
 *.hi-boot
 *.o-boot
 test.alms
+*.prof

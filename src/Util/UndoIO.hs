@@ -22,11 +22,13 @@ newtype UndoIO a
   = UndoIO {
       unUndoIO ∷ IORef [IO ()] → IO a
     }
-  deriving Functor
 
 instance Applicative UndoIO where
   pure    = return
   (<*>)   = ap
+
+instance Functor UndoIO where
+  fmap    = liftM
 
 instance Monad UndoIO where
   return  = UndoIO . const . return
