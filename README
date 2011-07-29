@@ -131,9 +131,17 @@ EDITLINE TROUBLE
 
        % make clean; make FLAGS=-editline
 
+     or
+
+       % cabal install --flags="-editline" alms
+
    - Use readline instead:
 
        % make clean; make FLAGS=readline
+
+     or
+
+       % cabal install --flags="readline" alms
 
    - Try to install editline or readline . . .
 
