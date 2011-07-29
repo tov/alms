@@ -603,10 +603,10 @@ renameTyDec mqe (N note td)      = withLocation note $ do
           Nothing -> return ()
           Just (u, _) ->
             repeated "Data constructor" u "type declaration" []
-        cons' <- forM cons $ \(u, mt) -> withLocation mt $ do
+        cons' <- forM cons $ \(u, mt) -> do
           -- XXX Why trivial?
           let u' = renTrivial u
-          tell [MdDatacon (getLoc mt) u u']
+          tell [MdDatacon (getLoc note) u u']
           mt'   <- traverse renameType mt
           return (u', mt')
         return (tdDat l' tvs' cons')
