@@ -94,13 +94,13 @@ build μ (TyQu Exists tvs1 σfrom) (TyQu Exists tvs2 σto)
 build μ (TyApp tc1 [σf1, qf, σf2]) (TyApp tc2 [σt1, qt, σt2])
   | tc1 == tcFun, tc2 == tcFun
   = do
-    dom ← build μ σt1 σf1
-    cod ← build μ σf2 σt2
-    let which = contractIdent $
+    dom   ← build μ σt1 σf1
+    cod   ← build μ σf2 σt2
+    which ← contractIdent <$>
           if qualifier qt == QeU S.empty
              && qualifier qf /= QeU S.empty
-            then "affunc"
-            else "func"
+            then return "affunc"
+            else do qf ⊏: qt; return "func"
     return [ex| $qvid:which $dom $cod |]
 
 build _ σfrom σto
