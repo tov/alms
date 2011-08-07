@@ -15,6 +15,7 @@ import Statics.Constraint
 
 import Prelude ()
 import qualified Data.Map as M
+import qualified Data.Set as S
 
 -- | Location to use for constructed code
 _loc :: Loc
@@ -96,9 +97,10 @@ build μ (TyApp tc1 [σf1, qf, σf2]) (TyApp tc2 [σt1, qt, σt2])
     dom ← build μ σt1 σf1
     cod ← build μ σf2 σt2
     let which = contractIdent $
-          if qualifier qf ⊑ qualifier qt
-            then "func"
-            else "affunc"
+          if qualifier qt == QeU S.empty
+             && qualifier qf /= QeU S.empty
+            then "affunc"
+            else "func"
     return [ex| $qvid:which $dom $cod |]
 
 build _ σfrom σto
