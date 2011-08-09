@@ -214,6 +214,12 @@ inferRecordExp ∷ MonadConstraint tv r m ⇒
                  [AST.Field R] → AST.Expr R → Maybe (Type tv) →
                  m ([AST.Field R], AST.Expr R, Type tv)
 inferRecordExp bqual e0 φ δ γ flds e2 mσ = do
+  when bqual . tassert (AST.syntacticValue e2) $
+    [msg|
+      In an additive-record extension expression, the record being
+      extended must be a syntactic value:
+      <dl><dt>expression: <dd>$5:e2</dl>
+    |]
   let qual = if bqual then tyAf else tyUn
   [_, mσRow]         ← splitCon mσ tcRecord
   let eachFld mσRow' [fdQ| $uid:ui = $ei |] = do

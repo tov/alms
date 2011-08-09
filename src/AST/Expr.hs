@@ -211,7 +211,7 @@ newExpr e0 = flip N e0 $ case e0 of
     }
   ExRec True flds e2 ->
     newNote {
-      efv_  = fv (ADDITIVE flds) |*| fv e2,
+      efv_  = fv (ADDITIVE flds) |+| fv e2,
       eloc_ = getLoc (flds, e2)
     }
   ExRec False flds e2 ->
