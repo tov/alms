@@ -96,6 +96,10 @@ module Function = struct
   let uncurry f (x, y) = f x y
   let compose f g x    = f (g x)
   let ($) f x          = f x
+
+  (* Useful for implicit threading syntax: *)
+  let ($>) f x         = ((), f x)
+  let ($<) f x         = (f x, ())
 end
 
 open Function
