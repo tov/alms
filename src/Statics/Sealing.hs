@@ -248,7 +248,8 @@ matchTyCons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
     tcGuards tc1 ==! tcGuards tc2       $ "guarded parameters"
     tcQual tc1   ==! tcQual tc2         $ "qualifier"
   (DataType, DataType) → do
-    tcArity tc1  ==! tcArity tc2        $ "number of parameters"
+    length (tcArity tc1)  ==! length (tcArity tc2)
+                                        $ "number of parameters"
     let rhs1 = tcCons tc1
         rhs2 = tcCons tc2
     forM_ (Env.toList rhs1) $ \(k, mσ1) → do
@@ -277,8 +278,9 @@ matchTyCons tc1 tc2 = case (varietyOf tc1, varietyOf tc2) of
   where
     (a1 ==! a2) what =
       tAssExp (a1 == a2)
-        [msg| In signature matching, cannot match definition for type
-              $q:tc1 because the $words:what does not match: |]
+        ([msg| In signature matching, cannot match definition for type
+               $q:1 because the $words:what does not match: |]
+         (tcName tc1))
         (pprMsg a1)
         (pprMsg a2)
 
