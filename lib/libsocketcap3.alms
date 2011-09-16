@@ -1,0 +1,174 @@
+(*
+    A typestate sockets library
+
+    This is a bit more involved than the example in the paper,
+    because we have error cases.  We deal with this by raising
+    an exception which contains a witness that allows recovering
+    the capability if presented with the corresponding socket.
+*)
+
+#load "libsocket"
+
+module type ASOCKET = sig
+  (* The representation of a socket *)
+  type 't socket
+
+  (* Socket capabilities and the socket states *)
+  type 't @@ 's qualifier A
+  type initial
+  type bound
+  type listening
+  type connected
+
+  (* Socket operations *)
+  val socket  : unit -> ex 't. 't socket * 't@@initial
+  val bind    : all 't. 't socket -> int -> 't@@initial -> 't@@bound
+  val connect : all 't.  't socket -> string -> string ->
+                  't@@initial + 't@@bound -> 't@@connected
+  val listen  : all 't. 't socket -> 't@@bound -> 't@@listening
+  val accept  : all 't. 't socket -> 't@@listening ->
+                  (ex 's. 's socket * 's@@connected) * 't@@listening
+  val send    : all 't. 't socket -> string ->
+                  't@@connected -> 't@@connected
+  val recv    : all 't. 't socket -> int ->
+                  't@@connected -> string * 't@@connected
+  val close   : all 't. 't socket -> 't@@connected -> unit
+
+  (* When we raise an exception, we "freeze" the capability.
+   * We can thaw the frozen capability if we have the socket that
+   * it goes with.  (This requires a dynamic check.)  This lets us
+   * recover the capability with a type paramater that matches any
+   * extant sockets that go with it. *)
+  type 'a frozen qualifier A
+
+  val thaw : all 't 's. 't socket -> 's frozen -> 's frozen + 't@@'s
+
+  (* Operations for catching the error state associated with a given
+     socket. *)
+  val catchInitial   : all 't `a. 't socket ->
+                         (unit -o `a) -> ('t@@initial -o `a) -o `a
+  val catchBound     : all 't `a.  't socket ->
+                         (unit -o `a) -> ('t@@bound -o `a) -o `a
+  val catchListening : all 't `a.  't socket ->
+                         (unit -o `a) -> ('t@@listening -o `a) -o `a
+  val catchConnected : all 't `a.  't socket ->
+                         (unit -o `a) -> ('t@@connected -o `a) -o `a
+
+  (* Socket exceptions *)
+  type socketError = StillInitial   of initial frozen
+                   | StillBound     of bound frozen
+                   | StillListening of listening frozen
+                   | StillConnected of connected frozen
+                   | Disconnected
+  exception SocketError of socketError * string
+end
+
+module ASocket : ASOCKET = struct
+  module S = Socket
+  let getAddrByName = S.getAddrByName
+
+  type rep        = S.socket
+  type 't socket  = S.socket
+
+  type 't @@ 's = unit
+  type initial
+  type bound
+  type listening
+  type connected
+  type 's frozen = rep
+
+  type socketError = StillInitial   of rep
+                   | StillBound     of rep
+                   | StillListening of rep
+                   | StillConnected of rep
+                   | Disconnected
+  exception SocketError of socketError * string
+
+  let error (se: socketError) (msg: string) =
+    raise (SocketError (se, msg))
+
+  let socket () =
+    try (S.socket (), ()) : ∃ 't. 't socket × 't@@initial
+    with
+      IOError msg -> error Disconnected msg
+
+  let bind (sock: rep) (port: int) () =
+    try S.bind sock port
+    with
+      IOError msg -> error (StillInitial sock) msg
+
+  let connect (sock: rep) (host: string) (port: string)
+                  (cap: unit + unit) =
+    try S.connect sock host port
+    with
+      IOError msg -> match cap with
+        | Left _  -> error (StillInitial sock) msg
+        | Right _ -> error (StillBound sock) msg
+
+  let listen (sock: rep) () =
+    try S.listen sock
+    with
+      IOError msg -> error (StillBound sock) msg
+
+  let accept (sock: rep) () =
+    try ((S.accept sock, ()) : ∃ 't. 't socket × 't@@initial, ())
+    with
+      IOError msg -> error (StillListening sock) msg
+
+  let send (sock: rep) (data: string) () =
+    try
+      S.send sock data;
+      ()
+    with
+      IOError msg -> error Disconnected msg
+
+  let recv (sock: rep) (len: int) () =
+    try (S.recv sock len, ())
+    with
+      IOError msg -> error Disconnected msg
+
+  let close (sock: rep) () =
+    try S.close sock
+    with
+      IOError msg -> error Disconnected msg
+
+  (* Convenience functions for catching and thawing frozen socket
+   * capabilities. *)
+  let thaw (sock: rep) (sock': rep) =
+    if sock == sock'
+      then Right ()
+      else Left  sock'
+
+  let catchInitial (sock: rep) (body: unit -o `a)
+                   (handler: unit -o `a) =
+    try body () with
+    | SocketError (StillInitial frz, msg) ->
+        match thaw sock frz with
+        | Left frz  -> error (StillInitial frz) msg
+        | Right cap -> handler cap
+
+  let catchBound (sock: rep) (body: unit -o `a)
+                 (handler: unit -o `a) =
+    try body () with
+    | SocketError (StillBound frz, msg) ->
+        match thaw sock frz with
+        | Left frz  -> error (StillBound frz) msg
+        | Right cap -> handler cap
+
+  let catchListening (sock: rep) (body: unit -o `a)
+                     (handler: unit -o `a) =
+    try body () with
+    | SocketError (StillListening frz, msg) ->
+        match thaw sock frz with
+        | Left frz  -> error (StillListening frz) msg
+        | Right cap -> handler cap
+
+  let catchConnected (sock: rep) (body: unit -o `a)
+                     (handler: unit -o `a) =
+    try body () with
+    | SocketError (StillConnected frz, msg) ->
+        match thaw sock frz with
+        | Left frz  -> error (StillConnected frz) msg
+        | Right cap -> handler cap
+end
+
