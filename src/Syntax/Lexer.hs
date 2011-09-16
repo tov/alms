@@ -46,7 +46,7 @@ tok = T.makeTokenParser T.LanguageDef {
     T.identLetter    = alphaNum <|> oneOf "_'′₀₁₂₃₄₅₆₇₈₉⁰¹²³⁴⁵⁶⁷⁸⁹ᵢⱼₐₑₒₓⁱⁿ",
     T.opStart        = satisfy isOpStart <|> plusNoBrace,
     T.opLetter       = satisfy isOpLetter <|> plusNoBrace,
-    T.reservedNames  = ["fun", "λ",
+    T.reservedNames  = ["fun", "λ", "function",
                         "if", "then", "else",
                         "match", "with", "as", "_",
                         "try",

@@ -1061,6 +1061,11 @@ exprpP p = mark $ case () of
                 (exApp (exVar (qident "INTERNALS.Exn.raise"))
                        (exVar (qident "e")))
               ],
+      do reserved "function"
+         optional (reservedOp "|")
+         clauses ← flip sepBy1 (reservedOp "|") casealtp
+         return (exAbs (paVar (ident "x."))
+                       (exCase (exBVar (ident "x.")) clauses)),
       lambda *> buildargsp <* arrow <*> exprp,
       next ]
     | p == precExSemi → do
