@@ -1,40 +1,37 @@
 (* Echo server written using state-tracked sockets. *)
 
-#load "libsocketcap"
+#load "libsocketcap3"
 
 module EchoServer = struct
-  open ASocket
+  open SocketCap
 
   (* This is a bit different than the version in the paper, because
    * it uses exceptions. *)
-  let handleClient sock f cap =
-    let rec loop cap =
-      let (str, cap) = recv sock 1024 cap in
-      let cap        = send sock (f str) cap in
-        loop cap
-     in try
-          loop cap
-        with SocketError _ → ()
+  let handleClient sock f !cap =
+    let rec loop () =
+      let str = recv sock 1024 cap in
+        send sock (f str) $> cap;
+        loop ()
+    in loop ()
 
   let rec acceptLoop sock f cap =
-    let ((clientsock, clientcap), cap) = accept sock cap in
+    let (clientsock, clientcap, cap) = accept sock cap in
       putStrLn "Opened connection";
       (Thread.fork :> (unit -A> unit) → Thread.thread)
-        (λ _ → handleClient clientsock f clientcap;
-               putStrLn "Closed connection");
+        (λ _ → try handleClient clientsock f clientcap
+               with SocketError _ → putStrLn "Closed connection");
       acceptLoop sock f cap
 
   let serve port f =
-    let (sock, cap) = socket () in
-    let cap = bind sock port cap in
-    let cap = listen sock cap in
-      acceptLoop sock f cap
+    let (sock, !cap) = socket () in
+    bind sock port $> cap;
+    listen sock $> cap;
+    acceptLoop sock f cap
 end
 
 let serverFun (s: string) = s
 
-let main argv =
-  match argv with
+let main = function
   | [port] → EchoServer.serve (int_of_string port) serverFun
   | _      → failwith "Usage: echoServer.aff PORT\n"
 
