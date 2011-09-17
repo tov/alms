@@ -37,17 +37,17 @@ module type SOCKET_CAP = sig
 
   (* Operations for catching the error state associated with a given
      socket. *)
-  val catchRaw       : 'a socket → (unit -A> `r) → ('a@raw -A> `r)       → `r
-  val catchNamed     : 'a socket → (unit -A> `r) → ('a@named -A> `r)     → `r
-  val catchListening : 'a socket → (unit -A> `r) → ('a@listening -A> `r) →`r
-  val catchReady     : 'a socket → (unit -A> `r) → ('a@ready -A> `r)     → `r
+  val catchRaw       : (unit -A> `r) → 'a socket × ('a@raw -A> `r)       → `r
+  val catchNamed     : (unit -A> `r) → 'a socket × ('a@named -A> `r)     → `r
+  val catchListening : (unit -A> `r) → 'a socket × ('a@listening -A> `r) → `r
+  val catchReady     : (unit -A> `r) → 'a socket × ('a@ready -A> `r)     → `r
 
   type 'a dynamicCap = Raw of 'a@raw
                      | Named of 'a@named
                      | Listening of 'a@listening
                      | Ready of 'a@ready
 
-  exception SocketError of (∃'a. 'a socket * 'a dynamicCap) option * string
+  exception Socket of (∃'a. 'a socket * 'a dynamicCap) option * string
 end
 
 module SocketCap : SOCKET_CAP = struct
@@ -65,14 +65,14 @@ module SocketCap : SOCKET_CAP = struct
                      | Listening of 'a@listening
                      | Ready of 'a@ready
 
-  exception SocketError of (∃'a. 'a socket * 'a dynamicCap) option * string
+  exception Socket of (∃'a. 'a socket * 'a dynamicCap) option * string
 
   let error (sockcap : ∃'a. 'a socket * 'a dynamicCap) msg =
-    raise (SocketError (Some sockcap, msg))
+    raise (Socket (Some sockcap, msg))
 
   let socket _ : ∃ 'a. 'a socket × 'a@raw =
     try (S.socket (), ())
-    with IOError msg → raise (SocketError (None, msg))
+    with IOError msg → raise (Socket (None, msg))
 
   let bind sock port _ =
     try S.bind sock port
@@ -103,55 +103,56 @@ module SocketCap : SOCKET_CAP = struct
 
   let close sock _ =
     try S.close sock
-    with IOError msg → raise (SocketError (None, msg))
+    with IOError msg → raise (Socket (None, msg))
 
   let reassociate sock sock' _ =
     if sock == sock'
       then Right ()
       else Left ()
 
-  let catchBy pred sock body handler =
+  let catchBy body pred (sock, handler) =
     try body () with
-    | SocketError ((Some (sock', dyncap), msg) as se) →
+    | Socket ((Some (sock', dyncap), msg) as se) →
         match (pred dyncap, reassociate sock sock' ()) with
         | (true, Right cap) → handler cap
-        | _ → raise (SocketError se)
+        | _ → raise (Socket se)
 
-  let catchRaw sock =
-    catchBy (function Raw _ → true | _ → false) sock
-  let catchNamed sock =
-    catchBy (function Named _ → true | _ → false) sock
-  let catchListening sock =
-    catchBy (function Listening _ → true | _ → false) sock
-  let catchReady sock =
-    catchBy (function Ready _ → true | _ → false) sock
+  let catchRaw body =
+    catchBy body (function Raw _ → true | _ → false)
+  let catchNamed body =
+    catchBy body (function Named _ → true | _ → false)
+  let catchListening body =
+    catchBy body (function Listening _ → true | _ → false)
+  let catchReady body =
+    catchBy body (function Ready _ → true | _ → false)
 end
 
 module SocketCap2 : SOCKET_CAP = struct
   open SocketCap
-  let catchBy (prj : ∀'a. 'a dynamicCap →
+  let catchBy body
+              (prj : ∀'a. 'a dynamicCap →
                           'a dynamicCap + ('a@'c -A> 'a dynamicCap) × 'a@'c)
-              sock' body handler =
+              (sock', handler) =
     try body () with
-    | SocketError (Some (sock, dyncap), msg) →
+    | Socket (Some (sock, dyncap), msg) →
         match prj dyncap with
         | Left dyncap
-          → raise (SocketError (Some (sock, dyncap), msg))
+          → raise (Socket (Some (sock, dyncap), msg))
         | Right (uncap, cap)
           → match reassociate sock sock' cap with
-            | Left cap   → raise (SocketError (Some (sock, uncap cap), msg))
+            | Left cap   → raise (Socket (Some (sock, uncap cap), msg))
             | Right cap' → handler cap'
 
-  let catchRaw sock =
-    catchBy (function Raw cap → Right (Raw, cap)
-                    | dyncap → Left dyncap) sock
-  let catchNamed sock =
-    catchBy (function Named cap → Right (Named, cap)
-                    | dyncap → Left dyncap) sock
-  let catchListening sock =
-    catchBy (function Listening cap → Right (Listening, cap)
-                    | dyncap → Left dyncap) sock
-  let catchReady sock =
-    catchBy (function Ready cap → Right (Ready, cap)
-                    | dyncap → Left dyncap) sock
+  let catchRaw body =
+    catchBy body (function Raw cap → Right (Raw, cap)
+                         | dyncap → Left dyncap)
+  let catchNamed body =
+    catchBy body (function Named cap → Right (Named, cap)
+                         | dyncap → Left dyncap)
+  let catchListening body =
+    catchBy body (function Listening cap → Right (Listening, cap)
+                         | dyncap → Left dyncap)
+  let catchReady body =
+    catchBy body (function Ready cap → Right (Ready, cap)
+                         | dyncap → Left dyncap)
 end
