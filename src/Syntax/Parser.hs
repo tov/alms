@@ -1022,7 +1022,7 @@ exprpP p = mark $ case () of
            reserved "then"
            caClause (paCon idTrueValue Nothing)
                 <$> exprp
-         clf <- addLoc $ do
+         clf <- option (caClause paWild exUnit) . addLoc $ do
            reserved "else"
            caClause (paCon idFalseValue Nothing)
                 <$> exprp
@@ -1100,6 +1100,10 @@ exprpP p = mark $ case () of
         return (foldr exApp arg ops)
     | p == precCom    →
         foldl1 exPair <$> commaSep1 next
+    | p == precOr     →
+        chainr1last next (exOr <$ reservedOp "||") exprp
+    | p == precAnd    →
+        chainr1last next (exAnd <$ reservedOp "&&") exprp
     | p > precMax     → choice
         [
           exVar <$> qvaridp,

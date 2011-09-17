@@ -33,6 +33,9 @@ Setup: Setup.hs
 
 $(EXE): default
 
+install: $(EXE) Setup
+	./Setup install
+
 test tests: $(EXE)
 	@$(SHELL) $(EXAMPLES)/run-tests.sh ./$(EXE) $(EXAMPLES)
 

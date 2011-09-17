@@ -7,7 +7,7 @@ module Syntax.Prec (
   -- * Precedences for reserved operators needed by the parser
   precMin, precStart, precMax, precCast,
   precCom, precDot, precExSemi, precTySemi, precEq, precCaret, precArr,
-  precPlus, precStar, precAt, precApp, precBang, precSel,
+  precOr, precAnd, precPlus, precStar, precAt, precApp, precBang, precSel,
 ) where
 
 import Data.Char
@@ -22,6 +22,11 @@ precOp ('*':'*':_)    = Right precAt
 precOp ('→':_)        = Right precArr
 precOp ('-':'>':_)    = Right precArr
 precOp ('-':'o':_)    = Right precArr
+precOp ('←':_)        = Right precArr
+precOp ('<':'-':_)    = Right precArr
+precOp (':':'=':_)    = Right precArr
+precOp "||"           = Right precOr
+precOp "&&"           = Right precAnd
 precOp "-[]>"         = Right precArr
 precOp (';':_)        = Right precTySemi
 precOp "⋁"            = Right precTySemi
@@ -46,6 +51,7 @@ precOp ""             = Left precApp
 
 precMin, precStart, precMax, precCast,
   precCom, precDot, precExSemi, precTySemi, precEq, precCaret, precArr,
+  precOr, precAnd,
   precPlus, precStar, precAt, precApp, precSel, precBang :: Int
 precMin   = -1
 precCom   = -1 -- ,
@@ -53,17 +59,19 @@ precStart =  0 -- includes "|" for row types
 precDot   =  1 -- in, else, of, .
 precExSemi=  1 -- ;  (expressions only)
 precCast  =  2 -- :>
-precArr   =  3 -- ->
-precEq    =  4 -- != = < > | & $ as
-precCaret =  5 -- ^ : (infixr)
-precPlus  =  6 -- - +
-precStar  =  7 -- % / *
-precTySemi=  8 -- ; "\\/" "⋁" (types only)
-precAt    =  9 -- @ ** (infixr)
-precApp   = 10 -- f x
-precSel   = 11 -- record selection
-precBang  = 12 -- ! ~ ? (prefix)
-precMax   = 12
+precArr   =  3 -- ->… →… <-… ←… :=…
+precOr    =  4 -- ||…
+precAnd   =  5 -- & &&…
+precEq    =  6 -- !=… =… <… >… |… &… $… as…
+precPlus  =  7 -- -… +;…
+precCaret =  8 -- ^… :… ∷… (infixr)
+precStar  =  9 -- %… /… *…
+precTySemi= 10 -- ; "\\/" "⋁" (types only)
+precAt    = 11 -- @… **… (right)
+precApp   = 12 -- f x
+precSel   = 13 -- record selection
+precBang  = 14 -- !… ~… ?… (prefix)
+precMax   = 14
 
 {-# INLINE fixities #-}
 -- To find out the fixity of a precedence level

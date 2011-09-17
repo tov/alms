@@ -58,7 +58,8 @@ tok = T.makeTokenParser T.LanguageDef {
                         "all", "ex", "mu", "μ", "of",
                         "type", "qualifier" ],
     T.reservedOpNames = ["|", "=", ":", ":>", "->", "→", "⊸",
-                         "∀", "∃", "⋁", "\\/", "...", "…", "::", "∷" ],
+                         "∀", "∃", "⋁", "\\/", "...", "…", "::", "∷",
+                         "&&", "||" ],
     T.caseSensitive = True
   }
   -- 'λ' is not an identifier character, so that we can use it as

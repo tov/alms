@@ -33,7 +33,7 @@ module type SOCKET_CAP = sig
   val recv    : 'a socket → int → 'a@ready → string * 'a@ready
   val close   :  'a socket → 'a@'c → unit
 
-  val reassociate : 'a socket → 'b socket → 'a@'c → 'a@'c + 'b@'c
+  val isSame  : 'a socket → 'b socket → ('a@'c → 'b@'c) option
 
   (* Operations for catching the error state associated with a given
      socket. *)
@@ -67,64 +67,50 @@ module SocketCap : SOCKET_CAP = struct
 
   exception Socket of (∃'a. 'a socket * 'a dynamicCap) option * string
 
-  let error (sockcap : ∃'a. 'a socket * 'a dynamicCap) msg =
-    raise (Socket (Some sockcap, msg))
+  let lift thunk sock mkcap =
+    try thunk ()
+    with IOError msg → raise (Socket (Some (sock, mkcap ()), msg))
 
   let socket _ : ∃ 'a. 'a socket × 'a@raw =
     try (S.socket (), ())
     with IOError msg → raise (Socket (None, msg))
 
-  let bind sock port _ =
-    try S.bind sock port
-    with IOError msg → error (sock, Raw ()) msg
+  let bind sock port _ = lift (λ_ → S.bind sock port) sock Raw
 
   let connect sock host port cap =
-    try S.connect sock host port
-    with
-      IOError msg → match cap with
-        | Left _  → error (sock, Raw ()) msg
-        | Right _ → error (sock, Named ()) msg
+    lift (λ_ → S.connect sock host port) sock
+         (match cap with Left _ → Raw | Right _ → Named)
 
-  let listen sock _ =
-    try S.listen sock
-    with IOError msg → error (sock, Named ()) msg
+  let listen sock _ = lift (λ_ → S.listen sock) sock Named
 
   let accept sock _ =
-    try ((S.accept sock, ()) : ∃ 'a. 'a socket × 'a@ready, ())
-    with IOError msg → error (sock, Listening ()) msg
+    lift (λ_ → ((S.accept sock, ()) : ∃ 'a. 'a socket × 'a@ready, ()))
+          sock Listening
 
-  let send sock data _ =
-    try S.send sock data; ()
-    with IOError msg → error (sock, Ready ()) msg
+  let send sock data _ = lift (λ_ → S.send sock data; ()) sock Ready
 
-  let recv sock len _ =
-    try (S.recv sock len, ())
-    with IOError msg → error (sock, Ready ()) msg
+  let recv sock len _ = lift (λ_ → (S.recv sock len, ())) sock Ready
 
   let close sock _ =
     try S.close sock
     with IOError msg → raise (Socket (None, msg))
 
-  let reassociate sock sock' _ =
+  let isSame sock sock' =
     if sock == sock'
-      then Right ()
-      else Left ()
+      then Some (λ_ → ())
+      else None
 
-  let catchBy body pred (sock, handler) =
+  let catchBy body state (sock', handler) =
     try body () with
-    | Socket ((Some (sock', dyncap), msg) as se) →
-        match (pred dyncap, reassociate sock sock' ()) with
-        | (true, Right cap) → handler cap
-        | _ → raise (Socket se)
+    Socket ((Some (sock, dyncap), msg) as se) →
+      if dyncap == state () && sock == sock'
+        then handler ()
+        else raise (Socket se)
 
-  let catchRaw body =
-    catchBy body (function Raw _ → true | _ → false)
-  let catchNamed body =
-    catchBy body (function Named _ → true | _ → false)
-  let catchListening body =
-    catchBy body (function Listening _ → true | _ → false)
-  let catchReady body =
-    catchBy body (function Ready _ → true | _ → false)
+  let catchRaw body       = catchBy body Raw
+  let catchNamed body     = catchBy body Named
+  let catchListening body = catchBy body Listening
+  let catchReady body     = catchBy body Ready
 end
 
 module SocketCap2 : SOCKET_CAP = struct
@@ -139,9 +125,9 @@ module SocketCap2 : SOCKET_CAP = struct
         | Left dyncap
           → raise (Socket (Some (sock, dyncap), msg))
         | Right (uncap, cap)
-          → match reassociate sock sock' cap with
-            | Left cap   → raise (Socket (Some (sock, uncap cap), msg))
-            | Right cap' → handler cap'
+          → match isSame sock sock' with
+            | None → raise (Socket (Some (sock, uncap cap), msg))
+            | Some witness → handler (witness cap)
 
   let catchRaw body =
     catchBy body (function Raw cap → Right (Raw, cap)

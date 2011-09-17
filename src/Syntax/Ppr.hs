@@ -382,6 +382,18 @@ instance Ppr (Expr i) where
     [ex| `$uid:x |]    -> char '`' <> ppr x
     [ex| `$uid:x $e |] -> prec precApp (sep [ char '`' <> ppr x, ppr1 e ])
     [ex| #$uid:x $e |] -> prec precApp (sep [ char '#' <> ppr x, ppr1 e ])
+    [ex| $e1 || $e2 |] ->
+      prec precOr $
+        sep [ ppr1 e1 <+> text "||",
+              nest 2 (ppr e2) ]
+    [ex| $e1 && $e2 |] ->
+      prec precAnd $
+        sep [ ppr1 e1 <+> text "&&",
+              nest 2 (ppr e2) ]
+    [ex| if $ec then $et |] ->
+      prec precDot $
+        sep [ text "if" <+> ppr ec,
+              nest 2 $ text "then" <+> ppr et ]
     [ex| if $ec then $et else $ef |] ->
       prec precDot $
         sep [ text "if" <+> ppr ec,

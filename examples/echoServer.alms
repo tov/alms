@@ -19,7 +19,7 @@ module EchoServer = struct
       putStrLn "Opened connection";
       (Thread.fork :> (unit -A> unit) → Thread.thread)
         (λ _ → try handleClient clientsock f clientcap
-               with SocketError _ → putStrLn "Closed connection");
+               with Socket _ → putStrLn "Closed connection");
       acceptLoop sock f cap
 
   let serve port f =

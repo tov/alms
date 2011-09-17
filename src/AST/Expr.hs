@@ -19,7 +19,7 @@ module AST.Expr (
   -- ** Synthetic expression constructors
   exBVar, exBCon,
   exChar, exStr, exInt, exFloat,
-  exSeq,
+  exSeq, exIfThenElse, exOr, exAnd,
   exUnit, exNilRecord,
   exNil, exCons,
   ToExpr(..),
@@ -300,6 +300,16 @@ exFloat  = exLit . LtFloat
 
 exSeq :: Tag i => Expr i -> Expr i -> Expr i
 exSeq e1 e2 = exLet paWild e1 e2
+
+exIfThenElse :: Tag i => Expr i -> Expr i -> Expr i -> Expr i
+exIfThenElse ec et ef =
+  exCase ec
+    [ caClause (paCon idTrueValue Nothing) et
+    , caClause (paCon idFalseValue Nothing) ef ]
+
+exOr, exAnd :: Tag i => Expr i -> Expr i -> Expr i
+exOr e1 e2  = exIfThenElse e1 (exCon idTrueValue Nothing) e2
+exAnd e1 e2 = exIfThenElse e1 e2 (exCon idFalseValue Nothing)
 
 exUnit, exNilRecord :: Tag i => Expr i
 exUnit      = exCon idUnitVal Nothing
