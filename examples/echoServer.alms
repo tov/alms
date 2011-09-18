@@ -7,26 +7,26 @@ module EchoServer = struct
 
   (* This is a bit different than the version in the paper, because
    * it uses exceptions. *)
-  let handleClient sock f !cap =
-    let rec loop () =
-      let str = recv sock 1024 cap in
-        send sock (f str) $> cap;
-        loop ()
-    in loop ()
+  let rec clientLoop f sock !cap =
+    let str = recv sock 1024 cap in
+      send sock (f str) $> cap;
+      clientLoop f sock cap
 
-  let rec acceptLoop sock f cap =
-    let (clientsock, clientcap, cap) = accept sock cap in
+  let rec acceptLoop f sock !cap =
+    let (clientsock, clientcap) = accept sock cap in
       putStrLn "Opened connection";
-      (Thread.fork :> (unit -A> unit) → Thread.thread)
-        (λ _ → try handleClient clientsock f clientcap
-               with Socket _ → putStrLn "Closed connection");
-      acceptLoop sock f cap
+      Thread.fork (λ _ →
+        catchReady (λ _ → clientLoop f clientsock clientcap)
+          (clientsock, λ clientcap →
+            close clientsock clientcap;
+            putStrLn "Closed connection"));
+      acceptLoop f sock cap
 
   let serve port f =
     let (sock, !cap) = socket () in
     bind sock port $> cap;
     listen sock $> cap;
-    acceptLoop sock f cap
+    acceptLoop f sock cap
 end
 
 let serverFun (s: string) = s

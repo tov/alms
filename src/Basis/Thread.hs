@@ -12,7 +12,7 @@ entries :: [Entry Raw]
 entries =  [
     -- Threads
     dec [sgQ| type thread |],
-    fun "fork"  -: [ty| (unit -> unit) -> thread |]
+    fun "fork"  -: [ty| (unit -A> unit) -> thread |]
       -= \f -> Vinj `fmap` CC.forkIO (vapp f () >> return ()),
     fun "kill"  -: [ty| thread -> unit |]
       -= CC.killThread . unVinj,
