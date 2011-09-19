@@ -1,0 +1,130 @@
+(*
+    Another session types library.  Doesn't work yet!
+*)
+
+module type SESSION_TYPE = sig
+  type 1
+  type +'a ; +'s
+  type ! -`a
+  type ? +`a
+  type ~⊕ +`a
+  type ~& +`a
+
+  type 1           dual = 1
+     | (!`a ; 's)  dual = ?`a ; 's dual
+     | (?`a ; 's)  dual = !`a ; 's dual
+     | ~⊕ ('a ...) dual = ~& ('a dual ...)
+     | ~& ('a ...) dual = ~⊕ ('a dual ...)
+
+  type 's rendezvous
+  type +'s channel : A
+
+  val newRendezvous : unit → 's rendezvous
+
+  val request   : 's rendezvous → 's channel
+  val accept    : 's rendezvous → 's dual channel
+
+  val send      : `a → (!`a; 's) channel → 's channel
+  val recv      : (?`a; 's) channel → `a * 's channel
+
+  type `a ... &-> `r = {+ (`a channel -A> `r) ... +}
+  type `a ... ⊕-> `r = [  (`a channel -A> `r) ...  ]
+
+  val follow    : ~&`c channel → (`c &-> `r) → `r
+  val choose    : ~⊕`c channel → (`c ⊕-> `r) → `r
+end
+
+module SessionType : SESSION_TYPE = struct
+  module C = Channel
+
+  type 1
+  type +'a ; +'s
+  type ! -`a
+  type ? +`a
+  type ~⊕ +`a
+  type ~& +`a
+
+  type 1           dual = 1
+     | (!`a ; 's)  dual = ?`a ; 's dual
+     | (?`a ; 's)  dual = !`a ; 's dual
+     | ~⊕ ('a ...) dual = ~& ('a dual ...)
+     | ~& ('a ...) dual = ~⊕ ('a dual ...)
+
+  type rep = int C.channel
+  type 's channel    = rep
+  type 's rendezvous = rep C.channel
+
+  let newRendezvous = C.new
+
+  let request (r: unit rendezvous) = C.recv r
+
+  let accept (r: unit rendezvous) =
+    let c = C.new () in
+      C.send r c;
+      c
+
+  let send a c = C.send c (Unsafe.unsafeCoerce a); c
+  let recv c   = (Unsafe.unsafeCoerce (C.recv c), c)
+
+  type `a ... &-> `r = {+ (`a channel -A> `r) ... +}
+  type `a ... ⊕-> `r = [  (`a channel -A> `r) ...  ]
+
+  let follow c choices =
+    let sel      = Unsafe.unsafeCoerce (C.recv c) in
+    let (i, lab) = Prim.Row.variantLabel sel in
+      Prim.Row.unsafeGetRecordFieldThunk i lab choices () c
+
+  let choose c choice =
+    let choice = Unsafe.unsafeCoerce choice in
+      C.send c choice;
+      Prim.Row.unsafeVariantValue choice c
+end
+
+(*
+module SessionType2Test = struct
+  open SessionType
+
+  type state1 = !int; state2
+   and state2 = ~&(
+           `Done of ?int; 1
+         | `More of !int; state2
+         | `Again of ?int; state1)
+
+  let client (c : state1 channel) =
+    let rec s1 c = let c = send 1 c in s2 c
+        and s2 c = follow c {+
+                     done c  = fst (recv c),
+                     more c  = s2 (send 2 c),
+                     again c = let (z, c) = recv c in s1 c
+                   +}
+     in s1 c
+
+  let client (c: state1 channel) =
+    let rec s1 !c =
+              send 1 $> c;
+              s2 c
+        and s2 !c =
+          follow c;
+          match c with
+          | Done c  -> recv c
+          | More c  -> send 2 $> c;
+                       s2 c
+          | Again c -> let z = recv c in
+                       s1 c
+     in fst (s1 c)
+
+  let server (c: state1 dual channel) =
+    let rec s1 !c =
+      match recv c with
+        | 0 -> choose More c;
+               let z' = recv c in
+               choose Done c;
+               send z' $> c
+        | 1 -> choose Again c;
+               send 1 $> c;
+               s1 c
+        | z -> choose Done c;
+               send z $> c
+     in fst (s1 c)
+end
+*)
