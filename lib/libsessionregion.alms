@@ -1,0 +1,156 @@
+(*
+    Another session types library.  Doesn't use equirecursive types.
+*)
+
+module type SESSION_REGION = sig
+  type 1
+  type +'a ; +'s rec 's
+  type ! -`a
+  type ? +`a
+  type +'s ⊕ +'t
+  type +'s & +'t
+
+  type 1         dual = 1
+     | (!`a; 's) dual = ?`a; 's dual
+     | (?`a; 's) dual = !`a; 's dual
+     | ('s ⊕ 't) dual = 's dual & 't dual
+     | ('s & 't) dual = 's dual ⊕ 't dual
+
+  type 's rendezvous
+
+  type 'r @ 's  : A
+  type 'r @@ 's : A
+
+  type 'r channel
+
+  val newRendezvous : unit → 's rendezvous
+
+  val request   : 's rendezvous → ∃'r. 'r channel * 'r@'s
+  val accept    : 's rendezvous → ∃'r. 'r channel * 'r@'s dual
+
+  val send      : `a → 'r channel → 'r@(!`a; 's) → 'r@'s
+  val recv      : 'r channel → 'r@(?`a; 's) → `a * 'r@'s
+
+  val sel₁      : 'r channel → 'r@('s ⊕ 't) → 'r@'s
+  val sel₂      : 'r channel → 'r@('s ⊕ 't) → 'r@'t
+  val follow    : 'r channel → 'r@('s & 't) → ('r@'s + 'r@'t)
+
+  type ('r₁, 's, 'r₂) refocus = 'r₂@'s → 'r₁@@'s
+
+  val newGroup  : unit → ∃'r. 'r@@'s
+  val adopt     : 'r₁ channel → 'r₁@'s → 'r₂@@'s → 'r₂ channel * 'r₂@@'s
+  val focus     : 'r₁ channel → 'r₁@@'s →
+                    ∃'r₂. 'r₂ channel * ('r₁, 's, 'r₂) refocus * 'r₂@'s
+end
+
+module SessionRegion : SESSION_REGION = struct
+  type 1
+  type +'a ; +'s
+  type ! -`a
+  type ? +`a
+  type +'s ⊕ +'t
+  type +'s & +'t
+
+  type 1         dual = 1
+     | (!`a; 's) dual = ?`a; 's dual
+     | (?`a; 's) dual = !`a; 's dual
+     | ('s ⊕ 't) dual = 's dual & 't dual
+     | ('s & 't) dual = 's dual ⊕ 't dual
+
+  module C = Channel
+
+  type 's rendezvous = bool C.channel C.channel
+  type 'r channel    = bool C.channel
+  type 'r @ 's  = unit
+  type 'r @@ 's = unit
+
+  let newRendezvous = C.new
+
+  let request rv : ∃'r. 'r channel * unit = (C.recv rv, ())
+
+  let accept rv : ∃'r. 'r channel * unit =
+    let c = C.new () in
+      C.send rv c;
+      (c, ())
+
+  let send a c _    = C.send (Unsafe.unsafeCoerce c) a
+  let recv c _      = (C.recv (Unsafe.unsafeCoerce c), ())
+
+  let sel₁ c _ = C.send c true
+  let sel₂ c _ = C.send c false
+  let follow c _ = if C.recv c then Left () else Right ()
+
+  type ('r₁, 's, 'r₂) refocus = 'r₂@'s → 'r₁@@'s
+
+  let newGroup _ : ∃'r. 'r@@'s = ()
+
+  let adopt c _ _ = (c, ())
+  let focus c _ : ∃'r₂. 'r₂ channel * (unit → unit) * unit = (c, id, ())
+end
+
+module PubSub = struct
+  open SessionRegion
+
+  type 'a subscription = ?string; (1 ⊕ μ's. ?'a; 's)
+
+  type 'a control      = ?'a; 'a control
+                       & ?(∃'r. 'r channel * 'r@'a subscription dual);
+                         'a control
+
+  let deliver msg subChan !(subRgn : 'rs@@(μ's. !'a; 's)) =
+    let (subChan, refocus) = focus subChan subRgn in
+      send msg subChan $> subRgn;
+      refocus subRgn
+
+  let broadcast msg subChans (subRgn : 'rs@@(μ's. !'a; 's)) =
+    foldl (deliver msg) subRgn subChans
+
+  let server (ctlChan, ctlRgn) =
+    let rec loop subChans
+                 !(ctlRgn  : 'r@'a control,
+                   subsRgn : 'q@@(μ's. !'a; 's)) =
+      follow ctlChan $> ctlRgn;
+      let subChans = match ctlRgn with
+            | Left ctlRgn →
+                let msg = recv ctlChan ctlRgn in
+                broadcast msg subChans $> subsRgn;
+                subChans
+            | Right ctlRgn → fst $
+                let (subChan, !subRgn) = recv ctlChan ctlRgn in
+                send "Hello!" subChan $> subRgn;
+                follow subChan $> subRgn;
+                match subRgn with
+                | Left _       → subChans
+                | Right subRgn → (adopt subChan $< subRgn) subsRgn :: subChans
+       in loop subChans (ctlRgn, subsRgn)
+    in loop [] (ctlRgn, newGroup ())
+
+  let subscriber each (rv : 'a subscription rendezvous) =
+    let (subChan, !subRgn) = request rv in
+    let rec loop () =
+      each (recv subChan subRgn);
+      loop () in
+    putStrLn (recv subChan subRgn);
+    sel₂ subChan $> subRgn;
+    loop ()
+
+  let rec client ctlChan !(ctlRgn : 'r@string control dual) =
+    match getLine () with
+    | "+" →
+        let rv = newRendezvous () in
+        Thread.fork (λ_ → subscriber putStrLn rv);
+        sel₂ ctlChan $> ctlRgn;
+        send (accept rv) ctlChan $> ctlRgn;
+        client ctlChan ctlRgn
+    | "q" →
+        exit 0
+    | msg →
+        sel₁ ctlChan $> ctlRgn;
+        send msg ctlChan $> ctlRgn;
+        client ctlChan ctlRgn
+
+  let main () =
+    let rv = newRendezvous () in
+    Thread.fork (λ_ → server (request rv));
+    uncurry client (accept rv)
+end
