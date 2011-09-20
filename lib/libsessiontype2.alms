@@ -27,7 +27,7 @@ module type SESSION_TYPE = sig
   val recv      : (?`a; 's) channel → `a * 's channel
 
   val follow    : ?-> `c channel → unit * `c
-  val choose    : ('s channel → `c) → !-> `c channel →
+  val choose    : ('s channel -A> `c) → !-> `c channel →
                     unit * 's dual channel
 end
 
@@ -46,36 +46,23 @@ module SessionType : SESSION_TYPE = struct
   type ?-> `c = ?`c; 1
   type !-> `c = !`c; 1
 
-  type rep = int C.channel
-  type 's channel    = rep
-  type 's rendezvous = rep C.channel
+  type 's channel    = bool C.channel
+  type 's rendezvous = 's channel C.channel
 
-  let newRendezvous () = C.new ()
+  let newRendezvous = C.new
 
-  let request (r: unit rendezvous) = C.recv r
+  let request = C.recv
 
-  let accept (r: unit rendezvous) =
+  let accept rv =
     let c = C.new () in
-      C.send r c;
+      C.send rv c;
       c
 
-  let newPair () =
-    let c = C.new () in
-      (c, c)
+  let send a c      = (C.send (Unsafe.unsafeCoerce c) a, c)
+  let recv c        = (C.recv (Unsafe.unsafeCoerce c), c)
 
-  let send (a: `a) (c: rep) =
-    C.send c (Unsafe.unsafeCoerce a);
-    ((), c)
-
-  let recv (c: rep) = (Unsafe.unsafeCoerce (C.recv c), c)
-
-  let follow (c: rep) =
-    let (c', _) = recv c in ((), c')
-
-  let choose (ctor: rep → `c) (c: rep) =
-    let (theirs, mine) = newPair () in
-      send (ctor theirs) c;
-      ((), mine)
+  let follow c      = ((), fst (recv c))
+  let choose ctor c = send (ctor c) c
 end
 
 module SessionType2Test = struct
