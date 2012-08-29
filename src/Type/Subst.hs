@@ -386,9 +386,9 @@ instance (MonadSubst tv r m, Monoid w) ⇒ MonadSubst tv r (RWST r' w s m) where
 
 -- | Run in the substitution monad
 runSubstT ∷ Monad m ⇒ SubstState → SubstT r m a → m (a, SubstState)
-runSubstT state0 (SubstT m) = do
-  (result, state, _) ← runRWST m () state0 { stsTrace = 0 }
-  return (result, state)
+runSubstT st0 (SubstT m) = do
+  (result, st, _) ← runRWST m () st0 { stsTrace = 0 }
+  return (result, st)
 
 substState0 ∷ SubstState
 substState0 = SubstState 0 0

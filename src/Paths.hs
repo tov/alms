@@ -12,6 +12,7 @@ import Language.Haskell.TH
 import System.FilePath
 import System.Directory (doesFileExist, getCurrentDirectory)
 import System.Environment (getEnv)
+import System.IO.Error (catchIOError)
 import Data.Version
 
 #ifdef ALMS_CABAL_BUILD
@@ -22,7 +23,7 @@ builddir  :: FilePath
 builddir   = $(runIO getCurrentDirectory >>= litE . stringL)
 
 getBuildDir :: IO FilePath
-getBuildDir  = catch (getEnv "alms_builddir") (\_ -> return builddir)
+getBuildDir  = catchIOError (getEnv "alms_builddir") (\_ -> return builddir)
 
 #ifndef ALMS_CABAL_BUILD
 version :: Version
@@ -34,8 +35,8 @@ bindir     = builddir
 datadir    = dropFileName builddir
 
 getBinDir, getDataDir :: IO FilePath
-getBinDir  = catch (getEnv "alms_bindir") (\_ -> return bindir)
-getDataDir = catch (getEnv "alms_datadir") (\_ -> return datadir)
+getBinDir  = catchIOError (getEnv "alms_bindir") (\_ -> return bindir)
+getDataDir = catchIOError (getEnv "alms_datadir") (\_ -> return datadir)
 
 getDataFileName :: FilePath -> IO FilePath
 getDataFileName name = do
@@ -62,7 +63,7 @@ findInPath name (d:ds) = do
 almsLibPath :: IO [FilePath]
 almsLibPath = do
   user   <- liftM splitSearchPath (getEnv "ALMS_LIB_PATH")
-             `catch` \_ -> return []
+             `catchIOError` \_ -> return []
   system <- liftM (</> "lib") getDataDir
   build  <- liftM (</> "lib") getBuildDir
   return $ user ++ [ system, build ]

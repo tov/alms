@@ -19,7 +19,6 @@ import Meta.Quasi
 import AST hiding ((&))
 import Data.Loc
 import AST.TypeAnnotation
-import qualified AST.Notable
 import Util
 import Syntax.Ppr (Ppr(..))
 

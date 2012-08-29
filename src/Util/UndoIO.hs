@@ -13,8 +13,6 @@ import Util.MonadRef
 import Control.Applicative
 import Control.Exception
 import Control.Monad.Error
-import Control.Monad
-import Control.Monad.Trans
 import Data.IORef
 
 -- | A layer on top of the IO monad with an undo facility.

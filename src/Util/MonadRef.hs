@@ -4,6 +4,7 @@ module Util.MonadRef (
 ) where
 
 import Control.Monad.ST
+import qualified Control.Monad.ST.Unsafe as C.M.S.U
 import Control.Monad.STM
 
 import Data.IORef
@@ -58,7 +59,7 @@ instance MonadRef (STRef s) (ST s) where
   writeRef = writeSTRef
 
 instance UnsafeReadRef (STRef s) where
-  unsafeReadRef = unsafePerformIO . unsafeSTToIO . readRef
+  unsafeReadRef = unsafePerformIO . C.M.S.U.unsafeSTToIO . readRef
 
 instance MonadRef TVar STM where
   newRef   = newTVar

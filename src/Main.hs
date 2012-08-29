@@ -36,7 +36,7 @@ import Data.List (nub)
 import Data.IORef (IORef)
 import System.Exit (exitFailure, exitSuccess, ExitCode)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
-import System.IO.Error (ioeGetErrorString, isUserError)
+import System.IO.Error (ioeGetErrorString, isUserError, catchIOError)
 import System.IO (hPutStrLn, hFlush, stdout, stderr)
 import qualified Control.Exception as Exn
 
@@ -195,7 +195,7 @@ interactive opt rs0 = do
   repl 1 rs0
   where
     repl row st = do
-      mres <- reader row st
+      mres <- readr row st
       case mres of
         Nothing  -> return ()
         Just (row', ast) -> do
@@ -213,8 +213,8 @@ interactive opt rs0 = do
     say    = if opt Quiet then const (return ()) else printDoc
     getln' = if opt NoLineEdit then getline else readline
     getln  = if opt Quiet then const (getln' "") else getln'
-    reader :: Int -> ReplState -> IO (Maybe (Int, [Decl Raw]))
-    reader row st = loop 1 []
+    readr :: Int -> ReplState -> IO (Maybe (Int, [Decl Raw]))
+    readr row st = loop 1 []
       where
         fixup = unlines . mapTail ("   " ++) . reverse
         loop count acc = do
@@ -225,7 +225,7 @@ interactive opt rs0 = do
               addHistory (fixup (map fst acc))
               hPutStrLn stderr ""
               hPutStrLn stderr (show err)
-              reader (row + count) st
+              readr (row + count) st
             (Just line, _)
               | all isSpace line -> loop count acc
               | otherwise        ->
@@ -383,4 +383,4 @@ getline    :: String -> IO (Maybe String)
 getline s   = do
   putStr s
   hFlush stdout
-  catch (fmap Just getLine) (\_ -> return Nothing)
+  catchIOError (fmap Just getLine) (\_ -> return Nothing)

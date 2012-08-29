@@ -28,14 +28,12 @@ import Message.Quasi
 
 import Prelude ()
 import Data.Typeable (Typeable)
-import Control.Applicative
 import Control.Exception (Exception, throwIO, throw, catch)
 
 import qualified Control.Monad.Cont as Cont
 import qualified Control.Monad.Trans.Identity as Identity
 import qualified Control.Monad.Trans.Maybe as Maybe
 import qualified Control.Monad.Trans.List as List
-import qualified Control.Monad.Error as Error
 import qualified Control.Monad.Trans.Reader as Reader
 import qualified Control.Monad.Trans.RWS.Strict as StrictRWS
 import qualified Control.Monad.Trans.RWS.Lazy   as LazyRWS

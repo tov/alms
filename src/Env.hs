@@ -36,7 +36,6 @@ import Util
 import qualified Data.Map as M
 import qualified Data.Set as S
 import Data.Generics (Typeable, Data)
-import Data.Monoid
 
 infix 6 -:-, -::-, -:+-
 infixl 6 -.-
