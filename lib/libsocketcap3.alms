@@ -21,16 +21,16 @@ module type SOCKET_CAP = sig
   type ready
 
   (* Socket operations *)
-  val socket  : unit → ∃ 'a. 'a socket * 'a@raw
+  val socket  : unit → ∃ 'a. 'a socket × 'a@raw
   val bind    : 'a socket → int → 'a@raw → 'a@named
 
   val connect : 'a socket → string → string →
                   'a@raw + 'a@named → 'a@ready
   val listen  : 'a socket → 'a@named → 'a@listening
   val accept  : 'a socket → 'a@listening →
-                  (∃ 'b. 'b socket * 'b@ready) * 'a@listening
+                  (∃ 'b. 'b socket × 'b@ready) × 'a@listening
   val send    : 'a socket → string → 'a@ready → 'a@ready
-  val recv    : 'a socket → int → 'a@ready → string * 'a@ready
+  val recv    : 'a socket → int → 'a@ready → string × 'a@ready
   val close   :  'a socket → 'a@'c → unit
 
   val isSame  : 'a socket → 'b socket → ('a@'c → 'b@'c) option
@@ -47,7 +47,7 @@ module type SOCKET_CAP = sig
                      | Listening of 'a@listening
                      | Ready of 'a@ready
 
-  exception Socket of (∃'a. 'a socket * 'a dynamicCap) option * string
+  exception Socket of (∃'a. 'a socket × 'a dynamicCap) option × string
 end
 
 module SocketCap : SOCKET_CAP = struct
@@ -65,7 +65,7 @@ module SocketCap : SOCKET_CAP = struct
                      | Listening of 'a@listening
                      | Ready of 'a@ready
 
-  exception Socket of (∃'a. 'a socket * 'a dynamicCap) option * string
+  exception Socket of (∃'a. 'a socket × 'a dynamicCap) option × string
 
   let lift thunk sock mkcap =
     try thunk ()
