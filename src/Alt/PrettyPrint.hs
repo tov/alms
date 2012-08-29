@@ -30,7 +30,7 @@ module Alt.PrettyPrint (
 
 import qualified Text.PrettyPrint as P
 import Control.Applicative
-import Data.Monoid
+import Data.Monoid hiding ((<>))
 
 -- Document parameterized by type @e@.
 newtype Doc e = Doc { unDoc :: e -> P.Doc }

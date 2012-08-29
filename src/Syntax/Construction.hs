@@ -14,7 +14,7 @@ import Data.Loc
 import Meta.Quasi
 
 import Prelude ()
-import Data.Map as M
+import Data.Map as M hiding (foldr, foldl')
 import Data.Generics (Data, everywhere, mkT)
 
 -- | Constructs a let expression, but with a special case:

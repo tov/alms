@@ -37,7 +37,7 @@ import Data.IORef (IORef)
 import System.Exit (exitFailure, exitSuccess, ExitCode)
 import System.Environment (getArgs, getProgName, withProgName, withArgs)
 import System.IO.Error (ioeGetErrorString, isUserError)
-import IO (hPutStrLn, hFlush, stdout, stderr)
+import System.IO (hPutStrLn, hFlush, stdout, stderr)
 import qualified Control.Exception as Exn
 
 #ifdef USE_READLINE

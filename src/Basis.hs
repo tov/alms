@@ -21,7 +21,7 @@ import qualified Basis.Future
 import qualified Basis.Array
 import qualified Basis.Row
 
-import qualified IO
+import qualified System.IO as IO
 import qualified System.Environment as Env
 import Data.IORef (IORef, newIORef, readIORef, atomicModifyIORef)
 import System.Random (randomIO)

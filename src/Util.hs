@@ -101,7 +101,7 @@ import Control.Monad.Writer.Strict ( MonadWriter(..), WriterT(..),
 
 import Data.Char (chr, ord)
 import Data.Maybe
-import Data.Monoid
+import Data.Monoid hiding ((<>))
 import Data.Foldable
 import Data.Function ( on )
 import Data.Traversable

@@ -6,7 +6,7 @@ import AST
 import Util
 import Value (Valuable(..), vinjData, vprjDataM)
 
-import qualified IO
+import qualified System.IO as IO
 import Data.Data (Typeable, Data)
 
 instance Valuable IO.Handle where
