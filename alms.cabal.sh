@@ -57,7 +57,6 @@ Executable alms
   GHC-Options:          -O3
   CPP-Options:          -DALMS_CABAL_BUILD
   Build-Depends:
-                        haskell98,
                         base == 4.*,
                         HUnit >= 1.2,
                         QuickCheck >= 2,
