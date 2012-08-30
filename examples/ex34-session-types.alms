@@ -14,17 +14,17 @@ let server (c : int protocol dual channel) =
     | Left c ->
         let (x, c) = recv c in
         let (y, c) = recv c in
-          send c (x + y);
+          send (x + y) c;
           ()
     | Right c ->
         let (x, c) = recv c in
-          send c (0 - x);
+          send (0 - x) c;
           ()
 
 let client c x y =
       let c = sel1 c in
-      let c = send c x in
-      let c = send c y in
+      let c = send x c in
+      let c = send y c in
       let (r, _) = recv c in
         r
 

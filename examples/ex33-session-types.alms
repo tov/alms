@@ -10,12 +10,12 @@ type protocol = !int; !int; ?int; 1
 let server c =
   let (x, c) = recv c in
   let (y, c) = recv c in
-    send c (x + y);
+    send (x + y) c;
     ()
 
 let client c x y =
-  let c = send c x in
-  let c = send c y in
+  let c = send x c in
+  let c = send y c in
   let (r, _) = recv c in
     r
 
