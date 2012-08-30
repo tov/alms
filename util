@@ -1,7 +1,7 @@
 #!/bin/sh
 
 name=alms
-host=spelunker.ccs.neu.edu
+host=bowser.eecs.harvard.edu
 remote=public_html/pubs/$name
 
 version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"

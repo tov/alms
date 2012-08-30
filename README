@@ -14,7 +14,7 @@ CONTENTS
 
 GETTING STARTED
 
-  Alms requires GHC to build.  It is known to work with GHC 7.0.2, and
+  Alms requires GHC to build.  It is known to work with GHC 7.4.1, and
   and likely no longer works with GHC 6.
 
   Provided that a recent ghc is in your path, to build on UNIX it ought
