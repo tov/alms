@@ -8,6 +8,15 @@ extensions=src/extensions.txt
 
 version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"
 
+assert_has_argument () {
+  if [ -z "$1" ]; then
+    shift
+    expected="$1"; shift
+    echo "$0 $cmd: $expected expected\nUsage: $0 $cmd $@" >&2
+    exit 1
+  fi
+}
+
 if [ -z "$1" ]; then
   set showVersion
 fi
@@ -17,6 +26,7 @@ while [ -n "$1" ]; do
   shift
   case "$cmd" in
     release)
+      assert_has_argument "$1" 'version number' VERSION
       ver="$1"; shift
       set version "$ver" ci "version bump: $ver" tagversion "$ver" \
           clean dist send link $@
@@ -56,6 +66,8 @@ while [ -n "$1" ]; do
       set --
       ;;
     mv)
+      assert_has_argument "$1" 'source path' SRC DST
+      assert_has_argument "$2" 'destination path' SRC DST
       src="$1"; shift
       dst="$1"; shift
       git mv "$src" "$dst" &&
@@ -63,32 +75,31 @@ while [ -n "$1" ]; do
       svn mv "$src" "$dst"
       ;;
     ci)
+      assert_has_argument "$1" 'commit message' MESSAGE
       msg="$1"; shift
       git add Makefile
       git ci -m "$msg"
       svn ci -m "$msg"
       ;;
     add)
+      assert_has_argument "$1" 'something to add' PATH...
       git add $@
       svn add $@
       set --
       ;;
     tagversion)
+      assert_has_argument "$1" 'version number' VERSION
       gitversion="$1"
       shift
       git tag "$gitversion"
       ;;
     version)
+      assert_has_argument "$1" 'version number' VERSION
       version="$1"
       shift
-      if [ -n "$version" ]; then
-          ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
-          make $name.cabal
-          $0 showVersion
-      else
-          echo "Need to specify a version" >&2
-          exit 1
-      fi
+      ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
+      make $name.cabal
+      $0 showVersion
       ;;
     showVersion)
       echo $version
