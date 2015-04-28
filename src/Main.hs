@@ -8,7 +8,7 @@ module Main (
 
 import Util
 import Util.MonadRef
-import Util.UndoIO
+import Util.Undo (runUndoIO)
 import Syntax.ImplicitThreading
 import Syntax.Ppr (Doc, Ppr(..), (<+>), (<>), text, char, hang,
                    printDoc, hPrintDoc)

@@ -160,7 +160,7 @@ Executable alms
                         Util.Eq1
                         Util.MonadRef
                         Util.Trace
-                        Util.UndoIO
+                        Util.Undo
                         Util.Viewable
                         Util
                         Value
