@@ -66,7 +66,7 @@ clean:
 	$(RM) html
 
 
-VERSION = 0.6.6
+VERSION = 0.6.7
 DISTDIR = alms-$(VERSION)
 TARBALL = $(DISTDIR).tar.gz
 
