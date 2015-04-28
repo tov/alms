@@ -1,8 +1,8 @@
 #!/bin/sh
 
 name=alms
-host=bowser.eecs.harvard.edu
-remote=public_html/pubs/$name
+host=login.ccs.neu.edu
+remote=.www/pubs/$name
 
 version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"
 
