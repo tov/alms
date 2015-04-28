@@ -1,8 +1,10 @@
 #!/bin/sh
+# vim: sw=2
 
 name=alms
 host=login.ccs.neu.edu
 remote=.www/pubs/$name
+extensions=src/extensions.txt
 
 version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"
 
@@ -46,6 +48,13 @@ while [ -n "$1" ]; do
     edit)
       ssh $host -t vim $remote/index.html
       ;;
+    extensions)
+      perl -pe 's/\n/ /; s/\b\w+\b/-X$&/' $extensions
+      ;;
+    ghci)
+      ghci -isrc `$0 extensions` "$@"
+      set --
+      ;;
     mv)
       src="$1"; shift
       dst="$1"; shift
@@ -55,7 +64,8 @@ while [ -n "$1" ]; do
       ;;
     ci)
       msg="$1"; shift
-      git ca -m "$msg"
+      git add Makefile
+      git ci -m "$msg"
       svn ci -m "$msg"
       ;;
     add)
