@@ -17,7 +17,6 @@ ScopedTypeVariables
 StandaloneDeriving
 TemplateHaskell
 TupleSections
-TypeOperators
 TypeSynonymInstances
 UndecidableInstances
 UnicodeSyntax
