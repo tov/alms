@@ -366,24 +366,24 @@ infixl 1 >>!
 
 infixl 4 <$$>, <$$$>, <$$$$>, <$$$$$>, <$$$$$$>
 
-(<$.>) ∷ (Arrow (⇝), Functor f) ⇒
-         f (b ⇝ c) → (a ⇝ b) →
-         f (a ⇝ c)
+(<$.>) ∷ (Arrow arr, Functor f) ⇒
+         f (b `arr` c) → (a `arr` b) →
+         f (a `arr` c)
 f <$.> g = (g >>>) <$> f
 
-(<$$.>) ∷ (Arrow (⇝), Functor f, Functor g) ⇒
-          g (f (b ⇝ c)) → (a ⇝ b) →
-          g (f (a ⇝ c))
+(<$$.>) ∷ (Arrow arr, Functor f, Functor g) ⇒
+          g (f (b `arr` c)) → (a `arr` b) →
+          g (f (a `arr` c))
 f <$$.> g = (g >>>) <$$> f
 
-(<$$$.>) ∷ (Arrow (⇝), Functor f, Functor g, Functor h) ⇒
-           h (g (f (b ⇝ c))) → (a ⇝ b) →
-           h (g (f (a ⇝ c)))
+(<$$$.>) ∷ (Arrow arr, Functor f, Functor g, Functor h) ⇒
+           h (g (f (b `arr` c))) → (a `arr` b) →
+           h (g (f (a `arr` c)))
 f <$$$.> g = (g >>>) <$$$> f
 
-(<$$$$.>) ∷ (Arrow (⇝), Functor f, Functor g, Functor h, Functor i) ⇒
-            i (h (g (f (b ⇝ c)))) → (a ⇝ b) →
-            i (h (g (f (a ⇝ c))))
+(<$$$$.>) ∷ (Arrow arr, Functor f, Functor g, Functor h, Functor i) ⇒
+            i (h (g (f (b `arr` c)))) → (a `arr` b) →
+            i (h (g (f (a `arr` c))))
 f <$$$$.> g = (g >>>) <$$$$> f
 
 infixl 4 <$.>, <$$.>, <$$$.>, <$$$$.>

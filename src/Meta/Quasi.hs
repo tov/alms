@@ -97,7 +97,8 @@ seQ = mkQuasi "seQ" parseSigExp
 sgQ = mkQuasi "sgQ" parseSigItem
 
 mkQuasi :: forall stx note.
-           (Data (note Raw), Data (stx Raw),
+           (Typeable1 note, Typeable1 stx,
+            Data (note Raw), Data (stx Raw),
             LocAst (N (note Raw) (stx Raw)),
             Data (note Renamed), Data (stx Renamed),
             LocAst (N (note Renamed) (stx Renamed))) =>
@@ -113,6 +114,46 @@ mkQuasi name parser = (newQuasi name) { quoteExp = qast, quotePat = qast }
           "+'" -> do
             stx <- parser :: P (N (note Renamed) (stx Renamed))
             convert' filename stx
+
+{-
+src/Meta/Quasi.hs:115:13:
+    Could not deduce (Typeable1 stx) arising from a use of convert'
+    from the context (Data (note Raw),
+                      Data (stx Raw),
+                      LocAst (N (note Raw) (stx Raw)),
+                      Data (note Renamed),
+                      Data (stx Renamed),
+                      LocAst (N (note Renamed) (stx Renamed)))
+      bound by the type signature for
+                 mkQuasi :: (Data (note Raw), Data (stx Raw),
+                             LocAst (N (note Raw) (stx Raw)), Data (note Renamed),
+                             Data (stx Renamed), LocAst (N (note Renamed) (stx Renamed))) =>
+                            String
+                            -> (forall i. Tag i => P (N (note i) (stx i))) -> QuasiQuoter
+      at src/Meta/Quasi.hs:(99,12)-(106,22)
+    or from (ToSyntax a)
+      bound by the inferred type of
+               qast :: ToSyntax a => String -> TH.Q a
+      at src/Meta/Quasi.hs:(109,3)-(124,38)
+    Possible fix:
+      add (Typeable1 stx) to the context of
+        the inferred type of qast :: ToSyntax a => String -> TH.Q a
+        or the type signature for
+             mkQuasi :: (Data (note Raw), Data (stx Raw),
+                         LocAst (N (note Raw) (stx Raw)), Data (note Renamed),
+                         Data (stx Renamed), LocAst (N (note Renamed) (stx Renamed))) =>
+                        String
+                        -> (forall i. Tag i => P (N (note i) (stx i))) -> QuasiQuoter
+    In a stmt of a 'do' block: convert' filename stx
+    In the expression:
+      do { stx <- parser :: P (N (note Renamed) (stx Renamed));
+           convert' filename stx }
+    In a case alternative:
+        "+'"
+          -> do { stx <- parser :: P (N (note Renamed) (stx Renamed));
+                  convert' filename stx }
+-}
+
           "+" -> do
             stx <- parser :: P (N (note Renamed) (stx Renamed))
             convert filename lflag stx
