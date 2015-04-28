@@ -184,6 +184,7 @@ Executable alms
                         StandaloneDeriving
                         TemplateHaskell
                         TupleSections
+                        TypeOperators
                         TypeSynonymInstances
                         UndecidableInstances
                         UnicodeSyntax
