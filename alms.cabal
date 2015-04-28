@@ -1,13 +1,13 @@
 Name:           alms
-Version:        0.6.5
-Copyright:      2012, Jesse A. Tov
+Version:        0.6.6
+Copyright:      2012-2015, Jesse A. Tov
 Cabal-Version:  >= 1.8
 License:        BSD3
 License-File:   LICENSE
 Stability:      experimental
-Author:         Jesse A. Tov <tov@eecs.harvard.neu.edu>
-Maintainer:     tov@eecs.harvard.neu.edu
-Homepage:       http://www.eecs.harvard.edu/~tov/pubs/alms
+Author:         Jesse A. Tov <tov@ccs.neu.edu>
+Maintainer:     tov@ccs.neu.edu
+Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms/
 Category:       Compilers/Interpreters
 Synopsis:       a practical affine language
 Build-type:     Simple
@@ -184,7 +184,6 @@ Executable alms
                         StandaloneDeriving
                         TemplateHaskell
                         TupleSections
-                        TypeOperators
                         TypeSynonymInstances
                         UndecidableInstances
                         UnicodeSyntax
