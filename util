@@ -9,9 +9,10 @@ extensions=src/extensions.txt
 version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"
 
 assert_has_argument () {
-  if [ -z "$1" ]; then
-    shift
-    expected="$1"; shift
+  local argument expected
+  argument="$1"; shift
+  expected="$1"; shift
+  if [ -z "$argument" ]; then
     echo "$0 $cmd: $expected expected\nUsage: $0 $cmd $@" >&2
     exit 1
   fi
@@ -22,14 +23,12 @@ if [ -z "$1" ]; then
 fi
 
 while [ -n "$1" ]; do
-  cmd="$1"
-  shift
+  cmd="$1"; shift
   case "$cmd" in
     release)
       assert_has_argument "$1" 'version number' VERSION
       ver="$1"; shift
-      set version "$ver" ci-version tagversion "$ver" \
-          clean dist send link "$@"
+      set version "$ver" clean dist send link "$@"
       ;;
     hackage-check)
       cabal upload -c $name-$version.tar.gz
@@ -84,32 +83,23 @@ while [ -n "$1" ]; do
       git ca -m "$msg"
       set ci "$@"
       ;;
-    ci-version)
-      git stash
-      make $name.cabal
-      git add Makefile $name.cabal
-      git ci -m "version bump: $version"
-      git stash apply
-      ;;
     add)
       assert_has_argument "$1" 'something to add' PATH...
       git add "$@"
       svn add "$@"
       set --
       ;;
-    tagversion)
-      assert_has_argument "$1" 'version number' VERSION
-      gitversion="$1"
-      shift
-      git tag "$gitversion"
-      ;;
     version)
       assert_has_argument "$1" 'version number' VERSION
-      version="$1"
-      shift
+      version="$1"; shift
+      git stash
       ex -c "/^VERSION *=/s/=.*/= $version/|:wq" Makefile
       make $name.cabal
-      $0 showVersion
+      git add Makefile $name.cabal
+      git commit -m "version bump: $version"
+      git tag "$version"
+      git stash apply
+      set showVersion "$@"
       ;;
     showVersion)
       echo $version
