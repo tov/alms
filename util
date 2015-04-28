@@ -28,8 +28,8 @@ while [ -n "$1" ]; do
     release)
       assert_has_argument "$1" 'version number' VERSION
       ver="$1"; shift
-      set version "$ver" ci "version bump: $ver" tagversion "$ver" \
-          clean dist send link $@
+      set version "$ver" ci-version tagversion "$ver" \
+          clean dist send link "$@"
       ;;
     hackage-check)
       cabal upload -c $name-$version.tar.gz
@@ -38,7 +38,7 @@ while [ -n "$1" ]; do
       cabal upload $name-$version.tar.gz
       ;;
     hackage)
-      set dist hackage-upload $@
+      set dist hackage-upload "$@"
       ;;
     clean)
       rm $name*.tar.gz
@@ -75,16 +75,26 @@ while [ -n "$1" ]; do
       svn mv "$src" "$dst"
       ;;
     ci)
+      git log svn-head..HEAD | svn ci -F -
+      git tag -f svn-head
+      ;;
+    ci-m)
       assert_has_argument "$1" 'commit message' MESSAGE
       msg="$1"; shift
-      git add Makefile
-      git ci -m "$msg"
-      svn ci -m "$msg"
+      git ca -m "$msg"
+      set ci "$@"
+      ;;
+    ci-version)
+      git stash
+      make $name.cabal
+      git add Makefile $name.cabal
+      git ci -m "version bump: $version"
+      git stash apply
       ;;
     add)
       assert_has_argument "$1" 'something to add' PATH...
-      git add $@
-      svn add $@
+      git add "$@"
+      svn add "$@"
       set --
       ;;
     tagversion)
