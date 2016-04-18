@@ -55,7 +55,7 @@ labelNode g n = case lab g n of
   Nothing → error "labelNode: node not found"
 
 labScc ∷ Graph gr ⇒ gr a b → [[LNode a]]
-labScc g = map preorder (rdffWith labNode' (topsort g) g)
+labScc g = map preorder (Alt.Graph.rdffWith labNode' (topsort g) g)
 
 pathScc ∷ Graph gr ⇒ gr a b → [Either (LNode a) [(LNode a, b)]]
 pathScc g = map (addCycle . preorder) (erdffWith labNode' (topsort g) g)
