@@ -42,7 +42,7 @@ import qualified Syntax.Strings as Strings
 
 import Prelude ()
 import Data.Char (isAlpha, isDigit, isUpper, toUpper, toLower)
-import Data.Generics (Typeable(..), Typeable1, Data(..), everywhere, mkT)
+import Data.Generics (Typeable(..), Typeable, Data(..), everywhere, mkT)
 import qualified Data.List as List
 import qualified Data.Map as M
 import qualified Data.Set as S
@@ -109,7 +109,7 @@ dirtyTrivialRename  = Unsafe.Coerce.unsafeCoerce . everywhere (mkT each) where
 type Q a i = Path (ModId i) (a i)
 
 -- | Generic identifiers and operations
-class (Typeable1 a,
+class (Typeable a,
        Data (a Raw), Eq (a Raw), Ord (a Raw), Bogus (a Raw),
        Data (a Renamed), Eq (a Renamed), Ord (a Renamed), Bogus (a Renamed))
       ⇒

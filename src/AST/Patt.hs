@@ -139,7 +139,7 @@ paCons  = paCon idConsList . Just <$$> paPair
 paNil  :: Tag i => Patt i
 paNil   = paCon idNilList Nothing
 
-class ToPatt a i | a → i where
+class ToPatt a i where
   toPatt ∷ a → Patt i
 
 instance ToPatt (Patt i) i where

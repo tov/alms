@@ -1,3 +1,4 @@
+{-# LANGUAGE GADTs #-}
 module AST.Expr (
   -- * Expressions
   Expr'(..), Expr, ExprNote(..), newExpr,
@@ -321,7 +322,7 @@ exCons = exCon idConsList . Just <$$> exPair
 exNil :: Tag i => Expr i
 exNil  = exCon idNilList Nothing
 
-class ToExpr a i | a → i where
+class ToExpr a i where
   toExpr ∷ a → Expr i
 
 instance ToExpr (Expr i) i where
