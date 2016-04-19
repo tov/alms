@@ -27,7 +27,8 @@ newQuasi name = $(do
       arity (AppT (AppT ArrowT _) t') = 1 + arity t'
       arity _                         = 0 :: Int
   DataConI _ ty _ _ <- reify 'QuasiQuoter
-  [| let qf cat _ = fail $ "Quasiquoter ‘" ++ name ++
+  [| let qf      :: Monad m => String -> a -> m b
+         qf cat _ = fail $ "Quasiquoter ‘" ++ name ++
                            "’ does not support " ++ cat
          q2       = $quasiQuoter (qf "expressions") (qf "patterns") in
        $(if arity ty == 4
