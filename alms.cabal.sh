@@ -44,9 +44,6 @@ Flag unicode
 Flag editline
   Description: Enable line editing using the editline package
 
-Flag parsec3
-  Description: Use version 3 of the parsec package
-
 Flag readline
   Description: Enable line editing using the readline package
   Default:     False
@@ -68,6 +65,7 @@ Executable alms
                         incremental-sat-solver >= 0.1.7,
                         mtl >= 1.1,
                         network >= 2.2,
+                        parsec == 3.*,
                         pretty >= 1,
                         random >= 1,
                         stm >= 2.0,
@@ -97,11 +95,4 @@ cat <<EOF
     if flag(editline)
       Build-Depends:  editline >= 0.2.1
       CPP-Options:    -DUSE_READLINE=System.Console.Editline.Readline
-
-  if flag(parsec3)
-    Build-Depends:  parsec == 3.*
-    CPP-Options:    -DPARSEC_VERSION=3
-  else
-    Build-Depends:  parsec == 2.*
-    CPP-Options:    -DPARSEC_VERSION=2
 EOF
