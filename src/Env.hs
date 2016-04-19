@@ -238,6 +238,10 @@ instance Functor (Path p) where
 instance Functor ROOT where
   fmap f (ROOT x) = ROOT (f x)
 
+instance Applicative ROOT where
+  pure              = ROOT
+  ROOT f <*> ROOT a = ROOT (f a)
+
 instance Monad ROOT where
   return       = ROOT
   ROOT x >>= f = f x
