@@ -36,22 +36,22 @@ data Token
   | AntiTok String String
   deriving (Eq, Show)
 
-tokensT :: CharParser () [(SourcePos, Token)]
+tokensT :: Parsec String () [(SourcePos, Token)]
 tokensT  = many (getPosition |*| tokenT) <* eof
 
-tokenT :: CharParser () Token
+tokenT :: Parsec String () Token
 tokenT  = choice [charsT, tagT, wordT, whitespaceT, antiT]
 
-charsT :: CharParser () Token
+charsT :: Parsec String () Token
 charsT  = tstring "<exact>" *>
           (Chars <$> manyTill anyChar (tstring "</exact>"))
 
-tagT :: CharParser () Token
+tagT :: Parsec String () Token
 tagT = between (char '<') (char '>') $
   option BTag (ETag <$ char '/')
   <*> many1 lower
 
-wordT :: CharParser () Token
+wordT :: Parsec String () Token
 wordT = Word <$> many1 wordChar
   where wordChar = satisfy (\x -> not (isSpace x || x `elem` "<&$"))
                <|> '&' <$ tstring "&amp;"
@@ -59,10 +59,10 @@ wordT = Word <$> many1 wordChar
                <|> '<' <$ tstring "&lt;"
                <|> '>' <$ tstring "&gt;"
 
-whitespaceT :: CharParser () Token
+whitespaceT :: Parsec String () Token
 whitespaceT  = Whitespace <$> many1 space
 
-antiT :: CharParser () Token
+antiT :: Parsec String () Token
 antiT = char '$' *> (inner <|> between (char '<') (char '>') inner)
   where inner = combine <$> ident
                         <*> optionMaybe (char ':' *> ident)
@@ -70,18 +70,18 @@ antiT = char '$' *> (inner <|> between (char '<') (char '>') inner)
         combine name Nothing     = AntiTok "" name
         combine tag  (Just name) = AntiTok tag name
 
-ident :: CharParser () String
+ident :: Parsec String () String
 ident  = many1 digit
      <|> lower |:| many (alphaNum <|> oneOf "'_")
 
-tstring :: String -> CharParser () String
+tstring :: String -> Parsec String () String
 tstring  = try . string
 
 --
 -- Token parsers
 --
 
-type P a = GenParser (SourcePos, Token) () a
+type P a = Parsec [(SourcePos, Token)] () a
 
 tsatisfy      :: (Token -> Maybe a) -> P a
 tsatisfy check = token show fst (check . snd)
@@ -239,5 +239,5 @@ manyskip save skip  = save |:| manyskip save skip
 many1skip :: P a -> P b -> P [a]
 many1skip save skip = save |:| manyskip save skip
                   <|> skip *> many1skip save skip
-                  <|> pzero
+                  <|> mzero
 

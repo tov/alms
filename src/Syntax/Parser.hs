@@ -34,7 +34,7 @@ import Prelude ()
 import qualified Data.Map as M
 import qualified Data.List as L
 import qualified Language.Haskell.TH as TH
-import qualified Text.ParserCombinators.Parsec.Error as PE
+import qualified Text.Parsec.Error as PE
 import System.IO.Unsafe (unsafePerformIO)
 
 data St   = St {
@@ -49,7 +49,7 @@ instance TokenEnd St where
     updateState $ \st -> st { stPos = pos }
 
 -- | A 'Parsec' character parser, with abstract state
-type P a  = CharParser St a
+type P a  = Parsec String St a
 
 state0 :: St
 state0 = St {
@@ -294,7 +294,7 @@ assertDots    = do
   state  <- getState
   if stDots state
     then return ()
-    else pzero
+    else mzero
 
 -- Just uppercase identifiers
 uidp :: Tag i => P (Uid i)
@@ -566,13 +566,13 @@ extensionp = try (tyRowDots <$> withDots False (typepP precApp) <* ellipsis)
 tybinopp :: Tag i => Prec -> P (Type i -> Type i -> Type i)
 tybinopp p = try $ do
   op <- typopp p
-  when (idName op == "-") pzero
+  when (idName op == "-") mzero
   return (\t1 t2 -> tyApp (J [] op) [t1, t2])
 
 progp :: Tag i => P (Prog i)
 progp  = choice [
            do ds <- declsp
-              when (null ds) pzero
+              when (null ds) mzero
               e  <- antioptaroundp (reserved "in" `between` punit) exprp
               return (prog ds e),
            antioptp exprp >>! prog []
@@ -582,7 +582,7 @@ replp :: Tag i => P [Decl i]
 replp  = choice [
            try $ do
              ds <- declsp
-             when (null ds) pzero
+             when (null ds) mzero
              eof
              return ds,
            exprp >>! (prog2decls . prog [] . Just)
@@ -833,7 +833,7 @@ tyAppp wrap param oper suffix = choice [
   try $ do
     p1 <- param
     n <- choice [ semis, operator ]
-    when (n == "-" || precOp n == Right precBang) pzero
+    when (n == "-" || precOp n == Right precBang) mzero
     p2 <- param
     return ([p1, p2], oper (ident n)),
   -- normal postfix application
@@ -984,7 +984,7 @@ altsp  = sepBy1 altp (reservedOp "|")
 
 altp  :: Tag i => P (ConId i, Maybe (Type i))
 altp   = do
-  k <- try $ conidp <* try (dot *> pzero <|> punit)
+  k <- try $ conidp <* try (dot *> mzero <|> punit)
   t <- optionMaybe $ do
     reserved "of"
     typep

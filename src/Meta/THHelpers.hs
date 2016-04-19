@@ -18,8 +18,8 @@ import Prelude ()
 import Data.Generics (Typeable, Data, everything, mkQ)
 import Language.Haskell.TH
 import Language.Haskell.TH.Quote
-import Text.ParserCombinators.Parsec.Language (haskell)
-import Text.ParserCombinators.Parsec.Token
+import Text.Parsec.Language (haskell)
+import Text.Parsec.Token
 
 -- | A very limited Haskell abstract syntax for describing both
 --   patterns and expressions

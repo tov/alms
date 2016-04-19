@@ -339,16 +339,20 @@ tyBinOp ∷ TyCon → Type tv → Type tv → Type tv
 tyBinOp tc t1 t2 = TyApp tc [t1, t2]
 
 -- | A function type
+tyFunT ∷ Type tv → Type tv → Type tv → Type tv
+tyFunT t1 qe t2 = TyApp tcFun [t1, qe, t2]
+
+-- | A function type
 tyFun ∷ Qualifier qe tv ⇒ Type tv → qe → Type tv → Type tv
-tyFun t1 qe t2 = TyApp tcFun [t1, qualToType qe, t2]
+tyFun t1 qe t2 = tyFunT t1 (qualToType qe) t2
 
 -- | Constructor for unlimited arrow types
 tyArr ∷ Type tv → Type tv → Type tv
-tyArr = tyFun <-> Qu
+tyArr = tyFunT <-> tyUn
 
 -- | Constructor for affine arrow types
 tyLol ∷ Type tv → Type tv → Type tv
-tyLol = tyFun <-> Qa
+tyLol = tyFunT <-> tyAf
 
 -- | Type from a 'QLit'
 tyQLit ∷ QLit → Type tv
@@ -420,16 +424,6 @@ instance Qualifier q tv ⇒ Qualifier (Maybe q) tv where
 instance (Ord tv, Qualifier q tv) ⇒ Qualifier [q] tv where
   qualToType   = qualToType . qualifier
   qualifierEnv = bigJoin <$$> map . qualifierEnv
-
-instance Qualifier QLit tv where
-  qualToType Qa     = tyAf
-  qualToType Qu     = tyUn
-  qualifier Qa      = QeA
-  qualifier Qu      = QeU S.empty
-
-instance Qualifier AST.Occurrence tv where
-  qualToType = qualToType . AST.occToQLit
-  qualifier  = qualifier . AST.occToQLit
 
 instance Ord tv ⇒ Qualifier (Type tv) tv where
   qualToType        = qualToType . qualifier

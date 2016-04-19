@@ -51,7 +51,7 @@ Flag readline
 Executable alms
   Main-Is:              Main.hs
   Hs-Source-Dirs:       src
-  GHC-Options:          -O3
+  GHC-Options:          -O0
   CPP-Options:          -DALMS_CABAL_BUILD
   Build-Depends:
                         base == 4.*,

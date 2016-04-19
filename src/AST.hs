@@ -3,6 +3,7 @@
 -- This module provides abstract syntax and basic syntax operations.
 --
 -----------------------------------------------------------------------------
+{-# LANGUAGE GADTs #-}
 
 module AST (
   module AST.Anti,

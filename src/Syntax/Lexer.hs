@@ -36,6 +36,8 @@ import Prelude ()
 import Data.Char
 import qualified Data.List as List
 
+type CharParser st a = Parsec String st a
+
 tok :: T.TokenEnd st => T.TokenParser st
 tok = T.makeTokenParser T.LanguageDef {
     T.commentStart   = "(*",
@@ -315,7 +317,7 @@ lid        :: T.TokenEnd st => CharParser st String
 lid              = try $ do
   s <- identifier
   if isUpperIdentifier s
-    then pzero <?> "lowercase identifier"
+    then mzero <?> "lowercase identifier"
     else return s
 
 -- | Lex an uppercase identifer
@@ -324,7 +326,7 @@ uid              = try $ do
   s <- identifier <|> symbol "()" <|> symbol "[]"
   if isUpperIdentifier s
     then return s
-    else pzero <?> "uppercase identifier"
+    else mzero <?> "uppercase identifier"
 
 -- | Lex a record label
 llabel     :: T.TokenEnd st => CharParser st String
@@ -332,7 +334,7 @@ llabel           = try $ do
   c:s <- identifier
   if isLower c
     then return (toUpper c : s)
-    else pzero <?> "record field label"
+    else mzero <?> "record field label"
 
 -- | Lex a variant label
 ulabel     :: T.TokenEnd st => CharParser st String
@@ -340,7 +342,7 @@ ulabel           = try $ do
   s@(c:_) <- identifier
   if isUpper c
     then return s
-    else pzero <?> "variant constructor label"
+    else mzero <?> "variant constructor label"
 
 -- | Accept an operator having the specified precedence
 opP :: T.TokenEnd st => Prec -> CharParser st String
@@ -348,5 +350,5 @@ opP p = try $ do
   op <- operator
   if precOp op == p
     then return op
-    else pzero
+    else mzero
 

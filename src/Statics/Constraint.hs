@@ -350,7 +350,7 @@ instance MonadSubst tv r m ⇒
          MonadSubst tv r (ConstraintT_ tv r m) where
   newTV_ (Universal, kind, bound, descr) = do
     α ← lift (newTV' (kind, descr))
-    fvTy α ⊏: bound
+    fvTy α ⊏: tyQLit bound
     return α
   newTV_ attrs  = lift (newTV' attrs)
   writeTV_      = lift <$$> writeTV_
@@ -1328,7 +1328,7 @@ recomposeQuals state =
     , γ `S.notMember` sq_αs state
     , βs ← qem ]
   ++
-    [ (qualToType ql, clean βs)
+    [ (tyQLit ql, clean βs)
     | (ql, βs) ← sq_βlst state ]
   where
   clean βs = qualToType (βs S.\\ sq_αs state)

@@ -9,6 +9,7 @@ module Type.ArrowAnnotations (
 import Util
 import Meta.Quasi
 import qualified AST
+import AST.Kind ( QExp'(..) ) -- This seems to break hygiene
 import Type.Internal
 
 import Prelude ()

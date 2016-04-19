@@ -407,9 +407,12 @@ vinjData = generic
 -- | The partial inverse of 'vinjData'
 vprjDataM :: forall a m. (Data a, Monad m) => Value -> m a
 vprjDataM = generic
-    `ext1RT` (\x -> vprjM x >>= C.M.sequence . liftM vprjDataM)
-    `ext1RT` (\x -> vprjM x >>= maybe (return Nothing) (liftM return)
-                                         . liftM vprjDataM)
+  {- TODO XXX: Why doesn't this type anymore?
+    `ext1RT` (vprjM >=> C.M.sequence
+                          . liftM vprjDataM)
+    -}
+    `ext1RT` (vprjM >=> maybe (return Nothing) (liftM Just)
+                          . liftM vprjDataM)
     `extRT` (vprjM :: Value -> m Int)
     `extRT` (vprjM :: Value -> m CInt)
     `extRT` (vprjM :: Value -> m Word32)
@@ -481,7 +484,7 @@ extRT :: (Typeable a, Typeable b) =>
          (r -> m a) -> (r -> m b) -> r -> m a
 m1 `extRT` m2 = unRT (maybe (RT m1) id (gcast (RT m2)))
 
-ext1RT :: (Data d, Typeable1 t) =>
+ext1RT :: (Data d, Typeable t) =>
           (r -> m d) -> (forall e. Data e => r -> m (t e)) -> r -> m d
 m1 `ext1RT` m2 = unRT (maybe (RT m1) id (dataCast1 (RT m2)))
 
