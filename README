@@ -1,7 +1,7 @@
 This is a prototype implementation of Alms, an affine language with
 modules and subtyping.
 
-Please see http://www.ccs.neu.edu/home/tov/pubs/alms/ for more
+Please see http://users.eecs.northwestern.edu/~jesse/pubs/alms/ for more
 information.
 
 CONTENTS
@@ -15,10 +15,11 @@ CONTENTS
 GETTING STARTED
 
   Alms requires GHC to build.  It is known to work with GHC 7.4.1, and
-  and likely no longer works with GHC 6.
+  and likely no longer works with GHC 6. To my knowledge, it does not
+  build with GHC 8.
 
-  Provided that a recent ghc is in your path, to build on UNIX it ought
-  to be be sufficient to type:
+  Provided that a not-too-recent ghc is in your path, to build on UNIX
+  it ought to be be sufficient to type:
 
     % make
 
