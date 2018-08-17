@@ -2,8 +2,8 @@
 # vim: sw=2
 
 name=alms
-host=login.ccs.neu.edu
-remote=.www/pubs/$name
+host=login.eecs.northwestern.edu
+remote=public_html/pubs/$name
 extensions=src/extensions.txt
 
 version="`awk '$0 ~ /^VERSION *= / { print $3 }' Makefile`"
