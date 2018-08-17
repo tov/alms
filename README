@@ -14,9 +14,9 @@ CONTENTS
 
 GETTING STARTED
 
-  Alms requires GHC to build.  It is known to work with GHC 7.6.3, and
-  and likely no longer works with GHC 6. It also does not work with
-  GHC 8.
+  Alms is no longer actively maintained, and does not build with the
+  latest GHC. In particular, it is know to work with GHC 7.6.3, and and
+  likely no longer works with GHC 6. It also does not work with GHC 8.
 
   Provided that a not-too-recent ghc is in your path, to build on UNIX
   it ought to be be sufficient to type:
