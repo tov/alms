@@ -3,14 +3,14 @@
 cat <<EOF
 Name:           alms
 Version:        `./util`
-Copyright:      2012-2015, Jesse A. Tov
+Copyright:      2012-2018, Jesse A. Tov
 Cabal-Version:  >= 1.8
 License:        BSD3
 License-File:   LICENSE
 Stability:      experimental
-Author:         Jesse A. Tov <tov@ccs.neu.edu>
-Maintainer:     tov@ccs.neu.edu
-Homepage:       http://www.ccs.neu.edu/~tov/pubs/alms/
+Author:         Jesse A. Tov <jesse@eecs.northwestern.edu>
+Maintainer:     jesse@eecs.northwestern.edu
+Homepage:       http://users.eecs.northwestern.edu/~jesse/pubs/alms/
 Category:       Compilers/Interpreters
 Synopsis:       a practical affine language
 Build-type:     Simple

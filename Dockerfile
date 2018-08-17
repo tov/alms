@@ -7,14 +7,15 @@ RUN apt-get update
 RUN DEBIAN_FRONTEND=noninteractive apt-get install -y \
     ghc cabal-install libreadline-dev
 RUN cabal update
+RUN cabal install --flags=readline --global alms
 
-ADD https://github.com/tov/alms/archive/docker.tar.gz /
-RUN tar zxf docker.tar.gz
-RUN mv alms-docker alms
+# ADD https://github.com/tov/alms/archive/docker.tar.gz /
+# RUN tar zxf docker.tar.gz
+# RUN mv alms-docker alms
 
-WORKDIR /alms
-RUN cabal install 'fgl>=5' 'HUnit>=1.2' --global
-RUN cabal configure --verbose=3 --flags=readline --global
+# WORKDIR /alms
+# RUN cabal install 'fgl>=5' 'HUnit>=1.2' --global
+# RUN cabal configure --verbose=3 --flags=readline --global
 # RUN cabal install --flags=readline --global
 
 CMD ["/bin/bash"]
