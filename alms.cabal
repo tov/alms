@@ -1,5 +1,5 @@
 Name:           alms
-Version:        0.6.7
+Version:        0.6.8
 Copyright:      2012-2015, Jesse A. Tov
 Cabal-Version:  >= 1.8
 License:        BSD3
@@ -73,97 +73,97 @@ Executable alms
                         transformers >= 0.2,
                         tuple >= 0.2
   Other-Modules:
-                        Alt.Graph
-                        Alt.NodeMap
-                        Alt.Parsec
-                        Alt.PrettyPrint
-                        Alt.Token
-                        AST.Anti
-                        AST.Decl
-                        AST.Expr
-                        AST.Ident
-                        AST.Kind
-                        AST.Lit
-                        AST.Notable
-                        AST.Patt
-                        AST.SyntaxTable
-                        AST.Type
-                        AST.TypeAnnotation
                         AST
-                        Basis.Array
-                        Basis.Channel.Haskell
-                        Basis.Channel
-                        Basis.Exn
-                        Basis.Future
-                        Basis.IO
-                        Basis.MVar
-                        Basis.Row
-                        Basis.Socket
-                        Basis.Thread
-                        Basis
-                        BasisUtils
-                        Compat
-                        Data.Empty
-                        Data.Lattice
-                        Data.Loc
-                        Data.OptionalClass
-                        Data.Perhaps
-                        Data.UnionFind
+                        Statics.Subsume
+                        Statics.Sealing
+                        Statics.Coercion
+                        Statics.InstGen
+                        Statics.Expr
+                        Statics.Patt
+                        Statics.Decl
+                        Statics.Rename
+                        Statics.Env
+                        Statics.Error
+                        Statics.Constraint
+                        Statics.Type
+                        Statics.Sig
+                        Util.Undo
+                        Util.Trace
+                        Util.Viewable
+                        Util.Bogus
+                        Util.MonadRef
+                        Util.Eq1
                         Dynamics
-                        Env
-                        Error
-                        Main
+                        Meta.FileString
+                        Meta.QuoteData
+                        Meta.Quasi
+                        Meta.THHelpers
+                        Meta.DeriveNotable
                         Message.AST
                         Message.Parser
                         Message.Quasi
                         Message.Render
-                        Meta.DeriveNotable
-                        Meta.FileString
-                        Meta.Quasi
-                        Meta.QuoteData
-                        Meta.THHelpers
+                        Main
+                        Value
                         Paths
-                        Statics.Coercion
-                        Statics.Constraint
-                        Statics.Decl
-                        Statics.Env
-                        Statics.Error
-                        Statics.Expr
-                        Statics.InstGen
-                        Statics.Patt
-                        Statics.Rename
-                        Statics.Sealing
-                        Statics.Sig
-                        Statics.Subsume
-                        Statics.Type
-                        Statics
-                        Syntax.Construction
-                        Syntax.ImplicitThreading
+                        Env
+                        Compat
+                        Type.Syntax
+                        Type.Ppr
+                        Type.Rank
+                        Type.Analyses
+                        Type.Subst
+                        Type.Reduce
+                        Type.TyVar
+                        Type.ArrowAnnotations
+                        Type.Internal
+                        Type.Recursive
+                        Error
+                        AST.SyntaxTable
+                        AST.TypeAnnotation
+                        AST.Ident
+                        AST.Expr
+                        AST.Patt
+                        AST.Anti
+                        AST.Notable
+                        AST.Decl
+                        AST.Kind
+                        AST.Type
+                        AST.Lit
+                        BasisUtils
+                        Basis
+                        Type
                         Syntax.Lexer
                         Syntax.Parser
                         Syntax.Ppr
-                        Syntax.PprClass
                         Syntax.Prec
                         Syntax.Strings
-                        Type.Analyses
-                        Type.ArrowAnnotations
-                        Type.Internal
-                        Type.Ppr
-                        Type.Rank
-                        Type.Recursive
-                        Type.Reduce
-                        Type.Subst
-                        Type.Syntax
-                        Type.TyVar
-                        Type
-                        Util.Bogus
-                        Util.Eq1
-                        Util.MonadRef
-                        Util.Trace
-                        Util.Undo
-                        Util.Viewable
+                        Syntax.PprClass
+                        Syntax.ImplicitThreading
+                        Syntax.Construction
+                        Data.OptionalClass
+                        Data.Lattice
+                        Data.UnionFind
+                        Data.Loc
+                        Data.Perhaps
+                        Data.Empty
+                        Alt.Parsec
+                        Alt.Token
+                        Alt.NodeMap
+                        Alt.PrettyPrint
+                        Alt.Graph
+                        Statics
+                        Basis.Socket
+                        Basis.Array
+                        Basis.Row
+                        Basis.Future
+                        Basis.MVar
+                        Basis.Channel.Haskell
+                        Basis.Exn
+                        Basis.Thread
+                        Basis.Channel
+                        Basis.IO
                         Util
-                        Value
   Extensions:
                         BangPatterns
                         CPP
