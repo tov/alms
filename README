@@ -9,35 +9,34 @@ CONTENTS
  * GETTING STARTED
  * WHAT TO TRY
  * PAPER SYNTAX VERSUS ASCII SYNTAX
+ * BUILDING ALMS
  * EDITLINE TROUBLE
 
 
 GETTING STARTED
 
-  Alms is no longer actively maintained, and does not build with the
-  latest GHC. In particular, it is know to work with GHC 7.6.3, and and
-  likely no longer works with GHC 6. It also does not work with GHC 8.
+  Alms is no longer maintained, and does not build with the latest GHC.
+  In particular, it is know to work with GHC 7.6.3, and and likely no
+  longer works with GHC 6. It also does not work with GHC 8.
 
-  Provided that a not-too-recent ghc is in your path, to build on UNIX
-  it ought to be be sufficient to type:
+  Thus, the recommended way to try out Alms is via a Docker image,
+  [jessetov/alms](https://hub.docker.com/r/jessetov/alms/). If you have
+  Docker installed, you can get a shell with:
 
-    % make
+    % docker run -it --rm jessetov/alms
 
-  This should produce an executable "alms" in the current directory,
+  That will give you a root shell in the `/alms` directory, which will
+  contain an `alms` interpreter executable, which you can run:
 
-  If this fails, it may also be necessary to either install the editline
-  package first or disable line editing (Please see EDITLINE TROUBLE).
+    # ./alms
+    Alms, version 0.6.9
+    #- fun (a, b) -> (a, a)
+    it : ∀ 'a `b. 'a * `b → 'a * 'a = #<fn (λ (a, b) → (a, a))>
+    #-
 
-  On Windows, build with Cabal:
-
-    > runghc Setup.hs configure
-    > runghc Setup.hs build
-
-  This produces an executable in "dist\build\alms\alms".
-
-  Cabal should work on UNIX as well, but mixing Cabal and make leads to
-  linker errors, so it's probably best to stick with one or the other.
-
+  Note that one of the tests run by `make test` will fail. This is
+  expected because the test is intended to be run as a non-root user,
+  but the Docker image logs in as root.
 
 WHAT TO TRY
 
@@ -120,6 +119,29 @@ implemented, except for issues of pretty printing:
   \to^{\hat\alpha}                -a>          (arrow with qualifier)
   \sqcup                          \/           (qualifier join)
   \pm \baro + -                   = 0 + -      (variances)
+
+
+BUILDING ALMS
+
+  Provided that a not-too-recent ghc is in your path, to build on UNIX
+  it ought to be be sufficient to type:
+
+    % make
+
+  This should produce an executable "alms" in the current directory,
+
+  If this fails, it may also be necessary to either install the editline
+  package first or disable line editing (Please see EDITLINE TROUBLE).
+
+  On Windows, build with Cabal:
+
+    > runghc Setup.hs configure
+    > runghc Setup.hs build
+
+  This produces an executable in "dist\build\alms\alms".
+
+  Cabal should work on UNIX as well, but mixing Cabal and make leads to
+  linker errors, so it's probably best to stick with one or the other.
 
 
 EDITLINE TROUBLE
