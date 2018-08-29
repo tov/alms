@@ -8,7 +8,7 @@ information.
 
 ## Contents
 
-  * Getting Started
+  * [Getting Started][#getting-started]
   * What to Try
   * Paper Syntax Versus ASCII Syntax
   * Building Alms
@@ -151,23 +151,23 @@ Line editing is enabled in the REPL by default, which depends on the
 editline Cabal package.  If make fails and says something about
 editline, then there are three options:
 
-   - Disable line editing:
+1)  Use readline instead:
 
-         % make clean; make FLAGS=-editline
+        % make clean; make FLAGS=readline
 
-     or
+    or
 
-         % cabal install --flags="-editline" alms
+        % cabal install --flags="readline" alms
 
-   - Use readline instead:
+2)  Disable line editing:
 
-         % make clean; make FLAGS=readline
+        % make clean; make FLAGS=-editline
 
-     or
+    or
 
-         % cabal install --flags="readline" alms
+        % cabal install --flags="-editline" alms
 
-   - Try to install editline or readline . . .
+3)  Try to install editline or readline . . .
 
 Installing editline can be kind of touchy.  On my system,
 
