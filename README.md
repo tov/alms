@@ -113,13 +113,13 @@ implemented, except for issues of pretty printing:
 
 LaTeX (what the paper says)  | ASCII (what you type)      | (what for)
 ---------------------------- | -------------------------- | -----------
-`\forall \exists \lambda`    | `all ex fun   | (binders)
+`\forall` `\exists` `\lambda` | `all` `ex` `fun` | (binders)
 `\alpha`                     | `’a`          | (unlimited type variable)
 `\hat\alpha`                 | `‘a`          | (affine type variable)
 `\to^A`                      | `-A>`         | (affine arrow)
 `\to^{\hat\alpha}`           | `-a>`         | (arrow with qualifier)
 `\sqcup`                     | `\/`          | (qualifier join)
-`\pm \baro + -`              | `= 0 + -`     | (variances)
+`\pm \baro + -`              | `=` `0` `+` `-` | (variances)
 
 
 ## Building Alms
