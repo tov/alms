@@ -17,7 +17,7 @@ information.
 ## Getting Started
 
 Alms is no longer maintained, and does not build with the latest GHC.
-In particular, it is know to work with GHC 7.6.3, and and likely no
+In particular, it is known to work with GHC 7.6.3, and and likely no
 longer works with GHC 6. It also does not work with GHC 8.
 
 Thus, the recommended way to try out Alms is via a Docker image,
