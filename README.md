@@ -8,7 +8,7 @@ information.
 
 ## Contents
 
-  * [Getting Started][#getting-started]
+  * [Getting Started](#getting-started)
   * What to Try
   * Paper Syntax Versus ASCII Syntax
   * Building Alms
