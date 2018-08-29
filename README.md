@@ -9,10 +9,10 @@ information.
 ## Contents
 
   * [Getting Started](#getting-started)
-  * What to Try
-  * Paper Syntax Versus ASCII Syntax
-  * Building Alms
-      * Editline Trouble
+  * [What to Try](#what-to-try)
+  * [Paper Syntax Versus ASCII Syntax](#paper-syntax-versus-ascii-syntax)
+  * [Building Alms](#building-alms)
+      * [Editline Trouble](#editline-trouble)
 
 ## Getting Started
 
